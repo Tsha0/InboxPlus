@@ -17,8 +17,40 @@ import Testing
         route: route,
         platform: .whatsApp,
         title: "Latest message",
-        preview: "Hello"
+        preview: "Hello",
+        timestampDescription: "12 Aug 2026 at 10:15 PM",
+        unreadCount: 0
     )
     #expect(descriptor.route == route)
     #expect(descriptor.accessibilityLabel.contains("WhatsApp"))
+}
+
+@Test func linkedContactCardDescriptorNamesCompleteAccessibleState() {
+    let route = ConversationRoute(accountID: "wa", conversationID: "chat")
+    let unread = ContactConversationCardDescriptor(
+        route: route,
+        platform: .whatsApp,
+        title: "Latest message",
+        preview: "Hello",
+        timestampDescription: "12 Aug 2026 at 10:15 PM",
+        unreadCount: 2
+    )
+    let read = ContactConversationCardDescriptor(
+        route: route,
+        platform: .whatsApp,
+        title: "Latest message",
+        preview: "Hello",
+        timestampDescription: "12 Aug 2026 at 10:15 PM",
+        unreadCount: 0
+    )
+
+    #expect(unread.route == route)
+    #expect(
+        unread.accessibilityLabel
+            == "WhatsApp, Latest message, Hello, 12 Aug 2026 at 10:15 PM, 2 unread"
+    )
+    #expect(
+        read.accessibilityLabel
+            == "WhatsApp, Latest message, Hello, 12 Aug 2026 at 10:15 PM, Read"
+    )
 }

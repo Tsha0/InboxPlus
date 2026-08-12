@@ -28,7 +28,12 @@ public struct ContactSummaryView: View {
                     route: summary.route,
                     platform: summary.platform,
                     title: summary.title,
-                    preview: summary.latestPreview
+                    preview: summary.latestPreview,
+                    timestampDescription: summary.latestActivity.formatted(
+                        date: .abbreviated,
+                        time: .shortened
+                    ),
+                    unreadCount: summary.unreadCount
                 )
                 Button {
                     onOpen(descriptor.route)

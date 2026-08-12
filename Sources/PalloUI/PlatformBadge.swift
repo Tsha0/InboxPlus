@@ -16,16 +16,28 @@ public struct ContactConversationCardDescriptor: Sendable {
     public let platform: Platform
     public let title: String
     public let preview: String
+    public let timestampDescription: String
+    public let unreadCount: Int
 
     public var accessibilityLabel: String {
-        "\(platform.accessibilityLabel), \(title), \(preview)"
+        let readState = unreadCount > 0 ? "\(unreadCount) unread" : "Read"
+        return "\(platform.accessibilityLabel), \(title), \(preview), \(timestampDescription), \(readState)"
     }
 
-    public init(route: ConversationRoute, platform: Platform, title: String, preview: String) {
+    public init(
+        route: ConversationRoute,
+        platform: Platform,
+        title: String,
+        preview: String,
+        timestampDescription: String,
+        unreadCount: Int
+    ) {
         self.route = route
         self.platform = platform
         self.title = title
         self.preview = preview
+        self.timestampDescription = timestampDescription
+        self.unreadCount = unreadCount
     }
 }
 
