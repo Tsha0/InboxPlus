@@ -75,7 +75,8 @@ public enum InboxProjector {
         let summaries = conversations.compactMap { conversation -> (RemoteIdentity, ConversationSummary)? in
             guard
                 let identity = identityByID[conversation.identityID],
-                let account = accountByID[conversation.accountID]
+                let account = accountByID[conversation.accountID],
+                identity.accountID == conversation.accountID
             else {
                 return nil
             }

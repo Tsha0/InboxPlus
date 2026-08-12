@@ -60,3 +60,15 @@ import Testing
     let route = ConversationRoute(accountID: "wa", conversationID: "chat")
     #expect(InboxItem.ID.conversation(route).accessibilityIdentifier == "conversation-wa-chat")
 }
+
+@Test func sendFailureDescriptorExposesRouteScopedAccessibleState() {
+    let route = ConversationRoute(accountID: "instagram-primary", conversationID: "maya-instagram")
+    let descriptor = ConversationSendFailureDescriptor(
+        route: route,
+        message: "Fixture gateway unavailable"
+    )
+
+    #expect(descriptor.message == "Fixture gateway unavailable")
+    #expect(descriptor.accessibilityLabel == "Message could not be sent: Fixture gateway unavailable")
+    #expect(descriptor.accessibilityIdentifier == "send-error-instagram-primary-maya-instagram")
+}

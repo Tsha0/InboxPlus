@@ -2,6 +2,24 @@ import SwiftUI
 import PalloCore
 import PalloFeatures
 
+public struct ConversationSendFailureDescriptor: Equatable, Sendable {
+    public let route: ConversationRoute
+    public let message: String
+
+    public var accessibilityLabel: String {
+        "Message could not be sent: \(message)"
+    }
+
+    public var accessibilityIdentifier: String {
+        "send-error-\(route.accountID)-\(route.conversationID)"
+    }
+
+    public init(route: ConversationRoute, message: String) {
+        self.route = route
+        self.message = message
+    }
+}
+
 public struct ConversationView: View {
     @Bindable var model: PalloAppModel
     let route: ConversationRoute
@@ -57,20 +75,37 @@ public struct ConversationView: View {
                 .padding()
             }
             Divider()
-            HStack {
-                TextField("Message…", text: $model.draft)
-                    .textFieldStyle(.plain)
-                    .accessibilityIdentifier("message-composer")
-                Button {
-                    Task {
-                        try await model.sendDraft()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    TextField("Message…", text: $model.draft)
+                        .textFieldStyle(.plain)
+                        .accessibilityIdentifier("message-composer")
+                    Button {
+                        let submission = model.captureDraft(to: route)
+                        Task {
+                            do {
+                                try await model.sendDraft(submission)
+                            } catch {
+                                model.reportSendFailure(error, for: submission.route)
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
                     }
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
+                    .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel(
+                        model.sendFailure(for: route) == nil ? "Send message" : "Retry message"
+                    )
+                    .accessibilityIdentifier("send-message")
                 }
-                .disabled(model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityLabel("Send message")
-                .accessibilityIdentifier("send-message")
+                if let message = model.sendFailure(for: route) {
+                    let descriptor = ConversationSendFailureDescriptor(route: route, message: message)
+                    Text(descriptor.accessibilityLabel)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .accessibilityLabel(descriptor.accessibilityLabel)
+                        .accessibilityIdentifier(descriptor.accessibilityIdentifier)
+                }
             }
             .padding(12)
         }

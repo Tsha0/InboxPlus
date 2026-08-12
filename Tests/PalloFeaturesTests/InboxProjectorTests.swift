@@ -79,3 +79,49 @@ import Testing
     #expect(original[1].conversationSummaries.map(\.route) == expectedMayaRoutes)
     #expect(permuted[1].conversationSummaries.map(\.route) == expectedMayaRoutes)
 }
+
+@Test func crossAccountIdentityReferenceCannotAggregateIntoALinkedPerson() throws {
+    let accounts = [
+        ConnectedAccount(id: "wa", platform: .whatsApp, displayName: "Personal"),
+        ConnectedAccount(id: "ig", platform: .instagram, displayName: "Personal"),
+    ]
+    let identities = [
+        RemoteIdentity(id: "maya-wa", accountID: "wa", displayName: "Maya"),
+        RemoteIdentity(id: "maya-ig", accountID: "ig", displayName: "@maya"),
+    ]
+    let validRoute = ConversationRoute(accountID: "wa", conversationID: "wa-chat")
+    let malformedRoute = ConversationRoute(accountID: "ig", conversationID: "malformed-chat")
+    let conversations = [
+        RemoteConversation(
+            id: validRoute.conversationID,
+            accountID: validRoute.accountID,
+            identityID: "maya-wa",
+            title: "Maya",
+            latestActivity: Date(timeIntervalSince1970: 10),
+            unreadCount: 1
+        ),
+        RemoteConversation(
+            id: malformedRoute.conversationID,
+            accountID: malformedRoute.accountID,
+            identityID: "maya-wa",
+            title: "Malformed cross-account reference",
+            latestActivity: Date(timeIntervalSince1970: 20),
+            unreadCount: 9
+        ),
+    ]
+    var directory = ContactDirectory()
+    try directory.createPerson(id: "maya", displayName: "Maya")
+    try directory.link(remoteIdentityID: "maya-wa", to: "maya")
+
+    let result = InboxProjector.project(
+        accounts: accounts,
+        identities: identities,
+        conversations: conversations,
+        directory: directory
+    )
+
+    #expect(result.map(\.id) == [.person("maya")])
+    #expect(result[0].conversationSummaries.map(\.route) == [validRoute])
+    #expect(result[0].unreadCount == 1)
+    #expect(result.flatMap(\.conversationSummaries).contains { $0.route == malformedRoute } == false)
+}

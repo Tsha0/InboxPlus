@@ -43,6 +43,121 @@ private actor AppModelTestGateway: MessagingGateway {
     }
 }
 
+private actor ControlledSendGateway: MessagingGateway {
+    struct Submission: Equatable, Sendable {
+        let body: String
+        let route: ConversationRoute
+    }
+
+    private let snapshot: MessagingSnapshot
+    private var continuation: CheckedContinuation<SendReceipt, any Error>?
+    private(set) var submission: Submission?
+
+    init(snapshot: MessagingSnapshot) {
+        self.snapshot = snapshot
+    }
+
+    func loadSnapshot() async throws -> MessagingSnapshot { snapshot }
+
+    func events() async -> AsyncStream<GatewayEvent> {
+        AsyncStream { $0.finish() }
+    }
+
+    func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
+        submission = Submission(body: body, route: route)
+        return try await withCheckedThrowingContinuation { continuation = $0 }
+    }
+
+    func completeSend() {
+        continuation?.resume(
+            returning: SendReceipt(
+                messageID: "controlled-message",
+                route: submission!.route,
+                deliveryState: .acknowledged
+            )
+        )
+        continuation = nil
+    }
+}
+
+private actor RetrySendGateway: MessagingGateway {
+    private let snapshot: MessagingSnapshot
+    private var failsSends = true
+
+    init(snapshot: MessagingSnapshot) {
+        self.snapshot = snapshot
+    }
+
+    func loadSnapshot() async throws -> MessagingSnapshot { snapshot }
+
+    func events() async -> AsyncStream<GatewayEvent> {
+        AsyncStream { $0.finish() }
+    }
+
+    func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
+        if failsSends { throw AppModelTestError.gatewayUnavailable }
+        return SendReceipt(messageID: "retry-message", route: route, deliveryState: .acknowledged)
+    }
+
+    func allowSends() {
+        failsSends = false
+    }
+}
+
+private actor ControlledStartGateway: MessagingGateway {
+    private let snapshot: MessagingSnapshot
+    private var snapshotContinuations: [CheckedContinuation<MessagingSnapshot, any Error>] = []
+    private var eventContinuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
+    private(set) var snapshotLoadCount = 0
+
+    init(snapshot: MessagingSnapshot) {
+        self.snapshot = snapshot
+    }
+
+    func loadSnapshot() async throws -> MessagingSnapshot {
+        snapshotLoadCount += 1
+        return try await withCheckedThrowingContinuation {
+            snapshotContinuations.append($0)
+        }
+    }
+
+    func events() async -> AsyncStream<GatewayEvent> {
+        let id = UUID()
+        let pair = AsyncStream<GatewayEvent>.makeStream()
+        eventContinuations[id] = pair.continuation
+        pair.continuation.onTermination = { [weak self] _ in
+            Task { await self?.removeEventContinuation(id) }
+        }
+        return pair.stream
+    }
+
+    func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
+        SendReceipt(messageID: UUID().uuidString, route: route, deliveryState: .acknowledged)
+    }
+
+    func publish(_ event: GatewayEvent) {
+        eventContinuations.values.forEach { $0.yield(event) }
+    }
+
+    func completeSnapshotLoads() {
+        snapshotContinuations.forEach { $0.resume(returning: snapshot) }
+        snapshotContinuations.removeAll()
+    }
+
+    func failSnapshotLoads() {
+        snapshotContinuations.forEach { $0.resume(throwing: AppModelTestError.gatewayUnavailable) }
+        snapshotContinuations.removeAll()
+    }
+
+    func activeSubscriptionCount() -> Int {
+        eventContinuations.count
+    }
+
+    private func removeEventContinuation(_ id: UUID) {
+        eventContinuations[id] = nil
+    }
+}
+
 private enum AppModelTestError: LocalizedError {
     case gatewayUnavailable
 
@@ -80,12 +195,95 @@ private func eventually(_ condition: @MainActor () async -> Bool) async -> Bool 
 
     model.openConversation(instagram)
     model.draft = "Sent through Instagram"
-    try await model.sendDraft()
+    try await model.sendDraft(model.captureDraft(to: instagram))
 
     #expect(model.openRoute == instagram)
     let snapshot = try await gateway.loadSnapshot()
     #expect(snapshot.messagesByRoute[instagram]?.last?.body == "Sent through Instagram")
     #expect(snapshot.messagesByRoute[whatsApp]?.count == whatsAppCountBefore)
+}
+
+@MainActor
+@Test func inFlightSendKeepsCapturedRouteAndPreservesANewerDraft() async throws {
+    let gateway = ControlledSendGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+    let submittedRoute = Fixtures.instagramRoute
+    let newerRoute = Fixtures.whatsAppRoute
+    model.openConversation(submittedRoute)
+    model.draft = "  route A draft  "
+    let submission = model.captureDraft(to: submittedRoute)
+
+    let sendTask = Task { @MainActor in
+        try await model.sendDraft(submission)
+    }
+    let sendStarted = await eventually {
+        await gateway.submission != nil
+    }
+    #expect(sendStarted)
+
+    model.openConversation(newerRoute)
+    model.draft = "route B newer draft"
+    await gateway.completeSend()
+    try await sendTask.value
+
+    #expect(
+        await gateway.submission
+            == ControlledSendGateway.Submission(body: "route A draft", route: submittedRoute)
+    )
+    #expect(model.openRoute == newerRoute)
+    #expect(model.draft == "route B newer draft")
+}
+
+@MainActor
+@Test func inFlightSendDoesNotClearAReenteredSameTextDraft() async throws {
+    let gateway = ControlledSendGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+    model.draft = "same text"
+    let submission = model.captureDraft(to: Fixtures.instagramRoute)
+
+    let sendTask = Task { @MainActor in
+        try await model.sendDraft(submission)
+    }
+    let sendStarted = await eventually {
+        await gateway.submission != nil
+    }
+    #expect(sendStarted)
+
+    model.draft = "intermediate edit"
+    model.draft = "same text"
+    await gateway.completeSend()
+    try await sendTask.value
+
+    #expect(model.draft == "same text")
+}
+
+@MainActor
+@Test func sendFailureIsScopedToItsRouteAndSuccessfulRetryClearsIt() async throws {
+    let gateway = RetrySendGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+    let route = Fixtures.instagramRoute
+    model.openConversation(route)
+    model.draft = "retry this message"
+
+    do {
+        try await model.sendDraft(model.captureDraft(to: route))
+        Issue.record("Expected the fixture send to fail")
+    } catch {
+        model.reportSendFailure(error, for: route)
+    }
+
+    #expect(model.sendFailure(for: route) == "Fixture gateway unavailable")
+    #expect(model.sendFailure(for: Fixtures.whatsAppRoute) == nil)
+    #expect(model.draft == "retry this message")
+
+    await gateway.allowSends()
+    try await model.sendDraft(model.captureDraft(to: route))
+
+    #expect(model.sendFailure(for: route) == nil)
+    #expect(model.draft.isEmpty)
 }
 
 @MainActor
@@ -172,6 +370,99 @@ private func eventually(_ condition: @MainActor () async -> Bool) async -> Bool 
 }
 
 @MainActor
+@Test func newerOutgoingMessageRefreshesOnlyItsConversationAndReordersInbox() async throws {
+    let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+    let originalInstagram = try #require(
+        model.conversations.first { $0.route == Fixtures.instagramRoute }
+    )
+    let originalTelegramUnread = try #require(
+        model.conversations.first { $0.route == Fixtures.telegramRoute }?.unreadCount
+    )
+    let sentAt = Date(timeIntervalSince1970: 400)
+    let outgoing = Message(
+        id: "telegram-outgoing",
+        route: Fixtures.telegramRoute,
+        senderIdentityID: nil,
+        body: "Newest exact-route reply",
+        timestamp: sentAt,
+        deliveryState: .acknowledged
+    )
+
+    await gateway.publish(.messageUpserted(outgoing))
+    let eventApplied = await eventually {
+        model.messagesByRoute[Fixtures.telegramRoute]?.contains { $0.id == outgoing.id } == true
+    }
+    let telegram = try #require(
+        model.conversations.first { $0.route == Fixtures.telegramRoute }
+    )
+    let telegramSummary = try #require(
+        model.inboxItems
+            .flatMap(\.conversationSummaries)
+            .first { $0.route == Fixtures.telegramRoute }
+    )
+
+    #expect(eventApplied)
+    #expect(telegram.latestPreview == "Newest exact-route reply")
+    #expect(telegram.latestActivity == sentAt)
+    #expect(telegram.unreadCount == originalTelegramUnread)
+    #expect(model.conversations.first { $0.route == Fixtures.instagramRoute } == originalInstagram)
+    #expect(telegramSummary.latestPreview == "Newest exact-route reply")
+    #expect(telegramSummary.latestActivity == sentAt)
+    #expect(model.inboxItems.first?.id == .conversation(Fixtures.telegramRoute))
+}
+
+@MainActor
+@Test func olderMessageAndDeliveryUpdateDoNotRegressConversationProjection() async throws {
+    let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+    let newest = Message(
+        id: "telegram-newest",
+        route: Fixtures.telegramRoute,
+        senderIdentityID: nil,
+        body: "Keep this preview",
+        timestamp: Date(timeIntervalSince1970: 400),
+        deliveryState: .pending
+    )
+    let deliveryUpdate = Message(
+        id: newest.id,
+        route: newest.route,
+        senderIdentityID: newest.senderIdentityID,
+        body: newest.body,
+        timestamp: newest.timestamp,
+        deliveryState: .acknowledged
+    )
+    let older = Message(
+        id: "telegram-older",
+        route: Fixtures.telegramRoute,
+        senderIdentityID: nil,
+        body: "Do not regress to this preview",
+        timestamp: Date(timeIntervalSince1970: 50),
+        deliveryState: .acknowledged
+    )
+
+    await gateway.publish(.messageUpserted(newest))
+    await gateway.publish(.messageUpserted(deliveryUpdate))
+    await gateway.publish(.messageUpserted(older))
+    let eventsApplied = await eventually {
+        let messages = model.messagesByRoute[Fixtures.telegramRoute] ?? []
+        return messages.contains { $0.id == older.id }
+            && messages.first { $0.id == newest.id }?.deliveryState == .acknowledged
+    }
+    let telegram = try #require(
+        model.conversations.first { $0.route == Fixtures.telegramRoute }
+    )
+
+    #expect(eventsApplied)
+    #expect(telegram.latestPreview == "Keep this preview")
+    #expect(telegram.latestActivity == Date(timeIntervalSince1970: 400))
+    #expect(telegram.unreadCount == 0)
+    #expect(model.inboxItems.first?.id == .conversation(Fixtures.telegramRoute))
+}
+
+@MainActor
 @Test func healthRemainsUnhealthyUntilEveryDisconnectedAccountReconnects() async throws {
     let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
     let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
@@ -245,6 +536,80 @@ private func eventually(_ condition: @MainActor () async -> Bool) async -> Bool 
 }
 
 @MainActor
+@Test func concurrentStartCallsShareOneGaplessSubscription() async throws {
+    let gateway = ControlledStartGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+
+    let firstStart = Task { @MainActor in try await model.start() }
+    let secondStart = Task { @MainActor in try await model.start() }
+    let subscribedBeforeSnapshotCompletes = await eventually {
+        let subscriptions = await gateway.activeSubscriptionCount()
+        let loads = await gateway.snapshotLoadCount
+        return subscriptions == 1 && loads == 1
+    }
+    let snapshotLoadCount = await gateway.snapshotLoadCount
+    await gateway.completeSnapshotLoads()
+    try await firstStart.value
+    try await secondStart.value
+
+    #expect(subscribedBeforeSnapshotCompletes)
+    #expect(snapshotLoadCount == 1)
+    #expect(await gateway.activeSubscriptionCount() == 1)
+}
+
+@MainActor
+@Test func eventPublishedDuringSnapshotLoadIsAppliedAfterTheSnapshot() async throws {
+    let gateway = ControlledStartGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    let eventConversation = RemoteConversation(
+        id: "during-start",
+        accountID: "telegram-primary",
+        identityID: "family-telegram-identity",
+        title: "During Start",
+        latestPreview: "arrived while loading",
+        latestActivity: .distantFuture,
+        unreadCount: 0
+    )
+
+    let startTask = Task { @MainActor in try await model.start() }
+    let subscribedBeforeSnapshotCompletes = await eventually {
+        let subscriptions = await gateway.activeSubscriptionCount()
+        let loads = await gateway.snapshotLoadCount
+        return subscriptions == 1 && loads == 1
+    }
+    await gateway.publish(.conversationUpserted(eventConversation))
+    await gateway.completeSnapshotLoads()
+    try await startTask.value
+
+    #expect(subscribedBeforeSnapshotCompletes)
+    #expect(model.conversations.contains { $0.route == eventConversation.route })
+    #expect(model.inboxItems.first?.latestActivity == .distantFuture)
+}
+
+@MainActor
+@Test func startupFailureCancelsItsOwnedEventSubscription() async {
+    let gateway = ControlledStartGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+
+    let startTask = Task { @MainActor in try await model.start() }
+    let subscribedBeforeFailure = await eventually {
+        let subscriptions = await gateway.activeSubscriptionCount()
+        let loads = await gateway.snapshotLoadCount
+        return subscriptions == 1 && loads == 1
+    }
+    await gateway.failSnapshotLoads()
+
+    await #expect(throws: AppModelTestError.gatewayUnavailable) {
+        try await startTask.value
+    }
+    let subscriptionCancelled = await eventually {
+        await gateway.activeSubscriptionCount() == 0
+    }
+    #expect(subscribedBeforeFailure)
+    #expect(subscriptionCancelled)
+}
+
+@MainActor
 @Test func stopCancelsTheActiveEventSubscription() async throws {
     let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
     let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
@@ -260,6 +625,38 @@ private func eventually(_ condition: @MainActor () async -> Bool) async -> Bool 
         await gateway.activeSubscriptionCount() == 0
     }
     #expect(subscriptionCancelled)
+}
+
+@MainActor
+@Test func startAfterStopCreatesAFreshWorkingSubscription() async throws {
+    let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+    model.stop()
+    let firstSubscriptionCancelled = await eventually {
+        await gateway.activeSubscriptionCount() == 0
+    }
+    #expect(firstSubscriptionCancelled)
+
+    try await model.start()
+    let restartedSubscription = await eventually {
+        await gateway.activeSubscriptionCount() == 1
+    }
+    let eventConversation = RemoteConversation(
+        id: "after-restart",
+        accountID: "telegram-primary",
+        identityID: "family-telegram-identity",
+        title: "After Restart",
+        latestActivity: .distantFuture,
+        unreadCount: 0
+    )
+    await gateway.publish(.conversationUpserted(eventConversation))
+    let eventApplied = await eventually {
+        model.conversations.contains { $0.route == eventConversation.route }
+    }
+
+    #expect(restartedSubscription)
+    #expect(eventApplied)
 }
 
 @MainActor

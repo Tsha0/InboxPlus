@@ -53,6 +53,26 @@ import Testing
     }
 }
 
+@Test func initialDirectoryRejectsPersonDictionaryKeyAndIDMismatch() {
+    #expect(throws: ContactDirectoryError.invalidInitialState) {
+        try ContactDirectory(
+            people: ["dictionary-key": PalloPerson(id: "embedded-id", displayName: "Maya")],
+            links: [:]
+        )
+    }
+}
+
+@Test func initialDirectoryRejectsLinkWhoseOwnerIsMissing() {
+    #expect(throws: ContactDirectoryError.invalidInitialState) {
+        try ContactDirectory(
+            people: ["maya": PalloPerson(id: "maya", displayName: "Maya")],
+            links: [
+                "missing": PersonLink(personID: "missing", remoteIdentityIDs: ["missing-wa"]),
+            ]
+        )
+    }
+}
+
 @Test func removingPersonAlsoRemovesTheirLinkRecord() throws {
     var directory = ContactDirectory()
     try directory.createPerson(id: "temporary", displayName: "Temporary")

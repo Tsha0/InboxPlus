@@ -6,7 +6,11 @@
 - `swift build -c release` passes.
 - Contact linking is explicit and one-to-one per remote identity.
 - Linked inbox aggregation sums unread counts and orders by newest activity.
-- Route-safety test proves an Instagram send does not enter the WhatsApp route.
+- Route-safety tests prove a submitted draft retains its immutable remote route and cannot clear a newer composer revision while in flight.
+- Send failures remain visible on only the affected conversation, and a successful retry clears the matching failure.
+- Concurrent startup owns one event subscription before snapshot loading, including events published while that load is suspended.
+- Newer message events refresh preview/activity ordering without changing unread state or allowing older updates to regress it.
+- Malformed cross-account identity references cannot enter manually linked-person aggregation.
 - Every platform badge has an accessible network name.
 - Startup failure produces a visible needs-attention state.
 
@@ -26,7 +30,7 @@ Synapse, Matrix encryption, bridge provisioning, real accounts, media, launch at
 
 ## Latest result
 
-Recorded 2026-08-13 00:05 SGT.
+Recorded 2026-08-13 00:36 SGT.
 
 ### Environment
 
@@ -37,7 +41,7 @@ Recorded 2026-08-13 00:05 SGT.
 
 ### Automated result
 
-- `swift test`: PASS (34 tests, 0 failures).
+- `swift test`: PASS (47 tests, 0 failures).
 - `swift build -c release`: PASS.
 - `swift build -c release -Xswiftc -warnings-as-errors`: PASS with no warnings.
 - `git diff --check`: PASS with no output.
