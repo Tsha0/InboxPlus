@@ -41,3 +41,41 @@ import Testing
 
     #expect(result.map(\.id) == [.conversation(conversation.route)])
 }
+
+@Test func equalActivityUsesRoutesForStableOrderingAcrossInputPermutations() throws {
+    let accounts = [
+        ConnectedAccount(id: "account-b", platform: .whatsApp, displayName: "Personal"),
+        ConnectedAccount(id: "account-a", platform: .instagram, displayName: "Personal"),
+        ConnectedAccount(id: "account-c", platform: .telegram, displayName: "Personal")
+    ]
+    let identities = [
+        RemoteIdentity(id: "maya-b", accountID: "account-b", displayName: "Maya"),
+        RemoteIdentity(id: "maya-a", accountID: "account-a", displayName: "Maya"),
+        RemoteIdentity(id: "family", accountID: "account-c", displayName: "Family")
+    ]
+    let conversations = [
+        RemoteConversation(id: "chat-b", accountID: "account-b", identityID: "maya-b", title: "Maya", latestActivity: .distantPast, unreadCount: 1),
+        RemoteConversation(id: "family-chat", accountID: "account-c", identityID: "family", title: "Family", latestActivity: .distantPast, unreadCount: 1),
+        RemoteConversation(id: "chat-a", accountID: "account-a", identityID: "maya-a", title: "Maya", latestActivity: .distantPast, unreadCount: 1)
+    ]
+    var directory = ContactDirectory()
+    try directory.createPerson(id: "maya", displayName: "Maya")
+    try directory.link(remoteIdentityID: "maya-a", to: "maya")
+    try directory.link(remoteIdentityID: "maya-b", to: "maya")
+
+    let original = InboxProjector.project(accounts: accounts, identities: identities, conversations: conversations, directory: directory)
+    let permuted = InboxProjector.project(accounts: accounts, identities: identities, conversations: conversations.reversed(), directory: directory)
+    let expectedInboxIDs: [InboxItem.ID] = [
+        .conversation(ConversationRoute(accountID: "account-c", conversationID: "family-chat")),
+        .person("maya")
+    ]
+    let expectedMayaRoutes = [
+        ConversationRoute(accountID: "account-a", conversationID: "chat-a"),
+        ConversationRoute(accountID: "account-b", conversationID: "chat-b")
+    ]
+
+    #expect(original.map(\.id) == expectedInboxIDs)
+    #expect(permuted.map(\.id) == expectedInboxIDs)
+    #expect(original[1].conversationSummaries.map(\.route) == expectedMayaRoutes)
+    #expect(permuted[1].conversationSummaries.map(\.route) == expectedMayaRoutes)
+}

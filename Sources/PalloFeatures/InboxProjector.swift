@@ -91,7 +91,15 @@ public enum InboxProjector {
         }
 
         return grouped.map { id, values in
-            let sorted = values.sorted { $0.latestActivity > $1.latestActivity }
+            let sorted = values.sorted {
+                if $0.latestActivity != $1.latestActivity {
+                    return $0.latestActivity > $1.latestActivity
+                }
+                if $0.route.accountID != $1.route.accountID {
+                    return $0.route.accountID < $1.route.accountID
+                }
+                return $0.route.conversationID < $1.route.conversationID
+            }
             let title: String
             switch id {
             case let .person(personID):
