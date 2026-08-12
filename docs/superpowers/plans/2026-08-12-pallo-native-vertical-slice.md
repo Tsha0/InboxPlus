@@ -933,6 +933,12 @@ Run: `swift test --filter PalloAppModelTests`
 
 Expected: compilation fails because `Fixtures` and `PalloAppModel` do not exist.
 
+Before implementation, add regression coverage proving that:
+
+- a second `.messageUpserted` event with the same route and message ID replaces the existing value (for example, updating delivery state) without creating a duplicate;
+- connection health aggregates all validated account IDs, so reconnecting one of two disconnected accounts remains unhealthy until both reconnect, while events for unknown accounts are ignored; and
+- calling `start()` repeatedly leaves exactly one active event subscription, while `stop()` cancels it.
+
 - [ ] **Step 3: Create deterministic feature fixtures**
 
 Create `Sources/PalloFeatures/Fixtures.swift`:
@@ -1016,6 +1022,7 @@ public final class PalloAppModel {
 
     private let gateway: any MessagingGateway
     private var directory: ContactDirectory
+    private var disconnectedAccountIDs: Set<String> = []
     private var eventTask: Task<Void, Never>?
 
     public init(gateway: any MessagingGateway, directory: ContactDirectory = .init()) {
@@ -1024,9 +1031,11 @@ public final class PalloAppModel {
     }
 
     public func start() async throws {
+        eventTask?.cancel()
         let snapshot = try await gateway.loadSnapshot()
         try AccountPolicy.validate(snapshot.accounts)
         apply(snapshot)
+        disconnectedAccountIDs.removeAll()
         health = .healthy
         let stream = await gateway.events()
         eventTask = Task { [weak self] in
@@ -1036,6 +1045,13 @@ public final class PalloAppModel {
             }
         }
     }
+
+    public func stop() {
+        eventTask?.cancel()
+        eventTask = nil
+    }
+
+    deinit { eventTask?.cancel() }
 
     public func selectInboxItem(_ item: InboxItem) {
         switch item.id {
@@ -1102,12 +1118,20 @@ public final class PalloAppModel {
 
     private func apply(_ event: GatewayEvent) {
         switch event {
-        case let .messageUpserted(message): messagesByRoute[message.route, default: []].append(message)
+        case let .messageUpserted(message):
+            var messages = messagesByRoute[message.route, default: []]
+            if let index = messages.firstIndex(where: { $0.id == message.id }) { messages[index] = message }
+            else { messages.append(message) }
+            messagesByRoute[message.route] = messages
         case let .conversationUpserted(conversation):
             conversations.removeAll { $0.id == conversation.id && $0.accountID == conversation.accountID }
             conversations.append(conversation)
             rebuildInbox()
-        case let .connectionChanged(_, isConnected): health = isConnected ? .healthy : .needsAttention("An account is disconnected")
+        case let .connectionChanged(accountID, isConnected):
+            guard accounts.contains(where: { $0.id == accountID }) else { return }
+            if isConnected { disconnectedAccountIDs.remove(accountID) }
+            else { disconnectedAccountIDs.insert(accountID) }
+            health = disconnectedAccountIDs.isEmpty ? .healthy : .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
         }
     }
 
