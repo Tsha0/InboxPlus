@@ -13,5 +13,6 @@ let package = Package(
         .executableTarget(name: "PalloApp", dependencies: ["PalloGateway", "PalloFeatures", "PalloUI"]),
         .testTarget(name: "PalloCoreTests", dependencies: ["PalloCore"]),
         .testTarget(name: "PalloGatewayTests", dependencies: ["PalloCore", "PalloGateway"]),
+        .testTarget(name: "PalloFeaturesTests", dependencies: ["PalloCore", "PalloGateway", "PalloFeatures"]),
     ]
 )

@@ -1,0 +1,47 @@
+import PalloCore
+
+public enum ContactDirectoryError: Error, Equatable {
+    case duplicatePerson
+    case missingPerson
+    case identityAlreadyLinked
+}
+
+public struct ContactDirectory: Sendable {
+    public private(set) var people: [String: PalloPerson]
+    public private(set) var links: [String: PersonLink]
+
+    public init(people: [String: PalloPerson] = [:], links: [String: PersonLink] = [:]) {
+        self.people = people
+        self.links = links
+    }
+
+    public mutating func createPerson(id: String, displayName: String) throws {
+        guard people[id] == nil else { throw ContactDirectoryError.duplicatePerson }
+        people[id] = PalloPerson(id: id, displayName: displayName)
+    }
+
+    public mutating func link(remoteIdentityID: String, to personID: String) throws {
+        guard people[personID] != nil else { throw ContactDirectoryError.missingPerson }
+        guard self.personID(linkedTo: remoteIdentityID) == nil else {
+            throw ContactDirectoryError.identityAlreadyLinked
+        }
+        var link = links[personID] ?? PersonLink(personID: personID, remoteIdentityIDs: [])
+        link.remoteIdentityIDs.insert(remoteIdentityID)
+        links[personID] = link
+    }
+
+    public mutating func unlink(remoteIdentityID: String, from personID: String) throws {
+        guard var link = links[personID] else { throw ContactDirectoryError.missingPerson }
+        link.remoteIdentityIDs.remove(remoteIdentityID)
+        links[personID] = link
+    }
+
+    mutating func removePerson(id: String) {
+        people[id] = nil
+        links[id] = nil
+    }
+
+    public func personID(linkedTo remoteIdentityID: String) -> String? {
+        links.values.first { $0.remoteIdentityIDs.contains(remoteIdentityID) }?.personID
+    }
+}
