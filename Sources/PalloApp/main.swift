@@ -1,0 +1,1 @@
+print("Pallo vertical slice")
