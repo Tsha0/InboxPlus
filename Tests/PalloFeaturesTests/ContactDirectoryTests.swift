@@ -29,6 +29,30 @@ import Testing
     }
 }
 
+@Test func initialDirectoryRejectsDuplicateRemoteIdentityAssignment() throws {
+    #expect(throws: ContactDirectoryError.invalidInitialState) {
+        try ContactDirectory(
+            people: [
+                "maya": PalloPerson(id: "maya", displayName: "Maya"),
+                "other": PalloPerson(id: "other", displayName: "Other"),
+            ],
+            links: [
+                "maya": PersonLink(personID: "maya", remoteIdentityIDs: ["maya-wa"]),
+                "other": PersonLink(personID: "other", remoteIdentityIDs: ["maya-wa"]),
+            ]
+        )
+    }
+}
+
+@Test func initialDirectoryRejectsLinkRecordWithMismatchedPersonID() throws {
+    #expect(throws: ContactDirectoryError.invalidInitialState) {
+        try ContactDirectory(
+            people: ["maya": PalloPerson(id: "maya", displayName: "Maya")],
+            links: ["maya": PersonLink(personID: "other", remoteIdentityIDs: ["maya-wa"])]
+        )
+    }
+}
+
 @Test func removingPersonAlsoRemovesTheirLinkRecord() throws {
     var directory = ContactDirectory()
     try directory.createPerson(id: "temporary", displayName: "Temporary")

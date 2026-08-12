@@ -4,13 +4,36 @@ public enum ContactDirectoryError: Error, Equatable {
     case duplicatePerson
     case missingPerson
     case identityAlreadyLinked
+    case invalidInitialState
 }
 
 public struct ContactDirectory: Sendable {
     public private(set) var people: [String: PalloPerson]
     public private(set) var links: [String: PersonLink]
 
-    public init(people: [String: PalloPerson] = [:], links: [String: PersonLink] = [:]) {
+    public init() {
+        people = [:]
+        links = [:]
+    }
+
+    public init(people: [String: PalloPerson], links: [String: PersonLink]) throws {
+        var linkedRemoteIdentityIDs = Set<String>()
+
+        for (personID, person) in people {
+            guard person.id == personID else { throw ContactDirectoryError.invalidInitialState }
+        }
+
+        for (personID, link) in links {
+            guard people[personID] != nil, link.personID == personID else {
+                throw ContactDirectoryError.invalidInitialState
+            }
+            for remoteIdentityID in link.remoteIdentityIDs {
+                guard linkedRemoteIdentityIDs.insert(remoteIdentityID).inserted else {
+                    throw ContactDirectoryError.invalidInitialState
+                }
+            }
+        }
+
         self.people = people
         self.links = links
     }
