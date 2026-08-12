@@ -66,3 +66,41 @@ pgrep -x Pallo
 ## Residual Concerns
 
 No residual automated code concern is known within this final-review scope. The six live-UI checks already recorded as environment-caused `UNVERIFIED` in the acceptance document still require a bundled app or human-accessible macOS UI session before release; this wave did not broaden or alter that previously accepted limitation.
+
+## Authorized Residual Fix Cycle
+
+### Scope
+
+Implemented the two explicitly authorized residual Important fixes on base `a264ff2`.
+
+1. Every captured `DraftSubmission` now carries a monotonic generation scoped to its exact route. Successful sends clear route failure state and the matching draft only when their generation remains current. `reportSendFailure` accepts the complete submission and ignores stale failures by the same rule. The UI passes the immutable submission through both success and failure paths.
+2. Startup now has one model-owned task plus cancellation-aware, identity-keyed caller waiters. Canceling one waiting caller completes that caller with `CancellationError` without affecting the shared leader. `stop()` cancels the owned startup task, buffered event subscription, and every relevant caller; a later start creates one fresh gapless subscription. A synchronized cancellation flag and dictionary removal ensure operation completion and cancellation cannot double-resume or leak a continuation.
+
+### RED Evidence
+
+- Added `olderSuccessCannotClearANewerFailureOrDraftOnTheSameRoute` and `olderFailureCannotReplaceANewerSuccessOnTheSameRoute`, then ran their focused filter. The command exited 1 during compilation because `reportSendFailure` still accepted only `ConversationRoute`; the compiler reported that `DraftSubmission` could not be converted to `ConversationRoute`. This established the missing submission identity at the failure boundary before production changes.
+- Added a cooperative delayed snapshot gateway plus `cancellingAConcurrentStartCallerDoesNotCancelTheSharedLeader`, `stopCancelsSuspendedStartupAndAllStartCallersPromptly`, and `restartAfterCancelledStartupOwnsOneGaplessSubscription`. Their focused run compiled and exited 1 with five intended issues: the canceled waiter did not complete promptly, stop did not promptly finish all callers, the snapshot load was not canceled, the stopped leader did not finish promptly, and restart retained the uncanceled prior load instead of one clean gapless subscription.
+
+### GREEN Evidence
+
+- Send ordering focused run: 6 tests passed, covering both completion inversions plus prior route, newer-draft, same-text-revision, retry, and accessible failure behavior.
+- Startup lifecycle focused run: 8 tests passed, covering isolated caller cancellation, stop cancellation, clean restart, concurrent idempotence, gapless buffering, startup-failure cleanup, repeated start, and stop/restart semantics.
+- `swift test --filter PalloAppModelTests`: 28 tests passed.
+- `swift test --filter PalloUITests`: 5 tests passed.
+- Pre-commit full verification: `swift test` passed 52 tests with 0 failures; `swift build -c release -Xswiftc -warnings-as-errors` completed without warnings; `git diff --check` emitted no output; and no Pallo process was running.
+
+### Files Changed
+
+- `Sources/PalloFeatures/PalloAppModel.swift`
+- `Sources/PalloUI/ConversationView.swift`
+- `Tests/PalloFeaturesTests/PalloAppModelTests.swift`
+- `docs/testing/native-vertical-slice-acceptance.md`
+- `.superpowers/sdd/2026-08-12-pallo-native-vertical-slice/final-fix-report.md`
+
+### Commit
+
+- `a62e953 fix: order sends and cancel startup safely`
+
+### Residual Concerns
+
+No residual automated concern is known in this additional scoped cycle. The same six previously documented live-UI checks remain environment-caused `UNVERIFIED`; this cycle did not change their manual execution requirements or introduce any real-account/Matrix scope.
