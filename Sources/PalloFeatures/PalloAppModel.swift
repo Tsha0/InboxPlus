@@ -41,12 +41,42 @@ public struct DraftSubmission: Sendable {
     public let body: String
     public let route: ConversationRoute
     fileprivate let draftRevision: UInt64
+    fileprivate let routeGeneration: UInt64
 
-    fileprivate init(body: String, route: ConversationRoute, draftRevision: UInt64) {
+    fileprivate init(
+        body: String,
+        route: ConversationRoute,
+        draftRevision: UInt64,
+        routeGeneration: UInt64
+    ) {
         self.body = body
         self.route = route
         self.draftRevision = draftRevision
+        self.routeGeneration = routeGeneration
     }
+}
+
+private final class StartupWaiterCancellation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancelled = false
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+    }
+
+    func isCancelled() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+}
+
+private struct StartupWaiter {
+    let startupID: UUID
+    let cancellation: StartupWaiterCancellation
+    let continuation: CheckedContinuation<Void, any Error>
 }
 
 @MainActor
@@ -78,8 +108,10 @@ public final class PalloAppModel {
     private var draftRevision: UInt64 = 0
     private var disconnectedAccountIDs: Set<String> = []
     private var sendFailuresByRoute: [ConversationRoute: String] = [:]
+    private var latestSendGenerationByRoute: [ConversationRoute: UInt64] = [:]
     private var startupID: UUID?
-    private var startupWaiters: [CheckedContinuation<Void, Error>] = []
+    private var startupTask: Task<Void, Never>?
+    private var startupWaiters: [UUID: StartupWaiter] = [:]
     private var eventTask: Task<Void, Never>?
     private var eventTaskID: UUID?
     private var bufferingEventTaskID: UUID?
@@ -91,43 +123,27 @@ public final class PalloAppModel {
     }
 
     public func start() async throws {
-        if startupID != nil {
-            try await withCheckedThrowingContinuation {
-                startupWaiters.append($0)
-            }
+        if eventTask != nil, startupTask == nil {
             return
         }
-        guard eventTask == nil else { return }
-
-        let id = UUID()
-        startupID = id
-        bufferingEventTaskID = id
-        bufferedStartupEvents.removeAll()
-
-        do {
-            try await performStart(id: id)
-            if startupID == id {
-                startupID = nil
-                resumeStartupWaiters()
-            }
-        } catch {
-            if startupID == id {
-                cancelStartup(id: id)
-                startupID = nil
-                resumeStartupWaiters(throwing: error)
-            }
-            throw error
-        }
+        let id = startupID ?? beginStartup()
+        try await waitForStartup(id: id)
     }
 
     public func stop() {
-        resumeStartupWaiters(throwing: CancellationError())
+        let id = startupID
         startupID = nil
-        bufferingEventTaskID = nil
-        bufferedStartupEvents.removeAll()
-        eventTask?.cancel()
-        eventTask = nil
-        eventTaskID = nil
+        startupTask?.cancel()
+        startupTask = nil
+        if let id {
+            cancelStartup(id: id)
+        }
+        resumeStartupWaiters(throwing: CancellationError(), respectingCallerCancellation: false)
+        if id == nil {
+            eventTask?.cancel()
+            eventTask = nil
+            eventTaskID = nil
+        }
     }
 
     public func reportStartupFailure(_ error: any Error) {
@@ -135,6 +151,7 @@ public final class PalloAppModel {
     }
 
     isolated deinit {
+        startupTask?.cancel()
         eventTask?.cancel()
     }
 
@@ -152,25 +169,40 @@ public final class PalloAppModel {
     }
 
     public func captureDraft(to route: ConversationRoute) -> DraftSubmission {
-        DraftSubmission(body: draft, route: route, draftRevision: draftRevision)
+        let previousGeneration = latestSendGenerationByRoute[route, default: 0]
+        precondition(previousGeneration < UInt64.max, "Send generation exhausted")
+        let generation = previousGeneration + 1
+        latestSendGenerationByRoute[route] = generation
+        return DraftSubmission(
+            body: draft,
+            route: route,
+            draftRevision: draftRevision,
+            routeGeneration: generation
+        )
     }
 
     public func sendDraft(_ submission: DraftSubmission) async throws {
         let body = submission.body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
         _ = try await gateway.sendText(body, to: submission.route)
+        guard isLatest(submission) else { return }
         sendFailuresByRoute[submission.route] = nil
         if draftRevision == submission.draftRevision {
             draft = ""
         }
     }
 
-    public func reportSendFailure(_ error: any Error, for route: ConversationRoute) {
-        sendFailuresByRoute[route] = error.localizedDescription
+    public func reportSendFailure(_ error: any Error, for submission: DraftSubmission) {
+        guard isLatest(submission) else { return }
+        sendFailuresByRoute[submission.route] = error.localizedDescription
     }
 
     public func sendFailure(for route: ConversationRoute) -> String? {
         sendFailuresByRoute[route]
+    }
+
+    private func isLatest(_ submission: DraftSubmission) -> Bool {
+        latestSendGenerationByRoute[submission.route] == submission.routeGeneration
     }
 
     public func summaries(for personID: String) -> [ConversationSummary] {
@@ -251,6 +283,62 @@ public final class PalloAppModel {
         bufferingEventTaskID = nil
     }
 
+    private func beginStartup() -> UUID {
+        let id = UUID()
+        startupID = id
+        bufferingEventTaskID = id
+        bufferedStartupEvents.removeAll()
+        startupTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await self.performStart(id: id)
+                self.finishStartup(id: id)
+            } catch {
+                self.finishStartup(id: id, throwing: error)
+            }
+        }
+        return id
+    }
+
+    private func waitForStartup(id: UUID) async throws {
+        let waiterID = UUID()
+        let cancellation = StartupWaiterCancellation()
+        try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, any Error>) in
+                if cancellation.isCancelled() || Task.isCancelled {
+                    continuation.resume(throwing: CancellationError())
+                } else if startupID == id {
+                    startupWaiters[waiterID] = StartupWaiter(
+                        startupID: id,
+                        cancellation: cancellation,
+                        continuation: continuation
+                    )
+                } else if eventTask != nil {
+                    continuation.resume()
+                } else {
+                    continuation.resume(throwing: CancellationError())
+                }
+            }
+        } onCancel: {
+            cancellation.cancel()
+            Task { @MainActor [weak self] in
+                self?.cancelStartupWaiter(waiterID, startupID: id)
+            }
+        }
+    }
+
+    private func finishStartup(id: UUID, throwing error: (any Error)? = nil) {
+        guard startupID == id else { return }
+        if error != nil {
+            cancelStartup(id: id)
+        }
+        startupID = nil
+        startupTask = nil
+        resumeStartupWaiters(throwing: error, respectingCallerCancellation: true)
+    }
+
     private func receive(_ event: GatewayEvent, from id: UUID) {
         guard eventTaskID == id else { return }
         if bufferingEventTaskID == id {
@@ -272,14 +360,28 @@ public final class PalloAppModel {
         }
     }
 
-    private func resumeStartupWaiters(throwing error: (any Error)? = nil) {
-        let waiters = startupWaiters
+    private func cancelStartupWaiter(_ waiterID: UUID, startupID: UUID) {
+        guard
+            let waiter = startupWaiters[waiterID],
+            waiter.startupID == startupID
+        else { return }
+        startupWaiters[waiterID] = nil
+        waiter.continuation.resume(throwing: CancellationError())
+    }
+
+    private func resumeStartupWaiters(
+        throwing error: (any Error)? = nil,
+        respectingCallerCancellation: Bool
+    ) {
+        let waiters = Array(startupWaiters.values)
         startupWaiters.removeAll()
         for waiter in waiters {
-            if let error {
-                waiter.resume(throwing: error)
+            if respectingCallerCancellation, waiter.cancellation.isCancelled() {
+                waiter.continuation.resume(throwing: CancellationError())
+            } else if let error {
+                waiter.continuation.resume(throwing: error)
             } else {
-                waiter.resume()
+                waiter.continuation.resume()
             }
         }
     }

@@ -86,7 +86,7 @@ public struct ConversationView: View {
                             do {
                                 try await model.sendDraft(submission)
                             } catch {
-                                model.reportSendFailure(error, for: submission.route)
+                                model.reportSendFailure(error, for: submission)
                             }
                         }
                     } label: {

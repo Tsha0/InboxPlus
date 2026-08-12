@@ -7,8 +7,8 @@
 - Contact linking is explicit and one-to-one per remote identity.
 - Linked inbox aggregation sums unread counts and orders by newest activity.
 - Route-safety tests prove a submitted draft retains its immutable remote route and cannot clear a newer composer revision while in flight.
-- Send failures remain visible on only the affected conversation, and a successful retry clears the matching failure.
-- Concurrent startup owns one event subscription before snapshot loading, including events published while that load is suspended.
+- Send outcomes apply only to the latest captured submission on each route, so stale success/failure completions cannot overwrite a newer draft or visible result.
+- Concurrent startup owns one event subscription before snapshot loading, including events published while that load is suspended; caller cancellation is isolated, while stop cancels the owned startup and supports a clean restart.
 - Newer message events refresh preview/activity ordering without changing unread state or allowing older updates to regress it.
 - Malformed cross-account identity references cannot enter manually linked-person aggregation.
 - Every platform badge has an accessible network name.
@@ -30,7 +30,7 @@ Synapse, Matrix encryption, bridge provisioning, real accounts, media, launch at
 
 ## Latest result
 
-Recorded 2026-08-13 00:36 SGT.
+Recorded 2026-08-13 01:15 SGT.
 
 ### Environment
 
@@ -41,7 +41,7 @@ Recorded 2026-08-13 00:36 SGT.
 
 ### Automated result
 
-- `swift test`: PASS (47 tests, 0 failures).
+- `swift test`: PASS (52 tests, 0 failures).
 - `swift build -c release`: PASS.
 - `swift build -c release -Xswiftc -warnings-as-errors`: PASS with no warnings.
 - `git diff --check`: PASS with no output.

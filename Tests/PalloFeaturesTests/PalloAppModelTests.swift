@@ -104,6 +104,53 @@ private actor RetrySendGateway: MessagingGateway {
     }
 }
 
+private actor OrderedSendGateway: MessagingGateway {
+    private struct PendingSend {
+        let route: ConversationRoute
+        let continuation: CheckedContinuation<SendReceipt, any Error>
+    }
+
+    private let snapshot: MessagingSnapshot
+    private var pendingSends: [String: PendingSend] = [:]
+
+    init(snapshot: MessagingSnapshot) {
+        self.snapshot = snapshot
+    }
+
+    func loadSnapshot() async throws -> MessagingSnapshot { snapshot }
+
+    func events() async -> AsyncStream<GatewayEvent> {
+        AsyncStream { $0.finish() }
+    }
+
+    func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
+        try await withCheckedThrowingContinuation {
+            pendingSends[body] = PendingSend(route: route, continuation: $0)
+        }
+    }
+
+    func pendingSendCount() -> Int {
+        pendingSends.count
+    }
+
+    func succeed(_ body: String) {
+        guard let pending = pendingSends.removeValue(forKey: body) else { return }
+        pending.continuation.resume(
+            returning: SendReceipt(
+                messageID: "ordered-\(body)",
+                route: pending.route,
+                deliveryState: .acknowledged
+            )
+        )
+    }
+
+    func fail(_ body: String) {
+        pendingSends.removeValue(forKey: body)?.continuation.resume(
+            throwing: AppModelTestError.gatewayUnavailable
+        )
+    }
+}
+
 private actor ControlledStartGateway: MessagingGateway {
     private let snapshot: MessagingSnapshot
     private var snapshotContinuations: [CheckedContinuation<MessagingSnapshot, any Error>] = []
@@ -158,6 +205,97 @@ private actor ControlledStartGateway: MessagingGateway {
     }
 }
 
+private actor CooperativeStartGateway: MessagingGateway {
+    private let snapshot: MessagingSnapshot
+    private var snapshotContinuations: [
+        UUID: CheckedContinuation<MessagingSnapshot, any Error>
+    ] = [:]
+    private var eventContinuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
+    private(set) var snapshotLoadCount = 0
+    private(set) var snapshotCancellationCount = 0
+
+    init(snapshot: MessagingSnapshot) {
+        self.snapshot = snapshot
+    }
+
+    func loadSnapshot() async throws -> MessagingSnapshot {
+        snapshotLoadCount += 1
+        let id = UUID()
+        return try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation {
+                snapshotContinuations[id] = $0
+            }
+        } onCancel: {
+            Task { await self.cancelSnapshotLoad(id) }
+        }
+    }
+
+    func events() async -> AsyncStream<GatewayEvent> {
+        let id = UUID()
+        let pair = AsyncStream<GatewayEvent>.makeStream()
+        eventContinuations[id] = pair.continuation
+        pair.continuation.onTermination = { [weak self] _ in
+            Task { await self?.removeEventContinuation(id) }
+        }
+        return pair.stream
+    }
+
+    func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
+        SendReceipt(messageID: UUID().uuidString, route: route, deliveryState: .acknowledged)
+    }
+
+    func publish(_ event: GatewayEvent) {
+        eventContinuations.values.forEach { $0.yield(event) }
+    }
+
+    func completeSnapshotLoads() {
+        let continuations = Array(snapshotContinuations.values)
+        snapshotContinuations.removeAll()
+        continuations.forEach { $0.resume(returning: snapshot) }
+    }
+
+    func pendingSnapshotLoadCount() -> Int {
+        snapshotContinuations.count
+    }
+
+    func activeSubscriptionCount() -> Int {
+        eventContinuations.count
+    }
+
+    private func cancelSnapshotLoad(_ id: UUID) {
+        guard let continuation = snapshotContinuations.removeValue(forKey: id) else { return }
+        snapshotCancellationCount += 1
+        continuation.resume(throwing: CancellationError())
+    }
+
+    private func removeEventContinuation(_ id: UUID) {
+        eventContinuations[id] = nil
+    }
+}
+
+private enum RecordedStartResult: Equatable, Sendable {
+    case succeeded
+    case cancelled
+    case otherFailure
+}
+
+private actor StartResultRecorder {
+    private var results: [String: RecordedStartResult] = [:]
+
+    func record(_ result: RecordedStartResult, for caller: String) {
+        results[caller] = result
+    }
+
+    func result(for caller: String) -> RecordedStartResult? {
+        results[caller]
+    }
+
+    func count() -> Int {
+        results.count
+    }
+}
+
 private enum AppModelTestError: LocalizedError {
     case gatewayUnavailable
 
@@ -171,6 +309,22 @@ private func eventually(_ condition: @MainActor () async -> Bool) async -> Bool 
         await Task.yield()
     }
     return false
+}
+
+@MainActor
+private func startAndRecord(
+    _ model: PalloAppModel,
+    caller: String,
+    recorder: StartResultRecorder
+) async {
+    do {
+        try await model.start()
+        await recorder.record(.succeeded, for: caller)
+    } catch is CancellationError {
+        await recorder.record(.cancelled, for: caller)
+    } catch {
+        await recorder.record(.otherFailure, for: caller)
+    }
 }
 
 @MainActor
@@ -268,11 +422,12 @@ private func eventually(_ condition: @MainActor () async -> Bool) async -> Bool 
     model.openConversation(route)
     model.draft = "retry this message"
 
+    let failedSubmission = model.captureDraft(to: route)
     do {
-        try await model.sendDraft(model.captureDraft(to: route))
+        try await model.sendDraft(failedSubmission)
         Issue.record("Expected the fixture send to fail")
     } catch {
-        model.reportSendFailure(error, for: route)
+        model.reportSendFailure(error, for: failedSubmission)
     }
 
     #expect(model.sendFailure(for: route) == "Fixture gateway unavailable")
@@ -281,6 +436,80 @@ private func eventually(_ condition: @MainActor () async -> Bool) async -> Bool 
 
     await gateway.allowSends()
     try await model.sendDraft(model.captureDraft(to: route))
+
+    #expect(model.sendFailure(for: route) == nil)
+    #expect(model.draft.isEmpty)
+}
+
+@MainActor
+@Test func olderSuccessCannotClearANewerFailureOrDraftOnTheSameRoute() async throws {
+    let gateway = OrderedSendGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+    let route = Fixtures.instagramRoute
+
+    model.draft = "submission A"
+    let older = model.captureDraft(to: route)
+    let olderTask = Task { @MainActor in
+        try await model.sendDraft(older)
+    }
+
+    model.draft = "submission B"
+    let newer = model.captureDraft(to: route)
+    let newerTask = Task { @MainActor in
+        do {
+            try await model.sendDraft(newer)
+        } catch {
+            model.reportSendFailure(error, for: newer)
+        }
+    }
+    let bothStarted = await eventually { await gateway.pendingSendCount() == 2 }
+    #expect(bothStarted)
+
+    await gateway.fail("submission B")
+    await newerTask.value
+    #expect(model.sendFailure(for: route) == "Fixture gateway unavailable")
+    #expect(model.draft == "submission B")
+
+    await gateway.succeed("submission A")
+    try await olderTask.value
+
+    #expect(model.sendFailure(for: route) == "Fixture gateway unavailable")
+    #expect(model.draft == "submission B")
+}
+
+@MainActor
+@Test func olderFailureCannotReplaceANewerSuccessOnTheSameRoute() async throws {
+    let gateway = OrderedSendGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+    let route = Fixtures.instagramRoute
+
+    model.draft = "submission A"
+    let older = model.captureDraft(to: route)
+    let olderTask = Task { @MainActor in
+        do {
+            try await model.sendDraft(older)
+        } catch {
+            model.reportSendFailure(error, for: older)
+        }
+    }
+
+    model.draft = "submission B"
+    let newer = model.captureDraft(to: route)
+    let newerTask = Task { @MainActor in
+        try await model.sendDraft(newer)
+    }
+    let bothStarted = await eventually { await gateway.pendingSendCount() == 2 }
+    #expect(bothStarted)
+
+    await gateway.succeed("submission B")
+    try await newerTask.value
+    #expect(model.sendFailure(for: route) == nil)
+    #expect(model.draft.isEmpty)
+
+    await gateway.fail("submission A")
+    await olderTask.value
 
     #expect(model.sendFailure(for: route) == nil)
     #expect(model.draft.isEmpty)
@@ -554,6 +783,137 @@ private func eventually(_ condition: @MainActor () async -> Bool) async -> Bool 
 
     #expect(subscribedBeforeSnapshotCompletes)
     #expect(snapshotLoadCount == 1)
+    #expect(await gateway.activeSubscriptionCount() == 1)
+}
+
+@MainActor
+@Test func cancellingAConcurrentStartCallerDoesNotCancelTheSharedLeader() async throws {
+    let gateway = CooperativeStartGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    let recorder = StartResultRecorder()
+    let leader = Task { @MainActor in
+        await startAndRecord(model, caller: "leader", recorder: recorder)
+    }
+    let leaderIsSuspended = await eventually {
+        let loads = await gateway.snapshotLoadCount
+        let subscriptions = await gateway.activeSubscriptionCount()
+        return loads == 1 && subscriptions == 1
+    }
+    #expect(leaderIsSuspended)
+
+    let waiter = Task { @MainActor in
+        await startAndRecord(model, caller: "waiter", recorder: recorder)
+    }
+    for _ in 0..<20 { await Task.yield() }
+    waiter.cancel()
+
+    let waiterCancelledPromptly = await eventually {
+        await recorder.result(for: "waiter") == .cancelled
+    }
+    #expect(waiterCancelledPromptly)
+    #expect(await recorder.result(for: "leader") == nil)
+    #expect(await gateway.snapshotCancellationCount == 0)
+    #expect(await gateway.activeSubscriptionCount() == 1)
+
+    await gateway.completeSnapshotLoads()
+    await leader.value
+    await waiter.value
+
+    #expect(await recorder.result(for: "leader") == .succeeded)
+    #expect(await gateway.activeSubscriptionCount() == 1)
+}
+
+@MainActor
+@Test func stopCancelsSuspendedStartupAndAllStartCallersPromptly() async {
+    let gateway = CooperativeStartGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    let recorder = StartResultRecorder()
+    let leader = Task { @MainActor in
+        await startAndRecord(model, caller: "leader", recorder: recorder)
+    }
+    let waiter = Task { @MainActor in
+        await startAndRecord(model, caller: "waiter", recorder: recorder)
+    }
+    let startupIsSuspended = await eventually {
+        let loads = await gateway.snapshotLoadCount
+        let subscriptions = await gateway.activeSubscriptionCount()
+        return loads == 1 && subscriptions == 1
+    }
+    #expect(startupIsSuspended)
+    for _ in 0..<20 { await Task.yield() }
+
+    model.stop()
+
+    let allCallersCancelledPromptly = await eventually {
+        await recorder.count() == 2
+    }
+    let subscriptionCancelled = await eventually {
+        await gateway.activeSubscriptionCount() == 0
+    }
+    let snapshotLoadCancelled = await eventually {
+        let cancellations = await gateway.snapshotCancellationCount
+        let pendingLoads = await gateway.pendingSnapshotLoadCount()
+        return cancellations == 1 && pendingLoads == 0
+    }
+
+    if !allCallersCancelledPromptly {
+        await gateway.completeSnapshotLoads()
+    }
+    await leader.value
+    await waiter.value
+
+    #expect(allCallersCancelledPromptly)
+    #expect(subscriptionCancelled)
+    #expect(snapshotLoadCancelled)
+    #expect(await recorder.result(for: "leader") == .cancelled)
+    #expect(await recorder.result(for: "waiter") == .cancelled)
+}
+
+@MainActor
+@Test func restartAfterCancelledStartupOwnsOneGaplessSubscription() async {
+    let gateway = CooperativeStartGateway(snapshot: Fixtures.snapshot)
+    let model = PalloAppModel(gateway: gateway, directory: Fixtures.directory)
+    let recorder = StartResultRecorder()
+    let cancelledStart = Task { @MainActor in
+        await startAndRecord(model, caller: "cancelled", recorder: recorder)
+    }
+    let firstLoadStarted = await eventually {
+        let loads = await gateway.snapshotLoadCount
+        let subscriptions = await gateway.activeSubscriptionCount()
+        return loads == 1 && subscriptions == 1
+    }
+    #expect(firstLoadStarted)
+    model.stop()
+    let firstStartCancelled = await eventually {
+        await recorder.result(for: "cancelled") == .cancelled
+    }
+    #expect(firstStartCancelled)
+
+    let restarted = Task { @MainActor in
+        await startAndRecord(model, caller: "restarted", recorder: recorder)
+    }
+    let restartIsGapless = await eventually {
+        let loads = await gateway.snapshotLoadCount
+        let pendingLoads = await gateway.pendingSnapshotLoadCount()
+        let subscriptions = await gateway.activeSubscriptionCount()
+        return loads == 2 && pendingLoads == 1 && subscriptions == 1
+    }
+    let eventConversation = RemoteConversation(
+        id: "after-cancelled-start",
+        accountID: "telegram-primary",
+        identityID: "family-telegram-identity",
+        title: "After Cancelled Start",
+        latestActivity: .distantFuture,
+        unreadCount: 0
+    )
+    await gateway.publish(.conversationUpserted(eventConversation))
+    await gateway.completeSnapshotLoads()
+    await cancelledStart.value
+    await restarted.value
+
+    #expect(restartIsGapless)
+    #expect(await recorder.result(for: "restarted") == .succeeded)
+    #expect(model.conversations.contains { $0.route == eventConversation.route })
     #expect(await gateway.activeSubscriptionCount() == 1)
 }
 
