@@ -1,1 +1,0 @@
-print("Pallo vertical slice")

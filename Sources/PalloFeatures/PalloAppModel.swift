@@ -15,6 +15,24 @@ public enum ServiceHealth: Equatable, Sendable {
     case needsAttention(String)
 }
 
+public extension ServiceHealth {
+    var menuBarTitle: String {
+        switch self {
+        case .starting: "Pallo is starting"
+        case .healthy: "Pallo is running"
+        case .needsAttention: "Pallo needs attention"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .starting: "ellipsis.circle"
+        case .healthy: "checkmark.circle.fill"
+        case .needsAttention: "exclamationmark.triangle.fill"
+        }
+    }
+}
+
 public enum PalloAppModelError: Error, Equatable {
     case missingOpenConversation
 }
@@ -65,6 +83,10 @@ public final class PalloAppModel {
     public func stop() {
         eventTask?.cancel()
         eventTask = nil
+    }
+
+    public func reportStartupFailure(_ error: any Error) {
+        health = .needsAttention("Pallo could not start: \(error.localizedDescription)")
     }
 
     isolated deinit {

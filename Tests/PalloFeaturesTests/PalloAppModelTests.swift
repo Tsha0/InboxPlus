@@ -43,6 +43,12 @@ private actor AppModelTestGateway: MessagingGateway {
     }
 }
 
+private enum AppModelTestError: LocalizedError {
+    case gatewayUnavailable
+
+    var errorDescription: String? { "Fixture gateway unavailable" }
+}
+
 @MainActor
 private func eventually(_ condition: @MainActor () async -> Bool) async -> Bool {
     for _ in 0..<1_000 {
@@ -254,4 +260,27 @@ private func eventually(_ condition: @MainActor () async -> Bool) async -> Bool 
         await gateway.activeSubscriptionCount() == 0
     }
     #expect(subscriptionCancelled)
+}
+
+@MainActor
+@Test func healthTitleIsQuietWhenHealthyAndActionableWhenDisconnected() async throws {
+    let model = PalloAppModel(gateway: InMemoryMessagingGateway(seed: Fixtures.snapshot), directory: Fixtures.directory)
+    try await model.start()
+    #expect(model.health.menuBarTitle == "Pallo is running")
+    #expect(ServiceHealth.needsAttention("Reconnect Instagram").menuBarTitle == "Pallo needs attention")
+}
+
+@Test func healthSymbolReflectsLifecycleState() {
+    #expect(ServiceHealth.starting.symbolName == "ellipsis.circle")
+    #expect(ServiceHealth.healthy.symbolName == "checkmark.circle.fill")
+    #expect(ServiceHealth.needsAttention("Reconnect Instagram").symbolName == "exclamationmark.triangle.fill")
+}
+
+@MainActor
+@Test func reportingStartupFailureMakesHealthActionable() {
+    let model = PalloAppModel(gateway: InMemoryMessagingGateway(seed: Fixtures.snapshot))
+
+    model.reportStartupFailure(AppModelTestError.gatewayUnavailable)
+
+    #expect(model.health == .needsAttention("Pallo could not start: Fixture gateway unavailable"))
 }
