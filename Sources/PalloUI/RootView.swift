@@ -9,14 +9,23 @@ public struct RootView: View {
     }
 
     public var body: some View {
-        HStack(spacing: 0) {
-            NavigationRailView()
-            Divider()
-            InboxView(items: model.inboxItems, onSelect: model.selectInboxItem)
-                .frame(minWidth: 280, idealWidth: 340, maxWidth: 400)
-            Divider()
-            detail
-                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            if let message = model.healthBannerMessage {
+                Text(message)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color.orange.opacity(0.15))
+                    .accessibilityIdentifier("health-banner")
+            }
+            HStack(spacing: 0) {
+                NavigationRailView()
+                Divider()
+                InboxView(items: model.inboxItems, onSelect: model.selectInboxItem)
+                    .frame(minWidth: 280, idealWidth: 340, maxWidth: 400)
+                Divider()
+                detail
+                    .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .frame(minWidth: 900, minHeight: 600)
     }

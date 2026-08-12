@@ -54,6 +54,11 @@ public final class PalloAppModel {
         return route
     }
 
+    public var healthBannerMessage: String? {
+        guard case let .needsAttention(message) = health else { return nil }
+        return message
+    }
+
     private let gateway: any MessagingGateway
     private var directory: ContactDirectory
     private var disconnectedAccountIDs: Set<String> = []

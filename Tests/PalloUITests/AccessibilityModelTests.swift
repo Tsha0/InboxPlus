@@ -54,3 +54,9 @@ import Testing
             == "WhatsApp, Latest message, Hello, 12 Aug 2026 at 10:15 PM, Read"
     )
 }
+
+@Test func inboxAccessibilityIdentifiersAreStable() {
+    #expect(InboxItem.ID.person("maya").accessibilityIdentifier == "person-maya")
+    let route = ConversationRoute(accountID: "wa", conversationID: "chat")
+    #expect(InboxItem.ID.conversation(route).accessibilityIdentifier == "conversation-wa-chat")
+}
