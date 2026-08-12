@@ -14,5 +14,6 @@ let package = Package(
         .testTarget(name: "PalloCoreTests", dependencies: ["PalloCore"]),
         .testTarget(name: "PalloGatewayTests", dependencies: ["PalloCore", "PalloGateway"]),
         .testTarget(name: "PalloFeaturesTests", dependencies: ["PalloCore", "PalloGateway", "PalloFeatures"]),
+        .testTarget(name: "PalloUITests", dependencies: ["PalloCore", "PalloFeatures", "PalloUI"]),
     ]
 )

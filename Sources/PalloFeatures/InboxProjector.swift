@@ -54,6 +54,15 @@ public struct InboxItem: Identifiable, Hashable, Sendable {
     }
 }
 
+public extension InboxItem.ID {
+    var accessibilityIdentifier: String {
+        switch self {
+        case let .person(id): "person-\(id)"
+        case let .conversation(route): "conversation-\(route.accountID)-\(route.conversationID)"
+        }
+    }
+}
+
 public enum InboxProjector {
     public static func project(
         accounts: [ConnectedAccount],
