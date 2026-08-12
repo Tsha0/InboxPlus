@@ -51,13 +51,10 @@ Sources/PalloUI/ConversationView.swift              Timeline, composer, send fai
 Sources/PalloUI/RootView.swift                      Approved three-pane composition
 Sources/PalloUI/MenuBarContentView.swift            Compact background health/actions
 Tests/PalloCoreTests/MessagingModelsTests.swift     Stable route and platform invariants
-Tests/PalloGatewayTests/ModuleTests.swift           Temporary test-target marker removed in Task 2
 Tests/PalloGatewayTests/InMemoryGatewayTests.swift  Gateway snapshots, stream and acknowledgement
-Tests/PalloFeaturesTests/ModuleTests.swift          Temporary test-target marker removed in Task 3
 Tests/PalloFeaturesTests/ContactDirectoryTests.swift Manual link/unlink behavior
 Tests/PalloFeaturesTests/InboxProjectorTests.swift  Deduplication, latest activity and unread sums
 Tests/PalloFeaturesTests/PalloAppModelTests.swift    Navigation and exact-route send behavior
-Tests/PalloUITests/ModuleTests.swift                 Temporary test-target marker removed in Task 6
 Tests/PalloUITests/AccessibilityModelTests.swift    Icon labels and UI presentation invariants
 ```
 
@@ -82,9 +79,6 @@ PalloCore ← PalloGateway ← PalloFeatures ← PalloUI ← PalloApp
 - Create: `Sources/PalloFeatures/Module.swift`
 - Create: `Sources/PalloUI/Module.swift`
 - Create: `Sources/PalloApp/main.swift`
-- Create: `Tests/PalloGatewayTests/ModuleTests.swift`
-- Create: `Tests/PalloFeaturesTests/ModuleTests.swift`
-- Create: `Tests/PalloUITests/ModuleTests.swift`
 - Test: `Tests/PalloCoreTests/MessagingModelsTests.swift`
 
 **Interfaces:**
@@ -110,9 +104,6 @@ let package = Package(
         .target(name: "PalloUI", dependencies: ["PalloCore", "PalloFeatures"]),
         .executableTarget(name: "PalloApp", dependencies: ["PalloGateway", "PalloFeatures", "PalloUI"]),
         .testTarget(name: "PalloCoreTests", dependencies: ["PalloCore"]),
-        .testTarget(name: "PalloGatewayTests", dependencies: ["PalloCore", "PalloGateway"]),
-        .testTarget(name: "PalloFeaturesTests", dependencies: ["PalloCore", "PalloGateway", "PalloFeatures"]),
-        .testTarget(name: "PalloUITests", dependencies: ["PalloCore", "PalloFeatures", "PalloUI"]),
     ]
 )
 ```
@@ -177,9 +168,6 @@ public enum PalloUIModule {}
 // Sources/PalloApp/main.swift
 print("Pallo vertical slice")
 
-// Create the same content in each temporary ModuleTests.swift file.
-import Testing
-@Test func targetLoads() { #expect(true) }
 ```
 
 - [ ] **Step 2: Run the domain tests and verify they fail**
@@ -416,7 +404,7 @@ git commit -m "feat: establish Pallo domain foundation"
 - Create: `Sources/PalloGateway/MessagingGateway.swift`
 - Create: `Sources/PalloGateway/InMemoryMessagingGateway.swift`
 - Delete: `Sources/PalloGateway/Module.swift`
-- Delete: `Tests/PalloGatewayTests/ModuleTests.swift`
+- Modify: `Package.swift`
 - Test: `Tests/PalloGatewayTests/InMemoryGatewayTests.swift`
 
 **Interfaces:**
@@ -424,6 +412,12 @@ git commit -m "feat: establish Pallo domain foundation"
 - Produces: `MessagingSnapshot`, `GatewayEvent`, `SendReceipt`, `MessagingGateway`, and `InMemoryMessagingGateway` used by Tasks 4–7.
 
 - [ ] **Step 1: Write failing gateway tests**
+
+Add the first real gateway test target to `Package.swift`:
+
+```swift
+.testTarget(name: "PalloGatewayTests", dependencies: ["PalloCore", "PalloGateway"]),
+```
 
 Create `Tests/PalloGatewayTests/InMemoryGatewayTests.swift`:
 
@@ -564,7 +558,6 @@ public actor InMemoryMessagingGateway: MessagingGateway {
 ```
 
 Delete the no-longer-needed `Sources/PalloGateway/Module.swift` target marker.
-Delete `Tests/PalloGatewayTests/ModuleTests.swift` when the real gateway test file exists.
 
 - [ ] **Step 5: Run gateway and full tests**
 
@@ -589,7 +582,7 @@ git commit -m "feat: add deterministic messaging gateway"
 **Files:**
 - Create: `Sources/PalloFeatures/ContactDirectory.swift`
 - Delete: `Sources/PalloFeatures/Module.swift`
-- Delete: `Tests/PalloFeaturesTests/ModuleTests.swift`
+- Modify: `Package.swift`
 - Test: `Tests/PalloFeaturesTests/ContactDirectoryTests.swift`
 
 **Interfaces:**
@@ -597,6 +590,12 @@ git commit -m "feat: add deterministic messaging gateway"
 - Produces: `ContactDirectory`, `ContactDirectoryError`, `createPerson(id:displayName:)`, `link(remoteIdentityID:to:)`, `unlink(remoteIdentityID:from:)`, and `personID(linkedTo:)` for Tasks 4–7.
 
 - [ ] **Step 1: Write failing manual-link tests**
+
+Add the first real feature test target to `Package.swift`:
+
+```swift
+.testTarget(name: "PalloFeaturesTests", dependencies: ["PalloCore", "PalloGateway", "PalloFeatures"]),
+```
 
 Create `Tests/PalloFeaturesTests/ContactDirectoryTests.swift`:
 
@@ -642,7 +641,6 @@ import Testing
 ```
 
 Delete the no-longer-needed `Sources/PalloFeatures/Module.swift` target marker.
-Delete `Tests/PalloFeaturesTests/ModuleTests.swift` when the real feature test file exists.
 
 - [ ] **Step 2: Run the tests and verify they fail**
 
@@ -1148,7 +1146,7 @@ git commit -m "feat: add route-safe Pallo application state"
 - Create: `Sources/PalloUI/ConversationView.swift`
 - Create: `Sources/PalloUI/RootView.swift`
 - Delete: `Sources/PalloUI/Module.swift`
-- Delete: `Tests/PalloUITests/ModuleTests.swift`
+- Modify: `Package.swift`
 - Test: `Tests/PalloUITests/AccessibilityModelTests.swift`
 
 **Interfaces:**
@@ -1156,6 +1154,12 @@ git commit -m "feat: add route-safe Pallo application state"
 - Produces: `RootView(model:)` and focused reusable SwiftUI views for Task 7.
 
 - [ ] **Step 1: Write failing presentation-invariant tests**
+
+Add the first real UI test target to `Package.swift`:
+
+```swift
+.testTarget(name: "PalloUITests", dependencies: ["PalloCore", "PalloFeatures", "PalloUI"]),
+```
 
 Create `Tests/PalloUITests/AccessibilityModelTests.swift`:
 
@@ -1489,7 +1493,6 @@ public struct RootView: View {
 ```
 
 Delete the no-longer-needed `Sources/PalloUI/Module.swift` target marker.
-Delete `Tests/PalloUITests/ModuleTests.swift` when the real UI test file exists.
 
 - [ ] **Step 7: Run UI tests and compile the package**
 
