@@ -18,7 +18,13 @@ public struct RuntimeManifest: Codable, Sendable, Equatable {
             from: Data(contentsOf: url.standardizedFileURL)
         )
 
-        guard receipt.pythonVersion.hasPrefix("\(pythonMinor).") else {
+        let pythonVersionComponents = receipt.pythonVersion.split(separator: ".", omittingEmptySubsequences: false)
+        guard pythonVersionComponents.count == 3,
+              pythonVersionComponents[0] == "3",
+              pythonVersionComponents[1] == "12",
+              !pythonVersionComponents[2].isEmpty,
+              pythonVersionComponents[2].allSatisfy({ $0.isASCII && $0.isNumber })
+        else {
             throw RuntimeManifestError.preparedRuntimeMismatch("Python \(receipt.pythonVersion) is not on the \(pythonMinor) line")
         }
         guard receipt.synapseVersion == synapseVersion else {

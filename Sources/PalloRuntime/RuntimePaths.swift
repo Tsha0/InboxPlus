@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public struct RuntimePaths: Sendable {
@@ -72,10 +73,14 @@ public struct RuntimePaths: Sendable {
         var ancestor = URL(fileURLWithPath: "/", isDirectory: true)
         for component in url.pathComponents.dropFirst() {
             ancestor.appendPathComponent(component, isDirectory: true)
-            guard FileManager.default.fileExists(atPath: ancestor.path) else {
+            var metadata = stat()
+            guard lstat(ancestor.path, &metadata) == 0 else {
+                if errno != ENOENT {
+                    throw RuntimePathError.cannotInspectAncestor(ancestor)
+                }
                 break
             }
-            if try ancestor.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true {
+            if metadata.st_mode & S_IFMT == S_IFLNK {
                 throw RuntimePathError.symlinkedAncestor(ancestor)
             }
         }
@@ -86,5 +91,6 @@ public enum RuntimePathError: Error, Equatable, Sendable {
     case invalidProfileName(String)
     case nonFileRoot(URL)
     case symlinkedAncestor(URL)
+    case cannotInspectAncestor(URL)
     case escapesRoot(URL)
 }

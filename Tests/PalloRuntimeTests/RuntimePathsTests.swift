@@ -43,3 +43,18 @@ func profileNameCannotEscapeRoot(_ name: String) {
         try RuntimePaths(root: symlink, profileName: "primary")
     }
 }
+
+@Test func danglingSymlinkedRootAncestorIsRejected() throws {
+    let temporaryDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        .appendingPathComponent(".build/PalloRuntimeTests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+    try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+
+    let symlink = temporaryDirectory.appendingPathComponent("dangling-root", isDirectory: true)
+    let missingDestination = temporaryDirectory.appendingPathComponent("missing-root", isDirectory: true)
+    try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: missingDestination)
+
+    #expect(throws: RuntimePathError.self) {
+        try RuntimePaths(root: symlink, profileName: "primary")
+    }
+}
