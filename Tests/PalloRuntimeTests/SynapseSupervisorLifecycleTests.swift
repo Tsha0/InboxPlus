@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Testing
 @testable import PalloRuntime
 
@@ -82,6 +83,21 @@ import Testing
     #expect(await fixture.supervisor.status().phase == .failed)
 }
 
+@Test func indeterminateProcessIdentityNeverReceivesAnySignal() async throws {
+    // Break caught: a failed process probe is treated as an exited or matching child and permits signalling.
+    let fixture = SupervisorFixture()
+    _ = try await fixture.supervisor.start()
+    let failure = ManagedProcessError.childWaitFailed(code: EIO)
+    await fixture.process.setIdentityStatusOverride(.indeterminate(failure))
+
+    await #expect(throws: failure) {
+        try await fixture.supervisor.stop()
+    }
+
+    #expect(await fixture.process.metrics().signals.isEmpty)
+    #expect(await fixture.supervisor.status().phase == .failed)
+}
+
 @Test func statusDoesNotReportHealthyAfterProcessIdentityChanges() async throws {
     // Break caught: status trusts persisted PID metadata and reports a replacement process as healthy.
     let fixture = SupervisorFixture()
@@ -93,6 +109,56 @@ import Testing
     #expect(snapshot.phase == .failed)
     #expect(snapshot.processIdentity == .expected)
     #expect(await fixture.process.metrics().signals.isEmpty)
+}
+
+@Test func rehydratedStatusRejectsAStalePersistedIdentity() async {
+    // Break caught: a new supervisor trusts persisted healthy state without revalidating its process identity.
+    let fixture = SupervisorFixture(
+        initialSnapshot: .persistedHealthy,
+        initialProcessIdentity: .replacement
+    )
+
+    #expect(await fixture.supervisor.status().phase == .failed)
+    #expect(await fixture.process.metrics().signals.isEmpty)
+}
+
+@Test func rehydratedMatchingProcessIsNotReportedHealthyWithoutOwnership() async {
+    // Break caught: a new supervisor treats an observed-but-unowned matching PID as controllable healthy state.
+    let fixture = SupervisorFixture(
+        initialSnapshot: .persistedHealthy,
+        initialProcessIdentity: .expected
+    )
+
+    #expect(await fixture.supervisor.status().phase == .degraded)
+    #expect(await fixture.process.metrics().signals.isEmpty)
+}
+
+@Test func rehydratedMatchingProcessIsNeverSignalledByANewSupervisor() async {
+    // Break caught: stop uses a matching persisted PID as authority even though this supervisor does not own the child.
+    let fixture = SupervisorFixture(
+        initialSnapshot: .persistedHealthy,
+        initialProcessIdentity: .expected
+    )
+
+    await #expect(throws: RuntimeStateError.uncontrolledProcess(.expected)) {
+        try await fixture.supervisor.stop()
+    }
+    #expect(await fixture.process.metrics().signals.isEmpty)
+}
+
+@Test func failedLaunchCanBeStoppedAndRetriedAfterChildCleanup() async throws {
+    // Break caught: a failed launch leaves the supervisor terminally failed with no safe path back to stopped.
+    let fixture = SupervisorFixture(launchFails: true)
+
+    await #expect(throws: FakeProcessError.launchFailed) {
+        try await fixture.supervisor.start()
+    }
+    #expect(await fixture.supervisor.status().phase == .failed)
+    #expect(try await fixture.supervisor.stop().phase == .stopped)
+
+    await fixture.process.setLaunchFailure(false)
+    #expect(try await fixture.supervisor.start().phase == .healthy)
+    #expect(try await fixture.supervisor.stop().phase == .stopped)
 }
 
 @Test func gracefulTimeoutEscalatesOnlyAfterReverifyingIdentity() async throws {
@@ -127,12 +193,32 @@ import Testing
     let fixture = SupervisorFixture(listener: listener, listenerVerificationAttempts: 3)
     _ = try await fixture.supervisor.start()
 
-    await #expect(throws: RuntimeStateError.shutdownIncomplete(processAlive: false, listenerAlive: true)) {
+    await #expect(throws: RuntimeStateError.shutdownIncomplete(
+        processAlive: false,
+        listenerPresence: .present
+    )) {
         try await fixture.supervisor.stop()
     }
 
     #expect(await fixture.supervisor.status().phase == .failed)
     #expect(await listener.checkCount() == 3)
+}
+
+@Test func indeterminateListenerCheckNeverPermitsStoppedState() async throws {
+    // Break caught: socket/fd/timeout errors are treated as proof that the loopback listener is absent.
+    let listener = FakeListenerChecker(presences: [
+        .indeterminate(.systemError(operation: "socket", code: EMFILE)),
+    ])
+    let fixture = SupervisorFixture(listener: listener, listenerVerificationAttempts: 1)
+    _ = try await fixture.supervisor.start()
+
+    await #expect(throws: RuntimeStateError.shutdownIncomplete(
+        processAlive: false,
+        listenerPresence: .indeterminate(.systemError(operation: "socket", code: EMFILE))
+    )) {
+        try await fixture.supervisor.stop()
+    }
+    #expect(await fixture.supervisor.status().phase == .failed)
 }
 
 @Test func repeatedStartStopCyclesCreateOneProcessPerCycle() async throws {
@@ -150,16 +236,14 @@ import Testing
 
 @Test func boundedLogWriterRotatesWithoutExceedingPerFileLimit() throws {
     // Break caught: a large output chunk bypasses rotation and grows a profile log without bound.
-    let directory = FileManager.default.temporaryDirectory
-        .appendingPathComponent("PalloBoundedLogTests-\(UUID().uuidString)", isDirectory: true)
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let log = directory.appendingPathComponent("stdout.log")
+    let fixture = try SecureProcessDirectories(prefix: "PalloBoundedLogTests")
+    defer { fixture.remove() }
+    let log = fixture.logs.appendingPathComponent("stdout.log")
     let writer = try BoundedRotatingLog(file: log, maximumBytesPerFile: 8, retainedFileCount: 3)
 
     try writer.append(Data("abcdefghijklmnopqrst".utf8))
 
-    let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])
+    let files = try FileManager.default.contentsOfDirectory(at: fixture.logs, includingPropertiesForKeys: [.fileSizeKey])
     #expect(Set(files.map(\.lastPathComponent)) == ["stdout.log", "stdout.log.1", "stdout.log.2"])
     for file in files {
         let values = try file.resourceValues(forKeys: [.fileSizeKey])
@@ -170,34 +254,101 @@ import Testing
 
 @Test func boundedLogWriterNormalizesOversizedExistingGenerations() throws {
     // Break caught: an oversized log from a prior crash remains unbounded after the writer takes ownership.
-    let directory = FileManager.default.temporaryDirectory
-        .appendingPathComponent("PalloExistingLogTests-\(UUID().uuidString)", isDirectory: true)
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let log = directory.appendingPathComponent("stdout.log")
+    let fixture = try SecureProcessDirectories(prefix: "PalloExistingLogTests")
+    defer { fixture.remove() }
+    let log = fixture.logs.appendingPathComponent("stdout.log")
     try Data(repeating: 1, count: 32).write(to: log)
-    try Data(repeating: 2, count: 24).write(to: directory.appendingPathComponent("stdout.log.1"))
+    let rotated = fixture.logs.appendingPathComponent("stdout.log.1")
+    try Data(repeating: 2, count: 24).write(to: rotated)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: log.path)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: rotated.path)
 
     _ = try BoundedRotatingLog(file: log, maximumBytesPerFile: 8, retainedFileCount: 2)
 
-    for file in [log, directory.appendingPathComponent("stdout.log.1")] {
+    for file in [log, rotated] {
         #expect((try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 8)
     }
 }
 
+@Test func logSetupRejectsSymlinkedDirectoryWithoutChangingExternalPermissions() throws {
+    // Break caught: log setup follows a symlink and chmods an attacker-selected external directory.
+    let root = try canonicalTemporaryDirectory()
+        .appendingPathComponent("PalloLogSymlinkTests-\(UUID().uuidString)", isDirectory: true)
+    let profile = root.appendingPathComponent("profile", isDirectory: true)
+    let outside = root.appendingPathComponent("outside", isDirectory: true)
+    try FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: profile.path)
+    let outsideLogs = outside.appendingPathComponent("logs", isDirectory: true)
+    try FileManager.default.createDirectory(at: outsideLogs, withIntermediateDirectories: true)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: outsideLogs.path)
+    try FileManager.default.createSymbolicLink(
+        at: profile.appendingPathComponent("redirect", isDirectory: true),
+        withDestinationURL: outside
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    #expect(throws: (any Error).self) {
+        try FoundationManagedProcessFactory().make(ManagedProcessConfiguration(
+            executable: URL(fileURLWithPath: "/bin/sleep"),
+            arguments: ["1"],
+            environment: [:],
+            workingDirectory: profile,
+            profileRoot: profile,
+            logsDirectory: profile.appendingPathComponent("redirect/logs"),
+            standardOutputLog: profile.appendingPathComponent("redirect/logs/stdout.log"),
+            standardErrorLog: profile.appendingPathComponent("redirect/logs/stderr.log")
+        ))
+    }
+    #expect(try fileMode(outsideLogs) == 0o755)
+}
+
+@Test func logWriterRejectsProfileAncestorReplacementBeforeWriting() async throws {
+    // Break caught: retained descriptors continue writing after the configured profile path is replaced.
+    let root = try canonicalTemporaryDirectory()
+        .appendingPathComponent("PalloLogSwapTests-\(UUID().uuidString)", isDirectory: true)
+    let profile = root.appendingPathComponent("profile", isDirectory: true)
+    let logs = profile.appendingPathComponent("logs", isDirectory: true)
+    let outside = root.appendingPathComponent("outside", isDirectory: true)
+    try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: profile.path)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: logs.path)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let process = try FoundationManagedProcessFactory().make(ManagedProcessConfiguration(
+        executable: URL(fileURLWithPath: "/bin/sh"),
+        arguments: ["-c", "sleep 0.1; printf should-not-land"],
+        environment: [:],
+        workingDirectory: profile,
+        profileRoot: profile,
+        logsDirectory: logs,
+        standardOutputLog: logs.appendingPathComponent("stdout.log"),
+        standardErrorLog: logs.appendingPathComponent("stderr.log")
+    ))
+    let identity = try await process.launch()
+
+    try FileManager.default.moveItem(at: profile, to: root.appendingPathComponent("moved-profile"))
+    try FileManager.default.createSymbolicLink(at: profile, withDestinationURL: outside)
+
+    await #expect(throws: (any Error).self) {
+        try await process.waitForExit(matching: identity, timeout: .seconds(2))
+    }
+    #expect(!FileManager.default.fileExists(atPath: outside.appendingPathComponent("stdout.log").path))
+}
+
 @Test func foundationManagedProcessCapturesBoundedOutputAndReleasesChild() async throws {
     // Break caught: the production process adapter leaks pipe resources or bypasses bounded stdout/stderr logs.
-    let directory = FileManager.default.temporaryDirectory
-        .appendingPathComponent("PalloManagedProcessTests-\(UUID().uuidString)", isDirectory: true)
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
+    let fixture = try SecureProcessDirectories(prefix: "PalloManagedProcessTests")
+    defer { fixture.remove() }
     let configuration = ManagedProcessConfiguration(
         executable: URL(fileURLWithPath: "/bin/sh"),
         arguments: ["-c", "printf 12345678901234567890; printf abcdefghijklmnopqrst >&2; sleep 0.2"],
         environment: ["PATH": "/usr/bin:/bin"],
-        workingDirectory: directory,
-        standardOutputLog: directory.appendingPathComponent("stdout.log"),
-        standardErrorLog: directory.appendingPathComponent("stderr.log"),
+        workingDirectory: fixture.profile,
+        profileRoot: fixture.profile,
+        logsDirectory: fixture.logs,
+        standardOutputLog: fixture.logs.appendingPathComponent("stdout.log"),
+        standardErrorLog: fixture.logs.appendingPathComponent("stderr.log"),
         maximumLogBytesPerFile: 8,
         retainedLogFileCount: 2
     )
@@ -211,7 +362,7 @@ import Testing
 
     try await Task.sleep(for: .milliseconds(50))
     for base in ["stdout.log", "stderr.log"] {
-        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])
+        let files = try FileManager.default.contentsOfDirectory(at: fixture.logs, includingPropertiesForKeys: [.fileSizeKey])
             .filter { $0.lastPathComponent.hasPrefix(base) }
         #expect(!files.isEmpty)
         #expect(files.count <= 2)
@@ -223,17 +374,17 @@ import Testing
 
 @Test func foundationManagedProcessNeverSignalsWhenStartTokenDoesNotMatch() async throws {
     // Break caught: the production adapter signals a live PID after its start token no longer matches metadata.
-    let directory = FileManager.default.temporaryDirectory
-        .appendingPathComponent("PalloIdentitySignalTests-\(UUID().uuidString)", isDirectory: true)
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
+    let fixture = try SecureProcessDirectories(prefix: "PalloIdentitySignalTests")
+    defer { fixture.remove() }
     let process = try FoundationManagedProcessFactory().make(ManagedProcessConfiguration(
         executable: URL(fileURLWithPath: "/bin/sleep"),
         arguments: ["5"],
         environment: [:],
-        workingDirectory: directory,
-        standardOutputLog: directory.appendingPathComponent("stdout.log"),
-        standardErrorLog: directory.appendingPathComponent("stderr.log")
+        workingDirectory: fixture.profile,
+        profileRoot: fixture.profile,
+        logsDirectory: fixture.logs,
+        standardOutputLog: fixture.logs.appendingPathComponent("stdout.log"),
+        standardErrorLog: fixture.logs.appendingPathComponent("stderr.log")
     ))
     let actual = try await process.launch()
     let stale = ManagedProcessIdentity(
@@ -252,20 +403,43 @@ import Testing
     #expect(try await process.waitForExit(matching: actual, timeout: .seconds(2)))
 }
 
+@Test func foundationManagedProcessNeverSignalsWhenLiveChildIdentityBecomesUnavailable() async throws {
+    // Break caught: a failed post-launch identity read is mistaken for exit and authorizes a signal by PID alone.
+    let fixture = try SecureProcessDirectories(prefix: "PalloUnavailableIdentityTests")
+    defer { fixture.remove() }
+    let reads = IdentityReadSequence(successfulReadCount: 2)
+    var process: (any ManagedProcess)? = try FoundationManagedProcessFactory(
+        identityReader: { pid in reads.read(pid) }
+    ).make(try managedConfiguration(
+        fixture: fixture,
+        executable: "/bin/sleep",
+        arguments: ["5"]
+    ))
+    let identity = try await process!.launch()
+
+    await #expect(throws: ManagedProcessError.processIdentityUnavailable(identity.processIdentifier)) {
+        try await process!.signal(.terminate, ifMatching: identity)
+    }
+    #expect(Darwin.kill(identity.processIdentifier, 0) == 0)
+
+    process = nil
+    #expect(await processDisappears(identity.processIdentifier))
+}
+
 @Test func supervisorGracefullyStopsARealFoundationChild() async throws {
     // Break caught: the lifecycle passes with fakes while the production process adapter cannot terminate and reap its child.
-    let directory = FileManager.default.temporaryDirectory
-        .appendingPathComponent("PalloRealSupervisorTests-\(UUID().uuidString)", isDirectory: true)
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
+    let fixture = try SecureProcessDirectories(prefix: "PalloRealSupervisorTests")
+    defer { fixture.remove() }
     let supervisor = SynapseSupervisor(
         configuration: ManagedProcessConfiguration(
             executable: URL(fileURLWithPath: "/bin/sleep"),
             arguments: ["5"],
             environment: [:],
-            workingDirectory: directory,
-            standardOutputLog: directory.appendingPathComponent("stdout.log"),
-            standardErrorLog: directory.appendingPathComponent("stderr.log")
+            workingDirectory: fixture.profile,
+            profileRoot: fixture.profile,
+            logsDirectory: fixture.logs,
+            standardOutputLog: fixture.logs.appendingPathComponent("stdout.log"),
+            standardErrorLog: fixture.logs.appendingPathComponent("stderr.log")
         ),
         loopbackPort: 18_008,
         listenerChecker: FakeListenerChecker(responses: [false]),
@@ -278,6 +452,197 @@ import Testing
     let started = try await supervisor.start()
     #expect(started.processIdentity != nil)
     #expect(try await supervisor.stop().phase == .stopped)
+}
+
+@Test func directChildPIDRemainsReservedAcrossVerifySignalRace() async throws {
+    // Break caught: the child is reaped between identity verification and kill(2), allowing PID reuse to retarget the signal.
+    let fixture = try SecureProcessDirectories(prefix: "PalloSignalRaceTests")
+    defer { fixture.remove() }
+    let evidence = SignalRaceEvidence()
+    let factory = FoundationManagedProcessFactory(afterIdentityBeforeSignal: { pid in
+        _ = Darwin.kill(pid, SIGKILL)
+        var information = siginfo_t()
+        for _ in 0..<200 {
+            if waitid(P_PID, id_t(pid), &information, WEXITED | WNOHANG | WNOWAIT) == 0,
+               information.si_pid == pid {
+                evidence.recordUnreapedChild(pid)
+                return
+            }
+            usleep(1_000)
+        }
+    })
+    let process = try factory.make(try managedConfiguration(
+        fixture: fixture,
+        executable: "/bin/sleep",
+        arguments: ["5"]
+    ))
+    let identity = try await process.launch()
+
+    _ = try await process.signal(.terminate, ifMatching: identity)
+
+    #expect(evidence.unreapedPID == identity.processIdentifier)
+    #expect(try await process.waitForExit(matching: identity, timeout: .seconds(2)))
+}
+
+@Test func cancelledIdentityAcquisitionTerminatesAndReapsSpawnedChild() async throws {
+    // Break caught: cancellation after posix_spawn leaves an unidentified child alive and unrecoverable.
+    let fixture = try SecureProcessDirectories(prefix: "PalloCancelledLaunchTests")
+    defer { fixture.remove() }
+    let spawn = SpawnEvidence()
+    let factory = FoundationManagedProcessFactory(
+        identityReader: { _ in nil },
+        afterSpawn: { pid in spawn.record(pid) }
+    )
+    let process = try factory.make(try managedConfiguration(
+        fixture: fixture,
+        executable: "/bin/sleep",
+        arguments: ["5"]
+    ))
+    let launch = Task { try await process.launch() }
+    try #require(spawn.waitForPID() != nil)
+
+    launch.cancel()
+    await #expect(throws: CancellationError.self) { try await launch.value }
+
+    if let pid = spawn.pid {
+        #expect(await processDisappears(pid))
+    }
+}
+
+@Test func identityAcquisitionFailureTerminatesAndReapsSpawnedChild() async throws {
+    // Break caught: exhausting identity probes throws while the exact direct child remains alive.
+    let fixture = try SecureProcessDirectories(prefix: "PalloIdentityFailureTests")
+    defer { fixture.remove() }
+    let spawn = SpawnEvidence()
+    let factory = FoundationManagedProcessFactory(
+        identityReader: { _ in nil },
+        afterSpawn: { pid in spawn.record(pid) }
+    )
+    let process = try factory.make(try managedConfiguration(
+        fixture: fixture,
+        executable: "/bin/sleep",
+        arguments: ["5"]
+    ))
+
+    do {
+        _ = try await process.launch()
+        Issue.record("identity acquisition unexpectedly succeeded")
+    } catch let error as ManagedProcessError {
+        guard case let .launchIdentityUnavailable(pid) = error else {
+            Issue.record("unexpected launch error: \(error)")
+            return
+        }
+        #expect(pid == spawn.pid)
+    }
+
+    if let pid = spawn.pid {
+        #expect(await processDisappears(pid))
+    }
+}
+
+@Test func releasingProcessOwnerTerminatesAndReapsItsDirectChild() async throws {
+    // Break caught: dropping the last process owner orphans a live runtime child.
+    let fixture = try SecureProcessDirectories(prefix: "PalloOwnerReleaseTests")
+    defer { fixture.remove() }
+    var process: (any ManagedProcess)? = try FoundationManagedProcessFactory().make(
+        try managedConfiguration(fixture: fixture, executable: "/bin/sleep", arguments: ["5"])
+    )
+    let identity = try await process!.launch()
+
+    process = nil
+
+    #expect(await processDisappears(identity.processIdentifier))
+}
+
+@Test func outputIsDrainedThroughEOFAndSensitiveValuesAreRedacted() async throws {
+    // Break caught: termination drops tail bytes or profile logs expose launch-context credentials.
+    let fixture = try SecureProcessDirectories(prefix: "PalloLogDrainTests")
+    defer { fixture.remove() }
+    let configuration = try managedConfiguration(
+        fixture: fixture,
+        executable: "/bin/sh",
+        arguments: [
+            "-c",
+            "sleep 0.05; printf 'alpha admin-secret env %s omega' \"$ACCESS_TOKEN\"; printf 'stderr token-123 tail' >&2",
+        ],
+        environment: ["ACCESS_TOKEN": "environment-token"],
+        sensitiveLogValues: ["admin-secret", "token-123"]
+    )
+    let process = try FoundationManagedProcessFactory().make(configuration)
+    let identity = try await process.launch()
+
+    #expect(try await process.waitForExit(matching: identity, timeout: .seconds(2)))
+
+    let stdout = try String(contentsOf: configuration.standardOutputLog, encoding: .utf8)
+    let stderr = try String(contentsOf: configuration.standardErrorLog, encoding: .utf8)
+    #expect(stdout == "alpha [REDACTED] env [REDACTED] omega")
+    #expect(stderr == "stderr [REDACTED] tail")
+    #expect(!stdout.contains("admin-secret"))
+    #expect(!stdout.contains("environment-token"))
+    #expect(!stderr.contains("token-123"))
+}
+
+@Test func asynchronousLogWriteFailureIsSurfacedAfterExactChildCleanup() async throws {
+    // Break caught: output writer errors are discarded while the supervisor continues reporting a live healthy child.
+    let fixture = try SecureProcessDirectories(prefix: "PalloLogFailureTests")
+    defer { fixture.remove() }
+    let injected = ManagedProcessError.logFailure(operation: "injected write", code: EIO)
+    let factory = FoundationManagedProcessFactory(logWriteHook: { _ in throw injected })
+    let trigger = fixture.profile.appendingPathComponent("emit-output")
+    let process = try factory.make(try managedConfiguration(
+        fixture: fixture,
+        executable: "/bin/sh",
+        arguments: [
+            "-c",
+            "while [ ! -e \"$1\" ]; do /bin/sleep 0.01; done; printf trigger; while :; do :; done",
+            "pallo-log-failure-test",
+            trigger.path,
+        ]
+    ))
+    let identity = try await process.launch()
+    try Data().write(to: trigger)
+
+    await #expect(throws: injected) {
+        try await process.waitForExit(matching: identity, timeout: .seconds(10))
+    }
+    #expect(await processDisappears(identity.processIdentifier))
+}
+
+@Test func supervisorSurfacesAsynchronousLogFailureAndCleansExactChild() async throws {
+    // Break caught: the process adapter records a log failure but supervisor status remains healthy.
+    let fixture = try SecureProcessDirectories(prefix: "PalloSupervisorLogFailureTests")
+    defer { fixture.remove() }
+    let injected = ManagedProcessError.logFailure(operation: "injected supervisor write", code: EIO)
+    let trigger = fixture.profile.appendingPathComponent("emit-output")
+    let configuration = try managedConfiguration(
+        fixture: fixture,
+        executable: "/bin/sh",
+        arguments: [
+            "-c",
+            "while [ ! -e \"$1\" ]; do /bin/sleep 0.01; done; printf trigger; while :; do :; done",
+            "pallo-supervisor-log-failure-test",
+            trigger.path,
+        ]
+    )
+    let supervisor = SynapseSupervisor(
+        configuration: configuration,
+        loopbackPort: 18_008,
+        processFactory: FoundationManagedProcessFactory(logWriteHook: { _ in throw injected }),
+        listenerChecker: FakeListenerChecker(responses: [false]),
+        forcedTerminationTimeout: .seconds(2),
+        listenerVerificationAttempts: 1
+    )
+    let identity = try #require(try await supervisor.start().processIdentity)
+    try Data().write(to: trigger)
+
+    for _ in 0..<1_000 where await supervisor.status().phase != .failed {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    let failed = await supervisor.status()
+
+    #expect(failed.phase == .failed)
+    #expect(failed.lastError?.contains("injected supervisor write") == true)
+    #expect(await processDisappears(identity.processIdentifier))
 }
 
 private func waitForPhase(_ phase: RuntimePhase, supervisor: SynapseSupervisor) async {
@@ -296,28 +661,36 @@ private struct SupervisorFixture {
         waitGate: AsyncGate? = nil,
         exitOnTerminate: Bool = true,
         replaceIdentityAfterFirstWait: Bool = false,
+        launchFails: Bool = false,
         listener: FakeListenerChecker = FakeListenerChecker(responses: [false]),
-        listenerVerificationAttempts: Int = 1
+        listenerVerificationAttempts: Int = 1,
+        initialSnapshot: RuntimeSnapshot = .stopped,
+        initialProcessIdentity: ManagedProcessIdentity? = nil
     ) {
         process = FakeManagedProcess(
             launchGate: launchGate,
             waitGate: waitGate,
             exitOnTerminate: exitOnTerminate,
-            replaceIdentityAfterFirstWait: replaceIdentityAfterFirstWait
+            replaceIdentityAfterFirstWait: replaceIdentityAfterFirstWait,
+            launchFails: launchFails,
+            initialIdentity: initialProcessIdentity
         )
         let configuration = ManagedProcessConfiguration(
             executable: URL(fileURLWithPath: ManagedProcessIdentity.expected.executablePath),
             arguments: [],
             environment: [:],
             workingDirectory: URL(fileURLWithPath: "/tmp"),
-            standardOutputLog: URL(fileURLWithPath: "/tmp/pallo-stdout.log"),
-            standardErrorLog: URL(fileURLWithPath: "/tmp/pallo-stderr.log")
+            profileRoot: URL(fileURLWithPath: "/tmp"),
+            logsDirectory: URL(fileURLWithPath: "/tmp/logs"),
+            standardOutputLog: URL(fileURLWithPath: "/tmp/logs/pallo-stdout.log"),
+            standardErrorLog: URL(fileURLWithPath: "/tmp/logs/pallo-stderr.log")
         )
         supervisor = SynapseSupervisor(
             configuration: configuration,
             loopbackPort: 18_008,
             processFactory: FakeManagedProcessFactory(process: process),
             listenerChecker: listener,
+            initialSnapshot: initialSnapshot,
             gracefulTerminationTimeout: .seconds(5),
             forcedTerminationTimeout: .seconds(1),
             listenerVerificationAttempts: listenerVerificationAttempts,
@@ -354,7 +727,10 @@ private actor FakeManagedProcess: ManagedProcess {
     private let waitGate: AsyncGate?
     private let exitOnTerminate: Bool
     private let replaceIdentityAfterFirstWait: Bool
+    private var launchFails: Bool
     private var currentIdentity: ManagedProcessIdentity?
+    private var ownsCurrentIdentity = false
+    private var identityStatusOverride: ManagedProcessIdentityStatus?
     private var state = Metrics()
     private var waitCalls = 0
 
@@ -362,25 +738,36 @@ private actor FakeManagedProcess: ManagedProcess {
         launchGate: AsyncGate?,
         waitGate: AsyncGate?,
         exitOnTerminate: Bool,
-        replaceIdentityAfterFirstWait: Bool
+        replaceIdentityAfterFirstWait: Bool,
+        launchFails: Bool,
+        initialIdentity: ManagedProcessIdentity? = nil
     ) {
         self.launchGate = launchGate
         self.waitGate = waitGate
         self.exitOnTerminate = exitOnTerminate
         self.replaceIdentityAfterFirstWait = replaceIdentityAfterFirstWait
+        self.launchFails = launchFails
+        currentIdentity = initialIdentity
     }
 
     func launch() async throws -> ManagedProcessIdentity {
         state.launchCalls += 1
         if let launchGate { await launchGate.wait() }
+        if launchFails { throw FakeProcessError.launchFailed }
         currentIdentity = .expected
+        ownsCurrentIdentity = true
         return .expected
     }
 
     func identityStatus(for expected: ManagedProcessIdentity) async -> ManagedProcessIdentityStatus {
         state.identityChecks += 1
+        if let identityStatusOverride { return identityStatusOverride }
         guard let currentIdentity else { return .exited }
         return currentIdentity == expected ? .matching : .mismatched(actual: currentIdentity)
+    }
+
+    func ownership(for expected: ManagedProcessIdentity) -> ManagedProcessOwnership {
+        ownsCurrentIdentity && currentIdentity == expected ? .directChild : .observedOnly
     }
 
     func signal(_ signal: ManagedProcessSignal, ifMatching expected: ManagedProcessIdentity) async throws -> Bool {
@@ -393,6 +780,8 @@ private actor FakeManagedProcess: ManagedProcess {
             return false
         case let .mismatched(actual):
             throw RuntimeStateError.processIdentityMismatch(expected: expected, actual: actual)
+        case let .indeterminate(failure):
+            throw failure
         }
     }
 
@@ -405,6 +794,8 @@ private actor FakeManagedProcess: ManagedProcess {
         case .matching: return false
         case let .mismatched(actual):
             throw RuntimeStateError.processIdentityMismatch(expected: expected, actual: actual)
+        case let .indeterminate(failure):
+            throw failure
         }
     }
 
@@ -412,21 +803,59 @@ private actor FakeManagedProcess: ManagedProcess {
         currentIdentity = identity
     }
 
+    func setLaunchFailure(_ value: Bool) {
+        launchFails = value
+    }
+
+    func setIdentityStatusOverride(_ value: ManagedProcessIdentityStatus?) {
+        identityStatusOverride = value
+    }
+
     func metrics() -> Metrics { state }
+}
+
+private enum FakeProcessError: Error, Equatable {
+    case launchFailed
+}
+
+private final class IdentityReadSequence: @unchecked Sendable {
+    private let lock = NSLock()
+    private let successfulReadCount: Int
+    private var readCount = 0
+
+    init(successfulReadCount: Int) {
+        self.successfulReadCount = successfulReadCount
+    }
+
+    func read(_ pid: pid_t) -> ManagedProcessIdentity? {
+        lock.lock()
+        defer { lock.unlock() }
+        readCount += 1
+        guard readCount <= successfulReadCount else { return nil }
+        return FoundationManagedProcess.readIdentity(for: pid)
+    }
 }
 
 private struct FakeManagedProcessFactory: ManagedProcessFactory, Sendable {
     let process: FakeManagedProcess
     func make(_ configuration: ManagedProcessConfiguration) throws -> any ManagedProcess { process }
+    func rehydrate(
+        _ configuration: ManagedProcessConfiguration,
+        expectedIdentity: ManagedProcessIdentity
+    ) throws -> any ManagedProcess { process }
 }
 
 private actor FakeListenerChecker: LoopbackListenerChecking {
-    private let responses: [Bool]
+    private let responses: [LoopbackListenerPresence]
     private var index = 0
 
-    init(responses: [Bool]) { self.responses = responses }
+    init(responses: [Bool]) {
+        self.responses = responses.map { $0 ? .present : .absent }
+    }
 
-    func isListening(on port: UInt16) async -> Bool {
+    init(presences: [LoopbackListenerPresence]) { responses = presences }
+
+    func presence(on port: UInt16) async -> LoopbackListenerPresence {
         defer { index += 1 }
         return responses[min(index, responses.count - 1)]
     }
@@ -447,4 +876,122 @@ private extension ManagedProcessIdentity {
         processIdentifier: 42,
         startIdentityToken: "42:1789000001:0"
     )
+}
+
+private extension RuntimeSnapshot {
+    static let persistedHealthy = RuntimeSnapshot(
+        phase: .healthy,
+        processIdentity: .expected,
+        loopbackPort: 18_008,
+        restartCount: 0,
+        lastHealthResult: nil,
+        diagnosticLogDirectory: URL(fileURLWithPath: "/tmp"),
+        lastError: nil
+    )
+}
+
+private func fileMode(_ url: URL) throws -> Int {
+    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+    return (attributes[.posixPermissions] as? NSNumber)?.intValue ?? -1
+}
+
+private struct SecureProcessDirectories {
+    let root: URL
+    let profile: URL
+    let logs: URL
+
+    init(prefix: String) throws {
+        root = try canonicalTemporaryDirectory()
+            .appendingPathComponent("\(prefix)-\(UUID().uuidString)", isDirectory: true)
+        profile = root.appendingPathComponent("profile", isDirectory: true)
+        logs = profile.appendingPathComponent("logs", isDirectory: true)
+        try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: profile.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: logs.path)
+    }
+
+    func remove() {
+        try? FileManager.default.removeItem(at: root)
+    }
+}
+
+private func canonicalTemporaryDirectory() throws -> URL {
+    let temporaryPath = FileManager.default.temporaryDirectory.path
+    guard let resolved = realpath(temporaryPath, nil) else {
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+    defer { free(resolved) }
+    return URL(fileURLWithPath: String(cString: resolved), isDirectory: true)
+}
+
+private func managedConfiguration(
+    fixture: SecureProcessDirectories,
+    executable: String,
+    arguments: [String],
+    environment: [String: String] = [:],
+    sensitiveLogValues: [String] = []
+) throws -> ManagedProcessConfiguration {
+    guard executable.hasPrefix("/") else {
+        throw ManagedProcessError.invalidConfiguration("test executable must be absolute")
+    }
+    return ManagedProcessConfiguration(
+        executable: URL(fileURLWithPath: executable),
+        arguments: arguments,
+        environment: environment,
+        workingDirectory: fixture.profile,
+        profileRoot: fixture.profile,
+        logsDirectory: fixture.logs,
+        standardOutputLog: fixture.logs.appendingPathComponent("stdout.log"),
+        standardErrorLog: fixture.logs.appendingPathComponent("stderr.log"),
+        sensitiveLogValues: sensitiveLogValues
+    )
+}
+
+private final class SignalRaceEvidence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedPID: pid_t?
+
+    var unreapedPID: pid_t? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedPID
+    }
+
+    func recordUnreapedChild(_ pid: pid_t) {
+        lock.lock()
+        storedPID = pid
+        lock.unlock()
+    }
+}
+
+private final class SpawnEvidence: @unchecked Sendable {
+    private let lock = NSLock()
+    private let semaphore = DispatchSemaphore(value: 0)
+    private var storedPID: pid_t?
+
+    var pid: pid_t? {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedPID
+    }
+
+    func record(_ pid: pid_t) {
+        lock.lock()
+        storedPID = pid
+        lock.unlock()
+        semaphore.signal()
+    }
+
+    func waitForPID() -> pid_t? {
+        guard semaphore.wait(timeout: .now() + 2) == .success else { return nil }
+        return pid
+    }
+}
+
+private func processDisappears(_ pid: pid_t) async -> Bool {
+    for _ in 0..<1_000 {
+        if Darwin.kill(pid, 0) == -1, errno == ESRCH { return true }
+        _ = await Task.detached(priority: .utility) { usleep(5_000) }.value
+    }
+    return false
 }

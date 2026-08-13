@@ -88,5 +88,6 @@ public enum RuntimeStateError: Error, Sendable, Equatable {
     case invalidTransition(from: RuntimePhase, to: RuntimePhase)
     case processExitedUnexpectedly(ManagedProcessIdentity)
     case processIdentityMismatch(expected: ManagedProcessIdentity, actual: ManagedProcessIdentity)
-    case shutdownIncomplete(processAlive: Bool, listenerAlive: Bool)
+    case uncontrolledProcess(ManagedProcessIdentity)
+    case shutdownIncomplete(processAlive: Bool, listenerPresence: LoopbackListenerPresence)
 }
