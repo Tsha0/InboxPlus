@@ -198,7 +198,9 @@ git commit -m "feat: define pinned Synapse runtime profiles"
     #expect(yaml.contains("bind_addresses: ['127.0.0.1']"))
     #expect(yaml.contains("enable_registration: false"))
     #expect(yaml.contains("allow_guest_access: false"))
-    #expect(!yaml.contains("federation"))
+    #expect(yaml.contains("names: [client]"))
+    #expect(!yaml.contains("names: [client, federation]"))
+    #expect(yaml.contains("send_federation: false"))
 }
 
 @Test func nonLoopbackListenerIsRejected() {
@@ -231,7 +233,7 @@ public struct SynapseConfiguration: Sendable {
 }
 ```
 
-Render only the client/resource listener needed for the spike, set `federation: false` on the listener, disable registration/guests/room-list publication, disable URL previews and telemetry, and keep secrets in the YAML file with mode `0600`, never in arguments.
+Render only the `client` listener resource needed for the spike; do not expose the `federation` resource. Set the supported top-level `send_federation: false` option to disable outbound federation transactions. Disable registration/guests/room-list publication, disable URL previews and telemetry, and keep secrets in the YAML file with mode `0600`, never in arguments.
 
 - [ ] **Step 4: Run the focused and full suites**
 
