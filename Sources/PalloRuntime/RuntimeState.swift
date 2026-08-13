@@ -54,6 +54,35 @@ public struct RuntimeSnapshot: Codable, Sendable, Equatable {
         lastHealthResult: String?,
         diagnosticLogDirectory: URL?,
         lastError: String?
+    ) throws {
+        if let validationError = Self.validationError(
+            phase: phase,
+            processIdentity: processIdentity,
+            loopbackPort: loopbackPort,
+            restartCount: restartCount,
+            lastError: lastError
+        ) {
+            throw validationError
+        }
+        self.init(
+            uncheckedPhase: phase,
+            processIdentity: processIdentity,
+            loopbackPort: loopbackPort,
+            restartCount: restartCount,
+            lastHealthResult: lastHealthResult,
+            diagnosticLogDirectory: diagnosticLogDirectory,
+            lastError: lastError
+        )
+    }
+
+    init(
+        uncheckedPhase phase: RuntimePhase,
+        processIdentity: ManagedProcessIdentity?,
+        loopbackPort: UInt16?,
+        restartCount: Int,
+        lastHealthResult: String?,
+        diagnosticLogDirectory: URL?,
+        lastError: String?
     ) {
         self.phase = phase
         self.processIdentity = processIdentity
@@ -65,7 +94,7 @@ public struct RuntimeSnapshot: Codable, Sendable, Equatable {
     }
 
     public static let stopped = RuntimeSnapshot(
-        phase: .stopped,
+        uncheckedPhase: .stopped,
         processIdentity: nil,
         loopbackPort: nil,
         restartCount: 0,
@@ -75,22 +104,104 @@ public struct RuntimeSnapshot: Codable, Sendable, Equatable {
     )
 
     var structuralValidationError: RuntimeStateError? {
-        switch phase {
-        case .healthy, .degraded:
-            guard processIdentity != nil else {
-                return .invalidSnapshot(phase: phase, reason: "running phase requires process identity")
+        Self.validationError(
+            phase: phase,
+            processIdentity: processIdentity,
+            loopbackPort: loopbackPort,
+            restartCount: restartCount,
+            lastError: lastError
+        )
+    }
+
+    private static func validationError(
+        phase: RuntimePhase,
+        processIdentity: ManagedProcessIdentity?,
+        loopbackPort: UInt16?,
+        restartCount: Int,
+        lastError: String?
+    ) -> RuntimeStateError? {
+        guard restartCount >= 0 else {
+            return .invalidSnapshot(phase: phase, reason: "restart count cannot be negative")
+        }
+
+        let requiresRuntimeAuthority: Bool = switch phase {
+        case .healthy, .degraded, .stopping: true
+        case .unprepared, .stopped, .starting, .recovering, .failed: false
+        }
+        if requiresRuntimeAuthority {
+            guard let processIdentity else {
+                return .invalidSnapshot(phase: phase, reason: "phase requires exact process identity")
             }
-            guard loopbackPort != nil else {
-                return .invalidSnapshot(phase: phase, reason: "running phase requires loopback port")
+            guard processIdentity.processIdentifier > 0,
+                  !processIdentity.executablePath.isEmpty,
+                  !processIdentity.startIdentityToken.isEmpty
+            else {
+                return .invalidSnapshot(phase: phase, reason: "process identity is incomplete")
             }
-        case .stopped, .unprepared:
-            guard processIdentity == nil, loopbackPort == nil else {
-                return .invalidSnapshot(phase: phase, reason: "inactive phase forbids process/listener metadata")
+            guard let loopbackPort, loopbackPort > 0 else {
+                return .invalidSnapshot(phase: phase, reason: "phase requires a nonzero loopback port")
             }
-        case .starting, .recovering, .stopping, .failed:
-            break
+        } else {
+            guard processIdentity == nil else {
+                return .invalidSnapshot(phase: phase, reason: "phase forbids process identity")
+            }
+            guard loopbackPort == nil else {
+                return .invalidSnapshot(phase: phase, reason: "phase forbids listener metadata")
+            }
+        }
+        if phase == .failed, lastError?.isEmpty != false {
+            return .invalidSnapshot(phase: phase, reason: "failed phase requires an actionable error")
         }
         return nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case phase
+        case processIdentity
+        case loopbackPort
+        case restartCount
+        case lastHealthResult
+        case diagnosticLogDirectory
+        case lastError
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let phase = try container.decode(RuntimePhase.self, forKey: .phase)
+        do {
+            try self.init(
+                phase: phase,
+                processIdentity: container.decodeIfPresent(
+                    ManagedProcessIdentity.self,
+                    forKey: .processIdentity
+                ),
+                loopbackPort: container.decodeIfPresent(UInt16.self, forKey: .loopbackPort),
+                restartCount: container.decode(Int.self, forKey: .restartCount),
+                lastHealthResult: container.decodeIfPresent(String.self, forKey: .lastHealthResult),
+                diagnosticLogDirectory: container.decodeIfPresent(
+                    URL.self,
+                    forKey: .diagnosticLogDirectory
+                ),
+                lastError: container.decodeIfPresent(String.self, forKey: .lastError)
+            )
+        } catch {
+            throw DecodingError.dataCorruptedError(
+                forKey: .phase,
+                in: container,
+                debugDescription: String(describing: error)
+            )
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(phase, forKey: .phase)
+        try container.encodeIfPresent(processIdentity, forKey: .processIdentity)
+        try container.encodeIfPresent(loopbackPort, forKey: .loopbackPort)
+        try container.encode(restartCount, forKey: .restartCount)
+        try container.encodeIfPresent(lastHealthResult, forKey: .lastHealthResult)
+        try container.encodeIfPresent(diagnosticLogDirectory, forKey: .diagnosticLogDirectory)
+        try container.encodeIfPresent(lastError, forKey: .lastError)
     }
 }
 

@@ -53,10 +53,10 @@ public actor SynapseSupervisor {
         snapshotValidationFailure = validationFailure
         if let validationFailure {
             snapshot = RuntimeSnapshot(
-                phase: .failed,
+                uncheckedPhase: .failed,
                 processIdentity: nil,
-                loopbackPort: loopbackPort,
-                restartCount: initialSnapshot.restartCount,
+                loopbackPort: nil,
+                restartCount: max(0, initialSnapshot.restartCount),
                 lastHealthResult: initialSnapshot.lastHealthResult,
                 diagnosticLogDirectory: initialSnapshot.diagnosticLogDirectory ?? configuration.logsDirectory,
                 lastError: String(describing: validationFailure)
@@ -84,7 +84,7 @@ public actor SynapseSupervisor {
             try requireCurrent(operation)
             if let lifecycleFailure { throw lifecycleFailure }
             updateSnapshot(RuntimeSnapshot(
-                phase: .healthy,
+                uncheckedPhase: .healthy,
                 processIdentity: identity,
                 loopbackPort: loopbackPort,
                 restartCount: snapshot.restartCount,
@@ -105,6 +105,9 @@ public actor SynapseSupervisor {
     public func stop() async throws -> RuntimeSnapshot {
         if let snapshotValidationFailure { throw snapshotValidationFailure }
         if snapshot.phase == .stopped { return snapshot }
+        if snapshot.phase == .failed || snapshot.phase == .recovering {
+            return try await stopWithoutRuntimeAuthority()
+        }
         let operation = try beginOperation(transitioningTo: .stopping)
         defer { endOperation(operation) }
 
@@ -228,7 +231,7 @@ public actor SynapseSupervisor {
             guard observationIsCurrent(observation) else { return snapshot }
             if ownership == .observedOnly {
                 updateSnapshot(RuntimeSnapshot(
-                    phase: .degraded,
+                    uncheckedPhase: .degraded,
                     processIdentity: identity,
                     loopbackPort: snapshot.loopbackPort,
                     restartCount: snapshot.restartCount,
@@ -288,7 +291,7 @@ public actor SynapseSupervisor {
     private func transition(to next: RuntimePhase) throws {
         let state = try RuntimeState(phase: snapshot.phase).transitioning(to: next)
         updateSnapshot(RuntimeSnapshot(
-            phase: state.phase,
+            uncheckedPhase: state.phase,
             processIdentity: snapshot.processIdentity,
             loopbackPort: snapshot.loopbackPort,
             restartCount: snapshot.restartCount,
@@ -310,9 +313,29 @@ public actor SynapseSupervisor {
         return lastPresence
     }
 
+    private func stopWithoutRuntimeAuthority() async throws -> RuntimeSnapshot {
+        let operation = try beginOperationWithoutPublishingTransition(validating: .stopping)
+        defer { endOperation(operation) }
+        do {
+            let listenerPresence = await waitForListenerDisappearance()
+            try requireCurrent(operation)
+            guard listenerPresence == .absent else {
+                throw RuntimeStateError.shutdownIncomplete(
+                    processAlive: false,
+                    listenerPresence: listenerPresence
+                )
+            }
+            replaceManagedProcess(with: nil)
+            return stoppedSnapshot()
+        } catch {
+            if isCurrent(operation) { fail(with: error) }
+            throw error
+        }
+    }
+
     private func stoppedSnapshot() -> RuntimeSnapshot {
         updateSnapshot(RuntimeSnapshot(
-            phase: .stopped,
+            uncheckedPhase: .stopped,
             processIdentity: nil,
             loopbackPort: nil,
             restartCount: snapshot.restartCount,
@@ -324,10 +347,11 @@ public actor SynapseSupervisor {
     }
 
     private func fail(with error: any Error) {
+        replaceManagedProcess(with: nil)
         updateSnapshot(RuntimeSnapshot(
-            phase: .failed,
-            processIdentity: snapshot.processIdentity,
-            loopbackPort: snapshot.loopbackPort ?? loopbackPort,
+            uncheckedPhase: .failed,
+            processIdentity: nil,
+            loopbackPort: nil,
             restartCount: snapshot.restartCount,
             lastHealthResult: snapshot.lastHealthResult,
             diagnosticLogDirectory: snapshot.diagnosticLogDirectory ?? configuration.logsDirectory,
@@ -353,6 +377,19 @@ public actor SynapseSupervisor {
 
     private func beginObservationOperation(_ observation: ObservationContext) -> OperationToken? {
         guard activeOperation == nil, observationIsCurrent(observation) else { return nil }
+        nextOperationValue &+= 1
+        let operation = OperationToken(value: nextOperationValue)
+        activeOperation = operation
+        return operation
+    }
+
+    private func beginOperationWithoutPublishingTransition(
+        validating phase: RuntimePhase
+    ) throws -> OperationToken {
+        guard activeOperation == nil else {
+            throw RuntimeStateError.invalidTransition(from: snapshot.phase, to: phase)
+        }
+        _ = try RuntimeState(phase: snapshot.phase).transitioning(to: phase)
         nextOperationValue &+= 1
         let operation = OperationToken(value: nextOperationValue)
         activeOperation = operation
@@ -392,6 +429,7 @@ public actor SynapseSupervisor {
     }
 
     private func updateSnapshot(_ nextSnapshot: RuntimeSnapshot) {
+        precondition(nextSnapshot.structuralValidationError == nil)
         snapshot = nextSnapshot
         stateGeneration &+= 1
     }

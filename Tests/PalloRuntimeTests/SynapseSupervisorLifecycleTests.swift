@@ -72,7 +72,7 @@ import Testing
     let gate = AsyncGate()
     await fixture.process.configureLifecycleFailure(nil, gate: gate)
     let start = Task { try await fixture.supervisor.start() }
-    await gate.waitForWaiter()
+    try await gate.waitForWaiter()
 
     await #expect(throws: RuntimeStateError.invalidTransition(from: .starting, to: .stopping)) {
         try await fixture.supervisor.stop()
@@ -125,7 +125,8 @@ import Testing
     let snapshot = await fixture.supervisor.status()
 
     #expect(snapshot.phase == .failed)
-    #expect(snapshot.processIdentity == .expected)
+    #expect(snapshot.processIdentity == nil)
+    #expect(snapshot.loopbackPort == nil)
     #expect(await fixture.process.metrics().signals.isEmpty)
 }
 
@@ -139,7 +140,7 @@ import Testing
         gate: gate
     )
     let status = Task { await fixture.supervisor.status() }
-    await gate.waitForWaiter()
+    try await gate.waitForWaiter()
 
     #expect(try await fixture.supervisor.stop().phase == .stopped)
     await gate.open()
@@ -160,7 +161,7 @@ import Testing
     )
     await fixture.process.suspendNextOwnership(on: gate)
     let status = Task { await fixture.supervisor.status() }
-    await gate.waitForWaiter()
+    try await gate.waitForWaiter()
 
     #expect(try await fixture.supervisor.stop().phase == .stopped)
     await gate.open()
@@ -170,50 +171,121 @@ import Testing
     #expect(await fixture.process.metrics().signals == [.terminate])
 }
 
+private enum ABASuspensionPoint: Sendable, CaseIterable {
+    case lifecycleFailure
+    case ownership
+}
+
+@Test(arguments: ABASuspensionPoint.allCases)
+private func staleStatusProbeCannotAffectRestartedProcessWithReusedIdentity(
+    suspensionPoint: ABASuspensionPoint
+) async throws {
+    // Break caught: phase/PID/token ABA fools a stale probe after stop replaces the managed process instance.
+    let oldProcess = FakeManagedProcess(
+        launchGate: nil,
+        waitGate: nil,
+        exitOnTerminate: true,
+        replaceIdentityAfterFirstWait: false,
+        launchFails: false
+    )
+    let newProcess = FakeManagedProcess(
+        launchGate: nil,
+        waitGate: nil,
+        exitOnTerminate: true,
+        replaceIdentityAfterFirstWait: false,
+        launchFails: false
+    )
+    let supervisor = SynapseSupervisor(
+        configuration: fakeManagedProcessConfiguration(),
+        loopbackPort: 18_008,
+        processFactory: SequencedFakeManagedProcessFactory(processes: [oldProcess, newProcess]),
+        listenerChecker: FakeListenerChecker(responses: [false, false]),
+        listenerVerificationAttempts: 1,
+        listenerVerificationInterval: .zero,
+        sleep: { _ in }
+    )
+    _ = try await supervisor.start()
+    let gate = AsyncGate()
+    await oldProcess.configureLifecycleFailure(
+        .logFailure(operation: "old process status probe", code: EIO),
+        gate: suspensionPoint == .lifecycleFailure ? gate : nil
+    )
+    if suspensionPoint == .ownership {
+        await oldProcess.suspendNextOwnership(on: gate)
+    }
+    let staleStatus = Task { await supervisor.status() }
+    try await gate.waitForWaiter()
+
+    #expect(try await supervisor.stop().phase == .stopped)
+    let restarted = try await supervisor.start()
+    #expect(restarted.phase == .healthy)
+    #expect(restarted.processIdentity == .expected)
+    await gate.open()
+
+    let staleResult = await staleStatus.value
+    #expect(staleResult.phase == .healthy)
+    #expect(staleResult.processIdentity == .expected)
+    #expect(await oldProcess.metrics().signals == [.terminate])
+    #expect(await newProcess.metrics().signals.isEmpty)
+    #expect(await supervisor.status().phase == .healthy)
+
+    #expect(try await supervisor.stop().phase == .stopped)
+    #expect(await newProcess.metrics().signals == [.terminate])
+}
+
 @Test(arguments: [RuntimePhase.healthy, .degraded])
-func corruptActiveSnapshotWithoutIdentityBecomesActionableFailure(phase: RuntimePhase) async {
+func publicConstructionRejectsActiveSnapshotWithoutIdentity(phase: RuntimePhase) async {
     // Break caught: persisted running metadata without a process identity is reported healthy/degraded.
+    #expect(throws: RuntimeStateError.self) {
+        try RuntimeSnapshot(
+            phase: phase,
+            processIdentity: nil,
+            loopbackPort: 18_008,
+            restartCount: 0,
+            lastHealthResult: nil,
+            diagnosticLogDirectory: nil,
+            lastError: nil
+        )
+    }
+}
+
+@Test(arguments: [RuntimePhase.stopped, .unprepared])
+func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
+    phase: RuntimePhase
+) async {
+    // Break caught: stale PID/listener metadata in an inactive phase is trusted or silently discarded.
+    #expect(throws: RuntimeStateError.self) {
+        try RuntimeSnapshot(
+            phase: phase,
+            processIdentity: .expected,
+            loopbackPort: 18_008,
+            restartCount: 0,
+            lastHealthResult: nil,
+            diagnosticLogDirectory: nil,
+            lastError: nil
+        )
+    }
+}
+
+@Test func supervisorQuarantinesInternallyMalformedPersistedSnapshotWithoutSignalAuthority() async {
+    // Break caught: a malformed value reaching the supervisor bypasses public/decoding validation.
     let corrupt = RuntimeSnapshot(
-        phase: phase,
+        uncheckedPhase: .healthy,
         processIdentity: nil,
         loopbackPort: 18_008,
-        restartCount: 0,
+        restartCount: -1,
         lastHealthResult: nil,
         diagnosticLogDirectory: nil,
         lastError: nil
     )
     let fixture = SupervisorFixture(initialSnapshot: corrupt)
 
-    let status = await fixture.supervisor.status()
-    #expect(status.phase == .failed)
-    #expect(status.lastError?.contains("invalidSnapshot") == true)
-    #expect(await fixture.process.metrics().signals.isEmpty)
-}
-
-@Test(arguments: [RuntimePhase.stopped, .unprepared])
-func corruptInactiveSnapshotWithRuntimeMetadataIsNeverStoppedOrSignalled(
-    phase: RuntimePhase
-) async {
-    // Break caught: stale PID/listener metadata in an inactive phase is trusted or silently discarded.
-    let corrupt = RuntimeSnapshot(
-        phase: phase,
-        processIdentity: .expected,
-        loopbackPort: 18_008,
-        restartCount: 0,
-        lastHealthResult: nil,
-        diagnosticLogDirectory: nil,
-        lastError: nil
-    )
-    let fixture = SupervisorFixture(
-        initialSnapshot: corrupt,
-        initialProcessIdentity: .expected
-    )
-
-    #expect(await fixture.supervisor.status().phase == .failed)
-    await #expect(throws: (any Error).self) {
-        try await fixture.supervisor.stop()
-    }
-    #expect(await fixture.supervisor.status().phase == .failed)
+    let quarantined = await fixture.supervisor.status()
+    #expect(quarantined.phase == .failed)
+    #expect(quarantined.processIdentity == nil)
+    #expect(quarantined.loopbackPort == nil)
+    #expect(quarantined.restartCount == 0)
+    #expect(quarantined.lastError?.contains("invalidSnapshot") == true)
     #expect(await fixture.process.metrics().signals.isEmpty)
 }
 
@@ -882,6 +954,19 @@ private struct SupervisorFixture {
     }
 }
 
+private func fakeManagedProcessConfiguration() -> ManagedProcessConfiguration {
+    ManagedProcessConfiguration(
+        executable: URL(fileURLWithPath: ManagedProcessIdentity.expected.executablePath),
+        arguments: [],
+        environment: [:],
+        workingDirectory: URL(fileURLWithPath: "/tmp"),
+        profileRoot: URL(fileURLWithPath: "/tmp"),
+        logsDirectory: URL(fileURLWithPath: "/tmp/logs"),
+        standardOutputLog: URL(fileURLWithPath: "/tmp/logs/pallo-stdout.log"),
+        standardErrorLog: URL(fileURLWithPath: "/tmp/logs/pallo-stderr.log")
+    )
+}
+
 private actor AsyncGate {
     private var continuation: CheckedContinuation<Void, Never>?
     private var isOpen = false
@@ -899,9 +984,18 @@ private actor AsyncGate {
         continuation = nil
     }
 
-    func waitForWaiter() async {
-        while waiterCount == 0 { await Task.yield() }
+    func waitForWaiter(timeout: Duration = .seconds(2)) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while waiterCount == 0 {
+            guard clock.now < deadline else { throw AsyncGateError.waiterDeadlineExceeded }
+            try await Task.sleep(for: .milliseconds(1))
+        }
     }
+}
+
+private enum AsyncGateError: Error {
+    case waiterDeadlineExceeded
 }
 
 private actor FakeManagedProcess: ManagedProcess {
@@ -1075,6 +1169,34 @@ private struct FakeManagedProcessFactory: ManagedProcessFactory, Sendable {
     ) throws -> any ManagedProcess { process }
 }
 
+private final class SequencedFakeManagedProcessFactory: ManagedProcessFactory, @unchecked Sendable {
+    private let lock = NSLock()
+    private let processes: [FakeManagedProcess]
+    private var nextIndex = 0
+
+    init(processes: [FakeManagedProcess]) {
+        self.processes = processes
+    }
+
+    func make(_ configuration: ManagedProcessConfiguration) throws -> any ManagedProcess {
+        lock.lock()
+        defer { lock.unlock() }
+        guard nextIndex < processes.count else { throw FakeProcessError.launchFailed }
+        defer { nextIndex += 1 }
+        return processes[nextIndex]
+    }
+
+    func rehydrate(
+        _ configuration: ManagedProcessConfiguration,
+        expectedIdentity: ManagedProcessIdentity
+    ) throws -> any ManagedProcess {
+        lock.lock()
+        defer { lock.unlock() }
+        guard nextIndex > 0 else { throw FakeProcessError.launchFailed }
+        return processes[nextIndex - 1]
+    }
+}
+
 private actor FakeListenerChecker: LoopbackListenerChecking {
     private let responses: [LoopbackListenerPresence]
     private var index = 0
@@ -1109,7 +1231,7 @@ private extension ManagedProcessIdentity {
 }
 
 private extension RuntimeSnapshot {
-    static let persistedHealthy = RuntimeSnapshot(
+    static let persistedHealthy = try! RuntimeSnapshot(
         phase: .healthy,
         processIdentity: .expected,
         loopbackPort: 18_008,

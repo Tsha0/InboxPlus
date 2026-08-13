@@ -138,3 +138,44 @@ The first aggregate focused run then hung with multiple process tests blocked in
 - Confirmed malformed inactive snapshots discard stale process identity and cannot reach rehydration/signalling; malformed active snapshots cannot be returned as healthy/degraded.
 - Confirmed the launch reservation is acquired before `posix_spawn`, is not overwritten by a concurrent caller, remains terminal after successful launch, and resets only after a failed launch has no owned child.
 - Re-ran all previously accepted direct-child PID, rehydration, listener, descriptor-anchored log, EOF/redaction, and I/O-failure regressions unchanged.
+
+## Fix round 3 — stop/restart ABA and enforced snapshot invariants
+
+Status: IMPLEMENTED, pending independent re-review
+
+### Review findings addressed
+
+- Added a deterministic two-process ABA regression at both suspension points. An old status probe suspends in `lifecycleFailure()` or the subsequent ownership probe; stop fully terminates the old instance, start installs a distinct process instance that deliberately reports the same phase and process identity, and the old probe resumes. Per-instance signal assertions prove the old probe neither terminates the new child nor overwrites its healthy state. This validates that both state and process generations—not visible phase/identity equality—guard mutations.
+- Replaced the nonthrowing public `RuntimeSnapshot` initializer with a throwing validated initializer and custom Codable implementation. Public construction and decoded persistence now enforce the same invariant table for every phase. The module uses an internal explicitly labelled unchecked initializer only for supervisor-owned transient snapshots, and every internal publication is guarded by a structural precondition.
+- Defined exhaustive metadata semantics: healthy/degraded/stopping require a complete exact process identity and nonzero loopback port; unprepared/stopped/starting/recovering/failed forbid process and listener authority. Failed additionally requires an actionable error. Supervisor failure publication first releases managed-process ownership, publishes no PID/listener authority, and safely stops from failed/recovering without inventing an invalid stopping snapshot.
+- Added a bounded `AsyncGate.waitForWaiter` deadline so a broken suspension setup fails instead of spinning indefinitely.
+
+### RED evidence
+
+Command:
+
+`swift test --filter 'runtimeSnapshotRequiresExactMetadataShapeForEveryPhase|runtimeSnapshotDecodingRejectsMissingAndForbiddenAuthority|staleStatusProbeCannotAffectRestartedProcessWithReusedIdentity'`
+
+Observed result:
+
+- Constructor mutation tests recorded 16 failures across all eight phases because independently missing/added process identity and listener fields were accepted.
+- Corrupt healthy/stopped JSON decoded successfully, producing malformed snapshots.
+- The lifecycleFailure and ownership stop/restart ABA cases already passed, confirming the round-2 state/process generations reject even deliberate visible phase/identity reuse across distinct process instances.
+
+A quarantine hardening mutation then set a malformed internal snapshot restart count to `-1`; the regression failed because quarantine preserved `-1`. Quarantine now clamps corrupt counts to zero while removing all process/listener authority.
+
+### GREEN verification
+
+- `swift test --filter 'RuntimeStateTests|SynapseSupervisorLifecycleTests'`: 46 tests passed, 0 failed.
+- `swift test -c release --filter 'RuntimeStateTests|SynapseSupervisorLifecycleTests'`: 46 tests passed, 0 failed; production build succeeded.
+- `swift test`: 158 tests passed, 0 failed; 1 opt-in real-bootstrap test skipped as expected.
+- `git diff --check`: passed with no whitespace errors.
+
+### Fix-round self-review
+
+- Verified all eight phases accept their one valid authority shape and reject independent identity/listener mutations at both construction and JSON decoding boundaries; valid values round-trip through Codable.
+- Verified terminal failed snapshots cannot retain signalable PID/listener data and cannot exist without a diagnostic error.
+- Verified supervisor quarantine removes malformed authority, normalizes invalid restart count, and never invokes the process factory or signal path.
+- Verified the ABA test uses separate managed-process objects and records signals per instance; both objects intentionally emit the same `ManagedProcessIdentity`, so generation checks are the only discriminator.
+- Re-ran the accepted direct-child PID reservation, launch reservation/retry, listener, secure logs, EOF reader/redaction, cancellation, and stale-await tests unchanged.
+- Health polling, automatic recovery, and restart backoff remain deferred to Task 5.
