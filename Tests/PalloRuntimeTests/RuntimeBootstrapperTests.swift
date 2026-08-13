@@ -34,6 +34,16 @@ import Testing
         .isEmpty)
 }
 
+@Test func runtimeProvenanceAcceptsCanonicalProfileAliasFromAnchoredWorkingDirectory() async throws {
+    // Break caught: an equivalent physical runtime prefix is rejected because the child reports a filesystem alias.
+    let fixture = try BootstrapFixture(runtimeReportsPrefixAlias: true)
+    defer { fixture.remove() }
+
+    let receipt = try await fixture.runBootstrap()
+
+    #expect(receipt.pythonVersion == "3.12.7")
+}
+
 @Test func bootstrapRejectsPythonOutsideThePinnedMinorBeforeCreatingAProfile() async throws {
     // Break caught: an incompatible interpreter is allowed to create a partially prepared profile.
     let fixture = try BootstrapFixture(pythonVersion: "3.13.1")
@@ -62,6 +72,17 @@ import Testing
         )
     }
     #expect(!FileManager.default.fileExists(atPath: fixture.paths.profile.path))
+}
+
+@Test func bootstrapRejectsAShellAtAHomebrewLookingPathBeforeTrustingItsFacts() async throws {
+    // Break caught: candidate-emitted CPython JSON allows a shell under a forged Cellar-looking path to bootstrap.
+    let fixture = try BootstrapFixture(candidateFormat: .shell)
+    defer { fixture.remove() }
+
+    await #expect(throws: RuntimeBootstrapError.invalidPythonExecutable(fixture.cellarPython)) {
+        try await fixture.runBootstrap()
+    }
+    #expect(!fixture.candidateWasExecuted)
 }
 
 @Test func bootstrapRejectsPackageExtrasInsteadOfWeakeningTheLock() async throws {
@@ -223,6 +244,41 @@ import Testing
     #expect(try permissions(of: fixture.paths.profile) == 0o755)
 }
 
+@Test func bootstrapRejectsPreexistingInsecureRootBeforeReceiptWithoutRepair() async throws {
+    // Break caught: bootstrap silently chmods a preexisting 0755 profile root before a receipt exists.
+    let fixture = try BootstrapFixture()
+    defer { fixture.remove() }
+    try FileManager.default.createDirectory(at: fixture.paths.root, withIntermediateDirectories: true)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fixture.paths.root.path)
+
+    await #expect(throws: RuntimeBootstrapError.insecurePermissions(
+        fixture.paths.root,
+        expected: 0o700,
+        actual: 0o755
+    )) {
+        try await fixture.runBootstrap()
+    }
+    #expect(try permissions(of: fixture.paths.root) == 0o755)
+}
+
+@Test func bootstrapRejectsPreexistingInsecureProfileBeforeReceiptWithoutRepair() async throws {
+    // Break caught: bootstrap silently chmods a preexisting 0755 profile before a receipt exists.
+    let fixture = try BootstrapFixture()
+    defer { fixture.remove() }
+    try FileManager.default.createDirectory(at: fixture.paths.profile, withIntermediateDirectories: true)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.paths.root.path)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fixture.paths.profile.path)
+
+    await #expect(throws: RuntimeBootstrapError.insecurePermissions(
+        fixture.paths.profile,
+        expected: 0o700,
+        actual: 0o755
+    )) {
+        try await fixture.runBootstrap()
+    }
+    #expect(try permissions(of: fixture.paths.profile) == 0o755)
+}
+
 @Test func existingRuntimeRejectsReceiptPermissionDriftWithoutRepair() async throws {
     // Break caught: idempotent verification reads a receipt visible to other local users or silently repairs it.
     let fixture = try BootstrapFixture()
@@ -254,6 +310,17 @@ import Testing
     #expect(try permissions(of: fixture.runtimeLock) == 0o600)
 }
 
+@Test func pipConsumesAuthenticatedLockDescriptorAfterPathReplacement() async throws {
+    // Break caught: pip reopens the profile requirements path after authentication instead of consuming the held descriptor.
+    let fixture = try BootstrapFixture(replaceRuntimeLockImmediatelyBeforePip: true)
+    defer { fixture.remove() }
+
+    let receipt = try await fixture.runBootstrap()
+
+    #expect(receipt.installedPackages["matrix-synapse"] == "1.158.0")
+    #expect(fixture.pipReadInheritedLock == BootstrapFixture.lockContents)
+}
+
 @Test func ancestorSwapCannotRedirectReceiptPublication() async throws {
     // Break caught: replacing the profile ancestor after validation publishes a trusted receipt outside the profile.
     let fixture = try BootstrapFixture(swapProfileAfterVenvCreation: true)
@@ -265,6 +332,33 @@ import Testing
     #expect(!FileManager.default.fileExists(
         atPath: fixture.outsideDirectory.appendingPathComponent("runtime/prepared-runtime.json").path
     ))
+}
+
+@Test func ancestorSwapImmediatelyBeforeVenvCannotCreateAnAttackerArtifact() async throws {
+    // Break caught: venv receives an absolute profile path and writes into an attacker replacement before drift is detected.
+    let fixture = try BootstrapFixture(swapRuntimeImmediatelyBeforeVenv: true)
+    defer { fixture.remove() }
+
+    await #expect(throws: RuntimeBootstrapError.runtimePathIdentityChanged(fixture.paths.runtime)) {
+        try await fixture.runBootstrap()
+    }
+    #expect(!FileManager.default.fileExists(
+        atPath: fixture.outsideDirectory.appendingPathComponent("venv/attacker-marker").path
+    ))
+}
+
+@Test func existingReceiptSwapAfterOpenIsRejectedByDescriptorIdentity() async throws {
+    // Break caught: receipt validation fstats one pathname identity and then decodes a replacement opened by path.
+    let fixture = try BootstrapFixture()
+    defer { fixture.remove() }
+    _ = try await fixture.runBootstrap()
+    fixture.swapReceiptAfterOpen = true
+
+    await #expect(throws: RuntimeBootstrapError.runtimeFileIdentityChanged(
+        fixture.paths.runtime.appendingPathComponent("prepared-runtime.json")
+    )) {
+        try await fixture.runBootstrap()
+    }
 }
 
 @Test func subprocessRequestsExcludeHostilePythonAndPipEnvironment() async throws {
@@ -290,14 +384,26 @@ import Testing
     let fixture = try BootstrapFixture()
     defer { fixture.remove() }
     let publicBootstrapper = RuntimeBootstrapper(requirementsLock: fixture.lock)
+        .withTestDependencies(
+            brewExecutable: fixture.brewExecutable,
+            hostEnvironment: fixture.hostEnvironment,
+            processRunner: fixture.process,
+            filesystemEvent: fixture.handleFilesystemEvent,
+            now: { Date(timeIntervalSinceReferenceDate: 1234) }
+        )
 
-    let receipt = try await fixture.runBootstrap()
+    let receipt = try await publicBootstrapper.bootstrap(
+        python: fixture.basePython,
+        manifest: fixture.manifest,
+        paths: fixture.paths
+    )
 
     #expect(publicBootstrapper.requirementsLock == fixture.lock.standardizedFileURL)
     #expect(receipt.requirementsLockSHA256 == BootstrapFixture.lockSHA256)
 }
 
 private final class BootstrapFixture: @unchecked Sendable {
+    enum CandidateFormat { case machO, shell }
     static let lockContents = "matrix_synapse==1.158.0\npip==24.2\nsetuptools==75.1.0\n"
     static let lockSHA256 = "27ad29ab8d275b356ead8720ef071f8fb8abeb82c9facd9b5d0f045e3694d5a2"
 
@@ -315,6 +421,7 @@ private final class BootstrapFixture: @unchecked Sendable {
     """
 
     let directory: URL
+    let brewExecutable = URL(fileURLWithPath: "/opt/homebrew/bin/brew")
     let homebrewPrefix: URL
     let cellarVersion: URL
     let cellarPython: URL
@@ -324,12 +431,10 @@ private final class BootstrapFixture: @unchecked Sendable {
     let manifest: RuntimeManifest
     lazy var bootstrapper = RuntimeBootstrapper(
         requirementsLock: lock,
-        allowedHomebrewPrefixes: [homebrewPrefix],
+        brewExecutable: brewExecutable,
         hostEnvironment: hostEnvironment,
-        processRunner: { [weak self] request in
-            guard let self else { throw FixtureError.deallocated }
-            return try self.run(request)
-        },
+        processRunner: process,
+        filesystemEvent: handleFilesystemEvent,
         now: { Date(timeIntervalSinceReferenceDate: 1234) }
     )
     let pythonVersion: String
@@ -339,8 +444,15 @@ private final class BootstrapFixture: @unchecked Sendable {
     let replaceSourceLockDuringVenvCreation: Bool
     let swapProfileAfterVenvCreation: Bool
     let hostEnvironment: [String: String]
+    let candidateFormat: CandidateFormat
+    let runtimeReportsPrefixAlias: Bool
     var frozenPackages: String
     var rejectMutationCommands = false
+    var candidateWasExecuted = false
+    var pipReadInheritedLock: String?
+    var replaceRuntimeLockImmediatelyBeforePip = false
+    var swapRuntimeImmediatelyBeforeVenv = false
+    var swapReceiptAfterOpen = false
 
     var virtualEnvironment: URL { paths.runtime.appendingPathComponent("venv", isDirectory: true) }
     var virtualenvPython: URL { virtualEnvironment.appendingPathComponent("bin/python") }
@@ -357,6 +469,10 @@ private final class BootstrapFixture: @unchecked Sendable {
         synapseVersionError: String = BootstrapFixture.knownUnsupportedVersionStderr,
         replaceSourceLockDuringVenvCreation: Bool = false,
         swapProfileAfterVenvCreation: Bool = false,
+        replaceRuntimeLockImmediatelyBeforePip: Bool = false,
+        swapRuntimeImmediatelyBeforeVenv: Bool = false,
+        candidateFormat: CandidateFormat = .machO,
+        runtimeReportsPrefixAlias: Bool = false,
         hostEnvironment: [String: String] = ["HOME": "/safe-home", "TMPDIR": "/safe-tmp"]
     ) throws {
         directory = URL(fileURLWithPath: #filePath)
@@ -386,12 +502,23 @@ private final class BootstrapFixture: @unchecked Sendable {
         self.synapseVersionError = synapseVersionError
         self.replaceSourceLockDuringVenvCreation = replaceSourceLockDuringVenvCreation
         self.swapProfileAfterVenvCreation = swapProfileAfterVenvCreation
+        self.replaceRuntimeLockImmediatelyBeforePip = replaceRuntimeLockImmediatelyBeforePip
+        self.swapRuntimeImmediatelyBeforeVenv = swapRuntimeImmediatelyBeforeVenv
+        self.candidateFormat = candidateFormat
+        self.runtimeReportsPrefixAlias = runtimeReportsPrefixAlias
         self.hostEnvironment = hostEnvironment
 
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Self.lockContents.write(to: lock, atomically: true, encoding: .utf8)
         try FileManager.default.createDirectory(at: cellarPython.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try "#!/bin/sh\nexit 1\n".write(to: cellarPython, atomically: true, encoding: .utf8)
+        let candidateData: Data
+        switch candidateFormat {
+        case .machO:
+            candidateData = Data([0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0])
+        case .shell:
+            candidateData = Data("#!/bin/sh\nexit 0\n".utf8)
+        }
+        try candidateData.write(to: cellarPython)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: cellarPython.path)
         let optDirectory = homebrewPrefix.appendingPathComponent("opt", isDirectory: true)
         try FileManager.default.createDirectory(at: optDirectory, withIntermediateDirectories: true)
@@ -410,25 +537,49 @@ private final class BootstrapFixture: @unchecked Sendable {
         try await bootstrapper.bootstrap(python: basePython, manifest: manifest, paths: paths)
     }
 
+    lazy var process: RuntimeProcessRunner = { [weak self] request in
+        guard let self else { throw FixtureError.deallocated }
+        return try self.run(request)
+    }
+
+    lazy var handleFilesystemEvent: RuntimeFilesystemEventHandler = { [weak self] event in
+        guard let self else { throw FixtureError.deallocated }
+        if event == .receiptOpened, self.swapReceiptAfterOpen {
+            self.swapReceiptAfterOpen = false
+            let receipt = self.paths.runtime.appendingPathComponent("prepared-runtime.json")
+            let replacement = self.paths.runtime.appendingPathComponent("replacement-receipt.json")
+            try Data("{}".utf8).write(to: replacement)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: replacement.path)
+            try FileManager.default.removeItem(at: receipt)
+            try FileManager.default.moveItem(at: replacement, to: receipt)
+        }
+    }
+
     private func run(_ request: RuntimeProcessRequest) throws -> RuntimeProcessOutput {
         try validateIsolation(request)
         let executable = request.executable
         let arguments = request.arguments
+        if executable == brewExecutable, arguments == ["--prefix", "python@3.12"] {
+            return .init(status: 0, standardOutput: homebrewPrefix.appendingPathComponent("opt/python@3.12").path + "\n", standardError: "")
+        }
         if executable.standardizedFileURL == basePython.standardizedFileURL,
            arguments.count == 4,
            Array(arguments.prefix(3)) == ["-I", "-S", "-c"]
         {
+            candidateWasExecuted = true
             return .init(status: 0, standardOutput: pythonFacts(runtime: false), standardError: "")
         }
         if executable.standardizedFileURL == basePython.standardizedFileURL,
-           arguments == ["-I", "-m", "venv", virtualEnvironment.path]
+           arguments == ["-I", "-m", "venv", "venv"]
         {
             guard !rejectMutationCommands else { throw FixtureError.unexpectedMutation }
-            let bin = virtualEnvironment.appendingPathComponent("bin", isDirectory: true)
-            try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
-            try FileManager.default.createSymbolicLink(at: virtualenvPython, withDestinationURL: cellarPython)
-            try "fixture\n".write(to: synapseExecutable, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: synapseExecutable.path)
+            if swapRuntimeImmediatelyBeforeVenv {
+                let relocated = directory.appendingPathComponent("relocated-runtime", isDirectory: true)
+                try FileManager.default.moveItem(at: paths.runtime, to: relocated)
+                try FileManager.default.createDirectory(at: outsideDirectory, withIntermediateDirectories: true)
+                try FileManager.default.createSymbolicLink(at: paths.runtime, withDestinationURL: outsideDirectory)
+            }
+            try createVirtualEnvironment(at: request.workingDirectoryDescriptor)
             if replaceSourceLockDuringVenvCreation {
                 try "matrix-synapse==9.9.9\n".write(to: lock, atomically: true, encoding: .utf8)
             }
@@ -449,10 +600,21 @@ private final class BootstrapFixture: @unchecked Sendable {
             return .init(status: 0, standardOutput: pythonFacts(runtime: true), standardError: "")
         }
         if executable == virtualenvPython,
-           arguments == ["-I", "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--requirement", runtimeLock.path]
+           arguments.prefix(7) == ["-I", "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--requirement"],
+           arguments.count == 8,
+           arguments[7].hasPrefix("/dev/fd/")
         {
             guard !rejectMutationCommands else { throw FixtureError.unexpectedMutation }
-            guard try String(contentsOf: runtimeLock, encoding: .utf8) == Self.lockContents else {
+            if replaceRuntimeLockImmediatelyBeforePip {
+                try FileManager.default.removeItem(at: runtimeLock)
+                try Data("matrix-synapse==9.9.9\n".utf8).write(to: runtimeLock)
+            }
+            let inherited = try #require(request.inheritedDescriptors.first)
+            var bytes = [UInt8](repeating: 0, count: 4096)
+            let count = Darwin.pread(inherited.source, &bytes, bytes.count, 0)
+            guard count >= 0 else { throw POSIXError(.EIO) }
+            pipReadInheritedLock = String(decoding: bytes.prefix(Int(count)), as: UTF8.self)
+            guard pipReadInheritedLock == Self.lockContents else {
                 throw FixtureError.unverifiedLockConsumed
             }
             return .success
@@ -479,7 +641,10 @@ private final class BootstrapFixture: @unchecked Sendable {
     }
 
     private func pythonFacts(runtime: Bool) -> String {
-        let prefix = runtime ? virtualEnvironment.path : cellarVersion.path
+        let runtimePrefix = runtimeReportsPrefixAlias
+            ? "/System/Volumes/Data" + canonicalPath(paths.runtime) + "/venv"
+            : virtualEnvironment.path
+        let prefix = runtime ? runtimePrefix : cellarVersion.path
         let executable = runtime ? virtualenvPython.path : basePython.path
         let basePrefix = runtime
             ? homebrewPrefix.appendingPathComponent("opt/python@3.12", isDirectory: true).path
@@ -487,6 +652,38 @@ private final class BootstrapFixture: @unchecked Sendable {
         return """
         {"implementation":"\(pythonImplementation)","version":"\(pythonVersion)","executable":"\(executable)","executableRealPath":"\(cellarPython.path)","prefix":"\(prefix)","basePrefix":"\(basePrefix)"}
         """
+    }
+
+    private func createVirtualEnvironment(at runtimeDescriptor: Int32) throws {
+        guard Darwin.mkdirat(runtimeDescriptor, "venv", 0o700) == 0 || errno == EEXIST else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        let venv = Darwin.openat(runtimeDescriptor, "venv", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard venv >= 0 else { throw POSIXError(.EIO) }
+        defer { _ = Darwin.close(venv) }
+        guard Darwin.mkdirat(venv, "bin", 0o700) == 0 || errno == EEXIST else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        let bin = Darwin.openat(venv, "bin", O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard bin >= 0 else { throw POSIXError(.EIO) }
+        defer { _ = Darwin.close(bin) }
+        guard Darwin.symlinkat(cellarPython.path, bin, "python") == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        let synapse = Darwin.openat(bin, "synapse_homeserver", O_WRONLY | O_CREAT | O_EXCL, 0o755)
+        guard synapse >= 0 else { throw POSIXError(.EIO) }
+        _ = Darwin.close(synapse)
+        if swapRuntimeImmediatelyBeforeVenv {
+            let marker = Darwin.openat(venv, "attacker-marker", O_WRONLY | O_CREAT | O_EXCL, 0o600)
+            guard marker >= 0 else { throw POSIXError(.EIO) }
+            _ = Darwin.close(marker)
+        }
+    }
+
+    private func canonicalPath(_ url: URL) -> String {
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        guard Darwin.realpath(url.path, &buffer) != nil else { return url.path }
+        return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
     private func validateIsolation(_ request: RuntimeProcessRequest) throws {
@@ -497,8 +694,7 @@ private final class BootstrapFixture: @unchecked Sendable {
             throw FixtureError.hostileEnvironmentLeaked(forbidden.sorted())
         }
         guard request.environment["PATH"] == "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
-              request.workingDirectory.isFileURL,
-              request.workingDirectory.path.hasPrefix(directory.path)
+              request.workingDirectoryDescriptor >= 0
         else {
             throw FixtureError.unsanitizedRequest
         }

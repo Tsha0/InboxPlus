@@ -13,10 +13,11 @@ public struct RuntimeManifest: Codable, Sendable, Equatable {
     }
 
     public func validatePreparedRuntime(at url: URL) throws -> PreparedRuntimeReceipt {
-        let receipt = try JSONDecoder().decode(
-            PreparedRuntimeReceipt.self,
-            from: Data(contentsOf: url.standardizedFileURL)
-        )
+        try validatePreparedRuntime(data: Data(contentsOf: url.standardizedFileURL))
+    }
+
+    public func validatePreparedRuntime(data: Data) throws -> PreparedRuntimeReceipt {
+        let receipt = try JSONDecoder().decode(PreparedRuntimeReceipt.self, from: data)
 
         let pythonVersionComponents = receipt.pythonVersion.split(separator: ".", omittingEmptySubsequences: false)
         guard pythonVersionComponents.count == 3,

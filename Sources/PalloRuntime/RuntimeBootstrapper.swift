@@ -2,11 +2,24 @@ import CryptoKit
 import Darwin
 import Foundation
 
+@_silgen_name("posix_spawn_file_actions_addfchdir_np")
+private func pallo_spawn_file_actions_addfchdir(
+    _ actions: UnsafeMutablePointer<posix_spawn_file_actions_t?>,
+    _ descriptor: Int32
+) -> Int32
+
 struct RuntimeProcessRequest: Sendable, Equatable {
+    struct InheritedDescriptor: Sendable, Equatable {
+        let source: Int32
+        let target: Int32
+    }
+
     let executable: URL
+    let relativeExecutable: String?
     let arguments: [String]
     let environment: [String: String]
-    let workingDirectory: URL
+    let workingDirectoryDescriptor: Int32
+    let inheritedDescriptors: [InheritedDescriptor]
 }
 
 struct RuntimeProcessOutput: Sendable, Equatable {
@@ -18,6 +31,8 @@ struct RuntimeProcessOutput: Sendable, Equatable {
 }
 
 typealias RuntimeProcessRunner = @Sendable (RuntimeProcessRequest) async throws -> RuntimeProcessOutput
+enum RuntimeFilesystemEvent: Sendable, Equatable { case receiptOpened }
+typealias RuntimeFilesystemEventHandler = @Sendable (RuntimeFilesystemEvent) throws -> Void
 
 public struct RuntimeBootstrapper: Sendable {
     public static let directoryPermissions = 0o700
@@ -49,36 +64,54 @@ public struct RuntimeBootstrapper: Sendable {
     """
 
     public let requirementsLock: URL
-    private let allowedHomebrewPrefixes: [URL]
+    private let brewExecutable: URL
     private let environment: [String: String]
     private let processRunner: RuntimeProcessRunner
+    private let filesystemEvent: RuntimeFilesystemEventHandler
     private let now: @Sendable () -> Date
 
     public init(requirementsLock: URL) {
         self.init(
             requirementsLock: requirementsLock,
-            allowedHomebrewPrefixes: [
-                URL(fileURLWithPath: "/opt/homebrew", isDirectory: true),
-                URL(fileURLWithPath: "/usr/local", isDirectory: true),
-            ],
+            brewExecutable: URL(fileURLWithPath: "/opt/homebrew/bin/brew"),
             hostEnvironment: ProcessInfo.processInfo.environment,
             processRunner: Self.runFoundationProcess,
+            filesystemEvent: { _ in },
             now: Date.init
         )
     }
 
     init(
         requirementsLock: URL,
-        allowedHomebrewPrefixes: [URL],
+        brewExecutable: URL,
         hostEnvironment: [String: String],
         processRunner: @escaping RuntimeProcessRunner,
+        filesystemEvent: @escaping RuntimeFilesystemEventHandler = { _ in },
         now: @escaping @Sendable () -> Date
     ) {
         self.requirementsLock = requirementsLock.standardizedFileURL
-        self.allowedHomebrewPrefixes = allowedHomebrewPrefixes.map(\.standardizedFileURL)
+        self.brewExecutable = brewExecutable.standardizedFileURL
         environment = Self.sanitizedEnvironment(from: hostEnvironment)
         self.processRunner = processRunner
+        self.filesystemEvent = filesystemEvent
         self.now = now
+    }
+
+    func withTestDependencies(
+        brewExecutable: URL,
+        hostEnvironment: [String: String],
+        processRunner: @escaping RuntimeProcessRunner,
+        filesystemEvent: @escaping RuntimeFilesystemEventHandler,
+        now: @escaping @Sendable () -> Date
+    ) -> RuntimeBootstrapper {
+        RuntimeBootstrapper(
+            requirementsLock: requirementsLock,
+            brewExecutable: brewExecutable,
+            hostEnvironment: hostEnvironment,
+            processRunner: processRunner,
+            filesystemEvent: filesystemEvent,
+            now: now
+        )
     }
 
     public func bootstrap(
@@ -94,7 +127,22 @@ public struct RuntimeBootstrapper: Sendable {
             throw RuntimeBootstrapError.nonFileRequirementsLock(requirementsLock)
         }
 
-        let baseFacts = try await inspectBasePython(python, manifest: manifest)
+        let bootstrapDirectory = try OwnedDescriptor.openDirectory(
+            requirementsLock.deletingLastPathComponent()
+        )
+        let homebrewPrefix = try await trustedHomebrewPythonPrefix(
+            workingDirectoryDescriptor: bootstrapDirectory.rawValue
+        )
+        let canonicalPython = try Self.validateTrustedPythonExecutable(
+            python,
+            beneath: homebrewPrefix
+        )
+        let baseFacts = try await inspectBasePython(
+            python,
+            canonicalPython: canonicalPython,
+            manifest: manifest,
+            workingDirectoryDescriptor: bootstrapDirectory.rawValue
+        )
         let lockData = try Self.readRegularFileNoFollow(at: requirementsLock)
         let actualLockSHA256 = Self.sha256(lockData)
         guard actualLockSHA256 == manifest.requirementsLockSHA256 else {
@@ -107,10 +155,14 @@ public struct RuntimeBootstrapper: Sendable {
 
         let filesystem = try SecureRuntimeFilesystem.openOrCreate(paths: paths)
         if filesystem.receiptExists {
-            try filesystem.validateExistingLayout()
+            let receipt = try filesystem.readAndValidateReceipt(
+                manifest: manifest,
+                event: filesystemEvent
+            )
             try filesystem.validateRuntimeLock(expected: lockData)
             return try await verifyExistingRuntime(
                 baseFacts: baseFacts,
+                receipt: receipt,
                 manifest: manifest,
                 expectedPackages: expectedPackages,
                 filesystem: filesystem
@@ -120,15 +172,17 @@ public struct RuntimeBootstrapper: Sendable {
             throw RuntimeBootstrapError.existingRuntimeDrift("runtime directory exists without a prepared-runtime receipt")
         }
 
-        try filesystem.secureNewLayout()
         try filesystem.writeRuntimeLock(lockData)
+        let authenticatedRuntimeLock = try filesystem.openRuntimeLock(expected: lockData)
         try filesystem.validateIdentity()
 
         let virtualEnvironment = paths.runtime.appendingPathComponent("venv", isDirectory: true)
         try await runChecked(
             executable: python,
-            arguments: ["-I", "-m", "venv", virtualEnvironment.path],
-            workingDirectory: paths.runtime,
+            relativeExecutable: nil,
+            arguments: ["-I", "-m", "venv", "venv"],
+            workingDirectoryDescriptor: filesystem.runtimeDirectoryDescriptor,
+            inheritedDescriptors: [],
             filesystem: filesystem
         )
 
@@ -148,16 +202,17 @@ public struct RuntimeBootstrapper: Sendable {
             )
         }
 
-        let runtimeLock = paths.runtime.appendingPathComponent(Self.runtimeLockName)
         try await runChecked(
             executable: virtualenvPython,
+            relativeExecutable: "venv/bin/python",
             arguments: [
                 "-I", "-m", "pip", "install",
                 "--disable-pip-version-check",
                 "--no-input",
-                "--requirement", runtimeLock.path,
+                "--requirement", "/dev/fd/20",
             ],
-            workingDirectory: paths.runtime,
+            workingDirectoryDescriptor: filesystem.runtimeDirectoryDescriptor,
+            inheritedDescriptors: [.init(source: authenticatedRuntimeLock.rawValue, target: 20)],
             filesystem: filesystem
         )
 
@@ -188,8 +243,10 @@ public struct RuntimeBootstrapper: Sendable {
         try filesystem.validateIdentity()
         try filesystem.writeReceipt(receipt)
         try filesystem.validateIdentity()
-        let receiptURL = paths.runtime.appendingPathComponent(Self.receiptName)
-        let validatedReceipt = try manifest.validatePreparedRuntime(at: receiptURL)
+        let validatedReceipt = try filesystem.readAndValidateReceipt(
+            manifest: manifest,
+            event: filesystemEvent
+        )
         guard validatedReceipt == receipt else {
             throw RuntimeBootstrapError.existingRuntimeDrift("published receipt did not round-trip exactly")
         }
@@ -198,13 +255,12 @@ public struct RuntimeBootstrapper: Sendable {
 
     private func verifyExistingRuntime(
         baseFacts: PythonFacts,
+        receipt: PreparedRuntimeReceipt,
         manifest: RuntimeManifest,
         expectedPackages: [String: String],
         filesystem: SecureRuntimeFilesystem
     ) async throws -> PreparedRuntimeReceipt {
         try filesystem.validateIdentity()
-        let receiptURL = filesystem.paths.runtime.appendingPathComponent(Self.receiptName)
-        let receipt = try manifest.validatePreparedRuntime(at: receiptURL)
         guard receipt.pythonExecutable == baseFacts.executableRealPath else {
             throw RuntimeBootstrapError.existingRuntimeDrift(
                 "receipt interpreter \(receipt.pythonExecutable) does not match canonical interpreter \(baseFacts.executableRealPath)"
@@ -255,11 +311,35 @@ public struct RuntimeBootstrapper: Sendable {
         return receipt
     }
 
-    private func inspectBasePython(_ executable: URL, manifest: RuntimeManifest) async throws -> PythonFacts {
+    private func trustedHomebrewPythonPrefix(
+        workingDirectoryDescriptor: Int32
+    ) async throws -> URL {
+        let output = try await runChecked(
+            executable: brewExecutable,
+            relativeExecutable: nil,
+            arguments: ["--prefix", "python@3.12"],
+            workingDirectoryDescriptor: workingDirectoryDescriptor,
+            inheritedDescriptors: [],
+            filesystem: nil
+        )
+        let path = output.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard path.hasPrefix("/") else {
+            throw RuntimeBootstrapError.invalidHomebrewPrefix(path)
+        }
+        return try Self.canonicalExistingURL(URL(fileURLWithPath: path, isDirectory: true))
+    }
+
+    private func inspectBasePython(
+        _ executable: URL,
+        canonicalPython: URL,
+        manifest: RuntimeManifest,
+        workingDirectoryDescriptor: Int32
+    ) async throws -> PythonFacts {
         let facts = try await inspectPython(
             executable,
+            relativeExecutable: nil,
             omitSite: true,
-            workingDirectory: requirementsLock.deletingLastPathComponent(),
+            workingDirectoryDescriptor: workingDirectoryDescriptor,
             filesystem: nil
         )
         guard facts.implementation == "cpython" else {
@@ -267,20 +347,9 @@ public struct RuntimeBootstrapper: Sendable {
         }
         try Self.validateVersion(facts.version, requiredMinor: manifest.pythonMinor)
 
-        let canonicalInput = try Self.canonicalExistingURL(executable)
-        guard facts.executableRealPath == canonicalInput.path,
-              let homebrewPrefix = allowedHomebrewPrefixes.first(where: { prefix in
-                  let optPackage = prefix.appendingPathComponent("opt/python@3.12", isDirectory: true)
-                  let cellarPackage = prefix.appendingPathComponent("Cellar/python@3.12", isDirectory: true)
-                  return (Self.isContained(executable, by: optPackage) || Self.isContained(executable, by: cellarPackage))
-                      && Self.isContained(canonicalInput, by: cellarPackage)
-                      && Self.isContained(URL(fileURLWithPath: facts.basePrefix), by: cellarPackage)
-                      && Self.isContained(URL(fileURLWithPath: facts.prefix), by: cellarPackage)
-              })
-        else {
+        guard facts.executableRealPath == canonicalPython.path else {
             throw RuntimeBootstrapError.pythonNotFromHomebrew312(executable)
         }
-        _ = homebrewPrefix
         return facts
     }
 
@@ -292,8 +361,9 @@ public struct RuntimeBootstrapper: Sendable {
     ) async throws -> PythonFacts {
         let facts = try await inspectPython(
             executable,
+            relativeExecutable: "venv/bin/python",
             omitSite: false,
-            workingDirectory: filesystem.paths.runtime,
+            workingDirectoryDescriptor: filesystem.runtimeDirectoryDescriptor,
             filesystem: filesystem
         )
         guard facts.implementation == "cpython" else {
@@ -302,7 +372,10 @@ public struct RuntimeBootstrapper: Sendable {
         let runtimeBasePrefix = try Self.canonicalExistingURL(URL(fileURLWithPath: facts.basePrefix))
         let expectedBasePrefix = try Self.canonicalExistingURL(URL(fileURLWithPath: baseFacts.basePrefix))
         guard runtimeBasePrefix == expectedBasePrefix,
-              URL(fileURLWithPath: facts.prefix).standardizedFileURL == virtualEnvironment.standardizedFileURL,
+              try Self.sameExistingFile(
+                URL(fileURLWithPath: facts.prefix, isDirectory: true),
+                virtualEnvironment
+              ),
               facts.executableRealPath == baseFacts.executableRealPath
         else {
             throw RuntimeBootstrapError.invalidPythonProvenance("virtualenv provenance does not match the Homebrew base interpreter")
@@ -312,8 +385,9 @@ public struct RuntimeBootstrapper: Sendable {
 
     private func inspectPython(
         _ executable: URL,
+        relativeExecutable: String?,
         omitSite: Bool,
-        workingDirectory: URL,
+        workingDirectoryDescriptor: Int32,
         filesystem: SecureRuntimeFilesystem?
     ) async throws -> PythonFacts {
         let arguments = omitSite
@@ -321,8 +395,10 @@ public struct RuntimeBootstrapper: Sendable {
             : ["-I", "-c", Self.pythonFactsScript]
         let output = try await runChecked(
             executable: executable,
+            relativeExecutable: relativeExecutable,
             arguments: arguments,
-            workingDirectory: workingDirectory,
+            workingDirectoryDescriptor: workingDirectoryDescriptor,
+            inheritedDescriptors: [],
             filesystem: filesystem
         )
         do {
@@ -340,8 +416,10 @@ public struct RuntimeBootstrapper: Sendable {
     ) async throws -> [String: String] {
         let output = try await runChecked(
             executable: python,
+            relativeExecutable: "venv/bin/python",
             arguments: ["-I", "-m", "pip", "freeze", "--all"],
-            workingDirectory: filesystem.paths.runtime,
+            workingDirectoryDescriptor: filesystem.runtimeDirectoryDescriptor,
+            inheritedDescriptors: [],
             filesystem: filesystem
         )
         return try Self.parsePinnedPackages(Data(output.standardOutput.utf8))
@@ -358,8 +436,10 @@ public struct RuntimeBootstrapper: Sendable {
         }
         let probe = try await runRaw(
             executable: executable,
+            relativeExecutable: "venv/bin/synapse_homeserver",
             arguments: ["--version"],
-            workingDirectory: filesystem.paths.runtime,
+            workingDirectoryDescriptor: filesystem.runtimeDirectoryDescriptor,
+            inheritedDescriptors: [],
             filesystem: filesystem
         )
         let output: RuntimeProcessOutput
@@ -372,8 +452,10 @@ public struct RuntimeBootstrapper: Sendable {
         {
             output = try await runChecked(
                 executable: python,
+                relativeExecutable: "venv/bin/python",
                 arguments: ["-I", "-c", "import synapse; print(synapse.__version__)"],
-                workingDirectory: filesystem.paths.runtime,
+                workingDirectoryDescriptor: filesystem.runtimeDirectoryDescriptor,
+                inheritedDescriptors: [],
                 filesystem: filesystem
             )
         } else {
@@ -402,14 +484,18 @@ public struct RuntimeBootstrapper: Sendable {
     @discardableResult
     private func runChecked(
         executable: URL,
+        relativeExecutable: String?,
         arguments: [String],
-        workingDirectory: URL,
+        workingDirectoryDescriptor: Int32,
+        inheritedDescriptors: [RuntimeProcessRequest.InheritedDescriptor],
         filesystem: SecureRuntimeFilesystem?
     ) async throws -> RuntimeProcessOutput {
         let output = try await runRaw(
             executable: executable,
+            relativeExecutable: relativeExecutable,
             arguments: arguments,
-            workingDirectory: workingDirectory,
+            workingDirectoryDescriptor: workingDirectoryDescriptor,
+            inheritedDescriptors: inheritedDescriptors,
             filesystem: filesystem
         )
         guard output.status == 0 else {
@@ -425,16 +511,25 @@ public struct RuntimeBootstrapper: Sendable {
 
     private func runRaw(
         executable: URL,
+        relativeExecutable: String?,
         arguments: [String],
-        workingDirectory: URL,
+        workingDirectoryDescriptor: Int32,
+        inheritedDescriptors: [RuntimeProcessRequest.InheritedDescriptor],
         filesystem: SecureRuntimeFilesystem?
     ) async throws -> RuntimeProcessOutput {
         try filesystem?.validateIdentity()
+        for inherited in inheritedDescriptors {
+            guard Darwin.lseek(inherited.source, 0, SEEK_SET) >= 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+        }
         let output = try await processRunner(RuntimeProcessRequest(
             executable: executable,
+            relativeExecutable: relativeExecutable,
             arguments: arguments,
             environment: environment,
-            workingDirectory: workingDirectory.standardizedFileURL
+            workingDirectoryDescriptor: workingDirectoryDescriptor,
+            inheritedDescriptors: inheritedDescriptors
         ))
         try filesystem?.validateIdentity()
         return output
@@ -536,6 +631,67 @@ public struct RuntimeBootstrapper: Sendable {
         return URL(fileURLWithPath: String(decoding: bytes, as: UTF8.self))
     }
 
+    private static func sameExistingFile(_ lhs: URL, _ rhs: URL) throws -> Bool {
+        let leftDescriptor = Darwin.open(lhs.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard leftDescriptor >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        defer { _ = Darwin.close(leftDescriptor) }
+        var leftMetadata = stat()
+        guard Darwin.fstat(leftDescriptor, &leftMetadata) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+
+        let rightDescriptor = Darwin.open(rhs.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC)
+        guard rightDescriptor >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        defer { _ = Darwin.close(rightDescriptor) }
+        var rightMetadata = stat()
+        guard Darwin.fstat(rightDescriptor, &rightMetadata) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        return leftMetadata.st_dev == rightMetadata.st_dev
+            && leftMetadata.st_ino == rightMetadata.st_ino
+    }
+
+    private static func validateTrustedPythonExecutable(
+        _ selected: URL,
+        beneath homebrewPrefix: URL
+    ) throws -> URL {
+        let canonical = try canonicalExistingURL(selected)
+        guard isContained(canonical, by: homebrewPrefix) else {
+            throw RuntimeBootstrapError.pythonNotFromHomebrew312(selected)
+        }
+        let descriptor = Darwin.open(canonical.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            throw RuntimeBootstrapError.invalidPythonExecutable(canonical)
+        }
+        defer { _ = Darwin.close(descriptor) }
+
+        var metadata = stat()
+        guard Darwin.fstat(descriptor, &metadata) == 0,
+              metadata.st_mode & S_IFMT == S_IFREG,
+              metadata.st_uid == 0 || metadata.st_uid == Darwin.geteuid(),
+              metadata.st_mode & 0o022 == 0,
+              metadata.st_mode & 0o111 != 0
+        else {
+            throw RuntimeBootstrapError.invalidPythonExecutable(canonical)
+        }
+        var magic = [UInt8](repeating: 0, count: 4)
+        guard Darwin.pread(descriptor, &magic, magic.count, 0) == magic.count,
+              [
+                  [0xfe, 0xed, 0xfa, 0xce], [0xce, 0xfa, 0xed, 0xfe],
+                  [0xfe, 0xed, 0xfa, 0xcf], [0xcf, 0xfa, 0xed, 0xfe],
+                  [0xca, 0xfe, 0xba, 0xbe], [0xbe, 0xba, 0xfe, 0xca],
+                  [0xca, 0xfe, 0xba, 0xbf], [0xbf, 0xba, 0xfe, 0xca],
+              ].contains(magic)
+        else {
+            throw RuntimeBootstrapError.invalidPythonExecutable(canonical)
+        }
+        return canonical
+    }
+
     private static func isContained(_ child: URL, by root: URL) -> Bool {
         let child = child.standardizedFileURL.path
         let root = root.standardizedFileURL.path
@@ -565,22 +721,95 @@ public struct RuntimeBootstrapper: Sendable {
             try? stderr.close()
         }
 
-        let process = Process()
-        process.executableURL = request.executable
-        process.arguments = request.arguments
-        process.environment = request.environment
-        process.currentDirectoryURL = request.workingDirectory
-        process.standardOutput = stdout
-        process.standardError = stderr
-        try process.run()
-        process.waitUntilExit()
+        var actions: posix_spawn_file_actions_t?
+        guard posix_spawn_file_actions_init(&actions) == 0 else {
+            throw POSIXError(.EIO)
+        }
+        defer { posix_spawn_file_actions_destroy(&actions) }
+        var attributes: posix_spawnattr_t?
+        guard posix_spawnattr_init(&attributes) == 0 else {
+            throw POSIXError(.EIO)
+        }
+        defer { posix_spawnattr_destroy(&attributes) }
+        guard posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_CLOEXEC_DEFAULT)) == 0 else {
+            throw POSIXError(.EIO)
+        }
+        guard pallo_spawn_file_actions_addfchdir(&actions, request.workingDirectoryDescriptor) == 0,
+              posix_spawn_file_actions_adddup2(&actions, stdout.fileDescriptor, STDOUT_FILENO) == 0,
+              posix_spawn_file_actions_adddup2(&actions, stderr.fileDescriptor, STDERR_FILENO) == 0
+        else {
+            throw POSIXError(.EIO)
+        }
+        for inherited in request.inheritedDescriptors {
+            guard posix_spawn_file_actions_adddup2(&actions, inherited.source, inherited.target) == 0 else {
+                throw POSIXError(.EIO)
+            }
+        }
+
+        let launchedExecutable: String
+        let arguments: [String]
+        if let relativeExecutable = request.relativeExecutable {
+            launchedExecutable = "/bin/sh"
+            arguments = [
+                launchedExecutable,
+                "-c",
+                "exec \"$@\"",
+                "pallo-runtime",
+                "./" + relativeExecutable,
+            ] + request.arguments
+        } else {
+            launchedExecutable = request.executable.path
+            arguments = [launchedExecutable] + request.arguments
+        }
+        let environment = request.environment
+            .sorted(by: { $0.key < $1.key })
+            .map { "\($0.key)=\($0.value)" }
+        var processIdentifier = pid_t()
+        let spawnResult = try withMutableCStringArray(arguments) { argumentVector in
+            try withMutableCStringArray(environment) { environmentVector in
+                posix_spawn(
+                    &processIdentifier,
+                    launchedExecutable,
+                    &actions,
+                    &attributes,
+                    argumentVector,
+                    environmentVector
+                )
+            }
+        }
+        guard spawnResult == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: spawnResult) ?? .EIO)
+        }
+        var waitStatus = Int32()
+        guard Darwin.waitpid(processIdentifier, &waitStatus, 0) == processIdentifier else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
         try stdout.synchronize()
         try stderr.synchronize()
+        let terminationStatus: Int32
+        if waitStatus & 0x7f == 0 {
+            terminationStatus = (waitStatus >> 8) & 0xff
+        } else {
+            terminationStatus = 128 + (waitStatus & 0x7f)
+        }
         return RuntimeProcessOutput(
-            status: process.terminationStatus,
+            status: terminationStatus,
             standardOutput: String(decoding: try Data(contentsOf: stdoutURL), as: UTF8.self),
             standardError: String(decoding: try Data(contentsOf: stderrURL), as: UTF8.self)
         )
+    }
+
+    private static func withMutableCStringArray<Result>(
+        _ strings: [String],
+        _ body: (UnsafeMutablePointer<UnsafeMutablePointer<CChar>?>) throws -> Result
+    ) throws -> Result {
+        let storage: [UnsafeMutablePointer<CChar>] = strings.map { strdup($0)! }
+        defer { storage.forEach { free($0) } }
+        var pointers: [UnsafeMutablePointer<CChar>?] = storage.map { $0 }
+        pointers.append(nil)
+        return try pointers.withUnsafeMutableBufferPointer { buffer in
+            try body(buffer.baseAddress!)
+        }
     }
 }
 
@@ -593,10 +822,33 @@ private struct PythonFacts: Codable, Sendable, Equatable {
     let basePrefix: String
 }
 
+private final class OwnedDescriptor: @unchecked Sendable {
+    let rawValue: Int32
+
+    init(_ rawValue: Int32) {
+        self.rawValue = rawValue
+    }
+
+    deinit {
+        _ = Darwin.close(rawValue)
+    }
+
+    static func openDirectory(_ url: URL) throws -> OwnedDescriptor {
+        let descriptor = Darwin.open(url.path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        return OwnedDescriptor(descriptor)
+    }
+}
+
 private final class SecureRuntimeFilesystem: @unchecked Sendable {
     let paths: RuntimePaths
+    let rootWasCreated: Bool
+    let profileWasCreated: Bool
     let runtimeWasCreated: Bool
     let receiptExists: Bool
+    var runtimeDirectoryDescriptor: Int32 { runtimeDescriptor }
 
     private let rootDescriptor: Int32
     private let profileDescriptor: Int32
@@ -607,6 +859,8 @@ private final class SecureRuntimeFilesystem: @unchecked Sendable {
         rootDescriptor: Int32,
         profileDescriptor: Int32,
         runtimeDescriptor: Int32,
+        rootWasCreated: Bool,
+        profileWasCreated: Bool,
         runtimeWasCreated: Bool,
         receiptExists: Bool
     ) {
@@ -614,6 +868,8 @@ private final class SecureRuntimeFilesystem: @unchecked Sendable {
         self.rootDescriptor = rootDescriptor
         self.profileDescriptor = profileDescriptor
         self.runtimeDescriptor = runtimeDescriptor
+        self.rootWasCreated = rootWasCreated
+        self.profileWasCreated = profileWasCreated
         self.runtimeWasCreated = runtimeWasCreated
         self.receiptExists = receiptExists
     }
@@ -625,16 +881,31 @@ private final class SecureRuntimeFilesystem: @unchecked Sendable {
     }
 
     static func openOrCreate(paths: RuntimePaths) throws -> SecureRuntimeFilesystem {
-        let rootDescriptor = try openOrCreateAbsoluteDirectory(paths.root)
+        let (rootDescriptor, rootCreated) = try openOrCreateAbsoluteDirectory(paths.root)
         do {
-            let (profileDescriptor, _) = try openOrCreateChild(
+            try configureDirectory(
+                rootDescriptor,
+                url: paths.root,
+                created: rootCreated
+            )
+            let (profileDescriptor, profileCreated) = try openOrCreateChild(
                 parent: rootDescriptor,
                 name: paths.profile.lastPathComponent
             )
             do {
+                try configureDirectory(
+                    profileDescriptor,
+                    url: paths.profile,
+                    created: profileCreated
+                )
                 let (runtimeDescriptor, runtimeCreated) = try openOrCreateChild(
                     parent: profileDescriptor,
                     name: paths.runtime.lastPathComponent
+                )
+                try configureDirectory(
+                    runtimeDescriptor,
+                    url: paths.runtime,
+                    created: runtimeCreated
                 )
                 let receiptExists = try entryExists(
                     parent: runtimeDescriptor,
@@ -645,6 +916,8 @@ private final class SecureRuntimeFilesystem: @unchecked Sendable {
                     rootDescriptor: rootDescriptor,
                     profileDescriptor: profileDescriptor,
                     runtimeDescriptor: runtimeDescriptor,
+                    rootWasCreated: rootCreated,
+                    profileWasCreated: profileCreated,
                     runtimeWasCreated: runtimeCreated,
                     receiptExists: receiptExists
                 )
@@ -658,36 +931,8 @@ private final class SecureRuntimeFilesystem: @unchecked Sendable {
         }
     }
 
-    func secureNewLayout() throws {
-        try setPermissions(rootDescriptor, url: paths.root, expected: RuntimeBootstrapper.directoryPermissions)
-        try setPermissions(profileDescriptor, url: paths.profile, expected: RuntimeBootstrapper.directoryPermissions)
-        try setPermissions(runtimeDescriptor, url: paths.runtime, expected: RuntimeBootstrapper.directoryPermissions)
-        try validateIdentity()
-    }
-
-    func validateExistingLayout() throws {
-        try Self.validateDirectory(rootDescriptor, url: paths.root, expected: RuntimeBootstrapper.directoryPermissions)
-        try Self.validateDirectory(profileDescriptor, url: paths.profile, expected: RuntimeBootstrapper.directoryPermissions)
-        try Self.validateDirectory(runtimeDescriptor, url: paths.runtime, expected: RuntimeBootstrapper.directoryPermissions)
-        try validateRegularEntry(
-            name: RuntimeBootstrapper.receiptName,
-            url: paths.runtime.appendingPathComponent(RuntimeBootstrapper.receiptName),
-            expected: RuntimeBootstrapper.receiptPermissions
-        )
-        try validateIdentity()
-    }
-
     func validateRuntimeLock(expected data: Data) throws {
-        let url = paths.runtime.appendingPathComponent(RuntimeBootstrapper.runtimeLockName)
-        try validateRegularEntry(
-            name: RuntimeBootstrapper.runtimeLockName,
-            url: url,
-            expected: RuntimeBootstrapper.receiptPermissions
-        )
-        let actual = try readEntry(name: RuntimeBootstrapper.runtimeLockName)
-        guard actual == data else {
-            throw RuntimeBootstrapError.existingRuntimeDrift("profile requirements.lock differs from the authenticated lock")
-        }
+        _ = try openRuntimeLock(expected: data)
     }
 
     func writeRuntimeLock(_ data: Data) throws {
@@ -724,6 +969,55 @@ private final class SecureRuntimeFilesystem: @unchecked Sendable {
         published = true
     }
 
+    func readAndValidateReceipt(
+        manifest: RuntimeManifest,
+        event: RuntimeFilesystemEventHandler
+    ) throws -> PreparedRuntimeReceipt {
+        let name = RuntimeBootstrapper.receiptName
+        let url = paths.runtime.appendingPathComponent(name)
+        let file = try openRegularEntry(
+            name: name,
+            url: url,
+            expected: RuntimeBootstrapper.receiptPermissions
+        )
+        var openedMetadata = stat()
+        guard Darwin.fstat(file.rawValue, &openedMetadata) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        try event(.receiptOpened)
+        guard Darwin.lseek(file.rawValue, 0, SEEK_SET) >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        let handle = FileHandle(fileDescriptor: file.rawValue, closeOnDealloc: false)
+        let data = try handle.readToEnd() ?? Data()
+        try compareEntryIdentity(name: name, url: url, opened: openedMetadata)
+        return try manifest.validatePreparedRuntime(data: data)
+    }
+
+    func openRuntimeLock(expected data: Data) throws -> OwnedDescriptor {
+        let name = RuntimeBootstrapper.runtimeLockName
+        let url = paths.runtime.appendingPathComponent(name)
+        let file = try openRegularEntry(
+            name: name,
+            url: url,
+            expected: RuntimeBootstrapper.receiptPermissions
+        )
+        var openedMetadata = stat()
+        guard Darwin.fstat(file.rawValue, &openedMetadata) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        let handle = FileHandle(fileDescriptor: file.rawValue, closeOnDealloc: false)
+        let actual = try handle.readToEnd() ?? Data()
+        try compareEntryIdentity(name: name, url: url, opened: openedMetadata)
+        guard actual == data else {
+            throw RuntimeBootstrapError.existingRuntimeDrift("profile requirements.lock differs from the authenticated lock")
+        }
+        guard Darwin.lseek(file.rawValue, 0, SEEK_SET) >= 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        return file
+    }
+
     func validateIdentity() throws {
         try compareIdentity(rootDescriptor, url: paths.root)
         try compareIdentity(profileDescriptor, url: paths.profile)
@@ -754,42 +1048,37 @@ private final class SecureRuntimeFilesystem: @unchecked Sendable {
         }
     }
 
-    private func readEntry(name: String) throws -> Data {
+    private func openRegularEntry(name: String, url: URL, expected: Int) throws -> OwnedDescriptor {
         let descriptor = Darwin.openat(runtimeDescriptor, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
         guard descriptor >= 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
-        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-        do {
-            let data = try handle.readToEnd() ?? Data()
-            try handle.close()
-            return data
-        } catch {
-            try? handle.close()
-            throw error
-        }
-    }
-
-    private func validateRegularEntry(name: String, url: URL, expected: Int) throws {
         var metadata = stat()
-        guard Darwin.fstatat(runtimeDescriptor, name, &metadata, AT_SYMLINK_NOFOLLOW) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        guard Darwin.fstat(descriptor, &metadata) == 0 else {
+            let code = errno
+            _ = Darwin.close(descriptor)
+            throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
         }
         guard metadata.st_mode & S_IFMT == S_IFREG else {
+            _ = Darwin.close(descriptor)
             throw RuntimeBootstrapError.notRegularFile(url)
         }
         let actual = Int(metadata.st_mode & 0o777)
         guard actual == expected else {
+            _ = Darwin.close(descriptor)
             throw RuntimeBootstrapError.insecurePermissions(url, expected: expected, actual: actual)
         }
+        return OwnedDescriptor(descriptor)
     }
 
-    private static func openOrCreateAbsoluteDirectory(_ url: URL) throws -> Int32 {
+    private static func openOrCreateAbsoluteDirectory(_ url: URL) throws -> (Int32, Bool) {
         var descriptor = Darwin.open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC)
         guard descriptor >= 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
-        for component in url.standardizedFileURL.pathComponents.dropFirst() {
+        var finalCreated = false
+        let components = Array(url.standardizedFileURL.pathComponents.dropFirst())
+        for (index, component) in components.enumerated() {
             do {
                 let (next, created) = try openOrCreateChild(parent: descriptor, name: component)
                 if created {
@@ -801,12 +1090,15 @@ private final class SecureRuntimeFilesystem: @unchecked Sendable {
                 }
                 _ = Darwin.close(descriptor)
                 descriptor = next
+                if index == components.indices.last {
+                    finalCreated = created
+                }
             } catch {
                 _ = Darwin.close(descriptor)
                 throw error
             }
         }
-        return descriptor
+        return (descriptor, finalCreated)
     }
 
     private static func openOrCreateChild(parent: Int32, name: String) throws -> (Int32, Bool) {
@@ -836,11 +1128,13 @@ private final class SecureRuntimeFilesystem: @unchecked Sendable {
         throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
     }
 
-    private func setPermissions(_ descriptor: Int32, url: URL, expected: Int) throws {
-        guard Darwin.fchmod(descriptor, mode_t(expected)) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    private static func configureDirectory(_ descriptor: Int32, url: URL, created: Bool) throws {
+        if created {
+            guard Darwin.fchmod(descriptor, mode_t(RuntimeBootstrapper.directoryPermissions)) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
         }
-        try Self.validateDirectory(descriptor, url: url, expected: expected)
+        try validateDirectory(descriptor, url: url, expected: RuntimeBootstrapper.directoryPermissions)
     }
 
     private static func validateDirectory(_ descriptor: Int32, url: URL, expected: Int) throws {
@@ -866,10 +1160,23 @@ private final class SecureRuntimeFilesystem: @unchecked Sendable {
             throw RuntimeBootstrapError.runtimePathIdentityChanged(url)
         }
     }
+
+    private func compareEntryIdentity(name: String, url: URL, opened: stat) throws {
+        var path = stat()
+        guard Darwin.fstatat(runtimeDescriptor, name, &path, AT_SYMLINK_NOFOLLOW) == 0,
+              path.st_mode & S_IFMT == S_IFREG,
+              opened.st_dev == path.st_dev,
+              opened.st_ino == path.st_ino
+        else {
+            throw RuntimeBootstrapError.runtimeFileIdentityChanged(url)
+        }
+    }
 }
 
 public enum RuntimeBootstrapError: Error, Equatable, Sendable {
     case pythonNotExecutable(URL)
+    case invalidPythonExecutable(URL)
+    case invalidHomebrewPrefix(String)
     case nonFileRequirementsLock(URL)
     case malformedPythonVersion(String)
     case unsupportedPythonVersion(String, requiredMinor: String)
@@ -886,4 +1193,5 @@ public enum RuntimeBootstrapError: Error, Equatable, Sendable {
     case insecurePermissions(URL, expected: Int, actual: Int)
     case notRegularFile(URL)
     case runtimePathIdentityChanged(URL)
+    case runtimeFileIdentityChanged(URL)
 }
