@@ -28,7 +28,7 @@
 
 ### Package and runtime manifest
 
-- `Package.swift`: expose `PalloRuntime`, `PalloRuntimeCLI`, and `PalloRuntimeTests`.
+- `Package.swift`: expose `PalloRuntime` and `PalloRuntimeTests` in Task 1, then add `PalloRuntimeCLI` when its source is introduced in Task 6.
 - `Runtime/Synapse/runtime-manifest.json`: declare schema version, Python minor line, Synapse version, lockfile path, and lockfile checksum.
 - `Runtime/Synapse/requirements.in`: declare direct Python dependency `matrix-synapse==1.158.0`.
 - `Runtime/Synapse/requirements.lock`: exact transitive package versions used by bootstrap.
@@ -130,7 +130,7 @@ public struct RuntimePaths: Sendable {
 }
 ```
 
-Add products/targets for `PalloRuntime`, `PalloRuntimeCLI`, and `PalloRuntimeTests`. Validate names against `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`, standardize every URL, reject symlinked ancestors, and require every resolved child path to remain beneath the standardized root.
+Add the `PalloRuntime` product/target and `PalloRuntimeTests` target. Defer the `PalloRuntimeCLI` product/target to Task 6, where its first source file is created. Validate names against `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`, standardize every URL, reject symlinked ancestors, and require every resolved child path to remain beneath the standardized root.
 
 - [ ] **Step 4: Generate and check the exact Python dependency lock**
 
@@ -452,6 +452,7 @@ git commit -m "feat: recover bounded Synapse crashes"
 ### Task 6: Add the developer CLI and stable command outcomes
 
 **Files:**
+- Modify: `Package.swift`
 - Create: `Sources/PalloRuntimeCLI/RuntimeCommand.swift`
 - Create: `Sources/PalloRuntimeCLI/main.swift`
 - Create: `Tests/PalloRuntimeTests/RuntimeCommandTests.swift`
@@ -512,7 +513,7 @@ struct VerifyCLIOptions: Equatable {
 }
 ```
 
-Keep construction and formatted output in `main.swift`; business logic remains in `PalloRuntime`. Print one concise summary to stdout, diagnostics to stderr, and map typed runtime errors to documented stable integer codes.
+Add the `PalloRuntimeCLI` executable product/target to `Package.swift`. Keep construction and formatted output in `main.swift`; business logic remains in `PalloRuntime`. Print one concise summary to stdout, diagnostics to stderr, and map typed runtime errors to documented stable integer codes.
 
 - [ ] **Step 4: Run CLI parser and package tests**
 
@@ -525,7 +526,7 @@ Expected: tests PASS; CLI bootstrap succeeds, status reports `healthy` while sta
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/PalloRuntimeCLI Tests/PalloRuntimeTests/RuntimeCommandTests.swift
+git add Package.swift Sources/PalloRuntimeCLI Tests/PalloRuntimeTests/RuntimeCommandTests.swift
 git commit -m "feat: expose Synapse developer CLI"
 ```
 
