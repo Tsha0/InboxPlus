@@ -200,6 +200,7 @@ private func staleStatusProbeCannotAffectRestartedProcessWithReusedIdentity(
         loopbackPort: 18_008,
         processFactory: SequencedFakeManagedProcessFactory(processes: [oldProcess, newProcess]),
         listenerChecker: FakeListenerChecker(responses: [false, false]),
+        healthChecker: LifecycleHealthyChecker(),
         listenerVerificationAttempts: 1,
         listenerVerificationInterval: .zero,
         sleep: { _ in }
@@ -691,6 +692,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
         ),
         loopbackPort: 18_008,
         listenerChecker: FakeListenerChecker(responses: [false]),
+        healthChecker: LifecycleHealthyChecker(),
         gracefulTerminationTimeout: .seconds(2),
         forcedTerminationTimeout: .seconds(1),
         listenerVerificationAttempts: 1,
@@ -883,6 +885,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
         loopbackPort: 18_008,
         processFactory: FoundationManagedProcessFactory(logWriteHook: { _ in throw injected }),
         listenerChecker: FakeListenerChecker(responses: [false]),
+        healthChecker: LifecycleHealthyChecker(),
         forcedTerminationTimeout: .seconds(2),
         listenerVerificationAttempts: 1
     )
@@ -944,6 +947,7 @@ private struct SupervisorFixture {
             loopbackPort: 18_008,
             processFactory: FakeManagedProcessFactory(process: process),
             listenerChecker: listener,
+            healthChecker: LifecycleHealthyChecker(),
             initialSnapshot: initialSnapshot,
             gracefulTerminationTimeout: .seconds(5),
             forcedTerminationTimeout: .seconds(1),
@@ -965,6 +969,12 @@ private func fakeManagedProcessConfiguration() -> ManagedProcessConfiguration {
         standardOutputLog: URL(fileURLWithPath: "/tmp/logs/pallo-stdout.log"),
         standardErrorLog: URL(fileURLWithPath: "/tmp/logs/pallo-stderr.log")
     )
+}
+
+private struct LifecycleHealthyChecker: SynapseHealthChecking {
+    func check(snapshot: RuntimeSnapshot) async -> HealthResult {
+        .healthy(latency: .zero)
+    }
 }
 
 private actor AsyncGate {
