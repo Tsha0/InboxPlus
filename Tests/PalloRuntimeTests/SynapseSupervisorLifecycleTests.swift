@@ -66,6 +66,24 @@ import Testing
     #expect(try await fixture.supervisor.stop().phase == .stopped)
 }
 
+@Test func stopDuringSuspendedStartLifecycleProbeCannotSupersedeStartup() async throws {
+    // Break caught: start loses its operation ownership while checking post-launch lifecycle I/O.
+    let fixture = SupervisorFixture()
+    let gate = AsyncGate()
+    await fixture.process.configureLifecycleFailure(nil, gate: gate)
+    let start = Task { try await fixture.supervisor.start() }
+    await gate.waitForWaiter()
+
+    await #expect(throws: RuntimeStateError.invalidTransition(from: .starting, to: .stopping)) {
+        try await fixture.supervisor.stop()
+    }
+    await gate.open()
+
+    #expect(try await start.value.phase == .healthy)
+    #expect(try await fixture.supervisor.stop().phase == .stopped)
+    #expect(await fixture.process.metrics().signals == [.terminate])
+}
+
 @Test func processIdentityMismatchNeverReceivesAnySignal() async throws {
     // Break caught: a reused PID is terminated despite a different executable/start token.
     let fixture = SupervisorFixture()
@@ -108,6 +126,94 @@ import Testing
 
     #expect(snapshot.phase == .failed)
     #expect(snapshot.processIdentity == .expected)
+    #expect(await fixture.process.metrics().signals.isEmpty)
+}
+
+@Test func suspendedLifecycleFailureProbeCannotOverwriteNewerStoppedState() async throws {
+    // Break caught: status resumes a stale failure probe and overwrites a stop that completed meanwhile.
+    let fixture = SupervisorFixture()
+    _ = try await fixture.supervisor.start()
+    let gate = AsyncGate()
+    await fixture.process.configureLifecycleFailure(
+        .logFailure(operation: "stale lifecycle probe", code: EIO),
+        gate: gate
+    )
+    let status = Task { await fixture.supervisor.status() }
+    await gate.waitForWaiter()
+
+    #expect(try await fixture.supervisor.stop().phase == .stopped)
+    await gate.open()
+
+    #expect(await status.value.phase == .stopped)
+    #expect(await fixture.supervisor.status().phase == .stopped)
+    #expect(await fixture.process.metrics().signals == [.terminate])
+}
+
+@Test func suspendedOwnershipProbeCannotOverwriteNewerStoppedState() async throws {
+    // Break caught: lifecycle cleanup resumes stale ownership and fails or signals after stop has won.
+    let fixture = SupervisorFixture()
+    _ = try await fixture.supervisor.start()
+    let gate = AsyncGate()
+    await fixture.process.configureLifecycleFailure(
+        .logFailure(operation: "ownership probe", code: EIO),
+        gate: nil
+    )
+    await fixture.process.suspendNextOwnership(on: gate)
+    let status = Task { await fixture.supervisor.status() }
+    await gate.waitForWaiter()
+
+    #expect(try await fixture.supervisor.stop().phase == .stopped)
+    await gate.open()
+
+    #expect(await status.value.phase == .stopped)
+    #expect(await fixture.supervisor.status().phase == .stopped)
+    #expect(await fixture.process.metrics().signals == [.terminate])
+}
+
+@Test(arguments: [RuntimePhase.healthy, .degraded])
+func corruptActiveSnapshotWithoutIdentityBecomesActionableFailure(phase: RuntimePhase) async {
+    // Break caught: persisted running metadata without a process identity is reported healthy/degraded.
+    let corrupt = RuntimeSnapshot(
+        phase: phase,
+        processIdentity: nil,
+        loopbackPort: 18_008,
+        restartCount: 0,
+        lastHealthResult: nil,
+        diagnosticLogDirectory: nil,
+        lastError: nil
+    )
+    let fixture = SupervisorFixture(initialSnapshot: corrupt)
+
+    let status = await fixture.supervisor.status()
+    #expect(status.phase == .failed)
+    #expect(status.lastError?.contains("invalidSnapshot") == true)
+    #expect(await fixture.process.metrics().signals.isEmpty)
+}
+
+@Test(arguments: [RuntimePhase.stopped, .unprepared])
+func corruptInactiveSnapshotWithRuntimeMetadataIsNeverStoppedOrSignalled(
+    phase: RuntimePhase
+) async {
+    // Break caught: stale PID/listener metadata in an inactive phase is trusted or silently discarded.
+    let corrupt = RuntimeSnapshot(
+        phase: phase,
+        processIdentity: .expected,
+        loopbackPort: 18_008,
+        restartCount: 0,
+        lastHealthResult: nil,
+        diagnosticLogDirectory: nil,
+        lastError: nil
+    )
+    let fixture = SupervisorFixture(
+        initialSnapshot: corrupt,
+        initialProcessIdentity: .expected
+    )
+
+    #expect(await fixture.supervisor.status().phase == .failed)
+    await #expect(throws: (any Error).self) {
+        try await fixture.supervisor.stop()
+    }
+    #expect(await fixture.supervisor.status().phase == .failed)
     #expect(await fixture.process.metrics().signals.isEmpty)
 }
 
@@ -426,6 +532,76 @@ import Testing
     #expect(await processDisappears(identity.processIdentifier))
 }
 
+@Test func foundationManagedProcessRejectsSequentialSecondLaunchAndRetainsFirstChild() async throws {
+    // Break caught: a second launch overwrites direct-child ownership and orphans the first PID.
+    let fixture = try SecureProcessDirectories(prefix: "PalloSequentialLaunchReservationTests")
+    defer { fixture.remove() }
+    let process = try FoundationManagedProcessFactory().make(try managedConfiguration(
+        fixture: fixture,
+        executable: "/bin/sleep",
+        arguments: ["5"]
+    ))
+    let first = try await process.launch()
+    var unexpectedSecond: ManagedProcessIdentity?
+
+    do {
+        unexpectedSecond = try await process.launch()
+        Issue.record("second launch unexpectedly succeeded")
+    } catch let error as ManagedProcessError {
+        #expect(error == .alreadyLaunched)
+    }
+
+    if let unexpectedSecond {
+        _ = Darwin.kill(unexpectedSecond.processIdentifier, SIGKILL)
+        _ = Darwin.kill(first.processIdentifier, SIGKILL)
+        var status: Int32 = 0
+        _ = Darwin.waitpid(unexpectedSecond.processIdentifier, &status, 0)
+        _ = Darwin.waitpid(first.processIdentifier, &status, 0)
+    } else {
+        _ = try await process.signal(.kill, ifMatching: first)
+        #expect(try await process.waitForExit(matching: first, timeout: .seconds(2)))
+    }
+}
+
+@Test func foundationManagedProcessReservesConcurrentLaunchBeforeSpawning() async throws {
+    // Break caught: two concurrent launch callers both pass an unreserved pre-spawn state.
+    let fixture = try SecureProcessDirectories(prefix: "PalloConcurrentLaunchReservationTests")
+    defer { fixture.remove() }
+    let gate = ConcurrentSpawnGate()
+    let process = try FoundationManagedProcessFactory(afterSpawn: { pid in
+        gate.recordAndBlockFirst(pid)
+    }).make(try managedConfiguration(
+        fixture: fixture,
+        executable: "/bin/sleep",
+        arguments: ["5"]
+    ))
+    let firstLaunch = Task { try await process.launch() }
+    try #require(gate.waitForFirstSpawn() != nil)
+    var unexpectedSecond: ManagedProcessIdentity?
+
+    do {
+        unexpectedSecond = try await process.launch()
+        Issue.record("concurrent launch unexpectedly spawned a second child")
+    } catch let error as ManagedProcessError {
+        #expect(error == .alreadyLaunched)
+    }
+    gate.releaseFirst()
+
+    if unexpectedSecond != nil {
+        for pid in gate.pids {
+            _ = Darwin.kill(pid, SIGKILL)
+            var status: Int32 = 0
+            _ = Darwin.waitpid(pid, &status, 0)
+        }
+        _ = try? await firstLaunch.value
+    } else {
+        let first = try await firstLaunch.value
+        #expect(gate.pids == [first.processIdentifier])
+        _ = try await process.signal(.kill, ifMatching: first)
+        #expect(try await process.waitForExit(matching: first, timeout: .seconds(2)))
+    }
+}
+
 @Test func supervisorGracefullyStopsARealFoundationChild() async throws {
     // Break caught: the lifecycle passes with fakes while the production process adapter cannot terminate and reap its child.
     let fixture = try SecureProcessDirectories(prefix: "PalloRealSupervisorTests")
@@ -509,13 +685,14 @@ import Testing
     }
 }
 
-@Test func identityAcquisitionFailureTerminatesAndReapsSpawnedChild() async throws {
-    // Break caught: exhausting identity probes throws while the exact direct child remains alive.
+@Test func identityAcquisitionFailureReapsChildAndAllowsIntentionalRetry() async throws {
+    // Break caught: failed identity acquisition strands a child or leaves launch reservation terminally occupied.
     let fixture = try SecureProcessDirectories(prefix: "PalloIdentityFailureTests")
     defer { fixture.remove() }
     let spawn = SpawnEvidence()
+    let identityReader = ToggleIdentityReader()
     let factory = FoundationManagedProcessFactory(
-        identityReader: { _ in nil },
+        identityReader: { pid in identityReader.read(pid) },
         afterSpawn: { pid in spawn.record(pid) }
     )
     let process = try factory.make(try managedConfiguration(
@@ -538,6 +715,11 @@ import Testing
     if let pid = spawn.pid {
         #expect(await processDisappears(pid))
     }
+
+    identityReader.enable()
+    let retried = try await process.launch()
+    _ = try await process.signal(.kill, ifMatching: retried)
+    #expect(try await process.waitForExit(matching: retried, timeout: .seconds(2)))
 }
 
 @Test func releasingProcessOwnerTerminatesAndReapsItsDirectChild() async throws {
@@ -703,9 +885,11 @@ private struct SupervisorFixture {
 private actor AsyncGate {
     private var continuation: CheckedContinuation<Void, Never>?
     private var isOpen = false
+    private var waiterCount = 0
 
     func wait() async {
         if isOpen { return }
+        waiterCount += 1
         await withCheckedContinuation { continuation = $0 }
     }
 
@@ -713,6 +897,10 @@ private actor AsyncGate {
         isOpen = true
         continuation?.resume()
         continuation = nil
+    }
+
+    func waitForWaiter() async {
+        while waiterCount == 0 { await Task.yield() }
     }
 }
 
@@ -731,6 +919,9 @@ private actor FakeManagedProcess: ManagedProcess {
     private var currentIdentity: ManagedProcessIdentity?
     private var ownsCurrentIdentity = false
     private var identityStatusOverride: ManagedProcessIdentityStatus?
+    private var lifecycleFailureValue: ManagedProcessError?
+    private var lifecycleFailureGate: AsyncGate?
+    private var nextOwnershipGate: AsyncGate?
     private var state = Metrics()
     private var waitCalls = 0
 
@@ -766,8 +957,15 @@ private actor FakeManagedProcess: ManagedProcess {
         return currentIdentity == expected ? .matching : .mismatched(actual: currentIdentity)
     }
 
-    func ownership(for expected: ManagedProcessIdentity) -> ManagedProcessOwnership {
-        ownsCurrentIdentity && currentIdentity == expected ? .directChild : .observedOnly
+    func ownership(for expected: ManagedProcessIdentity) async -> ManagedProcessOwnership {
+        let result: ManagedProcessOwnership = ownsCurrentIdentity && currentIdentity == expected
+            ? .directChild
+            : .observedOnly
+        if let gate = nextOwnershipGate {
+            nextOwnershipGate = nil
+            await gate.wait()
+        }
+        return result
     }
 
     func signal(_ signal: ManagedProcessSignal, ifMatching expected: ManagedProcessIdentity) async throws -> Bool {
@@ -811,6 +1009,20 @@ private actor FakeManagedProcess: ManagedProcess {
         identityStatusOverride = value
     }
 
+    func configureLifecycleFailure(_ value: ManagedProcessError?, gate: AsyncGate?) {
+        lifecycleFailureValue = value
+        lifecycleFailureGate = gate
+    }
+
+    func suspendNextOwnership(on gate: AsyncGate) {
+        nextOwnershipGate = gate
+    }
+
+    func lifecycleFailure() async -> ManagedProcessError? {
+        if let lifecycleFailureGate { await lifecycleFailureGate.wait() }
+        return lifecycleFailureValue
+    }
+
     func metrics() -> Metrics { state }
 }
 
@@ -833,6 +1045,24 @@ private final class IdentityReadSequence: @unchecked Sendable {
         readCount += 1
         guard readCount <= successfulReadCount else { return nil }
         return FoundationManagedProcess.readIdentity(for: pid)
+    }
+}
+
+private final class ToggleIdentityReader: @unchecked Sendable {
+    private let lock = NSLock()
+    private var enabled = false
+
+    func enable() {
+        lock.lock()
+        enabled = true
+        lock.unlock()
+    }
+
+    func read(_ pid: pid_t) -> ManagedProcessIdentity? {
+        lock.lock()
+        let shouldRead = enabled
+        lock.unlock()
+        return shouldRead ? FoundationManagedProcess.readIdentity(for: pid) : nil
     }
 }
 
@@ -985,6 +1215,38 @@ private final class SpawnEvidence: @unchecked Sendable {
     func waitForPID() -> pid_t? {
         guard semaphore.wait(timeout: .now() + 2) == .success else { return nil }
         return pid
+    }
+}
+
+private final class ConcurrentSpawnGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private let firstSpawned = DispatchSemaphore(value: 0)
+    private let release = DispatchSemaphore(value: 0)
+    private var storedPIDs: [pid_t] = []
+
+    var pids: [pid_t] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedPIDs
+    }
+
+    func recordAndBlockFirst(_ pid: pid_t) {
+        lock.lock()
+        storedPIDs.append(pid)
+        let isFirst = storedPIDs.count == 1
+        lock.unlock()
+        guard isFirst else { return }
+        firstSpawned.signal()
+        release.wait()
+    }
+
+    func waitForFirstSpawn() -> pid_t? {
+        guard firstSpawned.wait(timeout: .now() + 2) == .success else { return nil }
+        return pids.first
+    }
+
+    func releaseFirst() {
+        release.signal()
     }
 }
 

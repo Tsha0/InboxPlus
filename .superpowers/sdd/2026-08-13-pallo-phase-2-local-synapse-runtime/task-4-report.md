@@ -97,3 +97,44 @@ Status: IMPLEMENTED, pending independent re-review
 - Confirmed stdout/stderr readers continue through EOF after a write failure, preserve the first actionable failure, and child cleanup completes before it is surfaced.
 - Confirmed log path validation is descriptor anchored from `/` through the retained profile/log descriptors and revalidates both pathname and descriptor identities before writes and rotation.
 - Health polling, automatic crash recovery, and restart policy remain deferred to Task 5.
+
+## Fix round 2 — stale actor observations, snapshot invariants, launch reservation
+
+Status: IMPLEMENTED, pending independent re-review
+
+### Review findings addressed
+
+- Added supervisor operation tokens plus state/process generations. Start and stop hold an exclusive operation across every suspension point; status records an observation generation and revalidates it after lifecycle, identity, and ownership probes before cleanup or mutation. Status only claims exclusive cleanup after the ownership probe is still current, so a stop that completes while either probe is suspended wins and cannot be overwritten or signalled again.
+- Added phase-specific persisted-snapshot invariants. Healthy/degraded require both process identity and loopback port; stopped/unprepared forbid both. A malformed initial snapshot is sanitized to an actionable failed snapshot, retains no signal authority, and start/stop refuse it with `invalidSnapshot`.
+- Added an atomic `idle` / `launching` / `launched` reservation inside `FoundationManagedProcess`. Concurrent or sequential reuse of a successfully launched adapter throws `alreadyLaunched` before spawning. A failed launch resets to idle only after exact-child cleanup, and a real retry regression verifies the same adapter can intentionally try again.
+- Moved pipe readers from the shared global pool to dedicated reader threads. The aggregate RED run exposed cooperative-thread starvation when many real-process tests simultaneously waited for EOF; dedicated readers preserve complete drain semantics and deterministic cleanup under concurrent load.
+
+### RED evidence
+
+Command:
+
+`swift test --filter 'suspendedLifecycleFailureProbeCannotOverwriteNewerStoppedState|suspendedOwnershipProbeCannotOverwriteNewerStoppedState|corruptActiveSnapshotWithoutIdentityBecomesActionableFailure|corruptInactiveSnapshotWithRuntimeMetadataIsNeverStoppedOrSignalled|foundationManagedProcessRejectsSequentialSecondLaunchAndRetainsFirstChild|foundationManagedProcessReservesConcurrentLaunchBeforeSpawning'`
+
+Observed failures:
+
+- Both suspended status probes resumed after stop and changed the newer `.stopped` snapshot.
+- Healthy/degraded snapshots without identity remained running; stopped/unprepared snapshots with stale PID/listener metadata remained inactive rather than actionable failures.
+- Both sequential and concurrent second launch calls spawned another child.
+
+The first aggregate focused run then hung with multiple process tests blocked in synchronous EOF drain. A process sample showed cooperative executor threads waiting in `ManagedOutputCollector.waitForEOF()` while global-pool readers could not make progress; dedicated pipe readers removed that starvation.
+
+### GREEN verification
+
+- Targeted round-2 regressions: 6 tests passed, 0 failed (including parameterized corrupt phases).
+- `swift test --filter 'RuntimeStateTests|SynapseSupervisorLifecycleTests'`: 41 tests passed, 0 failed.
+- `swift test -c release --filter 'RuntimeStateTests|SynapseSupervisorLifecycleTests'`: 41 tests passed, 0 failed; production build succeeded.
+- `swift test`: 153 tests passed, 0 failed; 1 opt-in real-bootstrap test skipped as expected.
+- `git diff --check`: passed with no whitespace errors.
+
+### Fix-round self-review
+
+- Audited every supervisor await followed by snapshot/process mutation. Exclusive operations are revalidated after awaits; observation-only status paths verify both state and managed-process generations before acting.
+- Confirmed lifecycle cleanup cannot claim signal authority until its suspended ownership result is still current. Once claimed, concurrent start/stop is rejected until cleanup completes, preventing duplicate termination.
+- Confirmed malformed inactive snapshots discard stale process identity and cannot reach rehydration/signalling; malformed active snapshots cannot be returned as healthy/degraded.
+- Confirmed the launch reservation is acquired before `posix_spawn`, is not overwritten by a concurrent caller, remains terminal after successful launch, and resets only after a failed launch has no owned child.
+- Re-ran all previously accepted direct-child PID, rehydration, listener, descriptor-anchored log, EOF/redaction, and I/O-failure regressions unchanged.

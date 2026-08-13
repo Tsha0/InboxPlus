@@ -72,6 +72,12 @@ public struct FoundationManagedProcessFactory: ManagedProcessFactory {
 }
 
 public final class FoundationManagedProcess: ManagedProcess, @unchecked Sendable {
+    private enum LaunchState {
+        case idle
+        case launching
+        case launched
+    }
+
     private let configuration: ManagedProcessConfiguration
     private let identityReader: ManagedProcessIdentityReader
     private let signalSender: ManagedProcessSignalSender
@@ -84,6 +90,7 @@ public final class FoundationManagedProcess: ManagedProcess, @unchecked Sendable
     private var observedIdentity: ManagedProcessIdentity?
     private var collector: ManagedOutputCollector?
     private var terminalLogFailure: ManagedProcessError?
+    private var launchState: LaunchState = .idle
     private let secureLogDirectory: SecureLogDirectory?
     private let standardOutput: BoundedRotatingLog?
     private let standardError: BoundedRotatingLog?
@@ -168,32 +175,43 @@ public final class FoundationManagedProcess: ManagedProcess, @unchecked Sendable
             throw ManagedProcessError.invalidConfiguration("an observed process cannot be launched")
         }
         try Task.checkCancellation()
-        let pid = try spawnChild()
-        afterSpawn(pid)
-
-        var previousIdentity: ManagedProcessIdentity?
-        for _ in 0..<40 {
-            if Task.isCancelled {
-                terminateAndReapOwnedChild()
-                throw CancellationError()
+        try stateLock.withLock {
+            guard launchState == .idle, ownedPID == nil else {
+                throw ManagedProcessError.alreadyLaunched
             }
-            if let failure = currentLogFailure() {
-                terminateAndReapOwnedChild()
-                throw failure
-            }
-            if let identity = identityReader(pid) {
-                if identity == previousIdentity {
-                    stateLock.withLock { launchedIdentity = identity }
-                    return identity
-                }
-                previousIdentity = identity
-            }
-            if try childHasExited(pid) { break }
-            _ = await Task.detached(priority: .utility) { usleep(5_000) }.value
+            launchState = .launching
         }
 
-        terminateAndReapOwnedChild()
-        throw ManagedProcessError.launchIdentityUnavailable(pid)
+        do {
+            let pid = try spawnChild()
+            afterSpawn(pid)
+
+            var previousIdentity: ManagedProcessIdentity?
+            for _ in 0..<40 {
+                try Task.checkCancellation()
+                if let failure = currentLogFailure() { throw failure }
+                if let identity = identityReader(pid) {
+                    if identity == previousIdentity {
+                        stateLock.withLock {
+                            launchedIdentity = identity
+                            launchState = .launched
+                        }
+                        return identity
+                    }
+                    previousIdentity = identity
+                }
+                if try childHasExited(pid) { break }
+                _ = await Task.detached(priority: .utility) { usleep(5_000) }.value
+            }
+
+            throw ManagedProcessError.launchIdentityUnavailable(pid)
+        } catch {
+            terminateAndReapOwnedChild()
+            stateLock.withLock {
+                if ownedPID == nil { launchState = .idle }
+            }
+            throw error
+        }
     }
 
     public func identityStatus(for expected: ManagedProcessIdentity) async -> ManagedProcessIdentityStatus {
@@ -593,7 +611,9 @@ private final class ManagedOutputCollector: @unchecked Sendable {
 
     private func startReader(descriptor: Int32, name: String, writer: BoundedRotatingLog) {
         group.enter()
-        DispatchQueue.global(qos: .utility).async { [self] in
+        // Dedicated readers prevent cooperative-executor starvation when several supervisors
+        // synchronously drain/reap during concurrent shutdown.
+        Thread.detachNewThread { [self] in
             defer {
                 _ = Darwin.close(descriptor)
                 group.leave()

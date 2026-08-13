@@ -73,6 +73,25 @@ public struct RuntimeSnapshot: Codable, Sendable, Equatable {
         diagnosticLogDirectory: nil,
         lastError: nil
     )
+
+    var structuralValidationError: RuntimeStateError? {
+        switch phase {
+        case .healthy, .degraded:
+            guard processIdentity != nil else {
+                return .invalidSnapshot(phase: phase, reason: "running phase requires process identity")
+            }
+            guard loopbackPort != nil else {
+                return .invalidSnapshot(phase: phase, reason: "running phase requires loopback port")
+            }
+        case .stopped, .unprepared:
+            guard processIdentity == nil, loopbackPort == nil else {
+                return .invalidSnapshot(phase: phase, reason: "inactive phase forbids process/listener metadata")
+            }
+        case .starting, .recovering, .stopping, .failed:
+            break
+        }
+        return nil
+    }
 }
 
 public enum RuntimeExitCode: Int32, Codable, Sendable, CaseIterable {
@@ -85,6 +104,7 @@ public enum RuntimeExitCode: Int32, Codable, Sendable, CaseIterable {
 }
 
 public enum RuntimeStateError: Error, Sendable, Equatable {
+    case invalidSnapshot(phase: RuntimePhase, reason: String)
     case invalidTransition(from: RuntimePhase, to: RuntimePhase)
     case processExitedUnexpectedly(ManagedProcessIdentity)
     case processIdentityMismatch(expected: ManagedProcessIdentity, actual: ManagedProcessIdentity)
