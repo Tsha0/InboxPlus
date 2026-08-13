@@ -85,6 +85,18 @@ import Testing
     #expect(!fixture.candidateWasExecuted)
 }
 
+@Test func bootstrapExecutesTheValidatedPythonDescriptorAfterPathReplacement() async throws {
+    // Break caught: bootstrap validates one Python file, closes it, then executes spoofing replacement bytes through the original path.
+    let fixture = try BootstrapFixture()
+    defer { fixture.remove() }
+    fixture.replacePythonAfterValidation = true
+
+    let receipt = try await fixture.runBootstrap()
+
+    #expect(receipt.pythonVersion == "3.12.7")
+    #expect(fixture.validatedCandidateDescriptorWasRetained)
+}
+
 @Test func bootstrapRejectsPackageExtrasInsteadOfWeakeningTheLock() async throws {
     // Break caught: bootstrap accepts an unpinned transitive package merely because every locked package is present.
     let fixture = try BootstrapFixture(
@@ -361,6 +373,20 @@ import Testing
     }
 }
 
+@Test func finalReceiptValidationRejectsRuntimePathSwapBeforeReturn() async throws {
+    // Break caught: fresh bootstrap returns a validated receipt after its runtime pathname is redirected by the receipt-open seam.
+    let fixture = try BootstrapFixture()
+    defer { fixture.remove() }
+    fixture.swapRuntimeAtReceiptOpen = true
+
+    await #expect(throws: RuntimeBootstrapError.runtimePathIdentityChanged(fixture.paths.runtime)) {
+        try await fixture.runBootstrap()
+    }
+    #expect(!FileManager.default.fileExists(
+        atPath: fixture.outsideDirectory.appendingPathComponent("prepared-runtime.json").path
+    ))
+}
+
 @Test func subprocessRequestsExcludeHostilePythonAndPipEnvironment() async throws {
     // Break caught: inherited Python/pip variables or an ambient working directory can shadow modules or alter installation.
     let fixture = try BootstrapFixture(hostEnvironment: [
@@ -391,6 +417,17 @@ import Testing
             filesystemEvent: fixture.handleFilesystemEvent,
             now: { Date(timeIntervalSinceReferenceDate: 1234) }
         )
+
+    let originalWorkingDirectory = FileManager.default.currentDirectoryPath
+    let alternateWorkingDirectory = fixture.directory.appendingPathComponent("alternate-cwd", isDirectory: true)
+    try FileManager.default.createDirectory(at: alternateWorkingDirectory, withIntermediateDirectories: false)
+    guard FileManager.default.changeCurrentDirectoryPath(alternateWorkingDirectory.path) else {
+        throw CocoaError(.fileNoSuchFile)
+    }
+    defer {
+        precondition(FileManager.default.changeCurrentDirectoryPath(originalWorkingDirectory))
+    }
+    #expect(FileManager.default.currentDirectoryPath == alternateWorkingDirectory.path)
 
     let receipt = try await publicBootstrapper.bootstrap(
         python: fixture.basePython,
@@ -453,6 +490,9 @@ private final class BootstrapFixture: @unchecked Sendable {
     var replaceRuntimeLockImmediatelyBeforePip = false
     var swapRuntimeImmediatelyBeforeVenv = false
     var swapReceiptAfterOpen = false
+    var swapRuntimeAtReceiptOpen = false
+    var replacePythonAfterValidation = false
+    var validatedCandidateDescriptorWasRetained = false
 
     var virtualEnvironment: URL { paths.runtime.appendingPathComponent("venv", isDirectory: true) }
     var virtualenvPython: URL { virtualEnvironment.appendingPathComponent("bin/python") }
@@ -544,6 +584,23 @@ private final class BootstrapFixture: @unchecked Sendable {
 
     lazy var handleFilesystemEvent: RuntimeFilesystemEventHandler = { [weak self] event in
         guard let self else { throw FixtureError.deallocated }
+        if event == .pythonValidated, self.replacePythonAfterValidation {
+            self.replacePythonAfterValidation = false
+            try FileManager.default.removeItem(at: self.cellarPython)
+            let spoof = """
+            #!/bin/sh
+            printf '%s\\n' '{"implementation":"cpython","version":"3.12.7","executable":"\(self.basePython.path)","executableRealPath":"\(self.cellarPython.path)","prefix":"\(self.cellarVersion.path)","basePrefix":"\(self.cellarVersion.path)"}'
+            """
+            try Data(spoof.utf8).write(to: self.cellarPython)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: self.cellarPython.path)
+        }
+        if event == .receiptOpened, self.swapRuntimeAtReceiptOpen {
+            self.swapRuntimeAtReceiptOpen = false
+            let relocated = self.directory.appendingPathComponent("receipt-open-runtime", isDirectory: true)
+            try FileManager.default.moveItem(at: self.paths.runtime, to: relocated)
+            try FileManager.default.createDirectory(at: self.outsideDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createSymbolicLink(at: self.paths.runtime, withDestinationURL: self.outsideDirectory)
+        }
         if event == .receiptOpened, self.swapReceiptAfterOpen {
             self.swapReceiptAfterOpen = false
             let receipt = self.paths.runtime.appendingPathComponent("prepared-runtime.json")
@@ -566,6 +623,14 @@ private final class BootstrapFixture: @unchecked Sendable {
            arguments.count == 4,
            Array(arguments.prefix(3)) == ["-I", "-S", "-c"]
         {
+            if replacePythonAfterValidation == false,
+               let validatedExecutable = request.expectedExecutableIdentity
+            {
+                var magic = [UInt8](repeating: 0, count: 4)
+                let count = Darwin.pread(validatedExecutable, &magic, magic.count, 0)
+                validatedCandidateDescriptorWasRetained = count == magic.count
+                    && magic == [0xcf, 0xfa, 0xed, 0xfe]
+            }
             candidateWasExecuted = true
             return .init(status: 0, standardOutput: pythonFacts(runtime: false), standardError: "")
         }
@@ -602,14 +667,16 @@ private final class BootstrapFixture: @unchecked Sendable {
         if executable == virtualenvPython,
            arguments.prefix(7) == ["-I", "-m", "pip", "install", "--disable-pip-version-check", "--no-input", "--requirement"],
            arguments.count == 8,
-           arguments[7].hasPrefix("/dev/fd/")
+           arguments[7] == "authenticated-lock-descriptor"
         {
             guard !rejectMutationCommands else { throw FixtureError.unexpectedMutation }
             if replaceRuntimeLockImmediatelyBeforePip {
                 try FileManager.default.removeItem(at: runtimeLock)
                 try Data("matrix-synapse==9.9.9\n".utf8).write(to: runtimeLock)
             }
-            let inherited = try #require(request.inheritedDescriptors.first)
+            let inherited = try #require(request.inheritedDescriptors.first(where: {
+                $0.destination == .argument(7)
+            }))
             var bytes = [UInt8](repeating: 0, count: 4096)
             let count = Darwin.pread(inherited.source, &bytes, bytes.count, 0)
             guard count >= 0 else { throw POSIXError(.EIO) }
