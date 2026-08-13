@@ -1,32 +1,69 @@
 import SwiftUI
 
+public enum SidebarSection: String, CaseIterable, Identifiable, Hashable, Sendable {
+    case inbox, contacts, settings
+
+    public var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .inbox: "Inbox"
+        case .contacts: "Contacts"
+        case .settings: "Settings"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .inbox: "tray.full.fill"
+        case .contacts: "person.2.fill"
+        case .settings: "gearshape.fill"
+        }
+    }
+}
+
 struct NavigationRailView: View {
+    @Binding var selection: SidebarSection
+
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 14) {
             Text("P")
                 .font(.headline)
                 .foregroundStyle(.white)
                 .frame(width: 32, height: 32)
-                .background(.black, in: .rect(cornerRadius: 10))
+                .background(Color.accentColor, in: .rect(cornerRadius: 10))
                 .accessibilityLabel("Pallo")
-            railButton("tray.full.fill", label: "Inbox", isSelected: true)
-            railButton("magnifyingglass", label: "Search")
-            railButton("person.2.fill", label: "Contacts")
+                .padding(.bottom, 4)
+
+            ForEach([SidebarSection.inbox, .contacts]) { section in
+                railButton(section)
+            }
             Spacer()
-            railButton("gearshape.fill", label: "Settings")
+            railButton(.settings)
         }
         .padding(.vertical, 14)
         .frame(width: 54)
+        .background(.quaternary.opacity(0.25))
     }
 
-    private func railButton(_ symbol: String, label: String, isSelected: Bool = false) -> some View {
-        Button(action: {}) {
-            Image(systemName: symbol)
+    private func railButton(_ section: SidebarSection) -> some View {
+        let isSelected = selection == section
+        return Button {
+            selection = section
+        } label: {
+            Image(systemName: section.symbolName)
+                .foregroundStyle(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
                 .frame(width: 30, height: 30)
-                .background(isSelected ? Color.primary.opacity(0.1) : .clear, in: .rect(cornerRadius: 8))
+                .background(
+                    isSelected ? Color.accentColor.opacity(0.15) : .clear,
+                    in: .rect(cornerRadius: 8)
+                )
+                .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .help(label)
+        .accessibilityLabel(section.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("rail-\(section.rawValue)")
+        .help(section.title)
     }
 }

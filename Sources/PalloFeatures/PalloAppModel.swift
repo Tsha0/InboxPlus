@@ -160,12 +160,30 @@ public final class PalloAppModel {
         case let .person(id):
             detailSelection = .personSummary(id)
         case let .conversation(route):
-            detailSelection = .conversation(route)
+            openConversation(route)
         }
+    }
+
+    public func selectPerson(_ personID: String) {
+        detailSelection = .personSummary(personID)
     }
 
     public func openConversation(_ route: ConversationRoute) {
         detailSelection = .conversation(route)
+        markConversationRead(route)
+    }
+
+    public func markConversationRead(_ route: ConversationRoute) {
+        guard
+            let index = conversations.firstIndex(where: { $0.route == route }),
+            conversations[index].unreadCount != 0
+        else { return }
+        conversations[index].unreadCount = 0
+        rebuildInbox()
+    }
+
+    public func isConnected(_ accountID: String) -> Bool {
+        !disconnectedAccountIDs.contains(accountID)
     }
 
     public func captureDraft(to route: ConversationRoute) -> DraftSubmission {
@@ -249,7 +267,7 @@ public final class PalloAppModel {
         accounts = snapshot.accounts
         identities = snapshot.identities
         conversations = snapshot.conversations
-        messagesByRoute = snapshot.messagesByRoute
+        messagesByRoute = snapshot.messagesByRoute.mapValues { $0.sorted { $0.timestamp < $1.timestamp } }
         rebuildInbox()
     }
 
@@ -393,7 +411,8 @@ public final class PalloAppModel {
             if let index = messages.firstIndex(where: { $0.id == message.id }) {
                 messages[index] = message
             } else {
-                messages.append(message)
+                let insertion = messages.firstIndex { $0.timestamp > message.timestamp }
+                messages.insert(message, at: insertion ?? messages.endIndex)
             }
             messagesByRoute[message.route] = messages
             if

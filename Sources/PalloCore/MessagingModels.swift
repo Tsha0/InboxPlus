@@ -79,6 +79,9 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
     public let timestamp: Date
     public var deliveryState: MessageDeliveryState
 
+    /// Messages this account sent carry no remote sender identity.
+    public var isOutgoing: Bool { senderIdentityID == nil }
+
     public init(id: String, route: ConversationRoute, senderIdentityID: String?, body: String, timestamp: Date, deliveryState: MessageDeliveryState) {
         self.id = id
         self.route = route
