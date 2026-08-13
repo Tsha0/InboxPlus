@@ -4,16 +4,21 @@ import PackageDescription
 let package = Package(
     name: "Pallo",
     platforms: [.macOS(.v15)],
-    products: [.executable(name: "Pallo", targets: ["PalloApp"])],
+    products: [
+        .executable(name: "Pallo", targets: ["PalloApp"]),
+        .library(name: "PalloRuntime", targets: ["PalloRuntime"]),
+    ],
     targets: [
         .target(name: "PalloCore"),
         .target(name: "PalloGateway", dependencies: ["PalloCore"]),
         .target(name: "PalloFeatures", dependencies: ["PalloCore", "PalloGateway"]),
         .target(name: "PalloUI", dependencies: ["PalloCore", "PalloFeatures"]),
         .executableTarget(name: "PalloApp", dependencies: ["PalloGateway", "PalloFeatures", "PalloUI"]),
+        .target(name: "PalloRuntime"),
         .testTarget(name: "PalloCoreTests", dependencies: ["PalloCore"]),
         .testTarget(name: "PalloGatewayTests", dependencies: ["PalloCore", "PalloGateway"]),
         .testTarget(name: "PalloFeaturesTests", dependencies: ["PalloCore", "PalloGateway", "PalloFeatures"]),
         .testTarget(name: "PalloUITests", dependencies: ["PalloCore", "PalloFeatures", "PalloUI"]),
+        .testTarget(name: "PalloRuntimeTests", dependencies: ["PalloRuntime"]),
     ]
 )

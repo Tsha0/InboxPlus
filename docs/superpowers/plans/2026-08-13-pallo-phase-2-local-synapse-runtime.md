@@ -24,11 +24,18 @@
 - Do not add real adapters, Matrix Rust SDK synchronization, product UI, launch-at-login, updater, signing, notarization, universal packaging, or public redistribution.
 - Do not implement PostgreSQL in this phase.
 
+## Execution sequencing clarifications
+
+- Task 1 defines `PreparedRuntimeReceipt` beside `RuntimeManifest` so `validatePreparedRuntime(at:)` has a concrete return type; Task 3 adds the bootstrap behavior that creates and validates receipt contents.
+- Task 3's disposable real-bootstrap coverage belongs in `Tests/PalloRuntimeTests/RuntimeBootstrapperRealIntegrationTests.swift`.
+- Task 5's real lifecycle coverage belongs in `Tests/PalloRuntimeTests/SynapseSupervisorRealIntegrationTests.swift`.
+- Task 6 creates the CLI shell and wires only bootstrap/start/status/stop, whose services exist by then. Tasks 7–11 wire `verify`, `benchmark`, `backup`, `restore`, and `remove` as their corresponding services are implemented. Command parsing may recognize the full planned command vocabulary in Task 6, but must not pretend an unavailable service is implemented.
+
 ## File and responsibility map
 
 ### Package and runtime manifest
 
-- `Package.swift`: expose `PalloRuntime`, `PalloRuntimeCLI`, and `PalloRuntimeTests`.
+- `Package.swift`: expose `PalloRuntime` and `PalloRuntimeTests` in Task 1, then add `PalloRuntimeCLI` when its source is introduced in Task 6.
 - `Runtime/Synapse/runtime-manifest.json`: declare schema version, Python minor line, Synapse version, lockfile path, and lockfile checksum.
 - `Runtime/Synapse/requirements.in`: declare direct Python dependency `matrix-synapse==1.158.0`.
 - `Runtime/Synapse/requirements.lock`: exact transitive package versions used by bootstrap.
@@ -130,7 +137,7 @@ public struct RuntimePaths: Sendable {
 }
 ```
 
-Add products/targets for `PalloRuntime`, `PalloRuntimeCLI`, and `PalloRuntimeTests`. Validate names against `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`, standardize every URL, reject symlinked ancestors, and require every resolved child path to remain beneath the standardized root.
+Add the `PalloRuntime` product/target and `PalloRuntimeTests` target. Defer the `PalloRuntimeCLI` product/target to Task 6, where its first source file is created. Validate names against `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`, standardize every URL, reject symlinked ancestors, and require every resolved child path to remain beneath the standardized root.
 
 - [ ] **Step 4: Generate and check the exact Python dependency lock**
 
@@ -191,7 +198,9 @@ git commit -m "feat: define pinned Synapse runtime profiles"
     #expect(yaml.contains("bind_addresses: ['127.0.0.1']"))
     #expect(yaml.contains("enable_registration: false"))
     #expect(yaml.contains("allow_guest_access: false"))
-    #expect(!yaml.contains("federation"))
+    #expect(yaml.contains("names: [client]"))
+    #expect(!yaml.contains("names: [client, federation]"))
+    #expect(yaml.contains("send_federation: false"))
 }
 
 @Test func nonLoopbackListenerIsRejected() {
@@ -224,7 +233,7 @@ public struct SynapseConfiguration: Sendable {
 }
 ```
 
-Render only the client/resource listener needed for the spike, set `federation: false` on the listener, disable registration/guests/room-list publication, disable URL previews and telemetry, and keep secrets in the YAML file with mode `0600`, never in arguments.
+Render only the `client` listener resource needed for the spike; do not expose the `federation` resource. Set the supported top-level `send_federation: false` option to disable outbound federation transactions. Disable registration/guests/room-list publication, disable URL previews and telemetry, and keep secrets in the YAML file with mode `0600`, never in arguments.
 
 - [ ] **Step 4: Run the focused and full suites**
 
@@ -452,6 +461,7 @@ git commit -m "feat: recover bounded Synapse crashes"
 ### Task 6: Add the developer CLI and stable command outcomes
 
 **Files:**
+- Modify: `Package.swift`
 - Create: `Sources/PalloRuntimeCLI/RuntimeCommand.swift`
 - Create: `Sources/PalloRuntimeCLI/main.swift`
 - Create: `Tests/PalloRuntimeTests/RuntimeCommandTests.swift`
@@ -512,7 +522,7 @@ struct VerifyCLIOptions: Equatable {
 }
 ```
 
-Keep construction and formatted output in `main.swift`; business logic remains in `PalloRuntime`. Print one concise summary to stdout, diagnostics to stderr, and map typed runtime errors to documented stable integer codes.
+Add the `PalloRuntimeCLI` executable product/target to `Package.swift`. Keep construction and formatted output in `main.swift`; business logic remains in `PalloRuntime`. Print one concise summary to stdout, diagnostics to stderr, and map typed runtime errors to documented stable integer codes.
 
 - [ ] **Step 4: Run CLI parser and package tests**
 
@@ -525,7 +535,7 @@ Expected: tests PASS; CLI bootstrap succeeds, status reports `healthy` while sta
 - [ ] **Step 5: Commit**
 
 ```bash
-git add Sources/PalloRuntimeCLI Tests/PalloRuntimeTests/RuntimeCommandTests.swift
+git add Package.swift Sources/PalloRuntimeCLI Tests/PalloRuntimeTests/RuntimeCommandTests.swift
 git commit -m "feat: expose Synapse developer CLI"
 ```
 
