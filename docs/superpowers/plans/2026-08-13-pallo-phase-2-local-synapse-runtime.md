@@ -24,6 +24,13 @@
 - Do not add real adapters, Matrix Rust SDK synchronization, product UI, launch-at-login, updater, signing, notarization, universal packaging, or public redistribution.
 - Do not implement PostgreSQL in this phase.
 
+## Execution sequencing clarifications
+
+- Task 1 defines `PreparedRuntimeReceipt` beside `RuntimeManifest` so `validatePreparedRuntime(at:)` has a concrete return type; Task 3 adds the bootstrap behavior that creates and validates receipt contents.
+- Task 3's disposable real-bootstrap coverage belongs in `Tests/PalloRuntimeTests/RuntimeBootstrapperRealIntegrationTests.swift`.
+- Task 5's real lifecycle coverage belongs in `Tests/PalloRuntimeTests/SynapseSupervisorRealIntegrationTests.swift`.
+- Task 6 creates the CLI shell and wires only bootstrap/start/status/stop, whose services exist by then. Tasks 7–11 wire `verify`, `benchmark`, `backup`, `restore`, and `remove` as their corresponding services are implemented. Command parsing may recognize the full planned command vocabulary in Task 6, but must not pretend an unavailable service is implemented.
+
 ## File and responsibility map
 
 ### Package and runtime manifest
