@@ -20,13 +20,14 @@ func realBootstrapCreatesAndVerifiesPinnedSynapseRuntime() async throws {
     let manifest = try RuntimeManifest.load(
         from: sourceRoot.appendingPathComponent("Runtime/Synapse/runtime-manifest.json")
     )
+    let requirementsLock = sourceRoot.appendingPathComponent("Runtime/Synapse/requirements.lock")
 
-    let receipt = try await RuntimeBootstrapper().bootstrap(
+    let receipt = try await RuntimeBootstrapper(requirementsLock: requirementsLock).bootstrap(
         python: URL(fileURLWithPath: pythonPath),
         manifest: manifest,
         paths: paths
     )
-    let verifiedReceipt = try await RuntimeBootstrapper().bootstrap(
+    let verifiedReceipt = try await RuntimeBootstrapper(requirementsLock: requirementsLock).bootstrap(
         python: URL(fileURLWithPath: pythonPath),
         manifest: manifest,
         paths: paths
