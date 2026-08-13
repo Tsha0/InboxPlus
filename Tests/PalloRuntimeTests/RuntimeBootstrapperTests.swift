@@ -97,6 +97,140 @@ import Testing
     #expect(fixture.validatedCandidateDescriptorWasRetained)
 }
 
+@Test func bootstrapRetainsValidatedExecutableResourcesThroughSystemSpawn() async throws {
+    // Break caught: release optimization destroys a descriptor owner after only its raw value enters an async spawn request.
+    let directory = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent(".build/RuntimeBootstrapperLifetimeTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let homebrew = directory.appendingPathComponent("homebrew", isDirectory: true)
+    let cellarVersion = homebrew.appendingPathComponent("Cellar/python@3.12/3.12.7", isDirectory: true)
+    let cellarPython = cellarVersion.appendingPathComponent("bin/python3.12")
+    try FileManager.default.createDirectory(at: cellarPython.deletingLastPathComponent(), withIntermediateDirectories: true)
+    let opt = homebrew.appendingPathComponent("opt", isDirectory: true)
+    try FileManager.default.createDirectory(at: opt, withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+        at: opt.appendingPathComponent("python@3.12", isDirectory: true),
+        withDestinationURL: cellarVersion
+    )
+    let selectedPython = opt.appendingPathComponent("python@3.12/bin/python3.12")
+    let paths = try RuntimePaths(
+        root: directory.appendingPathComponent("profiles", isDirectory: true),
+        profileName: "primary"
+    )
+    let virtualEnvironment = paths.runtime.appendingPathComponent("venv", isDirectory: true)
+    let virtualenvPython = virtualEnvironment.appendingPathComponent("bin/python")
+
+    let baseFacts = """
+    {"implementation":"cpython","version":"3.12.7","executable":"\(selectedPython.path)","executableRealPath":"\(cellarPython.path)","prefix":"\(cellarVersion.path)","basePrefix":"\(cellarVersion.path)"}
+    """
+    let runtimeFacts = """
+    {"implementation":"cpython","version":"3.12.7","executable":"\(virtualenvPython.path)","executableRealPath":"\(cellarPython.path)","prefix":"\(virtualEnvironment.path)","basePrefix":"\(cellarVersion.path)"}
+    """
+    func cLiteral(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+    }
+    let source = directory.appendingPathComponent("python-shim.c")
+    let sourceText = """
+    #include <errno.h>
+    #include <fcntl.h>
+    #include <stdio.h>
+    #include <string.h>
+    #include <sys/stat.h>
+    #include <unistd.h>
+
+    int main(int argc, char **argv) {
+        if (argc == 2 && strcmp(argv[1], "--version") == 0) {
+            fputs("Synapse 1.158.0\\n", stdout);
+            return 0;
+        }
+        if (argc == 5 && strcmp(argv[1], "-I") == 0 && strcmp(argv[2], "-S") == 0) {
+            fputs("\(cLiteral(baseFacts))\\n", stdout);
+            return 0;
+        }
+        if (argc == 5 && strcmp(argv[1], "-I") == 0 && strcmp(argv[2], "-m") == 0
+            && strcmp(argv[3], "venv") == 0) {
+            if (mkdir("venv", 0700) != 0 && errno != EEXIST) return 90;
+            if (mkdir("venv/bin", 0700) != 0 && errno != EEXIST) return 91;
+            if (link("\(cLiteral(cellarPython.path))", "venv/bin/python") != 0 && errno != EEXIST) return 92;
+            if (link("\(cLiteral(cellarPython.path))", "venv/bin/synapse_homeserver") != 0 && errno != EEXIST) return 93;
+            return 0;
+        }
+        if (argc == 4 && strcmp(argv[1], "-I") == 0 && strcmp(argv[2], "-c") == 0
+            && strstr(argv[3], "sys.implementation.name") != NULL) {
+            fputs("\(cLiteral(runtimeFacts))\\n", stdout);
+            return 0;
+        }
+        if (argc == 9 && strcmp(argv[1], "-I") == 0 && strcmp(argv[2], "-m") == 0
+            && strcmp(argv[3], "pip") == 0 && strcmp(argv[4], "install") == 0) {
+            int descriptor = open(argv[8], O_RDONLY);
+            if (descriptor < 0) return 94;
+            char contents[512] = {0};
+            ssize_t count = read(descriptor, contents, sizeof(contents) - 1);
+            close(descriptor);
+            if (count < 0 || strstr(contents, "matrix_synapse==1.158.0") == NULL) return 95;
+            return 0;
+        }
+        if (argc == 6 && strcmp(argv[1], "-I") == 0 && strcmp(argv[2], "-m") == 0
+            && strcmp(argv[3], "pip") == 0 && strcmp(argv[4], "freeze") == 0) {
+            fputs("\(cLiteral(BootstrapFixture.lockContents))", stdout);
+            return 0;
+        }
+        if (argc == 4 && strcmp(argv[1], "-I") == 0 && strcmp(argv[2], "-c") == 0
+            && strstr(argv[3], "synapse.__version__") != NULL) {
+            fputs("1.158.0\\n", stdout);
+            return 0;
+        }
+        return 99;
+    }
+    """
+    try Data(sourceText.utf8)
+        .write(to: source)
+    let compiler = Process()
+    compiler.executableURL = URL(fileURLWithPath: "/usr/bin/clang")
+    compiler.arguments = [source.path, "-o", cellarPython.path]
+    try compiler.run()
+    compiler.waitUntilExit()
+    #expect(compiler.terminationStatus == 0)
+
+    let brew = directory.appendingPathComponent("brew")
+    let brewScript = "#!/bin/sh\nprintf '%s\\n' '\(opt.appendingPathComponent("python@3.12").path)'\n"
+    try Data(brewScript.utf8).write(to: brew)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: brew.path)
+
+    let lock = directory.appendingPathComponent("requirements.lock")
+    try Data(BootstrapFixture.lockContents.utf8).write(to: lock)
+    let manifest = RuntimeManifest(
+        schemaVersion: 1,
+        pythonMinor: "3.12",
+        synapseVersion: "1.158.0",
+        requirementsLockSHA256: BootstrapFixture.lockSHA256
+    )
+    let bootstrapper = RuntimeBootstrapper(
+        requirementsLock: lock,
+        brewExecutable: brew,
+        hostEnvironment: ["HOME": directory.path, "TMPDIR": directory.path],
+        processRunner: RuntimeBootstrapper.runSystemProcess,
+        now: { Date(timeIntervalSinceReferenceDate: 1234) }
+    )
+
+    let receipt = try await bootstrapper.bootstrap(
+        python: selectedPython,
+        manifest: manifest,
+        paths: paths
+    )
+
+    #expect(receipt.pythonExecutable == cellarPython.path)
+    #expect(receipt.installedPackages["matrix-synapse"] == "1.158.0")
+}
+
 @Test func bootstrapRejectsPackageExtrasInsteadOfWeakeningTheLock() async throws {
     // Break caught: bootstrap accepts an unpinned transitive package merely because every locked package is present.
     let fixture = try BootstrapFixture(
@@ -405,38 +539,191 @@ import Testing
     #expect(receipt.synapseVersion == "1.158.0")
 }
 
-@Test func explicitRequirementsLockIsIndependentOfAmbientWorkingDirectory() async throws {
-    // Break caught: bootstrap silently locates Runtime/Synapse/requirements.lock relative to process CWD.
+@Test func explicitRequirementsLockIsIndependentOfAmbientWorkingDirectory() throws {
+    // Break caught: proving CWD independence mutates process-global state and races other tests in the parent process.
+    let packageRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    let alternateWorkingDirectory = packageRoot
+        .appendingPathComponent(".build/RuntimeBootstrapperAlternateCWD-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: alternateWorkingDirectory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: alternateWorkingDirectory) }
     let fixture = try BootstrapFixture()
     defer { fixture.remove() }
-    let publicBootstrapper = RuntimeBootstrapper(requirementsLock: fixture.lock)
-        .withTestDependencies(
-            brewExecutable: fixture.brewExecutable,
-            hostEnvironment: fixture.hostEnvironment,
-            processRunner: fixture.process,
-            filesystemEvent: fixture.handleFilesystemEvent,
-            now: { Date(timeIntervalSinceReferenceDate: 1234) }
-        )
 
-    let originalWorkingDirectory = FileManager.default.currentDirectoryPath
-    let alternateWorkingDirectory = fixture.directory.appendingPathComponent("alternate-cwd", isDirectory: true)
-    try FileManager.default.createDirectory(at: alternateWorkingDirectory, withIntermediateDirectories: false)
-    guard FileManager.default.changeCurrentDirectoryPath(alternateWorkingDirectory.path) else {
-        throw CocoaError(.fileNoSuchFile)
-    }
-    defer {
-        precondition(FileManager.default.changeCurrentDirectoryPath(originalWorkingDirectory))
-    }
-    #expect(FileManager.default.currentDirectoryPath == alternateWorkingDirectory.path)
+    let harnessSource = alternateWorkingDirectory.appendingPathComponent("AlternateCWDHarness.swift")
+    let harnessExecutable = alternateWorkingDirectory.appendingPathComponent("alternate-cwd-harness")
+    let sourceText = #"""
+    import Darwin
+    import Foundation
 
-    let receipt = try await publicBootstrapper.bootstrap(
-        python: fixture.basePython,
-        manifest: fixture.manifest,
-        paths: fixture.paths
+    @main
+    struct AlternateCWDHarness {
+        enum HarnessError: Error {
+            case bootstrapUnexpectedlySucceeded
+            case explicitLockChanged
+            case packageRootIsCurrentDirectory
+            case unexpectedCommand(String, [String])
+        }
+
+        static func main() async {
+            do {
+                try await run()
+                Darwin.exit(EXIT_SUCCESS)
+            } catch {
+                fputs("alternate-CWD harness failed: \(error)\n", stderr)
+                Darwin.exit(EXIT_FAILURE)
+            }
+        }
+
+        static func run() async throws {
+            guard CommandLine.arguments.count == 7 else { throw POSIXError(.EINVAL) }
+            let explicitLock = URL(fileURLWithPath: CommandLine.arguments[1]).standardizedFileURL
+            let selectedPython = URL(fileURLWithPath: CommandLine.arguments[2]).standardizedFileURL
+            let brew = URL(fileURLWithPath: CommandLine.arguments[3]).standardizedFileURL
+            let brewPrefix = URL(fileURLWithPath: CommandLine.arguments[4]).standardizedFileURL
+            let profileRoot = URL(fileURLWithPath: CommandLine.arguments[5], isDirectory: true)
+            let packageRoot = URL(fileURLWithPath: CommandLine.arguments[6], isDirectory: true)
+                .standardizedFileURL
+            let currentDirectory = URL(
+                fileURLWithPath: FileManager.default.currentDirectoryPath,
+                isDirectory: true
+            ).standardizedFileURL
+            guard currentDirectory != packageRoot else { throw HarnessError.packageRootIsCurrentDirectory }
+
+            let cellarPython = selectedPython.resolvingSymlinksInPath()
+            let cellarVersion = cellarPython
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+            let invalidChecksum = String(repeating: "0", count: 64)
+            let manifest = RuntimeManifest(
+                schemaVersion: 1,
+                pythonMinor: "3.12",
+                synapseVersion: "1.158.0",
+                requirementsLockSHA256: invalidChecksum
+            )
+            let paths = try RuntimePaths(
+                root: profileRoot,
+                profileName: "alternate-cwd"
+            )
+            let processRunner: RuntimeProcessRunner = { request in
+                if request.executable == brew,
+                   request.arguments == ["--prefix", "python@3.12"] {
+                    return RuntimeProcessOutput(
+                        status: 0,
+                        standardOutput: brewPrefix.path + "\n",
+                        standardError: ""
+                    )
+                }
+                if request.executable.standardizedFileURL == selectedPython.standardizedFileURL,
+                   request.arguments.count == 4,
+                   Array(request.arguments.prefix(3)) == ["-I", "-S", "-c"] {
+                    let facts = """
+                    {"implementation":"cpython","version":"3.12.7","executable":"\(selectedPython.path)","executableRealPath":"\(cellarPython.path)","prefix":"\(cellarVersion.path)","basePrefix":"\(cellarVersion.path)"}
+                    """
+                    return RuntimeProcessOutput(status: 0, standardOutput: facts, standardError: "")
+                }
+                throw HarnessError.unexpectedCommand(request.executable.path, request.arguments)
+            }
+            let bootstrapper = RuntimeBootstrapper(requirementsLock: explicitLock)
+                .withTestDependencies(
+                    brewExecutable: brew,
+                    hostEnvironment: ["HOME": currentDirectory.path, "TMPDIR": currentDirectory.path],
+                    processRunner: processRunner,
+                    filesystemEvent: { _ in },
+                    now: { Date(timeIntervalSinceReferenceDate: 1234) }
+                )
+
+            do {
+                _ = try await bootstrapper.bootstrap(
+                    python: selectedPython,
+                    manifest: manifest,
+                    paths: paths
+                )
+                throw HarnessError.bootstrapUnexpectedlySucceeded
+            } catch RuntimeBootstrapError.lockChecksumMismatch(let expected, _) {
+                guard expected == invalidChecksum else { throw HarnessError.explicitLockChanged }
+                guard bootstrapper.requirementsLock == explicitLock else {
+                    throw HarnessError.explicitLockChanged
+                }
+            }
+        }
+    }
+    """#
+    try Data(sourceText.utf8).write(to: harnessSource)
+
+    let runtimeSources = try FileManager.default.contentsOfDirectory(
+        at: packageRoot.appendingPathComponent("Sources/PalloRuntime", isDirectory: true),
+        includingPropertiesForKeys: nil
+    )
+        .filter { $0.pathExtension == "swift" }
+        .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    let compile = try runIsolatedTestProcess(
+        executable: URL(fileURLWithPath: "/usr/bin/swiftc"),
+        arguments: [
+            "-parse-as-library",
+            "-swift-version", "6",
+            "-module-name", "PalloRuntimeAlternateCWDHarness",
+        ] + runtimeSources.map(\.path) + [
+            harnessSource.path,
+            "-o", harnessExecutable.path,
+        ],
+        currentDirectory: packageRoot,
+        outputDirectory: alternateWorkingDirectory
+    )
+    guard compile.status == 0 else {
+        Issue.record("Alternate-CWD harness compilation failed:\n\(compile.output)")
+        return
+    }
+
+    let run = try runIsolatedTestProcess(
+        executable: harnessExecutable,
+        arguments: [
+            fixture.lock.path,
+            fixture.basePython.path,
+            fixture.brewExecutable.path,
+            fixture.homebrewPrefix.appendingPathComponent("opt/python@3.12").path,
+            fixture.paths.root.path,
+            packageRoot.path,
+        ],
+        currentDirectory: alternateWorkingDirectory,
+        outputDirectory: alternateWorkingDirectory
     )
 
-    #expect(publicBootstrapper.requirementsLock == fixture.lock.standardizedFileURL)
-    #expect(receipt.requirementsLockSHA256 == BootstrapFixture.lockSHA256)
+    #expect(run.status == 0, "Alternate-CWD harness output:\n\(run.output)")
+}
+
+private func runIsolatedTestProcess(
+    executable: URL,
+    arguments: [String],
+    currentDirectory: URL,
+    outputDirectory: URL
+) throws -> (status: Int32, output: String) {
+    let outputURL = outputDirectory.appendingPathComponent("process-output-\(UUID().uuidString).log")
+    try Data().write(to: outputURL, options: .withoutOverwriting)
+    defer { try? FileManager.default.removeItem(at: outputURL) }
+    let output = try FileHandle(forWritingTo: outputURL)
+    let process = Process()
+    process.executableURL = executable
+    process.arguments = arguments
+    process.currentDirectoryURL = currentDirectory
+    process.standardOutput = output
+    process.standardError = output
+
+    do {
+        try process.run()
+        process.waitUntilExit()
+        try output.synchronize()
+        try output.close()
+        return (
+            process.terminationStatus,
+            try String(contentsOf: outputURL, encoding: .utf8)
+        )
+    } catch {
+        try? output.close()
+        throw error
+    }
 }
 
 private final class BootstrapFixture: @unchecked Sendable {

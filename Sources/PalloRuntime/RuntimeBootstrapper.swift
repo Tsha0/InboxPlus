@@ -187,7 +187,8 @@ public struct RuntimeBootstrapper: Sendable {
             requirementsLock.deletingLastPathComponent()
         )
         let homebrewPrefix = try await trustedHomebrewPythonPrefix(
-            workingDirectoryDescriptor: bootstrapDirectory.rawValue
+            workingDirectoryDescriptor: bootstrapDirectory.rawValue,
+            resourceLifetime: RuntimeProcessResourceLifetime([bootstrapDirectory])
         )
         let validatedPython = try Self.validateTrustedPythonExecutable(
             python,
@@ -243,6 +244,10 @@ public struct RuntimeBootstrapper: Sendable {
             workingDirectoryDescriptor: filesystem.runtimeDirectoryDescriptor,
             inheritedDescriptors: [],
             expectedExecutableIdentity: validatedPython.descriptor.rawValue,
+            resourceLifetime: RuntimeProcessResourceLifetime([
+                validatedPython.descriptor,
+                runtimeBootstrapPython,
+            ]),
             filesystem: filesystem
         )
 
@@ -279,6 +284,7 @@ public struct RuntimeBootstrapper: Sendable {
                     destination: .argument(7)
                 ),
             ],
+            resourceLifetime: RuntimeProcessResourceLifetime([authenticatedRuntimeLock]),
             filesystem: filesystem
         )
 
@@ -379,7 +385,8 @@ public struct RuntimeBootstrapper: Sendable {
     }
 
     private func trustedHomebrewPythonPrefix(
-        workingDirectoryDescriptor: Int32
+        workingDirectoryDescriptor: Int32,
+        resourceLifetime: RuntimeProcessResourceLifetime
     ) async throws -> URL {
         let output = try await runChecked(
             executable: brewExecutable,
@@ -387,6 +394,7 @@ public struct RuntimeBootstrapper: Sendable {
             arguments: ["--prefix", "python@3.12"],
             workingDirectoryDescriptor: workingDirectoryDescriptor,
             inheritedDescriptors: [],
+            resourceLifetime: resourceLifetime,
             filesystem: nil
         )
         let path = output.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -407,6 +415,10 @@ public struct RuntimeBootstrapper: Sendable {
             omitSite: true,
             workingDirectoryDescriptor: validatedPython.snapshot.directoryDescriptor,
             expectedExecutableIdentity: validatedPython.descriptor.rawValue,
+            resourceLifetime: RuntimeProcessResourceLifetime([
+                validatedPython.descriptor,
+                validatedPython.snapshot,
+            ]),
             filesystem: nil
         )
         guard facts.implementation == "cpython" else {
@@ -461,6 +473,7 @@ public struct RuntimeBootstrapper: Sendable {
         omitSite: Bool,
         workingDirectoryDescriptor: Int32,
         expectedExecutableIdentity: Int32?,
+        resourceLifetime: RuntimeProcessResourceLifetime? = nil,
         filesystem: SecureRuntimeFilesystem?
     ) async throws -> PythonFacts {
         let arguments = omitSite
@@ -473,6 +486,7 @@ public struct RuntimeBootstrapper: Sendable {
             workingDirectoryDescriptor: workingDirectoryDescriptor,
             inheritedDescriptors: [],
             expectedExecutableIdentity: expectedExecutableIdentity,
+            resourceLifetime: resourceLifetime,
             filesystem: filesystem
         )
         do {
@@ -563,6 +577,7 @@ public struct RuntimeBootstrapper: Sendable {
         workingDirectoryDescriptor: Int32,
         inheritedDescriptors: [RuntimeProcessRequest.InheritedDescriptor],
         expectedExecutableIdentity: Int32? = nil,
+        resourceLifetime: RuntimeProcessResourceLifetime? = nil,
         filesystem: SecureRuntimeFilesystem?
     ) async throws -> RuntimeProcessOutput {
         let output = try await runRaw(
@@ -572,6 +587,7 @@ public struct RuntimeBootstrapper: Sendable {
             workingDirectoryDescriptor: workingDirectoryDescriptor,
             inheritedDescriptors: inheritedDescriptors,
             expectedExecutableIdentity: expectedExecutableIdentity,
+            resourceLifetime: resourceLifetime,
             filesystem: filesystem
         )
         guard output.status == 0 else {
@@ -592,8 +608,10 @@ public struct RuntimeBootstrapper: Sendable {
         workingDirectoryDescriptor: Int32,
         inheritedDescriptors: [RuntimeProcessRequest.InheritedDescriptor],
         expectedExecutableIdentity: Int32? = nil,
+        resourceLifetime: RuntimeProcessResourceLifetime? = nil,
         filesystem: SecureRuntimeFilesystem?
     ) async throws -> RuntimeProcessOutput {
+        defer { resourceLifetime?.keepAliveThroughProcessCompletion() }
         try filesystem?.validateIdentity()
         for inherited in inheritedDescriptors {
             guard Darwin.lseek(inherited.source, 0, SEEK_SET) >= 0 else {
@@ -822,6 +840,10 @@ public struct RuntimeBootstrapper: Sendable {
         let childReservations = try request.inheritedDescriptors.map {
             try OwnedDescriptor.reserveChildDescriptor(preferredMinimum: $0.preferredTarget)
         }
+        defer {
+            withExtendedLifetime(stableSources) {}
+            withExtendedLifetime(childReservations) {}
+        }
         var childArguments = request.arguments
         for (inherited, reservation) in zip(request.inheritedDescriptors, childReservations) {
             let childPath = "/dev/fd/\(reservation.rawValue)"
@@ -935,6 +957,18 @@ private struct PythonFacts: Codable, Sendable, Equatable {
     let executableRealPath: String
     let prefix: String
     let basePrefix: String
+}
+
+private final class RuntimeProcessResourceLifetime: @unchecked Sendable {
+    private let resources: [AnyObject]
+
+    init(_ resources: [AnyObject]) {
+        self.resources = resources
+    }
+
+    func keepAliveThroughProcessCompletion() {
+        withExtendedLifetime(resources) {}
+    }
 }
 
 private struct ValidatedPython: @unchecked Sendable {
