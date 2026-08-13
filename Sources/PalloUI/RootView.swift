@@ -43,7 +43,7 @@ public struct RootView: View {
                     .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(minWidth: 960, minHeight: 600)
+        .frame(minWidth: 900, minHeight: 600)
     }
 
     @ViewBuilder private var sidebar: some View {
