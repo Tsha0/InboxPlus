@@ -86,7 +86,7 @@ func execute(_ command: RuntimeCommand) async throws -> String {
         packages=\(receipt.installedPackages.count) configuration=loopback-only
         """
     case let .benchmark(_, options):
-        let run = try await service.runBenchmark(
+        let report = try await service.runBenchmark(
             BenchmarkWorkload.reduced(
                 seed: options.seed,
                 rooms: options.rooms,
@@ -94,14 +94,24 @@ func execute(_ command: RuntimeCommand) async throws -> String {
                 importWorkers: options.importWorkers
             )
         )
-        return """
+        let run = report.run
+        let decision = report.verdict.decision == .retainSQLiteProvisionally
+            ? "Retain SQLite provisionally"
+            : "Require PostgreSQL"
+        var summary = """
         benchmark '\(command.profile)' rooms=\(run.workload.roomCount) \
         imported=\(run.importedEventCount) live=\(run.liveTrafficEventCount) \
         missing=\(run.reconciliation.missingEventIDs.count) \
         duplicates=\(run.reconciliation.duplicateEventIDs.count) \
         failures=\(run.unrecoverableFailureCount) \
+        integrity=\(run.sqliteIntegrity ?? "unverified") \
         elapsed=\(String(format: "%.1f", run.elapsedSeconds))s
+        decision: \(decision)
         """
+        for reason in report.verdict.failureReasons {
+            summary += "\n  - \(reason)"
+        }
+        return summary
     case .backup, .restore, .remove:
         throw CommandUnavailable(command: command)
     }

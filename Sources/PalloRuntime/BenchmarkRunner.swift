@@ -28,6 +28,21 @@ public struct BenchmarkRunner: Sendable {
         let partitions = Self.partition(rooms, into: workload.importWorkerCount)
         let collector = BenchmarkCollector()
 
+        // Runs on the main executor for the whole workload so scheduling delay is measurable.
+        let heartbeat = Task { @MainActor in
+            let interval = Duration.microseconds(16_667)
+            var due = clock.now
+            while !Task.isCancelled {
+                due = due.advanced(by: interval)
+                try? await Task.sleep(until: due, clock: clock)
+                if Task.isCancelled { break }
+                await collector.recordHeartbeat(
+                    seconds: max(0, Self.seconds(from: due, to: clock.now))
+                )
+            }
+        }
+        defer { heartbeat.cancel() }
+
         // Every writer and reader runs concurrently; reconciliation waits for all of them.
         await withTaskGroup(of: Void.self) { group in
             for (workerIndex, partition) in partitions.enumerated() {

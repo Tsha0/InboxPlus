@@ -335,8 +335,12 @@ public struct RuntimeProfileService: Sendable {
     }
 
     /// Provisions fixtures, runs the workload against a live runtime, and reconciles the result.
-    public func runBenchmark(_ workload: BenchmarkWorkload) async throws -> BenchmarkRun {
-        try await withRunningRuntime { _, context in
+    ///
+    /// SQLite integrity is checked after the runtime stops, because `PRAGMA integrity_check`
+    /// is only meaningful against a database no longer being written.
+    public func runBenchmark(_ workload: BenchmarkWorkload) async throws -> BenchmarkReport {
+        let state = try requirePreparedState()
+        var run = try await withRunningRuntime { _, context in
             let provisioner = try MatrixFixtureProvisioner(
                 baseURL: context.baseURL,
                 serverName: context.serverName,
@@ -350,11 +354,54 @@ public struct RuntimeProfileService: Sendable {
                 baseURL: context.baseURL,
                 accessToken: fixture.accessToken
             )
-            let run = try await BenchmarkRunner(
+            return try await BenchmarkRunner(
                 operations: LiveBenchmarkOperations(client: client, rooms: fixture.roomIDs)
             ).run(workload)
-            return run
         }
+
+        let manifest = try loadManifest()
+        let receipt = try manifest.validatePreparedRuntime(
+            at: paths.runtime.appendingPathComponent(RuntimeBootstrapper.receiptName)
+        )
+        run.sqliteIntegrity = try checkSQLiteIntegrity()
+        run.environment = BenchmarkEnvironmentCollector().collect(
+            receipt: receipt,
+            manifest: manifest,
+            databaseURL: databaseURL
+        )
+
+        let reporter = BenchmarkReporter(sensitiveValues: [state.registrationSecret])
+        let verdict = BenchmarkReporter.evaluate(run)
+        _ = try reporter.write(
+            run,
+            verdict: verdict,
+            to: paths.reports,
+            name: "benchmark-\(workload.seed)-\(workload.roomCount)x\(workload.messageCount)"
+        )
+        return BenchmarkReport(run: run, verdict: verdict, generatedAt: Date())
+    }
+
+    public var databaseURL: URL {
+        paths.data.appendingPathComponent("homeserver.db")
+    }
+
+    /// Runs SQLite's own quick and full integrity checks against the stopped database.
+    public func checkSQLiteIntegrity() throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = [databaseURL.path, "PRAGMA quick_check; PRAGMA integrity_check;"]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+        try process.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return "unavailable" }
+        let lines = String(decoding: data, as: UTF8.self)
+            .split(separator: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return lines.allSatisfy { $0 == "ok" } ? "ok" : lines.joined(separator: "; ")
     }
 
     // MARK: - Assembly
