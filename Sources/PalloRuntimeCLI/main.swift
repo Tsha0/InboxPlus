@@ -59,6 +59,29 @@ func execute(_ command: RuntimeCommand) async throws -> String {
     case .stop:
         return describe(try await service.stop())
     case let .verify(_, options):
+        if options.simulateDataLoss {
+            guard let backup = options.restoreBackup else {
+                throw RuntimeCommandError.missingOption("--restore")
+            }
+            let recovery = try await service.verifyRecovery(
+                name: backup,
+                seed: BenchmarkCLIOptions.defaultSeed
+            )
+            guard recovery.succeeded else {
+                throw VerificationFailed(
+                    summary: """
+                    recovery failed: integrity=\(recovery.integrity) \
+                    rooms=\(recovery.roomCount) events=\(recovery.eventCount) \
+                    acceptedNewWrite=\(recovery.acceptedNewWrite)
+                    """
+                )
+            }
+            return """
+            recovered '\(command.profile)' from '\(backup)' \
+            integrity=\(recovery.integrity) rooms=\(recovery.roomCount) \
+            events=\(recovery.eventCount) accepted-new-write=\(recovery.acceptedNewWrite)
+            """
+        }
         if let rooms = options.fixtureRooms {
             let verification = try await service.verifyFixtures(
                 seed: BenchmarkCLIOptions.defaultSeed,
@@ -112,7 +135,20 @@ func execute(_ command: RuntimeCommand) async throws -> String {
             summary += "\n  - \(reason)"
         }
         return summary
-    case .backup, .restore, .remove:
+    case let .backup(_, name):
+        let manifest = try await service.createBackup(name: name)
+        return """
+        backed up '\(command.profile)' as '\(name)' \
+        files=\(manifest.files.count) \
+        bytes=\(manifest.files.reduce(0) { $0 + $1.byteCount })
+        """
+    case let .restore(_, backup):
+        let result = try await service.restoreBackup(name: backup, into: service.paths)
+        return """
+        restored '\(backup)' into '\(command.profile)' \
+        files=\(result.restoredFileCount) verified=\(result.verifiedChecksums)
+        """
+    case .remove:
         throw CommandUnavailable(command: command)
     }
 }

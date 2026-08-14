@@ -404,6 +404,114 @@ public struct RuntimeProfileService: Sendable {
         return lines.allSatisfy { $0 == "ok" } ? "ok" : lines.joined(separator: "; ")
     }
 
+    // MARK: - Backup and recovery
+
+    public func makeBackupManager() -> BackupManager {
+        BackupManager(
+            paths: paths,
+            runtimeSnapshot: { try await status() }
+        )
+    }
+
+    public func createBackup(name: String) async throws -> BackupManifest {
+        try await makeBackupManager().create(name: name)
+    }
+
+    public func restoreBackup(name: String, into target: RuntimePaths) async throws -> RestoreResult {
+        try await makeBackupManager().restore(name: name, into: target)
+    }
+
+    /// Damages the stopped database, restores the named backup, and proves the runtime recovers.
+    ///
+    /// Recovery counts as verified only when integrity passes, the fixture data reconciles, and
+    /// the restored runtime accepts a brand new write.
+    public func verifyRecovery(name: String, seed: UInt64) async throws -> RecoveryResult {
+        let manager = makeBackupManager()
+        let backupDirectory = paths.backups.appendingPathComponent(name, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: backupDirectory.path) else {
+            throw BackupError.backupNotFound(name)
+        }
+
+        // Simulate data loss on the stopped profile, keeping the backups tree intact.
+        for entry in ["data", "configuration"] {
+            let url = paths.profile.appendingPathComponent(entry)
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+            }
+        }
+        try FileManager.default.removeItem(at: paths.state.appendingPathComponent(RuntimeProfileStore.fileName))
+
+        // Restore into a staging profile, then move its contents back over this profile.
+        let restoreTarget = try RuntimePaths(
+            root: paths.root,
+            profileName: "\(paths.profile.lastPathComponent)-recovery"
+        )
+        if FileManager.default.fileExists(atPath: restoreTarget.profile.path) {
+            try FileManager.default.removeItem(at: restoreTarget.profile)
+        }
+        _ = try await manager.restore(name: name, into: restoreTarget)
+        // Move back only what was damaged. `runtime/` must be left alone: the backup holds the
+        // receipt but not the Python virtual environment, so replacing it would delete the venv.
+        for entry in ["data", "configuration", "state/\(RuntimeProfileStore.fileName)"] {
+            let source = restoreTarget.profile.appendingPathComponent(entry)
+            guard FileManager.default.fileExists(atPath: source.path) else { continue }
+            let destination = paths.profile.appendingPathComponent(entry)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try FileManager.default.moveItem(at: source, to: destination)
+        }
+        try FileManager.default.removeItem(at: restoreTarget.profile)
+
+        let integrity = try checkSQLiteIntegrity()
+        let observed = try await withRunningRuntime { _, context -> (Int, Int, Bool) in
+            let provisioner = try MatrixFixtureProvisioner(
+                baseURL: context.baseURL,
+                serverName: context.serverName,
+                registrationSecret: context.registrationSecret
+            )
+            let fixture = try await provisioner.prepare(seed: seed, roomCount: 1)
+            let client = try MatrixHTTPClient(
+                baseURL: context.baseURL,
+                accessToken: fixture.accessToken
+            )
+            let joined: JoinedRoomsResponse = try await client.send(
+                .get,
+                path: ["_matrix", "client", "v3", "joined_rooms"],
+                idempotent: true
+            )
+            let operations = LiveBenchmarkOperations(client: client, rooms: joined.joinedRooms)
+            var events = 0
+            for room in joined.joinedRooms {
+                events += try await operations.eventIDs(inRoom: room).count
+            }
+
+            // A restored profile is only usable if it still accepts new writes.
+            var acceptedNewWrite = false
+            if let room = joined.joinedRooms.first {
+                _ = try await operations.sendMessage(
+                    roomID: room,
+                    transactionID: "pallo-recovery-\(UUID().uuidString)",
+                    body: "post-restore write"
+                )
+                acceptedNewWrite = true
+            }
+            return (joined.joinedRooms.count, events, acceptedNewWrite)
+        }
+
+        return RecoveryResult(
+            integrity: integrity,
+            roomCount: observed.0,
+            eventCount: observed.1,
+            acceptedNewWrite: observed.2
+        )
+    }
+
     // MARK: - Assembly
 
     public func makeSupervisor(
