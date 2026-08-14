@@ -58,13 +58,45 @@ func execute(_ command: RuntimeCommand) async throws -> String {
         return describe(try await service.status())
     case .stop:
         return describe(try await service.stop())
-    case .benchmark, .backup, .restore, .verify, .remove:
+    case let .verify(_, options):
+        if let rooms = options.fixtureRooms {
+            let verification = try await service.verifyFixtures(
+                seed: BenchmarkCLIOptions.defaultSeed,
+                rooms: rooms
+            )
+            guard verification.reconciledExactly else {
+                throw VerificationFailed(
+                    summary: """
+                    fixture reconciliation failed: requested=\(verification.requestedRooms) \
+                    created=\(verification.createdRooms) \
+                    reconciled=\(verification.reconciledRooms) \
+                    missing=\(verification.missingRooms.count)
+                    """
+                )
+            }
+            return """
+            verified profile '\(command.profile)' \
+            rooms=\(verification.reconciledRooms)/\(verification.requestedRooms) reconciled exactly
+            """
+        }
+        let receipt = try service.verifyPreparedRuntime()
+        return """
+        verified profile '\(command.profile)' \
+        python=\(receipt.pythonVersion) synapse=\(receipt.synapseVersion) \
+        packages=\(receipt.installedPackages.count) configuration=loopback-only
+        """
+    case .benchmark, .backup, .restore, .remove:
         throw CommandUnavailable(command: command)
     }
 }
 
 struct CommandUnavailable: Error {
     let command: RuntimeCommand
+}
+
+struct VerificationFailed: Error, CustomStringConvertible {
+    let summary: String
+    var description: String { summary }
 }
 
 let arguments = Array(CommandLine.arguments.dropFirst())

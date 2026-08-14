@@ -288,6 +288,52 @@ public struct RuntimeProfileService: Sendable {
         }
     }
 
+    // MARK: - Verification
+
+    /// Validates the prepared runtime receipt and the rendered loopback-only configuration.
+    public func verifyPreparedRuntime() throws -> PreparedRuntimeReceipt {
+        let manifest = try loadManifest()
+        let state = try requirePreparedState()
+        let receipt = try manifest.validatePreparedRuntime(
+            at: paths.runtime.appendingPathComponent(RuntimeBootstrapper.receiptName)
+        )
+        let configurationFile = URL(fileURLWithPath: state.configurationFile)
+        let rendered = try String(contentsOf: configurationFile, encoding: .utf8)
+        guard rendered.contains("bind_addresses: ['127.0.0.1']") else {
+            throw SynapseConfigurationError.nonLoopbackAddress("configuration is not loopback-only")
+        }
+        return receipt
+    }
+
+    /// Provisions deterministic fixture rooms against a live runtime and reconciles them back.
+    public func verifyFixtures(seed: UInt64, rooms: Int) async throws -> FixtureVerification {
+        try await withRunningRuntime { _, context in
+            let provisioner = try MatrixFixtureProvisioner(
+                baseURL: context.baseURL,
+                serverName: context.serverName,
+                registrationSecret: context.registrationSecret
+            )
+            let fixture = try await provisioner.prepare(seed: seed, roomCount: rooms)
+            let client = try MatrixHTTPClient(
+                baseURL: context.baseURL,
+                accessToken: fixture.accessToken
+            )
+            let joined: JoinedRoomsResponse = try await client.send(
+                .get,
+                path: ["_matrix", "client", "v3", "joined_rooms"],
+                idempotent: true
+            )
+            let expected = Set(fixture.roomIDs)
+            return FixtureVerification(
+                seed: seed,
+                requestedRooms: rooms,
+                createdRooms: fixture.roomIDs.count,
+                reconciledRooms: expected.intersection(joined.joinedRooms).count,
+                missingRooms: expected.subtracting(joined.joinedRooms).sorted()
+            )
+        }
+    }
+
     // MARK: - Assembly
 
     public func makeSupervisor(
@@ -422,6 +468,26 @@ public struct RuntimeProfileService: Sendable {
             throw RuntimeProfileError.pythonExecutableUnavailable
         }
         return applicationExecutable
+    }
+}
+
+public struct FixtureVerification: Sendable, Equatable {
+    public let seed: UInt64
+    public let requestedRooms: Int
+    public let createdRooms: Int
+    public let reconciledRooms: Int
+    public let missingRooms: [String]
+
+    public var reconciledExactly: Bool {
+        missingRooms.isEmpty && createdRooms == requestedRooms && reconciledRooms == requestedRooms
+    }
+}
+
+struct JoinedRoomsResponse: Decodable {
+    let joinedRooms: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case joinedRooms = "joined_rooms"
     }
 }
 

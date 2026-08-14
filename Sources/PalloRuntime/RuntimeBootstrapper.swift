@@ -95,7 +95,7 @@ public struct RuntimeBootstrapper: Sendable {
     public static let receiptPermissions = 0o600
 
     fileprivate static let runtimeLockName = "requirements.lock"
-    fileprivate static let receiptName = "prepared-runtime.json"
+    public static let receiptName = "prepared-runtime.json"
     private static let pythonFactsScript = """
     import json, pathlib, sys
     print(json.dumps({

@@ -54,6 +54,7 @@ public protocol SynapseHealthChecking: Sendable {
 public enum SynapseHTTPMethod: String, Sendable, Equatable {
     case get = "GET"
     case post = "POST"
+    case put = "PUT"
 }
 
 public struct SynapseHTTPRequest: Sendable, Equatable {
