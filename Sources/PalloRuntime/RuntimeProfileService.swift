@@ -406,6 +406,16 @@ public struct RuntimeProfileService: Sendable {
 
     // MARK: - Backup and recovery
 
+    public func removeProfile(
+        confirmation: String,
+        exportReportTo destination: URL?
+    ) async throws -> RemovalResult {
+        try await ProfileRemover(
+            paths: paths,
+            runtimeSnapshot: { try await status() }
+        ).remove(confirmation: confirmation, exportReportTo: destination)
+    }
+
     public func makeBackupManager() -> BackupManager {
         BackupManager(
             paths: paths,

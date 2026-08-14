@@ -148,13 +148,19 @@ func execute(_ command: RuntimeCommand) async throws -> String {
         restored '\(backup)' into '\(command.profile)' \
         files=\(result.restoredFileCount) verified=\(result.verifiedChecksums)
         """
-    case .remove:
-        throw CommandUnavailable(command: command)
+    case let .remove(_, confirmation, exportReport):
+        let result = try await service.removeProfile(
+            confirmation: confirmation,
+            exportReportTo: exportReport.map { URL(fileURLWithPath: $0, isDirectory: true) }
+        )
+        guard result.removedProfile else {
+            return "profile '\(command.profile)' was already absent"
+        }
+        return """
+        removed profile '\(command.profile)' \
+        exported-reports=\(result.exportedReportCount) residue=\(result.residuePaths.count)
+        """
     }
-}
-
-struct CommandUnavailable: Error {
-    let command: RuntimeCommand
 }
 
 struct VerificationFailed: Error, CustomStringConvertible {
@@ -173,12 +179,6 @@ do {
     writeStandardError("error: \(error.diagnostic)")
     writeStandardError(RuntimeCommand.usage)
     exit(RuntimeExitCode.usage.rawValue)
-} catch let error as CommandUnavailable {
-    writeStandardError(
-        "error: command is recognized but its service is not wired into this build yet"
-    )
-    _ = error
-    exit(30)
 } catch {
     writeStandardError("error: \(error)")
     exit(RuntimeExitCode(for: error).rawValue)

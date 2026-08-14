@@ -19,6 +19,10 @@ extension RuntimeExitCode {
             self = .unavailableDependency
         case let error as RuntimeProfileError:
             self = RuntimeExitCode(for: error)
+        case let error as RemovalError:
+            self = RuntimeExitCode(for: error)
+        case let error as BackupError:
+            self = RuntimeExitCode(for: error)
         case is SynapseConfigurationError, is ProbeCredentialStoreError, is RuntimeProfileStoreError:
             self = .integrityFailure
         default:
@@ -51,6 +55,32 @@ extension RuntimeExitCode {
             self = .invalidTransition
         case .portAllocationFailed:
             self = .processLaunchFailed
+        }
+    }
+
+    private init(for error: RemovalError) {
+        switch error {
+        case .confirmationMismatch:
+            self = .usage
+        case .runtimeMustBeStopped:
+            self = .invalidTransition
+        case .unsafeSymlink, .exportDestinationInsideProfile:
+            self = .unsafePath
+        case .residueRemains:
+            self = .integrityFailure
+        }
+    }
+
+    private init(for error: BackupError) {
+        switch error {
+        case .runtimeMustBeStopped:
+            self = .invalidTransition
+        case .invalidBackupName:
+            self = .usage
+        case .targetNotEmpty, .missingSourceFile, .cannotWrite:
+            self = .unsafePath
+        case .checksumMismatch, .backupNotFound:
+            self = .integrityFailure
         }
     }
 
