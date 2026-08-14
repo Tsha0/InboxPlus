@@ -819,7 +819,9 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
         executable: "/bin/sh",
         arguments: [
             "-c",
-            "sleep 0.05; printf 'alpha admin-secret env %s omega' \"$ACCESS_TOKEN\"; printf 'stderr token-123 tail' >&2",
+            // The child must outlive launch identity stabilization (two consecutive reads, 5 ms
+            // apart) even under full-suite parallel load, or launch() races its exit.
+            "sleep 0.5; printf 'alpha admin-secret env %s omega' \"$ACCESS_TOKEN\"; printf 'stderr token-123 tail' >&2",
         ],
         environment: ["ACCESS_TOKEN": "environment-token"],
         sensitiveLogValues: ["admin-secret", "token-123"]
