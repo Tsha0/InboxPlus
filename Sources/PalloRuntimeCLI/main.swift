@@ -85,7 +85,24 @@ func execute(_ command: RuntimeCommand) async throws -> String {
         python=\(receipt.pythonVersion) synapse=\(receipt.synapseVersion) \
         packages=\(receipt.installedPackages.count) configuration=loopback-only
         """
-    case .benchmark, .backup, .restore, .remove:
+    case let .benchmark(_, options):
+        let run = try await service.runBenchmark(
+            BenchmarkWorkload.reduced(
+                seed: options.seed,
+                rooms: options.rooms,
+                messages: options.messages,
+                importWorkers: options.importWorkers
+            )
+        )
+        return """
+        benchmark '\(command.profile)' rooms=\(run.workload.roomCount) \
+        imported=\(run.importedEventCount) live=\(run.liveTrafficEventCount) \
+        missing=\(run.reconciliation.missingEventIDs.count) \
+        duplicates=\(run.reconciliation.duplicateEventIDs.count) \
+        failures=\(run.unrecoverableFailureCount) \
+        elapsed=\(String(format: "%.1f", run.elapsedSeconds))s
+        """
+    case .backup, .restore, .remove:
         throw CommandUnavailable(command: command)
     }
 }

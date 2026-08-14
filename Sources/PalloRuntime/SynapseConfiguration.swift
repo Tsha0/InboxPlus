@@ -105,6 +105,42 @@ public struct SynapseConfiguration: Sendable {
         federation_domain_whitelist: []
         federation_whitelist_endpoint_enabled: false
         send_federation: false
+        rc_message:
+          per_second: 10000
+          burst_count: 100000
+        rc_room_creation:
+          per_second: 10000
+          burst_count: 100000
+        rc_registration:
+          per_second: 1000
+          burst_count: 10000
+        rc_joins:
+          local:
+            per_second: 10000
+            burst_count: 100000
+          remote:
+            per_second: 10000
+            burst_count: 100000
+        rc_invites:
+          per_room:
+            per_second: 10000
+            burst_count: 100000
+          per_user:
+            per_second: 10000
+            burst_count: 100000
+          per_issuer:
+            per_second: 10000
+            burst_count: 100000
+        rc_login:
+          address:
+            per_second: 1000
+            burst_count: 10000
+          account:
+            per_second: 1000
+            burst_count: 10000
+          failed_attempts:
+            per_second: 1000
+            burst_count: 10000
         """
     }
 

@@ -334,6 +334,29 @@ public struct RuntimeProfileService: Sendable {
         }
     }
 
+    /// Provisions fixtures, runs the workload against a live runtime, and reconciles the result.
+    public func runBenchmark(_ workload: BenchmarkWorkload) async throws -> BenchmarkRun {
+        try await withRunningRuntime { _, context in
+            let provisioner = try MatrixFixtureProvisioner(
+                baseURL: context.baseURL,
+                serverName: context.serverName,
+                registrationSecret: context.registrationSecret
+            )
+            let fixture = try await provisioner.prepare(
+                seed: workload.seed,
+                roomCount: workload.roomCount
+            )
+            let client = try MatrixHTTPClient(
+                baseURL: context.baseURL,
+                accessToken: fixture.accessToken
+            )
+            let run = try await BenchmarkRunner(
+                operations: LiveBenchmarkOperations(client: client, rooms: fixture.roomIDs)
+            ).run(workload)
+            return run
+        }
+    }
+
     // MARK: - Assembly
 
     public func makeSupervisor(

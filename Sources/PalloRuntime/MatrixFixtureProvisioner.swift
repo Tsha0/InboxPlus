@@ -98,12 +98,22 @@ public struct MatrixFixtureProvisioner: Sendable {
                 "room_alias_name": alias,
                 "visibility": "private",
             ])
-            let response: CreateRoomResponse = try await authenticated.send(
-                .post,
-                path: ["_matrix", "client", "v3", "createRoom"],
-                body: body
-            )
-            roomIDs.append(response.roomID)
+            do {
+                let response: CreateRoomResponse = try await authenticated.send(
+                    .post,
+                    path: ["_matrix", "client", "v3", "createRoom"],
+                    body: body
+                )
+                roomIDs.append(response.roomID)
+            } catch let MatrixHTTPError.matrix(failure) where failure.errorCode == "M_ROOM_IN_USE" {
+                // A previous run already created this deterministic alias; adopt its room.
+                let resolved: ResolvedAliasResponse = try await authenticated.send(
+                    .get,
+                    path: ["_matrix", "client", "v3", "directory", "room", "#\(alias):\(serverName)"],
+                    idempotent: true
+                )
+                roomIDs.append(resolved.roomID)
+            }
         }
 
         return FixtureContext(
@@ -115,15 +125,30 @@ public struct MatrixFixtureProvisioner: Sendable {
         )
     }
 
-    /// Registers a deterministic local benchmark account through the shared-secret endpoint.
+    /// Registers the deterministic local benchmark account, or logs in when it already exists.
+    ///
+    /// The password is derived from the seed and the profile's registration secret so a repeated
+    /// run can authenticate as the same account instead of colliding with it.
     private func registerBenchmarkUser(seed: UInt64) async throws -> BenchmarkAccount {
+        let localpart = "pallo_bench_\(String(seed, radix: 36))"
+        let password = HMAC<SHA256>.authenticationCode(
+            for: Data("pallo-benchmark-password:\(seed)".utf8),
+            using: SymmetricKey(data: Data(registrationSecret.utf8))
+        ).map { String(format: "%02x", $0) }.joined()
+
+        do {
+            return try await register(localpart: localpart, password: password)
+        } catch let MatrixHTTPError.matrix(failure) where failure.errorCode == "M_USER_IN_USE" {
+            return try await logIn(localpart: localpart, password: password)
+        }
+    }
+
+    private func register(localpart: String, password: String) async throws -> BenchmarkAccount {
         let nonceResponse: NonceBody = try await client.send(
             .get,
             path: ["_synapse", "admin", "v1", "register"],
             idempotent: true
         )
-        let localpart = "pallo_bench_\(String(seed, radix: 36))"
-        let password = UUID().uuidString + UUID().uuidString
         let macInput = [nonceResponse.nonce, localpart, password, "notadmin"].joined(separator: "\0")
         let mac = HMAC<Insecure.SHA1>.authenticationCode(
             for: Data(macInput.utf8),
@@ -146,6 +171,24 @@ public struct MatrixFixtureProvisioner: Sendable {
             userID: registration.userID,
             accessToken: registration.accessToken,
             deviceID: registration.deviceID ?? "PALLOBENCH"
+        )
+    }
+
+    private func logIn(localpart: String, password: String) async throws -> BenchmarkAccount {
+        let body = try JSONSerialization.data(withJSONObject: [
+            "type": "m.login.password",
+            "identifier": ["type": "m.id.user", "user": localpart],
+            "password": password,
+        ])
+        let login: RegistrationBody = try await client.send(
+            .post,
+            path: ["_matrix", "client", "v3", "login"],
+            body: body
+        )
+        return BenchmarkAccount(
+            userID: login.userID,
+            accessToken: login.accessToken,
+            deviceID: login.deviceID ?? "PALLOBENCH"
         )
     }
 }
@@ -173,6 +216,14 @@ private struct RegistrationBody: Decodable {
 }
 
 private struct CreateRoomResponse: Decodable {
+    let roomID: String
+
+    private enum CodingKeys: String, CodingKey {
+        case roomID = "room_id"
+    }
+}
+
+private struct ResolvedAliasResponse: Decodable {
     let roomID: String
 
     private enum CodingKeys: String, CodingKey {
