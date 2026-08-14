@@ -305,6 +305,42 @@ public struct RuntimeProfileService: Sendable {
         return receipt
     }
 
+    /// Records a completed recovery exercise against the most recent stored report.
+    private func applyRecoveryEvidence(_ result: RecoveryResult) throws {
+        let state = try requirePreparedState()
+        let entries = try FileManager.default.contentsOfDirectory(atPath: paths.reports.path)
+            .filter { $0.hasSuffix(".json") }
+        guard !entries.isEmpty else { return }
+
+        let latest = try entries.map { name -> (String, Date) in
+            let attributes = try FileManager.default.attributesOfItem(
+                atPath: paths.reports.appendingPathComponent(name).path
+            )
+            return (name, (attributes[.modificationDate] as? Date) ?? .distantPast)
+        }
+        .max { $0.1 < $1.1 }!
+        .0
+
+        let jsonURL = paths.reports.appendingPathComponent(latest)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        var report = try decoder.decode(BenchmarkReport.self, from: Data(contentsOf: jsonURL))
+
+        var run = report.run
+        run.recoveryVerified = result.succeeded
+        report = BenchmarkReport(
+            run: run,
+            verdict: BenchmarkReporter.evaluate(run),
+            generatedAt: report.generatedAt
+        )
+        _ = try BenchmarkReporter(sensitiveValues: [state.registrationSecret]).write(
+            run,
+            verdict: report.verdict,
+            to: paths.reports,
+            name: latest.replacingOccurrences(of: ".json", with: "")
+        )
+    }
+
     /// Checks that a written report is complete and free of secrets.
     ///
     /// `latest` selects the most recently modified report; any other name selects it exactly.
@@ -577,12 +613,18 @@ public struct RuntimeProfileService: Sendable {
             return (joined.joinedRooms.count, events, acceptedNewWrite)
         }
 
-        return RecoveryResult(
+        let result = RecoveryResult(
             integrity: integrity,
             roomCount: observed.0,
             eventCount: observed.1,
             acceptedNewWrite: observed.2
         )
+
+        // The benchmark cannot verify recovery inside its own run, so its stored report carries an
+        // unverified recovery gate. Fold this exercise's real evidence into that report and
+        // re-evaluate, rather than leaving the verdict permanently incomplete.
+        try? applyRecoveryEvidence(result)
+        return result
     }
 
     // MARK: - Assembly

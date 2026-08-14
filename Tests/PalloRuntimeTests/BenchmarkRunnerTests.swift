@@ -136,6 +136,82 @@ import Testing
     #expect(run.unrecoverableFailureCount == 1)
 }
 
+// MARK: - Heartbeat
+
+@Test func aLateHeartbeatDoesNotInflateLaterSamples() async throws {
+    // Break caught: anchoring the target once and advancing by a fixed interval accumulates
+    // scheduling debt, so every later sample grows without bound instead of describing a frame.
+    let clock = VirtualClock(interval: 0.5)
+    // The first sleep overshoots by 5 s; every later sleep is punctual.
+    await clock.setOvershoots([5.0, 0, 0, 0])
+
+    let recorder = SampleRecorder()
+    await BenchmarkRunner.measureHeartbeat(
+        intervalSeconds: 0.5,
+        now: { clock.currentSeconds() },
+        sleep: { seconds in await clock.advance(by: seconds) },
+        isCancelled: { clock.tickCount() >= 4 },
+        record: { recorder.append($0) }
+    )
+
+    let samples = recorder.values()
+    #expect(samples.count == 3)
+    #expect(abs(samples[0] - 5.0) < 0.001)
+    // The punctual wakeups that follow must report ~0, not the inherited 5 s of debt.
+    #expect(samples[1] < 0.001)
+    #expect(samples[2] < 0.001)
+}
+
+@Test func punctualHeartbeatsReportNoDelay() async throws {
+    let clock = VirtualClock(interval: 0.5)
+    await clock.setOvershoots([0, 0, 0])
+
+    let recorder = SampleRecorder()
+    await BenchmarkRunner.measureHeartbeat(
+        intervalSeconds: 0.5,
+        now: { clock.currentSeconds() },
+        sleep: { seconds in await clock.advance(by: seconds) },
+        isCancelled: { clock.tickCount() >= 3 },
+        record: { recorder.append($0) }
+    )
+
+    let samples = recorder.values()
+    #expect(samples.allSatisfy { $0 < 0.001 })
+    #expect(!samples.isEmpty)
+}
+
+private final class SampleRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var samples: [Double] = []
+    func append(_ value: Double) { lock.withLock { samples.append(value) } }
+    func values() -> [Double] { lock.withLock { samples } }
+}
+
+/// A deterministic clock whose sleeps can overshoot by a scripted amount.
+private final class VirtualClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var seconds = 0.0
+    private var overshoots: [Double] = []
+    private var ticks = 0
+
+    init(interval: Double) {}
+
+    func setOvershoots(_ values: [Double]) async {
+        lock.withLock { overshoots = values }
+    }
+
+    func advance(by requested: Double) async {
+        lock.withLock {
+            let overshoot = ticks < overshoots.count ? overshoots[ticks] : 0
+            seconds += requested + overshoot
+            ticks += 1
+        }
+    }
+
+    func currentSeconds() -> Double { lock.withLock { seconds } }
+    func tickCount() -> Int { lock.withLock { ticks } }
+}
+
 // MARK: - Fake operations
 
 private actor FakeBenchmarkOperations: BenchmarkMatrixOperations {

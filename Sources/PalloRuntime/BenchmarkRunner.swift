@@ -30,16 +30,16 @@ public struct BenchmarkRunner: Sendable {
 
         // Runs on the main executor for the whole workload so scheduling delay is measurable.
         let heartbeat = Task { @MainActor in
-            let interval = Duration.microseconds(16_667)
-            var due = clock.now
-            while !Task.isCancelled {
-                due = due.advanced(by: interval)
-                try? await Task.sleep(until: due, clock: clock)
-                if Task.isCancelled { break }
-                await collector.recordHeartbeat(
-                    seconds: max(0, Self.seconds(from: due, to: clock.now))
-                )
-            }
+            let start = clock.now
+            await Self.measureHeartbeat(
+                intervalSeconds: Self.heartbeatIntervalSeconds,
+                now: { Self.seconds(from: start, to: clock.now) },
+                sleep: { seconds in
+                    try? await Task.sleep(for: .microseconds(Int64(seconds * 1_000_000)))
+                },
+                isCancelled: { Task.isCancelled },
+                record: { await collector.recordHeartbeat(seconds: $0) }
+            )
         }
         defer { heartbeat.cancel() }
 
@@ -237,6 +237,30 @@ public struct BenchmarkRunner: Sendable {
     }
 
     // MARK: - Helpers
+
+    /// One 60 Hz animation frame, the approved responsiveness budget.
+    static let heartbeatIntervalSeconds = 1.0 / 60.0
+
+    /// Measures how late each heartbeat wakeup fires relative to its own target.
+    ///
+    /// The target is re-derived from the current time on every iteration. Anchoring it once and
+    /// advancing by a fixed interval instead accumulates scheduling debt: the loop cannot sustain
+    /// a 60 Hz cadence while also recording each sample, so every later wakeup is reported as
+    /// progressively later, and the measurement grows without bound instead of describing a frame.
+    static func measureHeartbeat(
+        intervalSeconds: Double,
+        now: @Sendable () -> Double,
+        sleep: @Sendable (Double) async -> Void,
+        isCancelled: @Sendable () -> Bool,
+        record: @Sendable (Double) async -> Void
+    ) async {
+        while !isCancelled() {
+            let scheduled = now() + intervalSeconds
+            await sleep(intervalSeconds)
+            if isCancelled() { break }
+            await record(max(0, now() - scheduled))
+        }
+    }
 
     /// Splits rooms into exactly `workers` contiguous, non-empty partitions.
     static func partition(_ rooms: [String], into workers: Int) -> [[String]] {
