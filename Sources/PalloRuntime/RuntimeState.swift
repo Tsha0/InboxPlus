@@ -207,11 +207,17 @@ public struct RuntimeSnapshot: Codable, Sendable, Equatable {
 
 public enum RuntimeExitCode: Int32, Codable, Sendable, CaseIterable {
     case success = 0
+    case usage = 10
     case invalidTransition = 20
     case unprepared = 21
     case processLaunchFailed = 22
     case processIdentityMismatch = 23
     case shutdownIncomplete = 24
+    case unavailableDependency = 25
+    case healthFailure = 26
+    case integrityFailure = 27
+    case benchmarkFailure = 28
+    case unsafePath = 29
 }
 
 public enum RuntimeStateError: Error, Sendable, Equatable {

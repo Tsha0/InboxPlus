@@ -8,6 +8,28 @@
 
 **Tech Stack:** Swift 6.2 package on macOS 15+, Swift Testing, Foundation `Process`, `URLSession`, POSIX process/filesystem APIs, CPython 3.12 virtual environments, Synapse 1.158.0, SQLite, Matrix client-server HTTP APIs.
 
+## Runtime ownership model (decided during Task 6)
+
+The supervisor built in Tasks 4–5 controls only its own direct child. That restriction is
+load-bearing: being the sole reaper of its child is what guarantees the kernel cannot recycle the
+PID between identity verification and signalling. It also matches the design's explicit non-goal of
+"launch agents, launch at login, or background operation independent of the harness".
+
+Therefore the CLI uses a **foreground session model**, not a detached daemon:
+
+- `start` launches Synapse and supervises it for as long as the command runs. Interrupting the
+  command (Ctrl-C, `SIGTERM`) stops the child and exits.
+- Every command that needs a live Synapse (`benchmark`, `verify`, recovery exercises) owns the full
+  start/work/stop lifecycle inside a single process via `RuntimeProfileService.withRunningRuntime`.
+- `status` observes only. It reconciles persisted state against the live process and probes health
+  over loopback, takes no profile lock, and never writes state, so it cannot race the owning
+  session. Observation never requires ownership; control always does.
+- `stop` reconciles a profile whose owning session is gone. While a session still owns the runtime
+  it refuses with a clear diagnostic instead of signalling a process it does not own.
+
+Task steps below that assume `start` returns with Synapse still running are superseded by this
+model.
+
 ## Global Constraints
 
 - This is a developer spike; Homebrew Python and developer libraries are permitted only for bootstrap.
@@ -528,9 +550,25 @@ Add the `PalloRuntimeCLI` executable product/target to `Package.swift`. Keep con
 
 Run: `swift test --filter RuntimeCommandTests && swift test`
 
-Run: `swift run PalloRuntimeCLI bootstrap --profile lifecycle-smoke --python /opt/homebrew/opt/python@3.12/bin/python3.12 && swift run PalloRuntimeCLI start --profile lifecycle-smoke && swift run PalloRuntimeCLI status --profile lifecycle-smoke && swift run PalloRuntimeCLI stop --profile lifecycle-smoke`
+Run: `swift run PalloRuntimeCLI bootstrap --profile lifecycle-smoke --python /opt/homebrew/opt/python@3.12/bin/python3.12`
 
-Expected: tests PASS; CLI bootstrap succeeds, status reports `healthy` while started, stop reports `stopped`, and the profile remains available to later integration tasks.
+Run `start` in one shell and observe it from a second, per the foreground session model:
+
+```sh
+# shell one: supervises until interrupted
+swift run PalloRuntimeCLI start --profile lifecycle-smoke
+
+# shell two, while shell one is supervising
+swift run PalloRuntimeCLI status --profile lifecycle-smoke   # phase=healthy
+swift run PalloRuntimeCLI stop --profile lifecycle-smoke     # refuses: session owns the runtime
+
+# after interrupting shell one
+swift run PalloRuntimeCLI status --profile lifecycle-smoke   # phase=stopped
+```
+
+Expected: tests PASS; bootstrap succeeds, `status` reports `healthy` while the session supervises
+and `stopped` once it exits, `stop` refuses while the session owns the runtime, and the profile
+remains available to later integration tasks.
 
 - [ ] **Step 5: Commit**
 

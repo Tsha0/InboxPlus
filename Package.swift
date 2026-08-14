@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .executable(name: "Pallo", targets: ["PalloApp"]),
         .library(name: "PalloRuntime", targets: ["PalloRuntime"]),
+        .executable(name: "PalloRuntimeCLI", targets: ["PalloRuntimeCLI"]),
     ],
     targets: [
         .target(name: "PalloCore"),
@@ -15,10 +16,11 @@ let package = Package(
         .target(name: "PalloUI", dependencies: ["PalloCore", "PalloFeatures"]),
         .executableTarget(name: "PalloApp", dependencies: ["PalloGateway", "PalloFeatures", "PalloUI"]),
         .target(name: "PalloRuntime"),
+        .executableTarget(name: "PalloRuntimeCLI", dependencies: ["PalloRuntime"]),
         .testTarget(name: "PalloCoreTests", dependencies: ["PalloCore"]),
         .testTarget(name: "PalloGatewayTests", dependencies: ["PalloCore", "PalloGateway"]),
         .testTarget(name: "PalloFeaturesTests", dependencies: ["PalloCore", "PalloGateway", "PalloFeatures"]),
         .testTarget(name: "PalloUITests", dependencies: ["PalloCore", "PalloFeatures", "PalloUI"]),
-        .testTarget(name: "PalloRuntimeTests", dependencies: ["PalloRuntime"]),
+        .testTarget(name: "PalloRuntimeTests", dependencies: ["PalloRuntime", "PalloRuntimeCLI"]),
     ]
 )
