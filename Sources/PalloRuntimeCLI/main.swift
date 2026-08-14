@@ -82,6 +82,20 @@ func execute(_ command: RuntimeCommand) async throws -> String {
             events=\(recovery.eventCount) accepted-new-write=\(recovery.acceptedNewWrite)
             """
         }
+        if let reportName = options.reportName {
+            let verification = try service.verifyReport(named: reportName)
+            let decision = verification.decision == .retainSQLiteProvisionally
+                ? "Retain SQLite provisionally"
+                : "Require PostgreSQL"
+            var summary = """
+            verified report '\(verification.name)' \
+            samples=\(verification.sampleCount) decision: \(decision)
+            """
+            for gate in verification.failingGates {
+                summary += "\n  - failed gate: \(gate)"
+            }
+            return summary
+        }
         if let rooms = options.fixtureRooms {
             let verification = try await service.verifyFixtures(
                 seed: BenchmarkCLIOptions.defaultSeed,

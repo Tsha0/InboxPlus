@@ -305,6 +305,69 @@ public struct RuntimeProfileService: Sendable {
         return receipt
     }
 
+    /// Checks that a written report is complete and free of secrets.
+    ///
+    /// `latest` selects the most recently modified report; any other name selects it exactly.
+    public func verifyReport(named selector: String) throws -> ReportVerification {
+        let state = try requirePreparedState()
+        let entries = try FileManager.default.contentsOfDirectory(atPath: paths.reports.path)
+            .filter { $0.hasSuffix(".json") }
+        guard !entries.isEmpty else { throw ReportVerificationError.noReportsFound(paths.reports) }
+
+        let chosen: String
+        if selector == "latest" {
+            chosen = try entries.map { name -> (String, Date) in
+                let attributes = try FileManager.default.attributesOfItem(
+                    atPath: paths.reports.appendingPathComponent(name).path
+                )
+                return (name, (attributes[.modificationDate] as? Date) ?? .distantPast)
+            }
+            .max { $0.1 < $1.1 }!
+            .0
+        } else {
+            chosen = selector.hasSuffix(".json") ? selector : "\(selector).json"
+            guard entries.contains(chosen) else {
+                throw ReportVerificationError.reportNotFound(chosen)
+            }
+        }
+
+        let jsonURL = paths.reports.appendingPathComponent(chosen)
+        let markdownURL = paths.reports.appendingPathComponent(
+            chosen.replacingOccurrences(of: ".json", with: ".md")
+        )
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let report = try decoder.decode(BenchmarkReport.self, from: Data(contentsOf: jsonURL))
+
+        guard report.run.environment != nil else {
+            throw ReportVerificationError.incompleteReport("environment is missing")
+        }
+        guard !report.run.samples.warmTimelineReads.isEmpty,
+              !report.run.samples.committedEventVisibility.isEmpty,
+              !report.run.samples.imports.isEmpty
+        else {
+            throw ReportVerificationError.incompleteReport("raw latency samples are missing")
+        }
+        guard report.run.sqliteIntegrity != nil else {
+            throw ReportVerificationError.incompleteReport("SQLite integrity is missing")
+        }
+
+        // The registration secret is the one profile value that could plausibly reach a report.
+        let markdown = (try? String(contentsOf: markdownURL, encoding: .utf8)) ?? ""
+        let json = String(decoding: try Data(contentsOf: jsonURL), as: UTF8.self)
+        let leaked = [markdown, json].contains { $0.contains(state.registrationSecret) }
+        guard !leaked else { throw ReportVerificationError.secretLeaked }
+
+        return ReportVerification(
+            name: chosen,
+            decision: report.verdict.decision,
+            failingGates: report.verdict.gates.filter { !$0.passed }.map(\.name),
+            sampleCount: report.run.samples.imports.count
+                + report.run.samples.warmTimelineReads.count
+                + report.run.samples.committedEventVisibility.count
+        )
+    }
+
     /// Provisions deterministic fixture rooms against a live runtime and reconciles them back.
     public func verifyFixtures(seed: UInt64, rooms: Int) async throws -> FixtureVerification {
         try await withRunningRuntime { _, context in
@@ -656,6 +719,33 @@ public struct RuntimeProfileService: Sendable {
             throw RuntimeProfileError.pythonExecutableUnavailable
         }
         return applicationExecutable
+    }
+}
+
+public struct ReportVerification: Sendable, Equatable {
+    public let name: String
+    public let decision: DatabaseDecision
+    public let failingGates: [String]
+    public let sampleCount: Int
+}
+
+public enum ReportVerificationError: Error, Equatable, Sendable, CustomStringConvertible {
+    case noReportsFound(URL)
+    case reportNotFound(String)
+    case incompleteReport(String)
+    case secretLeaked
+
+    public var description: String {
+        switch self {
+        case let .noReportsFound(url):
+            "no reports were found in \(url.path)"
+        case let .reportNotFound(name):
+            "no report named '\(name)'"
+        case let .incompleteReport(reason):
+            "report is incomplete: \(reason)"
+        case .secretLeaked:
+            "report contains a profile secret and must not be published"
+        }
     }
 }
 

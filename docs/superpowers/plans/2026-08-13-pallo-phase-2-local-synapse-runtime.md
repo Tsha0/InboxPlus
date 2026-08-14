@@ -113,7 +113,7 @@ model.
 - Produces: `RuntimeManifest.validatePreparedRuntime(at:) throws -> PreparedRuntimeReceipt`
 - Produces: `RuntimePaths(root:profileName:) throws` with `runtime`, `configuration`, `data`, `logs`, `backups`, `reports`, and `state` URLs.
 
-- [ ] **Step 1: Add failing manifest and traversal tests**
+- [x] **Step 1: Add failing manifest and traversal tests**
 
 ```swift
 @Test func manifestRequiresPinnedSynapseAndPythonMinor() throws {
@@ -130,13 +130,13 @@ func profileNameCannotEscapeRoot(_ name: String) {
 }
 ```
 
-- [ ] **Step 2: Run the focused tests and verify missing types fail**
+- [x] **Step 2: Run the focused tests and verify missing types fail**
 
 Run: `swift test --filter 'RuntimeManifestTests|RuntimePathsTests'`
 
 Expected: FAIL because `RuntimeManifest` and `RuntimePaths` do not exist.
 
-- [ ] **Step 3: Add package targets and minimal validated models**
+- [x] **Step 3: Add package targets and minimal validated models**
 
 ```swift
 public struct RuntimeManifest: Codable, Sendable, Equatable {
@@ -161,7 +161,7 @@ public struct RuntimePaths: Sendable {
 
 Add the `PalloRuntime` product/target and `PalloRuntimeTests` target. Defer the `PalloRuntimeCLI` product/target to Task 6, where its first source file is created. Validate names against `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`, standardize every URL, reject symlinked ancestors, and require every resolved child path to remain beneath the standardized root.
 
-- [ ] **Step 4: Generate and check the exact Python dependency lock**
+- [x] **Step 4: Generate and check the exact Python dependency lock**
 
 `Runtime/Synapse/requirements.in`:
 
@@ -188,13 +188,13 @@ Run: `Scripts/lock-synapse-runtime.sh && shasum -a 256 Runtime/Synapse/requireme
 
 Expected: the printed checksum exactly matches `requirementsLockSHA256`.
 
-- [ ] **Step 5: Run tests and repository checks**
+- [x] **Step 5: Run tests and repository checks**
 
 Run: `swift test --filter 'RuntimeManifestTests|RuntimePathsTests' && git diff --check`
 
 Expected: PASS with zero failures and no whitespace errors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Package.swift Runtime/Synapse Scripts/lock-synapse-runtime.sh Sources/PalloRuntime/RuntimeManifest.swift Sources/PalloRuntime/RuntimePaths.swift Tests/PalloRuntimeTests
@@ -212,7 +212,7 @@ git commit -m "feat: define pinned Synapse runtime profiles"
 - Produces: `SynapseConfiguration(profile:port:credentials:)`
 - Produces: `render() throws -> String` and `validate() throws`
 
-- [ ] **Step 1: Write failing loopback and forbidden-feature tests**
+- [x] **Step 1: Write failing loopback and forbidden-feature tests**
 
 ```swift
 @Test func renderedConfigurationIsPrivateAndLoopbackOnly() throws {
@@ -232,13 +232,13 @@ git commit -m "feat: define pinned Synapse runtime profiles"
 }
 ```
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 Run: `swift test --filter SynapseConfigurationTests`
 
 Expected: FAIL because `SynapseConfiguration` is absent.
 
-- [ ] **Step 3: Implement explicit YAML rendering and validation**
+- [x] **Step 3: Implement explicit YAML rendering and validation**
 
 ```swift
 public struct SynapseConfiguration: Sendable {
@@ -257,13 +257,13 @@ public struct SynapseConfiguration: Sendable {
 
 Render only the `client` listener resource needed for the spike; do not expose the `federation` resource. Set the supported top-level `send_federation: false` option to disable outbound federation transactions. Disable registration/guests/room-list publication, disable URL previews and telemetry, and keep secrets in the YAML file with mode `0600`, never in arguments.
 
-- [ ] **Step 4: Run the focused and full suites**
+- [x] **Step 4: Run the focused and full suites**
 
 Run: `swift test --filter SynapseConfigurationTests && swift test`
 
 Expected: PASS with zero failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/PalloRuntime/SynapseConfiguration.swift Tests/PalloRuntimeTests/SynapseConfigurationTests.swift
@@ -283,7 +283,7 @@ git commit -m "feat: enforce private Synapse configuration"
 - Produces: `RuntimeBootstrapper.bootstrap(python:manifest:paths:) async throws -> PreparedRuntimeReceipt`
 - Produces: `ProfileLock.acquire(at:) throws -> ProfileLock`
 
-- [ ] **Step 1: Write failing bootstrap receipt, drift, permission, and lock tests**
+- [x] **Step 1: Write failing bootstrap receipt, drift, permission, and lock tests**
 
 ```swift
 @Test func bootstrapRecordsInterpreterAndExactPackages() async throws {
@@ -300,13 +300,13 @@ git commit -m "feat: enforce private Synapse configuration"
 }
 ```
 
-- [ ] **Step 2: Verify focused tests fail**
+- [x] **Step 2: Verify focused tests fail**
 
 Run: `swift test --filter 'RuntimeBootstrapperTests|ProfileLockTests'`
 
 Expected: FAIL because bootstrap and locking types are missing.
 
-- [ ] **Step 3: Implement bootstrap without implicit upgrades**
+- [x] **Step 3: Implement bootstrap without implicit upgrades**
 
 ```swift
 public struct PreparedRuntimeReceipt: Codable, Sendable, Equatable {
@@ -321,7 +321,7 @@ public struct PreparedRuntimeReceipt: Codable, Sendable, Equatable {
 
 Bootstrap must require an executable reporting Python `3.12.x`, create directories with mode `0700`, run `python -m venv`, install `-r requirements.lock` with version checks, compare `pip freeze --all` exactly to the lock, run `synapse_homeserver --version`, and atomically write the receipt. Existing valid runtimes are idempotent; drift is an error requiring explicit profile removal and bootstrap.
 
-- [ ] **Step 4: Run unit tests and a disposable real bootstrap integration test**
+- [x] **Step 4: Run unit tests and a disposable real bootstrap integration test**
 
 Run: `swift test --filter 'RuntimeBootstrapperTests|ProfileLockTests'`
 
@@ -329,13 +329,13 @@ Run: `PALLO_RUNTIME_PYTHON=/opt/homebrew/opt/python@3.12/bin/python3.12 swift te
 
 Expected: tests PASS; smoke bootstrap reports Python 3.12.x, Synapse 1.158.0, and a matching lock checksum.
 
-- [ ] **Step 5: Verify the integration test removes its disposable profile**
+- [x] **Step 5: Verify the integration test removes its disposable profile**
 
 Run: `test ! -e "$(getconf DARWIN_USER_CACHE_DIR)/PalloRuntimeTests/bootstrap-real"`
 
 Expected: exit 0 and no disposable integration profile residue.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Sources/PalloRuntime/RuntimeBootstrapper.swift Sources/PalloRuntime/ProfileLock.swift Tests/PalloRuntimeTests/RuntimeBootstrapperTests.swift Tests/PalloRuntimeTests/ProfileLockTests.swift
@@ -359,7 +359,7 @@ git commit -m "feat: bootstrap pinned Synapse environment"
 - Produces: `SynapseSupervisor.stop() async throws -> RuntimeSnapshot`
 - Produces: `SynapseSupervisor.status() async -> RuntimeSnapshot`
 
-- [ ] **Step 1: Write failing state-transition and lifecycle tests with a fake process**
+- [x] **Step 1: Write failing state-transition and lifecycle tests with a fake process**
 
 ```swift
 @Test func userStopTransitionsHealthyToStoppedWithoutRestart() async throws {
@@ -380,13 +380,13 @@ git commit -m "feat: bootstrap pinned Synapse environment"
 }
 ```
 
-- [ ] **Step 2: Verify the lifecycle tests fail**
+- [x] **Step 2: Verify the lifecycle tests fail**
 
 Run: `swift test --filter 'RuntimeStateTests|SynapseSupervisorLifecycleTests'`
 
 Expected: FAIL because lifecycle types are absent.
 
-- [ ] **Step 3: Implement the actor state machine and process abstraction**
+- [x] **Step 3: Implement the actor state machine and process abstraction**
 
 ```swift
 public enum RuntimePhase: String, Codable, Sendable {
@@ -402,13 +402,13 @@ public actor SynapseSupervisor {
 
 Use `Foundation.Process` only inside `FoundationManagedProcess`. Record executable path, launch timestamp, PID, and a process-start identity token; never signal a PID until those fields match. Write stdout/stderr to rotating bounded files. Graceful stop sends termination, waits five seconds, then escalates and verifies process plus listener disappearance.
 
-- [ ] **Step 4: Run focused and full tests**
+- [x] **Step 4: Run focused and full tests**
 
 Run: `swift test --filter 'RuntimeStateTests|SynapseSupervisorLifecycleTests' && swift test`
 
 Expected: PASS with zero failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/PalloRuntime/RuntimeState.swift Sources/PalloRuntime/ManagedProcess.swift Sources/PalloRuntime/FoundationManagedProcess.swift Sources/PalloRuntime/SynapseSupervisor.swift Tests/PalloRuntimeTests/RuntimeStateTests.swift Tests/PalloRuntimeTests/SynapseSupervisorLifecycleTests.swift
@@ -428,7 +428,7 @@ git commit -m "feat: supervise Synapse lifecycle"
 - Extends: `SynapseSupervisor.supervise() async`
 - Produces: retry delays of 1, 2, and 4 seconds and terminal failure after attempt three.
 
-- [ ] **Step 1: Write failing health and recovery-policy tests**
+- [x] **Step 1: Write failing health and recovery-policy tests**
 
 ```swift
 @Test func liveProcessWithFailedAuthenticatedRequestIsDegraded() async {
@@ -445,13 +445,13 @@ git commit -m "feat: supervise Synapse lifecycle"
 }
 ```
 
-- [ ] **Step 2: Verify tests fail**
+- [x] **Step 2: Verify tests fail**
 
 Run: `swift test --filter 'SynapseHealthCheckerTests|SynapseSupervisorRecoveryTests'`
 
 Expected: FAIL because health and recovery behavior is missing.
 
-- [ ] **Step 3: Implement layered health and recovery**
+- [x] **Step 3: Implement layered health and recovery**
 
 ```swift
 public enum HealthResult: Sendable, Equatable {
@@ -465,7 +465,7 @@ Require matching process identity, a responsive `/_matrix/client/versions` endpo
 
 On the first successful unauthenticated versions response, use the profile's local registration shared secret to create a dedicated `_pallo_probe` local user, store its access token in a `0600` profile credential file, and use only that token for subsequent authenticated health checks. Reuse and verify the probe identity on later starts; never print the secret or token.
 
-- [ ] **Step 4: Run focused tests and a real start/status/stop integration test**
+- [x] **Step 4: Run focused tests and a real start/status/stop integration test**
 
 Run: `swift test --filter 'SynapseHealthCheckerTests|SynapseSupervisorRecoveryTests'`
 
@@ -473,7 +473,7 @@ Run: `PALLO_RUNTIME_PYTHON=/opt/homebrew/opt/python@3.12/bin/python3.12 swift te
 
 Expected: tests PASS; the real supervisor reaches `healthy`, then `stopped`, and the listener is gone.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/PalloRuntime/SynapseHealthChecker.swift Sources/PalloRuntime/SynapseSupervisor.swift Tests/PalloRuntimeTests/SynapseHealthCheckerTests.swift Tests/PalloRuntimeTests/SynapseSupervisorRecoveryTests.swift
@@ -493,7 +493,7 @@ git commit -m "feat: recover bounded Synapse crashes"
 - Produces: `RuntimeCommand.parse(_:) throws -> RuntimeCommand`
 - Produces: stable exit codes for usage, invalid state, unavailable dependency, health failure, integrity failure, benchmark failure, and unsafe path.
 
-- [ ] **Step 1: Write failing command parsing and safety tests**
+- [x] **Step 1: Write failing command parsing and safety tests**
 
 ```swift
 @Test func removeRequiresMatchingConfirmation() throws {
@@ -508,13 +508,13 @@ git commit -m "feat: recover bounded Synapse crashes"
 }
 ```
 
-- [ ] **Step 2: Verify tests fail**
+- [x] **Step 2: Verify tests fail**
 
 Run: `swift test --filter RuntimeCommandTests`
 
 Expected: FAIL because the command parser does not exist.
 
-- [ ] **Step 3: Implement the thin CLI adapter**
+- [x] **Step 3: Implement the thin CLI adapter**
 
 ```swift
 enum RuntimeCommand: Equatable {
@@ -546,7 +546,7 @@ struct VerifyCLIOptions: Equatable {
 
 Add the `PalloRuntimeCLI` executable product/target to `Package.swift`. Keep construction and formatted output in `main.swift`; business logic remains in `PalloRuntime`. Print one concise summary to stdout, diagnostics to stderr, and map typed runtime errors to documented stable integer codes.
 
-- [ ] **Step 4: Run CLI parser and package tests**
+- [x] **Step 4: Run CLI parser and package tests**
 
 Run: `swift test --filter RuntimeCommandTests && swift test`
 
@@ -570,7 +570,7 @@ Expected: tests PASS; bootstrap succeeds, `status` reports `healthy` while the s
 and `stopped` once it exits, `stop` refuses while the session owns the runtime, and the profile
 remains available to later integration tasks.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Package.swift Sources/PalloRuntimeCLI Tests/PalloRuntimeTests/RuntimeCommandTests.swift
@@ -590,7 +590,7 @@ git commit -m "feat: expose Synapse developer CLI"
 - Produces: `MatrixFixtureProvisioner.prepare(seed:) async throws -> FixtureContext`
 - Produces: `FixtureContext` containing user ID, access token, device ID, and deterministic room IDs.
 
-- [ ] **Step 1: Write failing authenticated request and deterministic fixture tests**
+- [x] **Step 1: Write failing authenticated request and deterministic fixture tests**
 
 ```swift
 @Test func clientRejectsNonLoopbackBaseURL() {
@@ -606,13 +606,13 @@ git commit -m "feat: expose Synapse developer CLI"
 }
 ```
 
-- [ ] **Step 2: Verify tests fail**
+- [x] **Step 2: Verify tests fail**
 
 Run: `swift test --filter 'MatrixHTTPClientTests|MatrixFixtureProvisionerTests'`
 
 Expected: FAIL because the Matrix fixture types are absent.
 
-- [ ] **Step 3: Implement the local authenticated client and provisioner**
+- [x] **Step 3: Implement the local authenticated client and provisioner**
 
 Use ephemeral admin credentials created during profile initialization, then create a normal local benchmark user and token. Accept only `http://127.0.0.1:<port>`. Percent-encode path segments, use deterministic transaction IDs, enforce request deadlines, decode Matrix error bodies, retry only explicit transient statuses with idempotent transaction IDs, and redact authorization headers.
 
@@ -626,7 +626,7 @@ public struct FixtureContext: Codable, Sendable {
 }
 ```
 
-- [ ] **Step 4: Run unit and real 10-room fixture smoke tests**
+- [x] **Step 4: Run unit and real 10-room fixture smoke tests**
 
 Run: `swift test --filter 'MatrixHTTPClientTests|MatrixFixtureProvisionerTests'`
 
@@ -634,7 +634,7 @@ Run: `swift run PalloRuntimeCLI verify --profile lifecycle-smoke --fixture-rooms
 
 Expected: tests PASS and the smoke profile reconciles exactly 10 rooms.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/PalloRuntime/MatrixHTTPClient.swift Sources/PalloRuntime/MatrixFixtureProvisioner.swift Tests/PalloRuntimeTests/MatrixHTTPClientTests.swift Tests/PalloRuntimeTests/MatrixFixtureProvisionerTests.swift
@@ -653,7 +653,7 @@ git commit -m "feat: provision local Matrix fixtures"
 - Produces: `BenchmarkRunner.run(_:) async throws -> BenchmarkRun`
 - Produces: `BenchmarkWorkload.representative(seed:)` with exact counts and concurrency.
 
-- [ ] **Step 1: Write failing workload-shape, concurrency, and reconciliation tests**
+- [x] **Step 1: Write failing workload-shape, concurrency, and reconciliation tests**
 
 ```swift
 @Test func representativeWorkloadMeetsApprovedShape() {
@@ -670,13 +670,13 @@ git commit -m "feat: provision local Matrix fixtures"
 }
 ```
 
-- [ ] **Step 2: Verify tests fail**
+- [x] **Step 2: Verify tests fail**
 
 Run: `swift test --filter BenchmarkRunnerTests`
 
 Expected: FAIL because benchmark models and runner are missing.
 
-- [ ] **Step 3: Implement deterministic concurrent workload execution**
+- [x] **Step 3: Implement deterministic concurrent workload execution**
 
 ```swift
 public struct BenchmarkWorkload: Codable, Sendable {
@@ -693,7 +693,7 @@ public struct BenchmarkWorkload: Codable, Sendable {
 
 Partition deterministic rooms among exactly three import task-group children. Run a fourth live-traffic child plus timeline, search, and media-metadata children while imports remain active. Use stable transaction IDs so retries cannot duplicate committed events. Record every expected room/event ID and reconcile through independent reads after all writers finish.
 
-- [ ] **Step 4: Add and run a reduced integration workload**
+- [x] **Step 4: Add and run a reduced integration workload**
 
 Run: `swift test --filter BenchmarkRunnerTests`
 
@@ -701,7 +701,7 @@ Run: `swift run PalloRuntimeCLI benchmark --profile lifecycle-smoke --seed 42 --
 
 Expected: tests PASS; reduced run reports 20 rooms, 1,000 imported messages, live traffic, reads, search, media metadata, and zero missing/duplicate events.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/PalloRuntime/BenchmarkModels.swift Sources/PalloRuntime/BenchmarkRunner.swift Tests/PalloRuntimeTests/BenchmarkRunnerTests.swift
@@ -720,7 +720,7 @@ git commit -m "feat: generate representative Matrix load"
 - Produces: `BenchmarkReporter.evaluate(_:) -> BenchmarkVerdict`
 - Produces: `BenchmarkReporter.write(_:to:) throws -> ReportArtifacts`
 
-- [ ] **Step 1: Write failing percentile, gate, redaction, and verdict tests**
+- [x] **Step 1: Write failing percentile, gate, redaction, and verdict tests**
 
 ```swift
 @Test func percentileUsesNearestRank() {
@@ -739,13 +739,13 @@ git commit -m "feat: generate representative Matrix load"
 }
 ```
 
-- [ ] **Step 2: Verify tests fail**
+- [x] **Step 2: Verify tests fail**
 
 Run: `swift test --filter BenchmarkReporterTests`
 
 Expected: FAIL because reporter behavior is missing.
 
-- [ ] **Step 3: Implement measurements and strict verdict logic**
+- [x] **Step 3: Implement measurements and strict verdict logic**
 
 Measure warm timeline request duration, send-to-retrieval duration, and a main-actor heartbeat scheduled every 16.67 ms during background import. Record all raw samples in JSON and p50/p95/p99 summaries in Markdown. Collect Mac model, architecture, memory, macOS, Swift, Python, Synapse, dependency-lock checksum, database bytes, CPU time, and peak resident memory.
 
@@ -758,7 +758,7 @@ public enum DatabaseDecision: String, Codable, Sendable {
 
 Return `requirePostgreSQL` when warm timeline p95 is at least 500 ms, committed-event p95 is at least 2 seconds, heartbeat delay is greater than 16.67 ms, reconciliation is nonempty, SQLite integrity is not `ok`, recovery is unverified, or an unrecoverable request occurred. Write reports atomically and exclude tokens, secrets, message bodies, and sensitive identifiers.
 
-- [ ] **Step 4: Run reporter tests and inspect a reduced report**
+- [x] **Step 4: Run reporter tests and inspect a reduced report**
 
 Run: `swift test --filter BenchmarkReporterTests`
 
@@ -766,7 +766,7 @@ Run: `swift run PalloRuntimeCLI benchmark --profile lifecycle-smoke --seed 42 --
 
 Expected: tests PASS; JSON and Markdown exist; secret scan returns no matches.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/PalloRuntime/BenchmarkReporter.swift Sources/PalloRuntime/BenchmarkRunner.swift Tests/PalloRuntimeTests/BenchmarkReporterTests.swift
@@ -785,7 +785,7 @@ git commit -m "feat: report SQLite benchmark verdict"
 - Produces: `BackupManager.restore(name:into:) async throws -> RestoreResult`
 - Produces: `BackupManager.verifyRecovery(...) async throws -> RecoveryResult`
 
-- [ ] **Step 1: Write failing stopped-state, atomicity, checksum, and nonempty-target tests**
+- [x] **Step 1: Write failing stopped-state, atomicity, checksum, and nonempty-target tests**
 
 ```swift
 @Test func backupRejectsRunningProfile() async {
@@ -803,13 +803,13 @@ git commit -m "feat: report SQLite benchmark verdict"
 }
 ```
 
-- [ ] **Step 2: Verify tests fail**
+- [x] **Step 2: Verify tests fail**
 
 Run: `swift test --filter BackupManagerTests`
 
 Expected: FAIL because backup behavior is absent.
 
-- [ ] **Step 3: Implement offline backup and restore**
+- [x] **Step 3: Implement offline backup and restore**
 
 ```swift
 public struct BackupManifest: Codable, Sendable {
@@ -825,7 +825,7 @@ public struct BackupManifest: Codable, Sendable {
 
 Require a verified stopped runtime; run `sqlite3 <database> 'PRAGMA quick_check; PRAGMA integrity_check;'`; copy database, configuration, signing/recovery keys, media, and runtime receipt into a sibling staging directory; hash every regular file; fsync and atomically rename staging to the final backup. Restore only after all checksums pass and only into a fresh or explicitly empty profile. Apply `0700` directories and `0600` secret/data files before launch.
 
-- [ ] **Step 4: Implement and run the destructive recovery exercise on an isolated profile**
+- [x] **Step 4: Implement and run the destructive recovery exercise on an isolated profile**
 
 Run: `swift test --filter BackupManagerTests`
 
@@ -833,7 +833,7 @@ Run: `swift run PalloRuntimeCLI backup --profile lifecycle-smoke --name before-d
 
 Expected: tests PASS; restored profile passes SQLite integrity, exact room/event/media reconciliation, health, and a new post-restore write.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/PalloRuntime/BackupManager.swift Tests/PalloRuntimeTests/BackupManagerTests.swift
@@ -850,7 +850,7 @@ git commit -m "feat: verify Synapse backup recovery"
 - Consumes: `RuntimePaths`, `SynapseSupervisor`
 - Produces: `ProfileRemover.remove(confirmation:exportReportTo:) async throws -> RemovalResult`
 
-- [ ] **Step 1: Write failing confirmation, containment, symlink, export, and residue tests**
+- [x] **Step 1: Write failing confirmation, containment, symlink, export, and residue tests**
 
 ```swift
 @Test func confirmationMustExactlyMatchProfile() async {
@@ -868,17 +868,17 @@ git commit -m "feat: verify Synapse backup recovery"
 }
 ```
 
-- [ ] **Step 2: Verify tests fail**
+- [x] **Step 2: Verify tests fail**
 
 Run: `swift test --filter ProfileRemoverTests`
 
 Expected: FAIL because profile removal is missing.
 
-- [ ] **Step 3: Implement stop-first, contained removal**
+- [x] **Step 3: Implement stop-first, contained removal**
 
 Revalidate standardized paths immediately before each deletion, refuse symlinks, stop and verify the exact process/listener first, optionally copy the newest redacted report to an explicitly external destination, delete only the named profile, then verify the profile path, process identity, and listener are absent. Return exact residue paths and nonzero status for partial failure.
 
-- [ ] **Step 4: Run tests and remove disposable profiles**
+- [x] **Step 4: Run tests and remove disposable profiles**
 
 Run: `swift test --filter ProfileRemoverTests`
 
@@ -886,7 +886,7 @@ Run: `swift run PalloRuntimeCLI remove --profile lifecycle-smoke --confirm lifec
 
 Expected: tests PASS; no runtime process, listener, or `lifecycle-smoke` profile remains.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/PalloRuntime/ProfileRemover.swift Tests/PalloRuntimeTests/ProfileRemoverTests.swift
@@ -904,7 +904,7 @@ git commit -m "feat: remove isolated Synapse profiles"
 - Consumes: all runtime and CLI interfaces from Tasks 1–11.
 - Produces: one documented, reproducible acceptance sequence and fault matrix.
 
-- [ ] **Step 1: Add integration tests for every approved fault**
+- [x] **Step 1: Add integration tests for every approved fault**
 
 ```swift
 @Test(.tags(.runtimeIntegration))
@@ -922,27 +922,27 @@ func versionDriftBlocksStartupUntilExplicitBootstrap() async throws
 
 Also cover startup timeout, unexpected exit, restart exhaustion, stale process state, corrupted backup, invalid non-loopback configuration, nonempty restore target, and out-of-root removal.
 
-- [ ] **Step 2: Verify new tests fail for unimplemented fault seams**
+- [x] **Step 2: Verify new tests fail for unimplemented fault seams**
 
 Run: `swift test --filter 'RuntimeFaultInjectionTests|RuntimeEndToEndTests'`
 
 Expected: at least one fault test FAILS before the required injection seam is added.
 
-- [ ] **Step 3: Add deterministic injection seams without production-only branches**
+- [x] **Step 3: Add deterministic injection seams without production-only branches**
 
 Inject clocks, sleepers, port allocators, file operations, process factories, and HTTP transports through protocols or closures. Production defaults use Foundation/POSIX implementations; tests supply deterministic failures.
 
-- [ ] **Step 4: Write the acceptance guide**
+- [x] **Step 4: Write the acceptance guide**
 
 Document prerequisites, bootstrap, configuration inspection, start/status/stop, injected crash recovery, reduced benchmark, full benchmark, backup/damage/restore, removal, report paths, exit-code meanings, and exact evidence required for the database verdict.
 
-- [ ] **Step 5: Run all automated checks**
+- [x] **Step 5: Run all automated checks**
 
 Run: `swift test && swift build -c release && git diff --check`
 
 Expected: all tests PASS, release build exits 0, and diff check is clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Tests/PalloRuntimeTests/RuntimeFaultInjectionTests.swift Tests/PalloRuntimeTests/RuntimeEndToEndTests.swift docs/testing/phase-2-runtime-acceptance.md
