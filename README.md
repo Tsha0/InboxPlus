@@ -213,10 +213,43 @@ Per-phase acceptance notes, including what each phase deliberately did *not* del
 - [Phase 8 — release certification](docs/testing/phase-8-release-certification.md)
 - [Dependency inventory](docs/dependencies.md) and [SBOM](docs/sbom.cdx.json)
 
+## Contributing
+
+`main` is protected: it takes no direct pushes, and a change reaches it through a pull request whose
+checks are green. Approvals are not required — this is a solo repository and GitHub does not let
+you approve your own pull request — but CI is.
+
+```bash
+git switch -c my-change
+# ...
+gh pr create --fill
+```
+
+Three checks must pass before a merge is allowed:
+
+| Check | What it protects |
+| --- | --- |
+| **Build and test** | The suite passes on a clean checkout, not just on the machine that wrote it |
+| **Generated files are current** | The brand marks, app icon and SBOM still match the sources they are generated from |
+| **Package the app** | The `.app` bundle assembles and the CLI inside it runs |
+
+If **Generated files are current** fails, regenerate and commit:
+
+```bash
+swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/PalloUI/PlatformGlyphPaths.swift
+swift Scripts/make-icon.swift docs/assets/pallo-mascot.png Resources/AppIcon.icns
+swift run PalloRuntimeCLI sbom --output docs/sbom.cdx.json
+```
+
+CI runs on a shared, virtualised macOS runner that is markedly slower than a developer Mac. A test
+that waits on a real process needs a timeout generous enough to survive that: the timeout is a
+guard against hanging, not an assertion about speed, and one tuned to a fast machine turns a busy
+one into a false failure.
+
 ## Tests
 
 ```bash
-swift test                    # 563 tests, no network, no homeserver
+swift test                    # 583 tests, no network, no homeserver
 ```
 
 Tests that need a real Synapse are opt-in, because they are slow and download things:
