@@ -5,7 +5,8 @@ import PalloCore
 import PalloRuntime
 import PalloUI
 
-/// Supplies the login session behind the account picker.
+/// Supplies the login session behind the account picker, installing the network's bridge first if
+/// this profile has never had one.
 ///
 /// Preparing a bridge means downloading a checksum-pinned binary and registering an appservice with
 /// the homeserver, which only makes sense against a running developer profile. Without one the app
@@ -31,35 +32,28 @@ enum BridgeSelection {
 
             let runtime = BridgeRuntime(paths: paths)
             guard let record = try runtime.prepared(for: platform) else {
-                throw BridgeSelectionError.notPrepared(
-                    platform: platform,
-                    bridgeID: descriptor.id,
-                    profile: profileName
+                // Every network in the catalog is offered, so picking one this profile has never
+                // installed is ordinary use, not a mistake — the download and registration the CLI
+                // would do is done here instead of asking for a terminal.
+                try await runtime.prepare(
+                    descriptor,
+                    serverName: state.serverName,
+                    homeserverPort: port,
+                    ownerUserID: "@pallo:\(state.serverName)"
+                )
+                // Synapse reads `app_service_config_files` once, at startup: the registration just
+                // written is invisible to the running homeserver, and the bridge process itself is
+                // launched by whoever supervises the profile. Neither is something the app can do
+                // from here, so the restart is handed back rather than glossed over with a login
+                // that would fail against a homeserver which has never heard of this appservice.
+                return .installedPendingRuntimeRestart(
+                    BridgeInstallOutcome(platform: platform, profile: profileName)
                 )
             }
             // The homeserver takes a new port each session, so the config on disk may name the
             // previous one.
             try runtime.rebindToHomeserver(port: port)
-            return try runtime.provisioningClient(for: record)
-        }
-    }
-}
-
-enum BridgeSelectionError: Error, CustomStringConvertible {
-    case notPrepared(platform: Platform, bridgeID: String, profile: String)
-
-    var description: String {
-        switch self {
-        case let .notPrepared(platform, bridgeID, profile):
-            """
-            The \(platform.accessibilityLabel) bridge is not installed for profile '\(profile)'. \
-            Install and register it first, then restart the profile so the homeserver loads it:
-
-              PalloRuntimeCLI bridge --profile \(profile) --action prepare --network \
-            \(platform.rawValue)
-
-            (bridge id: \(bridgeID))
-            """
+            return .ready(try runtime.provisioningClient(for: record))
         }
     }
 }

@@ -8,7 +8,7 @@ import PalloFeatures
 /// Supplied by the app layer, which owns the bridge processes. `PalloUI` stays ignorant of how a
 /// bridge is installed or supervised — it only renders the conversation the bridge asks for.
 public typealias BridgeLoginSessionProvider =
-    @MainActor (Platform) async throws -> any BridgeLoginSession
+    @MainActor (Platform) async throws -> BridgeLoginPreparation
 
 public struct RootView: View {
     @Bindable var model: PalloAppModel
@@ -16,12 +16,15 @@ public struct RootView: View {
     @State private var accountFlow: AccountFlow?
     @State private var connectFailure: String?
     /// Informational, not a failure — reusing the failure alert would title good news as an error.
-    @State private var connectNotice: String?
+    @State private var connectNotice: ConnectNotice?
 
     private let makeLoginSession: BridgeLoginSessionProvider?
 
     enum AccountFlow: Identifiable {
         case picker
+        /// Downloading and registering a bridge this profile has never installed, which takes long
+        /// enough that a picker sitting there unchanged would read as a dead click.
+        case installing(Platform)
         case login(Platform, BridgeLoginController)
         case iMessagePermissions
 
@@ -30,10 +33,18 @@ public struct RootView: View {
         var id: String {
             switch self {
             case .picker: "picker"
+            case let .installing(platform): "installing-\(platform.rawValue)"
             case let .login(platform, _): "login-\(platform.rawValue)"
             case .iMessagePermissions: "imessage"
             }
         }
+    }
+
+    /// An alert that reports something worked, with its own title.
+    struct ConnectNotice: Identifiable {
+        let title: String
+        let message: String
+        var id: String { title }
     }
 
     public init(model: PalloAppModel, makeLoginSession: BridgeLoginSessionProvider? = nil) {
@@ -91,6 +102,8 @@ public struct RootView: View {
                     onSelect: startConnecting,
                     onCancel: { accountFlow = nil }
                 )
+            case let .installing(platform):
+                BridgeInstallProgressView(platform: platform)
             case let .login(platform, controller):
                 LoginStepView(
                     controller: controller,
@@ -106,10 +119,13 @@ public struct RootView: View {
                         // launch, so a grant made just now takes effect on the next launch — and
                         // adding an account here would invent one the gateway never produced.
                         accountFlow = nil
-                        connectNotice = """
-                        iMessage is ready. Quit and reopen Pallo to load your conversations — \
-                        macOS only applies Full Disk Access to a newly launched process.
-                        """
+                        connectNotice = ConnectNotice(
+                            title: "iMessage is connected",
+                            message: """
+                            iMessage is ready. Quit and reopen Pallo to load your conversations — \
+                            macOS only applies Full Disk Access to a newly launched process.
+                            """
+                        )
                     },
                     onCancel: { accountFlow = nil }
                 )
@@ -127,7 +143,7 @@ public struct RootView: View {
             Text(connectFailure ?? "")
         }
         .alert(
-            "iMessage is connected",
+            connectNotice?.title ?? "",
             isPresented: Binding(
                 get: { connectNotice != nil },
                 set: { if !$0 { connectNotice = nil } }
@@ -135,7 +151,7 @@ public struct RootView: View {
         ) {
             Button("OK", role: .cancel) { connectNotice = nil }
         } message: {
-            Text(connectNotice ?? "")
+            Text(connectNotice?.message ?? "")
         }
     }
 
@@ -155,12 +171,21 @@ public struct RootView: View {
             return
         }
         Task { @MainActor in
+            accountFlow = .installing(platform)
             do {
-                let session = try await makeLoginSession(platform)
-                accountFlow = .login(
-                    platform,
-                    BridgeLoginController(platform: platform, session: session)
-                )
+                switch try await makeLoginSession(platform) {
+                case let .ready(session):
+                    accountFlow = .login(
+                        platform,
+                        BridgeLoginController(platform: platform, session: session)
+                    )
+                case let .installedPendingRuntimeRestart(outcome):
+                    accountFlow = nil
+                    connectNotice = ConnectNotice(
+                        title: outcome.title,
+                        message: outcome.message
+                    )
+                }
             } catch {
                 connectFailure = String(describing: error)
                 accountFlow = nil
