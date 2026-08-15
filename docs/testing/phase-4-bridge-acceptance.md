@@ -138,6 +138,22 @@ redacted from captured logs. Secret input fields are marked in the protocol and 
 **Nothing incomplete leaves the machine.** Every step validates against its own declared fields —
 in the view on each keystroke, and again in the controller immediately before submitting.
 
+## How a bridged conversation reaches the inbox
+
+Three steps that are each invisible when they fail, and all three were missing when the Instagram
+bridge was first connected:
+
+1. **The invite is accepted.** A bridge creates a portal room and *invites* the account rather than
+   joining it. An unaccepted invite is a conversation that exists on the homeserver and nowhere in
+   the app. `BridgeInvitePolicy` accepts only invites from users inside a prepared bridge's own
+   namespace on the local server, so an ordinary local account cannot put a room in the inbox.
+2. **An identity precedes the conversation.** `InboxProjector` drops any conversation whose identity
+   it does not know, so the gateway must emit `identityUpserted` before `conversationUpserted` — and
+   must synthesise an identity for a room that has not delivered a message yet.
+3. **History is paginated in.** A live timeline begins where this account's view of the room begins.
+   In a freshly joined portal that is the join event, leaving everything the bridge backfilled
+   behind it. Attaching a timeline paginates backwards once.
+
 ## Why libolm is built from source
 
 Every prebuilt mautrix binary links `@rpath/libolm.3.dylib`. libolm reached end of life, Homebrew no
@@ -179,8 +195,9 @@ Phase 3's model was built from the mautrix source and was close but not exact. R
 - **iMessage reports one permission, not two.** Full Disk Access is probed by attempting the read it
   gates. Automation is only decided when the first Apple event is sent, so it is not independently
   observable and currently tracks the same signal.
-- **New rooms still appear on refresh, not live.** Phase 3's room-list listener is still outstanding,
-  and it matters more now that bridges create rooms dynamically.
+- **Room discovery polls rather than listens.** Pallo re-reads the room list every three seconds to
+  pick up portals a bridge has just created. The SDK offers a room-list listener that would make
+  this event-driven; polling is what is implemented.
 - **`client_http` and `webauthn` steps are modelled but not rendered.** They decode and the user is
   told plainly, rather than the login stalling on a screen Pallo cannot draw.
 - **Still SQLite.** Phase 2's verdict was `Require PostgreSQL`, and each bridge adds another SQLite

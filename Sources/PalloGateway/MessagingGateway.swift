@@ -19,6 +19,11 @@ public struct MessagingSnapshot: Sendable {
 public enum GatewayEvent: Sendable {
     case messageUpserted(Message)
     case conversationUpserted(RemoteConversation)
+    /// Must be delivered before any conversation that names this identity.
+    ///
+    /// The inbox can only project a conversation whose identity it knows, so a conversation that
+    /// arrives without one is dropped and the user simply never sees it.
+    case identityUpserted(RemoteIdentity)
     case connectionChanged(accountID: String, isConnected: Bool)
 }
 

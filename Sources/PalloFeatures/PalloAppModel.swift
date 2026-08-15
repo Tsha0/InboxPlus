@@ -495,6 +495,13 @@ public final class PalloAppModel {
                 conversations[conversationIndex].latestActivity = message.timestamp
                 rebuildInbox()
             }
+        case let .identityUpserted(identity):
+            if let index = identities.firstIndex(where: { $0.id == identity.id }) {
+                identities[index] = identity
+            } else {
+                identities.append(identity)
+            }
+            rebuildInbox()
         case let .conversationUpserted(conversation):
             conversations.removeAll { $0.id == conversation.id && $0.accountID == conversation.accountID }
             conversations.append(conversation)

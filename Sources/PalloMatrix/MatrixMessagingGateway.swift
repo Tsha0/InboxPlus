@@ -16,24 +16,35 @@ public actor MatrixMessagingGateway: MessagingGateway {
     private let platform: Platform
     private let initialMessageWait: Duration
     private let initialSyncWait: Duration
+    private let invitePolicy: BridgeInvitePolicy
+    private let roomDiscoveryInterval: Duration
+    private let backfillEventCount: UInt16
 
     private var streamContinuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
     private var timelineHandles: [String: TaskHandle] = [:]
     private var observers: [String: RoomTimelineObserver] = [:]
     private var started = false
+    private var knownRoomIDs: Set<String> = []
+    private var discoveryTask: Task<Void, Never>?
 
     public init(
         client: PalloMatrixClient,
         accountID: String = MatrixMessagingGateway.defaultAccountID,
         platform: Platform = .matrix,
         initialMessageWait: Duration = .milliseconds(1_500),
-        initialSyncWait: Duration = .seconds(10)
+        initialSyncWait: Duration = .seconds(10),
+        invitePolicy: BridgeInvitePolicy = .trustingNobody,
+        roomDiscoveryInterval: Duration = .seconds(3),
+        backfillEventCount: UInt16 = 50
     ) {
         self.client = client
         self.accountID = accountID
         self.platform = platform
         self.initialMessageWait = initialMessageWait
         self.initialSyncWait = initialSyncWait
+        self.invitePolicy = invitePolicy
+        self.roomDiscoveryInterval = roomDiscoveryInterval
+        self.backfillEventCount = backfillEventCount
         normalizer = MatrixEventNormalizer(accountID: accountID)
     }
 
@@ -41,15 +52,17 @@ public actor MatrixMessagingGateway: MessagingGateway {
 
     public func loadSnapshot() async throws -> MessagingSnapshot {
         try await start()
+        await acceptTrustedInvites()
 
         let rooms = try await client.requireClient().rooms()
         var conversations: [RemoteConversation] = []
         var messagesByRoute: [ConversationRoute: [Message]] = [:]
         var identities: [String: RemoteIdentity] = [:]
 
-        for room in rooms {
+        for room in rooms where room.membership() == .joined {
             let info = try await room.roomInfo()
             let route = normalizer.route(forRoom: room.id())
+            knownRoomIDs.insert(room.id())
             await attachTimeline(to: room)
 
             // Give the timeline a bounded moment to deliver its first batch. A room with nothing
@@ -67,14 +80,27 @@ public actor MatrixMessagingGateway: MessagingGateway {
                 )
             }
 
+            let title = info.displayName ?? info.rawName ?? room.id()
+            // Phase 3 has no contact linking against Matrix identities yet, so a conversation
+            // stands for itself when nothing has been received in it.
+            let identityID = ordered.compactMap(\.senderIdentityID).first ?? room.id()
+            // The inbox drops any conversation whose identity it does not know, so a room that has
+            // not delivered a message yet needs one synthesised or it is silently invisible. A
+            // freshly bridged conversation is exactly that room.
+            if identities[identityID] == nil {
+                identities[identityID] = RemoteIdentity(
+                    id: identityID,
+                    accountID: accountID,
+                    displayName: identityID == room.id() ? title : Self.displayName(forUserID: identityID)
+                )
+            }
+
             conversations.append(
                 RemoteConversation(
                     id: room.id(),
                     accountID: accountID,
-                    // Phase 3 has no contact linking against Matrix identities yet, so a
-                    // conversation stands for itself.
-                    identityID: ordered.compactMap(\.senderIdentityID).first ?? room.id(),
-                    title: info.displayName ?? info.rawName ?? room.id(),
+                    identityID: identityID,
+                    title: title,
                     latestPreview: ordered.last?.body ?? "",
                     latestActivity: ordered.last?.timestamp ?? Date(timeIntervalSince1970: 0),
                     unreadCount: Int(info.numUnreadMessages)
@@ -129,6 +155,8 @@ public actor MatrixMessagingGateway: MessagingGateway {
         try await client.startSync()
         started = true
         await awaitInitialRooms()
+        await acceptTrustedInvites()
+        startRoomDiscovery()
     }
 
     /// Waits, briefly, for sliding sync to deliver the first room list.
@@ -146,12 +174,92 @@ public actor MatrixMessagingGateway: MessagingGateway {
 
     /// Detaches every timeline listener. Sync itself keeps running for the client's lifetime.
     public func stop() async {
+        discoveryTask?.cancel()
+        discoveryTask = nil
+        knownRoomIDs.removeAll()
         for handle in timelineHandles.values { handle.cancel() }
         timelineHandles.removeAll()
         observers.removeAll()
         for continuation in streamContinuations.values { continuation.finish() }
         streamContinuations.removeAll()
         started = false
+    }
+
+    // MARK: - Room discovery
+
+    /// Joins portal rooms a trusted bridge has invited this account to.
+    ///
+    /// A bridge creates a portal and invites the user rather than joining them, so without this an
+    /// account can be fully connected and still show nothing at all.
+    private func acceptTrustedInvites() async {
+        guard !invitePolicy.trustedLocalpartPrefixes.isEmpty else { return }
+        guard let rooms = try? await client.requireClient().rooms() else { return }
+
+        for room in rooms where room.membership() == .invited {
+            guard let inviter = try? await room.inviter(),
+                  invitePolicy.trusts(inviterUserID: inviter.userId)
+            else { continue }
+            // A failed join is left as an invite rather than retried into a loop; the next
+            // discovery pass tries again.
+            try? await room.join()
+        }
+    }
+
+    /// Watches for rooms that appear after the inbox was first loaded.
+    ///
+    /// Bridges create portals as conversations are discovered, long after startup, so a snapshot
+    /// taken once would never show a conversation that began afterwards.
+    private func startRoomDiscovery() {
+        guard discoveryTask == nil else { return }
+        discoveryTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: await self.roomDiscoveryInterval)
+                guard !Task.isCancelled else { return }
+                await self.discoverNewRooms()
+            }
+        }
+    }
+
+    private func discoverNewRooms() async {
+        await acceptTrustedInvites()
+        guard let rooms = try? await client.requireClient().rooms() else { return }
+
+        for room in rooms where room.membership() == .joined {
+            let roomID = room.id()
+            guard !knownRoomIDs.contains(roomID) else { continue }
+            knownRoomIDs.insert(roomID)
+            await attachTimeline(to: room)
+
+            let messages = await observers[roomID]?
+                .messages(waitingUpTo: initialMessageWait)
+                .sorted(by: palloMessageOrdering) ?? []
+            let info = try? await room.roomInfo()
+            let title = info?.displayName ?? info?.rawName ?? roomID
+            let identityID = messages.compactMap(\.senderIdentityID).first ?? roomID
+
+            // Order matters: the inbox drops a conversation whose identity it has not seen, so the
+            // identity has to arrive first or the room never appears.
+            publish(.identityUpserted(
+                RemoteIdentity(
+                    id: identityID,
+                    accountID: accountID,
+                    displayName: identityID == roomID ? title : Self.displayName(forUserID: identityID)
+                )
+            ))
+            publish(.conversationUpserted(
+                RemoteConversation(
+                    id: roomID,
+                    accountID: accountID,
+                    identityID: identityID,
+                    title: title,
+                    latestPreview: messages.last?.body ?? "",
+                    latestActivity: messages.last?.timestamp ?? Date(),
+                    unreadCount: Int(info?.numUnreadMessages ?? 0)
+                )
+            ))
+            for message in messages { publish(.messageUpserted(message)) }
+        }
     }
 
     // MARK: - Internals
@@ -167,6 +275,12 @@ public actor MatrixMessagingGateway: MessagingGateway {
         let handle = await timeline.addListener(listener: observer)
         timelineHandles[roomID] = handle
         observers[roomID] = observer
+
+        // A live timeline begins where this account's view of the room begins. In a room Pallo has
+        // only just joined — every bridged portal — that is the join event, so the conversation the
+        // bridge backfilled sits entirely behind it and would never be shown. Paginating once pulls
+        // that history in.
+        _ = try? await timeline.paginateBackwards(numEvents: backfillEventCount)
     }
 
     private func publish(_ event: GatewayEvent) {

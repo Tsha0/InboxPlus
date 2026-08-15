@@ -1,6 +1,7 @@
 import Foundation
 import PalloFeatures
 import PalloGateway
+import PalloBridgeService
 import PalloMatrix
 import PalloRuntime
 
@@ -42,10 +43,21 @@ enum GatewaySelection {
                 store: store,
                 provisioner: provisioner
             )
+            // Bridges invite this account into the portals they create, so the gateway needs to
+            // know which local users are allowed to do that. Anything not in a prepared bridge's
+            // own namespace is ignored.
+            let bridgeIDs = ((try? BridgeRuntime(paths: paths).prepared()) ?? []).map(\.bridgeID)
             FileHandle.standardError.write(Data(
-                "Pallo: using local Matrix runtime '\(profileName)' on port \(port).\n".utf8
+                """
+                Pallo: using local Matrix runtime '\(profileName)' on port \(port)\
+                \(bridgeIDs.isEmpty ? "" : " with bridges: \(bridgeIDs.joined(separator: ", "))").
+
+                """.utf8
             ))
-            return MatrixMessagingGateway(client: client)
+            return MatrixMessagingGateway(
+                client: client,
+                invitePolicy: .forBridges(ids: bridgeIDs, serverName: state.serverName)
+            )
         } catch {
             // Surface the reason instead of silently substituting fake conversations.
             FileHandle.standardError.write(Data(
