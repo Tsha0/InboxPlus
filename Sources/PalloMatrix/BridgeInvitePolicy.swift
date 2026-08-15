@@ -12,10 +12,13 @@ public struct BridgeInvitePolicy: Sendable, Equatable {
     /// bridge's own bot.
     public let trustedLocalpartPrefixes: [String]
     public let serverName: String
+    /// The bridges these prefixes came from, kept so a room can be attributed back to one.
+    public let bridgeIDs: [String]
 
-    public init(trustedLocalpartPrefixes: [String], serverName: String) {
+    public init(trustedLocalpartPrefixes: [String], serverName: String, bridgeIDs: [String] = []) {
         self.trustedLocalpartPrefixes = trustedLocalpartPrefixes
         self.serverName = serverName
+        self.bridgeIDs = bridgeIDs
     }
 
     /// Trusts nothing. The default, so a profile with no bridges behaves exactly as it did before.
@@ -28,8 +31,34 @@ public struct BridgeInvitePolicy: Sendable, Equatable {
     public static func forBridges(ids: [String], serverName: String) -> BridgeInvitePolicy {
         BridgeInvitePolicy(
             trustedLocalpartPrefixes: ids.flatMap { ["\($0)_", "\($0)bot"] },
-            serverName: serverName
+            serverName: serverName,
+            bridgeIDs: ids
         )
+    }
+
+    /// Which bridge, if any, this user belongs to.
+    ///
+    /// A portal room always contains the bridge's own ghost or bot, so the members of a room are
+    /// what says which network it really is. Without this every bridged conversation is reported
+    /// as plain Matrix, which is what the transport happens to be rather than what the user is
+    /// looking at.
+    ///
+    /// Longest identifier first: `whatsapp` and `whatsappbusiness` would otherwise both match a
+    /// `@whatsappbusiness_1` ghost and the shorter one could win.
+    public func bridgeID(owning userID: String) -> String? {
+        guard let localpart = Self.localpart(of: userID, on: serverName) else { return nil }
+        return bridgeIDs
+            .sorted { $0.count > $1.count }
+            .first { localpart.hasPrefix("\($0)_") || localpart == "\($0)bot" }
+    }
+
+    /// The localpart, but only for a user on the server this policy pins.
+    static func localpart(of userID: String, on serverName: String) -> String? {
+        guard !serverName.isEmpty, userID.hasPrefix("@") else { return nil }
+        guard let colon = userID.firstIndex(of: ":") else { return nil }
+        guard String(userID[userID.index(after: colon)...]) == serverName else { return nil }
+        let localpart = String(userID[userID.index(after: userID.startIndex)..<colon])
+        return localpart.isEmpty ? nil : localpart
     }
 
     public func trusts(inviterUserID: String) -> Bool {

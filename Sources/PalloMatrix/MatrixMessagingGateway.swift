@@ -17,6 +17,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
     private let initialMessageWait: Duration
     private let initialSyncWait: Duration
     private let invitePolicy: BridgeInvitePolicy
+    private let bridgeAccounts: [String: BridgeAccountDescriptor]
     private let roomDiscoveryInterval: Duration
     private let backfillEventCount: UInt16
 
@@ -26,6 +27,8 @@ public actor MatrixMessagingGateway: MessagingGateway {
     private var started = false
     private var knownRoomIDs: Set<String> = []
     private var discoveryTask: Task<Void, Never>?
+    /// Which account each room belongs to, resolved once from its members.
+    private var accountIDByRoomID: [String: String] = [:]
 
     public init(
         client: PalloMatrixClient,
@@ -34,6 +37,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
         initialMessageWait: Duration = .milliseconds(1_500),
         initialSyncWait: Duration = .seconds(10),
         invitePolicy: BridgeInvitePolicy = .trustingNobody,
+        bridgeAccounts: [BridgeAccountDescriptor] = [],
         roomDiscoveryInterval: Duration = .seconds(3),
         backfillEventCount: UInt16 = 50
     ) {
@@ -43,6 +47,9 @@ public actor MatrixMessagingGateway: MessagingGateway {
         self.initialMessageWait = initialMessageWait
         self.initialSyncWait = initialSyncWait
         self.invitePolicy = invitePolicy
+        self.bridgeAccounts = Dictionary(
+            bridgeAccounts.map { ($0.bridgeID, $0) }, uniquingKeysWith: { first, _ in first }
+        )
         self.roomDiscoveryInterval = roomDiscoveryInterval
         self.backfillEventCount = backfillEventCount
         normalizer = MatrixEventNormalizer(accountID: accountID)
@@ -61,7 +68,8 @@ public actor MatrixMessagingGateway: MessagingGateway {
 
         for room in rooms where room.membership() == .joined {
             let info = try await room.roomInfo()
-            let route = normalizer.route(forRoom: room.id())
+            let roomAccountID = await resolvedAccountID(for: room)
+            let route = normalizer.route(forRoom: room.id(), accountID: roomAccountID)
             knownRoomIDs.insert(room.id())
             await attachTimeline(to: room)
 
@@ -75,7 +83,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
                 guard let senderID = message.senderIdentityID else { continue }
                 identities[senderID] = RemoteIdentity(
                     id: senderID,
-                    accountID: accountID,
+                    accountID: roomAccountID,
                     displayName: Self.displayName(forUserID: senderID)
                 )
             }
@@ -90,7 +98,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
             if identities[identityID] == nil {
                 identities[identityID] = RemoteIdentity(
                     id: identityID,
-                    accountID: accountID,
+                    accountID: roomAccountID,
                     displayName: identityID == room.id() ? title : Self.displayName(forUserID: identityID)
                 )
             }
@@ -98,7 +106,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
             conversations.append(
                 RemoteConversation(
                     id: room.id(),
-                    accountID: accountID,
+                    accountID: roomAccountID,
                     identityID: identityID,
                     title: title,
                     latestPreview: ordered.last?.body ?? "",
@@ -109,9 +117,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
         }
 
         return MessagingSnapshot(
-            accounts: [
-                ConnectedAccount(id: accountID, platform: platform, displayName: "Local Matrix"),
-            ],
+            accounts: accounts(owning: conversations.map(\.accountID)),
             identities: Array(identities.values),
             conversations: conversations.sorted { $0.latestActivity > $1.latestActivity },
             messagesByRoute: messagesByRoute
@@ -294,6 +300,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
             let roomID = room.id()
             guard !knownRoomIDs.contains(roomID) else { continue }
             knownRoomIDs.insert(roomID)
+            let roomAccountID = await resolvedAccountID(for: room)
             await attachTimeline(to: room)
 
             let messages = await observers[roomID]?
@@ -308,14 +315,14 @@ public actor MatrixMessagingGateway: MessagingGateway {
             publish(.identityUpserted(
                 RemoteIdentity(
                     id: identityID,
-                    accountID: accountID,
+                    accountID: roomAccountID,
                     displayName: identityID == roomID ? title : Self.displayName(forUserID: identityID)
                 )
             ))
             publish(.conversationUpserted(
                 RemoteConversation(
                     id: roomID,
-                    accountID: accountID,
+                    accountID: roomAccountID,
                     identityID: identityID,
                     title: title,
                     latestPreview: messages.last?.body ?? "",
@@ -327,13 +334,94 @@ public actor MatrixMessagingGateway: MessagingGateway {
         }
     }
 
+    // MARK: - Attribution
+
+    /// Which account a room belongs to, resolved from who is in it.
+    ///
+    /// A bridged conversation is a portal room the bridge created, and the bridge's own ghost or
+    /// bot is always a member. That membership is the only reliable statement of which network the
+    /// conversation really is — the transport is Matrix either way, and reporting Matrix is
+    /// reporting the plumbing rather than the thing the user is looking at.
+    private func resolvedAccountID(for room: Room) async -> String {
+        let roomID = room.id()
+        if let cached = accountIDByRoomID[roomID] { return cached }
+
+        var resolved = accountID
+        if !bridgeAccounts.isEmpty {
+            // The local store first, because it is free. It can legitimately be empty when member
+            // state has not been lazily loaded yet, and falling back to Matrix on that would file a
+            // bridged conversation under the wrong network for the rest of the session — so a miss
+            // is retried against the server rather than accepted.
+            if let bridgeID = await bridgeMember(of: room, synchronising: false) {
+                resolved = bridgeID
+            } else if let bridgeID = await bridgeMember(of: room, synchronising: true) {
+                resolved = bridgeID
+            }
+        }
+        accountIDByRoomID[roomID] = resolved
+        return resolved
+    }
+
+    private func bridgeMember(of room: Room, synchronising: Bool) async -> String? {
+        guard let iterator = synchronising
+            ? try? await room.members()
+            : try? await room.membersNoSync()
+        else { return nil }
+
+        while let chunk = iterator.nextChunk(chunkSize: 64), !chunk.isEmpty {
+            for member in chunk {
+                if let bridgeID = invitePolicy.bridgeID(owning: member.userId),
+                   bridgeAccounts[bridgeID] != nil {
+                    return bridgeID
+                }
+            }
+        }
+        return nil
+    }
+
+    /// One line naming what each conversation was attributed to.
+    ///
+    /// Attribution is invisible when it goes wrong — a bridged chat simply reads "Matrix" — so it
+    /// is reported rather than left to be noticed.
+    public func attributionSummary() -> [String: String] {
+        accountIDByRoomID
+    }
+
+    /// The accounts actually worth showing: one per bridge that owns a conversation, plus the local
+    /// Matrix account. A prepared bridge with no conversations yet is not presented as connected.
+    private func accounts(owning roomAccountIDs: some Collection<String>) -> [ConnectedAccount] {
+        var accounts: [ConnectedAccount] = []
+        for bridgeID in Set(roomAccountIDs).sorted() {
+            guard let descriptor = bridgeAccounts[bridgeID] else { continue }
+            accounts.append(
+                ConnectedAccount(
+                    id: descriptor.bridgeID,
+                    platform: descriptor.platform,
+                    displayName: descriptor.displayName
+                )
+            )
+        }
+        // Always present, because a room that belongs to no bridge is filed against it.
+        accounts.append(
+            ConnectedAccount(id: accountID, platform: platform, displayName: "Local Matrix")
+        )
+        return accounts
+    }
+
     // MARK: - Internals
 
     private func attachTimeline(to room: Room) async {
         let roomID = room.id()
         guard timelineHandles[roomID] == nil else { return }
 
-        let observer = RoomTimelineObserver(roomID: roomID, normalizer: normalizer) { [weak self] event in
+        // Resolved here rather than passed in, so a timeline attached from a send path is stamped
+        // with the same account as one attached from a snapshot.
+        let roomAccountID = await resolvedAccountID(for: room)
+        let observer = RoomTimelineObserver(
+            roomID: roomID,
+            normalizer: normalizer,
+            accountID: roomAccountID
+        ) { [weak self] event in
             Task { await self?.publish(event) }
         }
         guard let timeline = try? await room.timeline() else { return }
@@ -381,6 +469,9 @@ public enum MatrixGatewayError: Error, Equatable, Sendable, CustomStringConverti
 final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
     private let roomID: String
     private let normalizer: MatrixEventNormalizer
+    /// The account this room belongs to. Live messages must be stamped with it too, or a bridged
+    /// conversation loads as Instagram and then every new message arrives as Matrix.
+    private let accountID: String
     private let onEvent: @Sendable (GatewayEvent) -> Void
 
     private let lock = NSLock()
@@ -390,10 +481,12 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
     init(
         roomID: String,
         normalizer: MatrixEventNormalizer,
+        accountID: String,
         onEvent: @escaping @Sendable (GatewayEvent) -> Void
     ) {
         self.roomID = roomID
         self.normalizer = normalizer
+        self.accountID = accountID
         self.onEvent = onEvent
     }
 
@@ -429,7 +522,7 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
     private func messages(from items: [TimelineItem]) -> [Message] {
         items.compactMap { item in
             guard let event = item.asEvent() else { return nil }
-            return normalizer.normalize(event, roomID: roomID)
+            return normalizer.normalize(event, roomID: roomID, accountID: accountID)
         }
     }
 

@@ -191,6 +191,23 @@ public final class PalloAppModel {
         rebuildInbox()
     }
 
+    /// Names each loaded account and how many conversations it owns.
+    ///
+    /// A conversation attributed to the wrong network is invisible as a bug — a bridged Instagram
+    /// chat simply reads "Matrix" and looks like a design choice. Stating it once at load makes it
+    /// checkable without a screenshot.
+    private static func reportLoadedAccounts(_ snapshot: MessagingSnapshot) {
+        guard !snapshot.accounts.isEmpty else { return }
+        let counts = snapshot.conversations.reduce(into: [String: Int]()) { totals, conversation in
+            totals[conversation.accountID, default: 0] += 1
+        }
+        let described = snapshot.accounts
+            .map { "\($0.platform.rawValue)(\($0.id))=\(counts[$0.id] ?? 0)" }
+            .sorted()
+            .joined(separator: " ")
+        FileHandle.standardError.write(Data("Pallo: conversations by account — \(described)\n".utf8))
+    }
+
     public func isConnected(_ accountID: String) -> Bool {
         !disconnectedAccountIDs.contains(accountID)
     }
@@ -388,6 +405,7 @@ public final class PalloAppModel {
     }
 
     private func apply(_ snapshot: MessagingSnapshot) {
+        Self.reportLoadedAccounts(snapshot)
         accounts = snapshot.accounts
         identities = snapshot.identities
         conversations = snapshot.conversations

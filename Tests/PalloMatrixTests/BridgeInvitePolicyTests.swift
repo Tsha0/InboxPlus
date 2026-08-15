@@ -48,3 +48,48 @@ func amalformedInviterIsRejectedRatherThanParsedLoosely(_ inviter: String) {
     #expect(!none.trusts(inviterUserID: "@instagrambot:pallo.localhost"))
     #expect(!BridgeInvitePolicy.trustingNobody.trusts(inviterUserID: "@instagrambot:pallo.localhost"))
 }
+
+// MARK: - Attribution
+
+@Test func aRoomIsAttributedToTheBridgeWhoseGhostIsInIt() {
+    // A portal room always contains the bridge's own ghost or bot, and that membership is the only
+    // reliable statement of which network the conversation actually is. Reporting Matrix reports
+    // the transport rather than what the user is looking at.
+    #expect(policy.bridgeID(owning: "@instagram_17841400000000000:pallo.localhost") == "instagram")
+    #expect(policy.bridgeID(owning: "@instagrambot:pallo.localhost") == "instagram")
+    #expect(policy.bridgeID(owning: "@whatsapp_15551234567:pallo.localhost") == "whatsapp")
+}
+
+@Test func anOrdinaryUserAttributesToNoBridge() {
+    #expect(policy.bridgeID(owning: "@pallo:pallo.localhost") == nil)
+    #expect(policy.bridgeID(owning: "@maya:pallo.localhost") == nil)
+    // Same prefix, different namespace — `instagram` alone is not a ghost.
+    #expect(policy.bridgeID(owning: "@instagram:pallo.localhost") == nil)
+    #expect(policy.bridgeID(owning: "@instagramy:pallo.localhost") == nil)
+}
+
+@Test func attributionIsPinnedToTheLocalServer() {
+    // Federation is off, but a remote user must never be able to claim a bridge's namespace.
+    #expect(policy.bridgeID(owning: "@instagram_1:evil.example") == nil)
+    #expect(policy.bridgeID(owning: "@instagrambot:pallo.localhost.evil.example") == nil)
+}
+
+@Test func theLongerBridgeIdentifierWinsWhenTwoCouldMatch() {
+    // `whatsapp` is a prefix of `whatsappbusiness`, so a shortest-first match would file every
+    // business conversation under the wrong account.
+    let overlapping = BridgeInvitePolicy.forBridges(
+        ids: ["whatsapp", "whatsappbusiness"],
+        serverName: "pallo.localhost"
+    )
+    #expect(overlapping.bridgeID(owning: "@whatsappbusiness_1:pallo.localhost") == "whatsappbusiness")
+    #expect(overlapping.bridgeID(owning: "@whatsapp_1:pallo.localhost") == "whatsapp")
+}
+
+@Test func aProfileWithNoBridgesAttributesNothing() {
+    #expect(BridgeInvitePolicy.trustingNobody.bridgeID(owning: "@instagram_1:pallo.localhost") == nil)
+}
+
+@Test(arguments: ["", "instagram_1:pallo.localhost", "@instagram_1", "@", "@:", "not-a-user"])
+func amalformedUserAttributesToNothing(_ userID: String) {
+    #expect(policy.bridgeID(owning: userID) == nil)
+}

@@ -14,11 +14,17 @@ public struct MatrixEventNormalizer: Sendable {
         self.accountID = accountID
     }
 
-    public func route(forRoom roomID: String) -> ConversationRoute {
-        ConversationRoute(accountID: accountID, conversationID: roomID)
+    /// The account is passed in because one Matrix connection can carry several accounts: each
+    /// bridge's portals belong to that network, not to Matrix.
+    public func route(forRoom roomID: String, accountID: String? = nil) -> ConversationRoute {
+        ConversationRoute(accountID: accountID ?? self.accountID, conversationID: roomID)
     }
 
-    public func normalize(_ item: EventTimelineItem, roomID: String) -> Message {
+    public func normalize(
+        _ item: EventTimelineItem,
+        roomID: String,
+        accountID: String? = nil
+    ) -> Message {
         let identifier = identifier(for: item.eventOrTransactionId)
         var described = describe(item.content, identifier: identifier)
 
@@ -32,7 +38,7 @@ public struct MatrixEventNormalizer: Sendable {
 
         return Message(
             id: identifier,
-            route: route(forRoom: roomID),
+            route: route(forRoom: roomID, accountID: accountID),
             // An outgoing message carries no remote sender identity, matching `Message.isOutgoing`.
             senderIdentityID: item.isOwn ? nil : item.sender,
             body: described.body,

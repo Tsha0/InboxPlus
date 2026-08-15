@@ -1,6 +1,7 @@
 import Foundation
 import PalloFeatures
 import PalloGateway
+import PalloBridge
 import PalloBridgeService
 import PalloIMessage
 import PalloMatrix
@@ -65,7 +66,20 @@ enum GatewaySelection {
             // Bridges invite this account into the portals they create, so the gateway needs to
             // know which local users are allowed to do that. Anything not in a prepared bridge's
             // own namespace is ignored.
-            let bridgeIDs = ((try? BridgeRuntime(paths: paths).prepared()) ?? []).map(\.bridgeID)
+            let prepared = (try? BridgeRuntime(paths: paths).prepared()) ?? []
+            let bridgeIDs = prepared.map(\.bridgeID)
+            // A portal room belongs to the network that created it, not to Matrix. The catalog is
+            // what knows which network a bridge identifier means, and it lives here rather than in
+            // the gateway so the Matrix layer keeps no opinion about bridges.
+            let bridgeAccounts = prepared.compactMap { record -> BridgeAccountDescriptor? in
+                guard let descriptor = BridgeCatalog.all.first(where: { $0.id == record.bridgeID })
+                else { return nil }
+                return BridgeAccountDescriptor(
+                    bridgeID: record.bridgeID,
+                    platform: descriptor.platform,
+                    displayName: descriptor.displayName
+                )
+            }
             FileHandle.standardError.write(Data(
                 """
                 Pallo: using local Matrix runtime '\(profileName)' on port \(port)\
@@ -87,7 +101,8 @@ enum GatewaySelection {
 
             let matrix = MatrixMessagingGateway(
                 client: client,
-                invitePolicy: .forBridges(ids: bridgeIDs, serverName: state.serverName)
+                invitePolicy: .forBridges(ids: bridgeIDs, serverName: state.serverName),
+                bridgeAccounts: bridgeAccounts
             )
 
             // iMessage never reaches the homeserver, so it sits beside the Matrix gateway rather
