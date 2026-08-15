@@ -72,17 +72,51 @@ import Testing
     }
 }
 
-@Test func thePickerListsEverySupportedPlatformAndPutsTheAvailableOnesFirst() {
+@Test func thePickerListsEveryPlatformPalloIntendsToOfferAndPutsTheAvailableOnesFirst() {
     let order = BridgeCatalog.pickerOrder
-    #expect(Set(order) == Set(Platform.allCases), "the picker must never hide a platform")
-    #expect(order.count == 16)
+    let offered = Set(Platform.allCases).subtracting(BridgeCatalog.notOffered)
+    #expect(Set(order) == offered, "the picker must never hide a platform it intends to offer")
+    #expect(order.count == Platform.allCases.count - BridgeCatalog.notOffered.count)
 
+    // Available *and* offered: a network can stay in the catalog for existing profiles while no
+    // longer being something you can add.
+    let offeredAndAvailable = BridgeCatalog.all
+        .map(\.platform)
+        .filter { !BridgeCatalog.notOffered.contains($0) }
     let availableCount = order.prefix { BridgeCatalog.isAvailable($0) }.count
-    #expect(availableCount == BridgeCatalog.all.count)
+    #expect(availableCount == offeredAndAvailable.count)
     #expect(
         order.dropFirst(availableCount).allSatisfy { !BridgeCatalog.isAvailable($0) },
         "an available network was sorted below an unavailable one"
     )
+}
+
+@Test func aNetworkWithNoRouteAtAllIsNotOfferedRatherThanPermanentlyGreyedOut() {
+    // IRC and Google Chat publish no pinned macOS release, and waiting does not change that.
+    // A permanent disabled entry suggests it is coming.
+    for platform in [Platform.irc, .googleChat] {
+        #expect(BridgeCatalog.notOffered.contains(platform))
+        #expect(!BridgeCatalog.pickerOrder.contains(platform))
+        #expect(!BridgeCatalog.isAvailable(platform))
+    }
+}
+
+@Test func aWorkingNetworkThatIsOutOfScopeKeepsItsCatalogEntry() {
+    // Google Messages and Google Voice are removed by decision, not obstacle. Dropping their
+    // descriptors would leave a profile that already runs one attributing its conversations to
+    // Matrix, which is the exact bug this project just finished fixing.
+    for platform in [Platform.googleMessages, .googleVoice] {
+        #expect(!BridgeCatalog.pickerOrder.contains(platform))
+        #expect(BridgeCatalog.isAvailable(platform), "the bridge must stay usable for existing profiles")
+    }
+}
+
+@Test func networksBlockedOnWorkPalloCouldDoAreStillListed() {
+    // The distinction that keeps `notOffered` from becoming a place to hide awkward gaps.
+    for platform in [Platform.discord, .matrix] {
+        #expect(BridgeCatalog.pickerOrder.contains(platform))
+        #expect(BridgeCatalog.unavailabilityReason(for: platform)?.isEmpty == false)
+    }
 }
 
 @Test func askingForAnUnsupportedNetworkFailsWithAnActionableReason() {

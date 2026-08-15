@@ -84,12 +84,18 @@ guess.
   send and receive, deep links, offline recovery, disconnect, removal. That needs eleven accounts
   on eleven networks. Only Instagram has ever been driven with real credentials, and several of
   these networks ban accounts for using unofficial clients.
-- **Four networks are absent, each for a stated reason.** The picker now shows the reason rather
-  than a bare "not yet available":
+- **Two networks are listed but disabled, with the reason shown.** Both are blocked on work Pallo
+  could plausibly do, so hiding them would misrepresent the roadmap as the product.
   - **Discord** — the current release is still the pre-`bridgev2` architecture and does not speak
     the provisioning protocol every other bridge here uses.
-  - **Google Chat** — Python-only, publishes no macOS binary, so there is nothing to checksum.
-  - **IRC** — the maintained bridges are Python and Node projects with no pinned macOS release.
   - **External Matrix** — needs multi-account support, which Pallo does not have.
+- **Four networks are not offered at all.** A permanent disabled entry suggests something is
+  coming; these are not.
+  - **IRC** and **Google Chat** have no route. Their maintained bridges are Python and Node
+    projects with no pinned macOS release, so there is nothing to verify before running one.
+  - **Google Messages** and **Google Voice** were removed by decision rather than obstacle. Their
+    bridges work and keep their catalog entries, so a profile that already runs one still
+    attributes its conversations to the right network instead of reporting them as Matrix. They
+    simply cannot be added.
 - **Credential styles are Pallo's expectation, not the bridge's word.** They describe the flow in
   the picker before anything is running; what actually gets rendered is whatever the bridge returns.

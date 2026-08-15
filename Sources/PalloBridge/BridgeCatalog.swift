@@ -423,12 +423,26 @@ public enum BridgeCatalog {
         descriptor(for: platform) != nil
     }
 
+    /// Networks Pallo does not offer.
+    ///
+    /// Distinct from merely unavailable. A network blocked on work Pallo could plausibly do stays
+    /// in the picker, disabled and explained, because hiding it would misrepresent the roadmap as
+    /// the product. These are not that:
+    ///
+    /// - **IRC** and **Google Chat** have no route at all. Their maintained bridges publish no
+    ///   pinned macOS release, so there is nothing Pallo could verify before running one, and
+    ///   waiting does not change that. A permanent disabled entry would only suggest it is coming.
+    /// - **Google Messages** and **Google Voice** are out of scope by decision, not by obstacle.
+    ///   Their bridges work and stay in the catalog, so a profile that already has one keeps
+    ///   attributing its conversations correctly rather than silently reporting them as Matrix.
+    ///   They simply cannot be added.
+    public static let notOffered: Set<Platform> = [.irc, .googleChat, .googleMessages, .googleVoice]
+
     /// Every platform the picker shows, available ones first, then alphabetically.
     ///
-    /// The eleven Pallo cannot connect yet are still listed: hiding them would misrepresent the
-    /// roadmap as the product.
+    /// The ones Pallo cannot connect *yet* are still listed and disabled, with the reason.
     public static var pickerOrder: [Platform] {
-        Platform.allCases.sorted { lhs, rhs in
+        Platform.allCases.filter { !notOffered.contains($0) }.sorted { lhs, rhs in
             let lhsAvailable = isAvailable(lhs)
             let rhsAvailable = isAvailable(rhs)
             if lhsAvailable != rhsAvailable { return lhsAvailable }

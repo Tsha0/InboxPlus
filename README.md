@@ -107,7 +107,10 @@ to a code identity, and an ad-hoc signature's identity changes every time you bu
 
 ## Networks
 
-Twelve networks are in the catalog. Eleven download a bridge binary pinned to an exact version and
+Ten networks can be connected. Two more — Google Messages and Google Voice — remain in the
+catalog so an existing profile keeps working, but are no longer offered.
+
+Twelve networks are in the catalog in total. Eleven download a bridge binary pinned to an exact version and
 SHA-256, verified before it is ever made executable; iMessage has nothing to download, because it
 is reached through macOS itself. A bridge's own login flow is what gets rendered — Pallo never
 guesses what a network will ask for.
@@ -119,8 +122,6 @@ guesses what a network will ask for.
 | Slack | token | flows read from a running bridge |
 | X | web sign-in | flows read from a running bridge |
 | LinkedIn | web sign-in | flows read from a running bridge |
-| Google Messages | QR pairing | flows read from a running bridge |
-| Google Voice | web sign-in | flows read from a running bridge |
 | Bluesky | app password | flows read from a running bridge |
 | Facebook Messenger | web sign-in | installs and registers |
 | WhatsApp | QR pairing | installs and registers |
@@ -130,10 +131,15 @@ guesses what a network will ask for.
 **Only Instagram has been driven with a real account.** The rest install, register, supervise and
 serve their genuine login flows; that is not the same as proven.
 
-Four networks the design lists are deliberately absent, each for a reason the picker now shows:
-Discord (its current release predates the bridge protocol Pallo speaks), Google Chat (no macOS
-binary to checksum), IRC (no pinned macOS release), and external Matrix (needs multi-account
-support).
+Two networks are listed but disabled, with the reason shown in the picker: Discord (its current
+release predates the bridge protocol Pallo speaks) and external Matrix (needs multi-account
+support). Both are blocked on work Pallo could plausibly do.
+
+Four are not offered at all. IRC and Google Chat have no route — their maintained bridges publish
+no pinned macOS release, so there is nothing Pallo could verify before running one, and a
+permanently greyed-out entry would only suggest it was coming. Google Messages and Google Voice are
+out of scope by decision rather than obstacle; their bridges still work and stay in the catalog, so
+a profile that already runs one keeps attributing its conversations correctly.
 
 > Several of these networks ban accounts for connecting with unofficial clients, and those bans are
 > permanent. Use a throwaway account.
