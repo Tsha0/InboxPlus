@@ -14,6 +14,7 @@ public struct RootView: View {
     @Bindable var model: PalloAppModel
     @State private var section: SidebarSection = .inbox
     @State private var accountFlow: AccountFlow?
+    @State private var showsConnections = false
     @State private var connectFailure: String?
     /// Informational, not a failure — reusing the failure alert would title good news as an error.
     @State private var connectNotice: String?
@@ -76,6 +77,26 @@ public struct RootView: View {
             }
         }
         .frame(minWidth: 900, minHeight: 600)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showsConnections.toggle()
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                .accessibilityIdentifier("toolbar-settings")
+                .popover(isPresented: $showsConnections, arrowEdge: .bottom) {
+                    PlatformConnectionsView(
+                        accounts: model.accounts,
+                        isAccountConnected: model.isConnected,
+                        onConnect: { platform in
+                            showsConnections = false
+                            startConnecting(platform)
+                        }
+                    )
+                }
+            }
+        }
         .sheet(item: $accountFlow) { flow in
             switch flow {
             case .picker:
