@@ -24,6 +24,10 @@ struct CookieLoginWebView: NSViewRepresentable {
         configuration.websiteDataStore = .nonPersistent()
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        // Without a UI delegate, `window.open` returns null and nothing happens. Every
+        // "Sign in with Google" and "Continue with Apple" button is a popup, so omitting this
+        // makes those buttons silently dead — they look clickable and do nothing at all.
+        webView.uiDelegate = context.coordinator
         if let userAgent = parameters.userAgent, !userAgent.isEmpty {
             webView.customUserAgent = userAgent
         }
@@ -40,7 +44,24 @@ struct CookieLoginWebView: NSViewRepresentable {
         coordinator.stop()
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
+        /// Loads a popup in the same view rather than opening a second window.
+        ///
+        /// Returning a new web view would give it a separate cookie store, and the captured
+        /// session would then live somewhere this view never reads. Navigating in place keeps
+        /// one store, which is the thing cookie capture depends on.
+        func webView(
+            _ webView: WKWebView,
+            createWebViewWith configuration: WKWebViewConfiguration,
+            for navigationAction: WKNavigationAction,
+            windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            if let url = navigationAction.request.url {
+                webView.load(URLRequest(url: url))
+            }
+            return nil
+        }
+
         private let parameters: BridgeLoginCookiesParams
         private let onCookiesCaptured: ([String: String]) -> Void
         private var pollTimer: Timer?

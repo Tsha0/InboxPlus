@@ -102,10 +102,7 @@ public struct LoginStepView: View {
 
         case .cookies:
             if let parameters = step.cookies {
-                CookieLoginWebView(parameters: parameters) { captured in
-                    controller.replaceValues(captured)
-                }
-                .accessibilityIdentifier("login-cookies-webview")
+                CookieStepView(parameters: parameters, controller: controller)
             } else {
                 unsupported("This bridge asked for cookies but did not say which.")
             }
@@ -242,5 +239,94 @@ struct DisplayAndWaitStepView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
+    }
+}
+
+/// A cookie step, with the two ways a network will actually let someone sign in.
+///
+/// Signing in on the page is the better experience where it works. It does not always work: Google
+/// refuses OAuth from any embedded web view, and the bridges' own instructions say to paste cookies
+/// copied from browser devtools instead. Offering only the page would leave those networks
+/// impossible to connect from an app that otherwise looks like it supports them.
+private struct CookieStepView: View {
+    let parameters: BridgeLoginCookiesParams
+    @Bindable var controller: BridgeLoginController
+    @State private var method: Method = .signIn
+    @State private var pasted = ""
+
+    private enum Method: String, CaseIterable, Identifiable {
+        case signIn, paste
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .signIn: "Sign in here"
+            case .paste: "Paste from my browser"
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("How would you like to sign in?", selection: $method) {
+                ForEach(Method.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .accessibilityIdentifier("cookie-method")
+
+            Divider()
+
+            switch method {
+            case .signIn:
+                CookieLoginWebView(parameters: parameters) { captured in
+                    controller.replaceValues(captured)
+                }
+                .accessibilityIdentifier("login-cookies-webview")
+            case .paste:
+                pasteForm
+            }
+        }
+    }
+
+    private var pasteForm: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("""
+            Sign in to \(controller.platform.accessibilityLabel) in Safari or Chrome, open \
+            developer tools, and copy the request as cURL — or paste a JSON object of cookies. \
+            Pallo reads only the values this bridge asked for and ignores everything else.
+            """)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            TextEditor(text: $pasted)
+                .font(.system(.caption, design: .monospaced))
+                .frame(minHeight: 160)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+                .accessibilityLabel("Pasted cookies or cURL command")
+                .accessibilityIdentifier("cookie-paste-field")
+
+            if !pasted.isEmpty {
+                let missing = CookiePasteParser.missingRequiredFieldIDs(pasted: pasted, to: parameters)
+                if missing.isEmpty {
+                    Label("Found every cookie this bridge needs.", systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                } else {
+                    // Naming what is missing beats a disabled button with no explanation.
+                    Label(
+                        "Still missing: \(missing.joined(separator: ", "))",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(16)
+        .onChange(of: pasted) {
+            controller.replaceValues(CookiePasteParser.match(pasted: pasted, to: parameters))
+        }
     }
 }
