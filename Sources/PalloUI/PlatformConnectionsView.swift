@@ -2,7 +2,7 @@ import PalloBridge
 import PalloCore
 import SwiftUI
 
-/// Toolbar popover listing every network Pallo knows about and whether it is connected.
+/// Menu bar panel section listing every network Pallo knows about and whether it is connected.
 ///
 /// This mirrors `AccountPickerView`'s honesty rule: networks Pallo cannot bridge yet are listed
 /// with the reason, because hiding them would misrepresent the roadmap as the product.
@@ -42,7 +42,7 @@ public struct PlatformConnectionsView: View {
                 .padding(.vertical, 4)
             }
         }
-        .frame(width: 320, height: 420)
+        .frame(height: 360)
         .accessibilityIdentifier("platform-connections")
     }
 
