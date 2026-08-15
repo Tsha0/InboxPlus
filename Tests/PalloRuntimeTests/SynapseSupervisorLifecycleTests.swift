@@ -494,12 +494,16 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: profile.path)
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: logs.path)
     defer { try? FileManager.default.removeItem(at: root) }
+    // The child must not write until the profile has been swapped, or there is nothing for the log
+    // writer to reject. A timed sleep makes that a race the machine can lose — it did, on CI, where
+    // the swap took longer than the half second the child waited. Widening the sleep would only
+    // move the race, and past the `waitForExit` timeout it would make the test pass for the wrong
+    // reason, since a timeout throws too. So the child waits for a file this test creates *after*
+    // the swap, and the ordering stops depending on speed at all.
+    let gate = root.appendingPathComponent("swap-complete")
     let process = try FoundationManagedProcessFactory().make(ManagedProcessConfiguration(
         executable: URL(fileURLWithPath: "/bin/sh"),
-        // This scenario needs the child still running when the profile is swapped below, so it must
-        // outlive launch even under full-suite load. A child that exits first writes before the
-        // swap, and there is nothing left for the log writer to reject.
-        arguments: ["-c", "sleep 0.5; printf should-not-land"],
+        arguments: ["-c", "while [ ! -e \"$1\" ]; do sleep 0.05; done; printf should-not-land", "sh", gate.path],
         environment: [:],
         workingDirectory: profile,
         profileRoot: profile,
@@ -511,6 +515,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
 
     try FileManager.default.moveItem(at: profile, to: root.appendingPathComponent("moved-profile"))
     try FileManager.default.createSymbolicLink(at: profile, withDestinationURL: outside)
+    FileManager.default.createFile(atPath: gate.path, contents: Data())
 
     await #expect(throws: (any Error).self) {
         try await process.waitForExit(matching: identity, timeout: .seconds(2))
