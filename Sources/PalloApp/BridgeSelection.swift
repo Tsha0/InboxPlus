@@ -15,8 +15,10 @@ enum BridgeSelection {
     static func makeProvider(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> BridgeLoginSessionProvider? {
-        guard let profileName = environment[GatewaySelection.profileEnvironmentKey],
-              !profileName.isEmpty
+        // Resolved the same way the gateway resolves it, including the single-prepared-profile
+        // fallback: an app launched from Finder inherits no environment, and offering no login
+        // while the very same launch is attached to a real account is indistinguishable from a bug.
+        guard let profileName = GatewaySelection.resolveProfileName(environment: environment)
         else { return nil }
 
         return { @MainActor platform in
