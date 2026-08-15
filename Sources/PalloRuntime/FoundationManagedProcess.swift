@@ -200,7 +200,21 @@ public final class FoundationManagedProcess: ManagedProcess, @unchecked Sendable
                     }
                     previousIdentity = identity
                 }
-                if try childHasExited(pid) { break }
+                if try childHasExited(pid) {
+                    // The child launched and then exited before a second identical read. The
+                    // identity already observed while it was alive is still the truth about the
+                    // process that ran, and this object is its sole reaper, so the PID cannot have
+                    // been reused. Discarding it would fail a launch that actually succeeded —
+                    // which is what made every short-lived child racy.
+                    if let previousIdentity {
+                        stateLock.withLock {
+                            launchedIdentity = previousIdentity
+                            launchState = .launched
+                        }
+                        return previousIdentity
+                    }
+                    break
+                }
                 _ = await Task.detached(priority: .utility) { usleep(5_000) }.value
             }
 

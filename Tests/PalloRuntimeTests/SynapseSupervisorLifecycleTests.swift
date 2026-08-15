@@ -496,8 +496,9 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     defer { try? FileManager.default.removeItem(at: root) }
     let process = try FoundationManagedProcessFactory().make(ManagedProcessConfiguration(
         executable: URL(fileURLWithPath: "/bin/sh"),
-        // The child must outlive launch identity stabilization (two consecutive reads, 5 ms apart)
-        // even under full-suite parallel load, or launch() races its exit.
+        // This scenario needs the child still running when the profile is swapped below, so it must
+        // outlive launch even under full-suite load. A child that exits first writes before the
+        // swap, and there is nothing left for the log writer to reject.
         arguments: ["-c", "sleep 0.5; printf should-not-land"],
         environment: [:],
         workingDirectory: profile,
@@ -821,9 +822,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
         executable: "/bin/sh",
         arguments: [
             "-c",
-            // The child must outlive launch identity stabilization (two consecutive reads, 5 ms
-            // apart) even under full-suite parallel load, or launch() races its exit.
-            "sleep 0.5; printf 'alpha admin-secret env %s omega' \"$ACCESS_TOKEN\"; printf 'stderr token-123 tail' >&2",
+            "sleep 0.05; printf 'alpha admin-secret env %s omega' \"$ACCESS_TOKEN\"; printf 'stderr token-123 tail' >&2",
         ],
         environment: ["ACCESS_TOKEN": "environment-token"],
         sensitiveLogValues: ["admin-secret", "token-123"]

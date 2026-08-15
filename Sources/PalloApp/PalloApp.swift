@@ -31,7 +31,7 @@ struct PalloApp: App {
     @NSApplicationDelegateAdaptor(PalloAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
     @State private var model = PalloAppModel(
-        gateway: InMemoryMessagingGateway(seed: Fixtures.demoSnapshot),
+        gateway: GatewaySelection.makeGateway(),
         directory: Fixtures.directory
     )
 

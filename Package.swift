@@ -19,7 +19,10 @@ let package = Package(
         .target(name: "PalloGateway", dependencies: ["PalloCore"]),
         .target(name: "PalloFeatures", dependencies: ["PalloCore", "PalloGateway"]),
         .target(name: "PalloUI", dependencies: ["PalloCore", "PalloFeatures"]),
-        .executableTarget(name: "PalloApp", dependencies: ["PalloGateway", "PalloFeatures", "PalloUI"]),
+        .executableTarget(
+            name: "PalloApp",
+            dependencies: ["PalloGateway", "PalloFeatures", "PalloUI", "PalloMatrix", "PalloRuntime"]
+        ),
         .target(name: "PalloRuntime"),
         .executableTarget(name: "PalloRuntimeCLI", dependencies: ["PalloRuntime"]),
         // The Matrix SDK stays behind this target. PalloFeatures and PalloUI must never import it,
