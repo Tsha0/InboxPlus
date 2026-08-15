@@ -1,0 +1,139 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same branch makes the previous run's answer irrelevant, so it is cancelled
+# rather than left to finish and burn a runner.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build and test
+    # Pallo is macOS-only: AppKit, SwiftUI, CryptoKit, Keychain and the Messages database all are.
+    # There is no Linux job to add because there is nothing that would compile there.
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record the toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+          sw_vers
+
+      # The Matrix SDK is a 279 MB checksum-verified binary artifact. Re-downloading it on every
+      # run is the single slowest thing in this build, and it only changes when the pin does.
+      - name: Cache Swift package artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build
+        run: swift build --build-tests
+
+      # The live-runtime and live-bridge tests are opt-in behind PALLO_RUNTIME_PYTHON and are
+      # deliberately NOT enabled here: they start a real Synapse and download real bridge binaries,
+      # which makes a CI failure a report about the network rather than about the change.
+      - name: Test
+        run: swift test --skip-build
+
+      - name: Check for whitespace damage
+        run: git diff --check
+
+  generated-files:
+    name: Generated files are current
+    # Both of these are produced by a script from a pinned source. A stale one is invisible in
+    # review and wrong in the product, so the check is that regenerating changes nothing.
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Swift package artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Regenerate the brand marks
+        run: swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/PalloUI/PlatformGlyphPaths.swift
+
+      - name: Regenerate the app icon
+        run: swift Scripts/make-icon.swift docs/assets/pallo-mascot.png Resources/AppIcon.icns
+
+      - name: Regenerate the bill of materials
+        run: swift run PalloRuntimeCLI sbom --output docs/sbom.cdx.json
+
+      - name: Fail if anything drifted
+        run: |
+          if ! git diff --quiet; then
+            echo "::error::A generated file is out of date. Regenerate and commit:"
+            echo "  swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/PalloUI/PlatformGlyphPaths.swift"
+            echo "  swift Scripts/make-icon.swift docs/assets/pallo-mascot.png Resources/AppIcon.icns"
+            echo "  swift run PalloRuntimeCLI sbom --output docs/sbom.cdx.json"
+            git diff --stat
+            exit 1
+          fi
+          echo "Generated files match their sources."
+
+  package:
+    name: Package the app
+    # Proves the bundle still assembles and launches its own CLI. This is NOT a release: the build
+    # is ad-hoc signed, so Gatekeeper refuses it anywhere but the machine that produced it. A real
+    # release needs an Apple Developer ID and Scripts/package-release.sh.
+    runs-on: macos-latest
+    timeout-minutes: 45
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Swift package artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build the app bundle
+        run: Scripts/build-app.sh
+
+      - name: Verify the bundle
+        run: |
+          codesign --verify --strict build/Pallo.app
+          # The CLI ships inside the bundle and is how a profile is prepared; if it cannot run,
+          # the bundle is useless even though it assembled.
+          build/Pallo.app/Contents/MacOS/PalloRuntimeCLI sbom > /dev/null
+          echo "Bundle assembled and its CLI runs."
+
+      - name: Upload the unsigned bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Pallo-unsigned-${{ github.sha }}
+          path: build/Pallo.app
+          retention-days: 14
+          if-no-files-found: error
