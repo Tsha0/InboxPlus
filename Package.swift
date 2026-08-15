@@ -24,6 +24,9 @@ let package = Package(
             dependencies: ["PalloGateway", "PalloFeatures", "PalloUI", "PalloMatrix", "PalloRuntime"]
         ),
         .target(name: "PalloRuntime"),
+        // The bridge contract: bridgev2 provisioning models, a client, and a deterministic dummy
+        // bridge that scripts each network's real login flow for tests.
+        .target(name: "PalloBridge", dependencies: ["PalloCore", "PalloRuntime"]),
         .executableTarget(name: "PalloRuntimeCLI", dependencies: ["PalloRuntime"]),
         // The Matrix SDK stays behind this target. PalloFeatures and PalloUI must never import it,
         // so the app layer keeps depending only on the MessagingGateway protocol.
@@ -41,6 +44,7 @@ let package = Package(
         .testTarget(name: "PalloFeaturesTests", dependencies: ["PalloCore", "PalloGateway", "PalloFeatures"]),
         .testTarget(name: "PalloUITests", dependencies: ["PalloCore", "PalloFeatures", "PalloUI"]),
         .testTarget(name: "PalloRuntimeTests", dependencies: ["PalloRuntime", "PalloRuntimeCLI"]),
+        .testTarget(name: "PalloBridgeTests", dependencies: ["PalloBridge", "PalloRuntime"]),
         .testTarget(
             name: "PalloMatrixTests",
             dependencies: ["PalloMatrix", "PalloCore", "PalloGateway", "PalloRuntime"]
