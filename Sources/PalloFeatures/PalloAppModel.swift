@@ -103,6 +103,18 @@ public final class PalloAppModel {
         return message
     }
 
+    /// A network the user asked to connect from the menu bar. The main window consumes this —
+    /// the login sheet has to present from a window, and the menu bar owns no window of its own.
+    public private(set) var pendingConnectionRequest: Platform?
+
+    public func requestConnection(to platform: Platform) {
+        pendingConnectionRequest = platform
+    }
+
+    public func clearConnectionRequest() {
+        pendingConnectionRequest = nil
+    }
+
     private let gateway: any MessagingGateway
     private var directory: ContactDirectory
     private var draftRevision: UInt64 = 0

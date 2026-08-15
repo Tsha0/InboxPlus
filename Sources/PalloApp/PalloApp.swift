@@ -54,11 +54,25 @@ struct PalloApp: App {
         }
 
         MenuBarExtra {
-            MenuBarContentView(health: model.health, openWindow: showMainWindow)
+            MenuBarContentView(
+                health: model.health,
+                accounts: model.accounts,
+                isAccountConnected: model.isConnected,
+                openWindow: showMainWindow,
+                onConnect: { platform in
+                    // The login sheet presents from the main window, so hand the request over
+                    // and raise the window for RootView to pick it up.
+                    model.requestConnection(to: platform)
+                    showMainWindow()
+                }
+            )
         } label: {
             Image(systemName: model.health.symbolName)
                 .accessibilityLabel(model.health.menuBarTitle)
         }
+        // A window-style panel, not a menu: the connections list needs rows with status dots
+        // and Connect buttons, which a flattened menu cannot render.
+        .menuBarExtraStyle(.window)
     }
 
     /// Reopening from the menu bar has to raise the app too — the click activates the
