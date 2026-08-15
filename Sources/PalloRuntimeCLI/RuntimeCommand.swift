@@ -61,9 +61,16 @@ public enum RuntimeCommand: Equatable, Sendable {
     case restore(profile: String, backup: String)
     case verify(profile: String, options: VerifyCLIOptions)
     case remove(profile: String, confirmation: String, exportReport: String?)
+    /// Emits the software bill of materials. Describes what Pallo ships, so it needs no profile.
+    case sbom(output: String?)
+    /// Exports a redacted diagnostics bundle a user can safely attach to a bug report.
+    case diagnostics(profile: String, output: String)
 
-    public var profile: String {
+    /// `nil` for commands that do not act on a profile.
+    public var profile: String? {
         switch self {
+        case .sbom:
+            nil
         case let .bootstrap(profile, _),
              let .start(profile),
              let .status(profile),
@@ -73,7 +80,8 @@ public enum RuntimeCommand: Equatable, Sendable {
              let .restore(profile, _),
              let .verify(profile, _),
              let .remove(profile, _, _),
-             let .bridge(profile, _, _):
+             let .bridge(profile, _, _),
+             let .diagnostics(profile, _):
             profile
         }
     }
@@ -81,6 +89,7 @@ public enum RuntimeCommand: Equatable, Sendable {
     /// True when the command only reads runtime state and must not take the exclusive profile lock.
     public var observesOnly: Bool {
         if case .status = self { return true }
+        if case .diagnostics = self { return true }
         if case let .bridge(_, action, _) = self { return action == .list }
         return false
     }
@@ -109,7 +118,12 @@ public enum RuntimeCommand: Equatable, Sendable {
           Stop and remove exactly one contained profile after confirmation.
       bridge --profile <name> --action <install|prepare|flows|list> [--network <platform>]
           Install, configure, or interrogate a network bridge for this profile.
-          Networks: instagram, facebookMessenger, whatsApp, telegram, iMessage.
+          Networks: instagram, facebookMessenger, whatsApp, telegram, iMessage,
+          signal, slack, x, linkedIn, googleMessages, googleVoice, bluesky.
+      diagnostics --profile <name> --output <path>
+          Export a redacted diagnostics bundle that is safe to attach to a bug report.
+      sbom [--output <path>]
+          Emit the CycloneDX software bill of materials.
     """
 
     public static func parse(_ arguments: [String]) throws -> RuntimeCommand {
@@ -199,6 +213,15 @@ public enum RuntimeCommand: Equatable, Sendable {
                 action: action,
                 network: network
             )
+        case "diagnostics":
+            let options = try Options(tokens, valued: ["--profile", "--output"], flags: [])
+            return .diagnostics(
+                profile: try options.require("--profile"),
+                output: try options.require("--output")
+            )
+        case "sbom":
+            let options = try Options(tokens, valued: ["--output"], flags: [])
+            return .sbom(output: options.value("--output"))
         case "remove":
             let options = try Options(
                 tokens,

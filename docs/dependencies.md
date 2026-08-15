@@ -23,17 +23,42 @@ end would be a hash nobody has checked.
 
 ### Network bridges (`BridgeCatalog`)
 
-All at mautrix tag `v0.2607.0`, all AGPL-3.0-or-later. SHA-256 values are copied verbatim from
-upstream's published `sha256sums.txt` and verified before the bytes are made executable.
+All AGPL-3.0-or-later. SHA-256 values are copied verbatim from upstream's published
+`sha256sums.txt` for the pinned tag and verified before the bytes are made executable. Every one of
+these was downloaded and checked through `BridgeInstaller` — a pin that has never been tested
+against real bytes is not a pin.
 
-| Network | Repository | Asset | SHA-256 |
+Each bridge carries **its own release tag**: the mautrix projects share a calendar-versioning scheme
+but not a release train.
+
+| Network | Repository | Version | Asset |
 | --- | --- | --- | --- |
-| Instagram | [mautrix/meta](https://github.com/mautrix/meta) | `mautrix-instagram-darwin-arm64` | `c7bc6e81def6a23f0f2e8359d7079e86b82723dfb9082b22ad642a9a8912173b` |
-| Facebook Messenger | [mautrix/meta](https://github.com/mautrix/meta) | `mautrix-meta-darwin-arm64` | `a468cca261034f1a93efc927113ab3d07411836e7c5dd68b7c71e59bdfb17dfb` |
-| WhatsApp | [mautrix/whatsapp](https://github.com/mautrix/whatsapp) | `mautrix-whatsapp-darwin-arm64` | `f5c0291e4315a8cf70e836b7707f4e6503353b021a115eebb3a6b18f1b9acfbc` |
-| Telegram | [mautrix/telegram](https://github.com/mautrix/telegram) | `mautrix-telegram-darwin-arm64` | `0e2c2ded1773533c691b902b3d0fc4ec87a2f5d3170cd714f7e9e3e494481dd3` |
+| Instagram | [mautrix/meta](https://github.com/mautrix/meta) | `v0.2607.0` | `mautrix-instagram-darwin-arm64` |
+| Facebook Messenger | [mautrix/meta](https://github.com/mautrix/meta) | `v0.2607.0` | `mautrix-meta-darwin-arm64` |
+| WhatsApp | [mautrix/whatsapp](https://github.com/mautrix/whatsapp) | `v0.2607.0` | `mautrix-whatsapp-darwin-arm64` |
+| Telegram | [mautrix/telegram](https://github.com/mautrix/telegram) | `v0.2607.0` | `mautrix-telegram-darwin-arm64` |
+| Signal | [mautrix/signal](https://github.com/mautrix/signal) | `v0.2607.0` | `mautrix-signal-darwin-arm64` |
+| Slack | [mautrix/slack](https://github.com/mautrix/slack) | `v0.2607.0` | `mautrix-slack-darwin-arm64` |
+| X | [mautrix/twitter](https://github.com/mautrix/twitter) | `v0.2606.0` | `mautrix-twitter-darwin-arm64` |
+| LinkedIn | [mautrix/linkedin](https://github.com/mautrix/linkedin) | `v0.2604.0` | `mautrix-linkedin-darwin-arm64` |
+| Google Messages | [mautrix/gmessages](https://github.com/mautrix/gmessages) | `v0.2605.0` | `mautrix-gmessages-darwin-arm64` |
+| Google Voice | [mautrix/gvoice](https://github.com/mautrix/gvoice) | `v0.2605.0` | `mautrix-gvoice-darwin-arm64` |
+| Bluesky | [mautrix/bluesky](https://github.com/mautrix/bluesky) | `v0.2510.0` | `mautrix-bluesky-darwin-arm64` |
+
+The hashes are not repeated here. They live in `BridgeCatalog`, and `docs/sbom.cdx.json` is
+generated from it — a hash transcribed into prose is a hash that will eventually disagree with the
+one actually enforced.
 
 iMessage has no artifact: it is reached through macOS itself and authenticates by permission grant.
+
+### Networks deliberately absent
+
+| Network | Why |
+| --- | --- |
+| Discord | The current release is still the pre-`bridgev2` architecture. It installs and verifies, then exits immediately, because it does not speak the provisioning protocol every other bridge here uses. |
+| Google Chat | Python-only; publishes no macOS binary, so there is nothing to checksum. |
+| IRC | The maintained bridges are Python and Node projects with no pinned macOS release. |
+| External Matrix | Needs multi-account support, which Pallo does not have. |
 
 ### libolm
 
@@ -53,6 +78,22 @@ the source ever stops matching verbatim, the build fails rather than applying a 
 crypto library.
 
 Requires `cmake` on the host (`brew install cmake`).
+
+## The generated inventory
+
+`docs/sbom.cdx.json` is the machine-readable inventory, in CycloneDX 1.5, emitted from the same
+pins the code enforces:
+
+```sh
+PalloRuntimeCLI sbom --output docs/sbom.cdx.json
+```
+
+It is deterministic — identical pins produce a byte-identical document — so two releases can be
+diffed. Regenerate it whenever a pin changes; CI should fail if the checked-in copy is stale.
+
+CycloneDX rather than a bespoke format because scanners already read it. `libolm` is reported as
+having no package URL and therefore no advisory-database match; that gap is stated in the tool
+output rather than left to be discovered.
 
 ## Reviewing a pin
 

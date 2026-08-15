@@ -27,7 +27,15 @@ func makeService(profile: String) throws -> RuntimeProfileService {
 }
 
 func execute(_ command: RuntimeCommand) async throws -> String {
-    let service = try makeService(profile: command.profile)
+    // Describes what Pallo ships rather than what a profile contains, so it runs before any
+    // profile is resolved and never takes the lock.
+    if case let .sbom(output) = command {
+        return try emitSBOM(output: output)
+    }
+    guard let profileName = command.profile else {
+        throw RuntimeCommandError.missingOption("--profile")
+    }
+    let service = try makeService(profile: profileName)
     // `status` only observes, so it must never contend with the session that owns the profile.
     let lock: ProfileLock?
     do {
@@ -38,12 +46,32 @@ func execute(_ command: RuntimeCommand) async throws -> String {
     defer { _ = lock }
 
     switch command {
+    case .sbom:
+        // Handled above, before any profile is resolved.
+        throw RuntimeCommandError.missingCommand
+    case let .diagnostics(_, output):
+        let state = try RuntimeProfileStore(paths: service.paths).load()
+        // Everything Pallo knows to be secret is removed by value as well as by pattern.
+        let known = [state?.registrationSecret].compactMap { $0 }
+        let bundle = DiagnosticsBundle(
+            paths: service.paths,
+            redactor: DiagnosticsRedactor(knownSecrets: known)
+        )
+        let manifest = try bundle.write(
+            to: URL(fileURLWithPath: output),
+            palloVersion: PalloVersion.current
+        )
+        var summary = "wrote \(manifest.entries.count) redacted file(s) to \(output)"
+        if !manifest.excluded.isEmpty {
+            summary += "\nexcluded \(manifest.excluded.count): " + manifest.excluded.joined(separator: "; ")
+        }
+        return summary
     case let .bridge(_, action, network):
         return try await executeBridge(action: action, network: network, service: service)
     case let .bootstrap(_, python):
         let receipt = try await service.bootstrap(python: URL(fileURLWithPath: python))
         return """
-        prepared profile '\(command.profile)' \
+        prepared profile '\(profileName)' \
         python=\(receipt.pythonVersion) synapse=\(receipt.synapseVersion) \
         packages=\(receipt.installedPackages.count)
         """
@@ -106,7 +134,7 @@ func execute(_ command: RuntimeCommand) async throws -> String {
                 )
             }
             return """
-            recovered '\(command.profile)' from '\(backup)' \
+            recovered '\(profileName)' from '\(backup)' \
             integrity=\(recovery.integrity) rooms=\(recovery.roomCount) \
             events=\(recovery.eventCount) accepted-new-write=\(recovery.acceptedNewWrite)
             """
@@ -141,13 +169,13 @@ func execute(_ command: RuntimeCommand) async throws -> String {
                 )
             }
             return """
-            verified profile '\(command.profile)' \
+            verified profile '\(profileName)' \
             rooms=\(verification.reconciledRooms)/\(verification.requestedRooms) reconciled exactly
             """
         }
         let receipt = try service.verifyPreparedRuntime()
         return """
-        verified profile '\(command.profile)' \
+        verified profile '\(profileName)' \
         python=\(receipt.pythonVersion) synapse=\(receipt.synapseVersion) \
         packages=\(receipt.installedPackages.count) configuration=loopback-only
         """
@@ -165,7 +193,7 @@ func execute(_ command: RuntimeCommand) async throws -> String {
             ? "Retain SQLite provisionally"
             : "Require PostgreSQL"
         var summary = """
-        benchmark '\(command.profile)' rooms=\(run.workload.roomCount) \
+        benchmark '\(profileName)' rooms=\(run.workload.roomCount) \
         imported=\(run.importedEventCount) live=\(run.liveTrafficEventCount) \
         missing=\(run.reconciliation.missingEventIDs.count) \
         duplicates=\(run.reconciliation.duplicateEventIDs.count) \
@@ -181,14 +209,14 @@ func execute(_ command: RuntimeCommand) async throws -> String {
     case let .backup(_, name):
         let manifest = try await service.createBackup(name: name)
         return """
-        backed up '\(command.profile)' as '\(name)' \
+        backed up '\(profileName)' as '\(name)' \
         files=\(manifest.files.count) \
         bytes=\(manifest.files.reduce(0) { $0 + $1.byteCount })
         """
     case let .restore(_, backup):
         let result = try await service.restoreBackup(name: backup, into: service.paths)
         return """
-        restored '\(backup)' into '\(command.profile)' \
+        restored '\(backup)' into '\(profileName)' \
         files=\(result.restoredFileCount) verified=\(result.verifiedChecksums)
         """
     case let .remove(_, confirmation, exportReport):
@@ -197,10 +225,10 @@ func execute(_ command: RuntimeCommand) async throws -> String {
             exportReportTo: exportReport.map { URL(fileURLWithPath: $0, isDirectory: true) }
         )
         guard result.removedProfile else {
-            return "profile '\(command.profile)' was already absent"
+            return "profile '\(profileName)' was already absent"
         }
         return """
-        removed profile '\(command.profile)' \
+        removed profile '\(profileName)' \
         exported-reports=\(result.exportedReportCount) residue=\(result.residuePaths.count)
         """
     }
@@ -321,4 +349,29 @@ do {
 } catch {
     writeStandardError("error: \(error)")
     exit(RuntimeExitCode(for: error).rawValue)
+}
+
+/// Writes the bill of materials, or prints it when no destination is given.
+///
+/// The timestamp and serial are derived from the content rather than the clock, so the same pins
+/// always produce the same document and two releases can be diffed.
+func emitSBOM(output: String?) throws -> String {
+    let bill = PalloSBOM.bill(applicationVersion: PalloVersion.current)
+    let fingerprint = try bill.contentFingerprint()
+    let data = try bill.cycloneDXJSON(
+        timestamp: Date(timeIntervalSince1970: 0),
+        serialNumber: fingerprint.uuidString
+    )
+    guard let output else {
+        return String(decoding: data, as: UTF8.self)
+    }
+    let url = URL(fileURLWithPath: output)
+    try data.write(to: url, options: [.atomic])
+    let unscannable = bill.unscannableComponents.map(\.name)
+    var summary = "wrote \(bill.components.count) components to \(url.path)"
+    if !unscannable.isEmpty {
+        summary += "\n\(unscannable.count) component(s) have no package URL and cannot be "
+            + "matched against an advisory database: \(unscannable.joined(separator: ", "))"
+    }
+    return summary
 }
