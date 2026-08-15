@@ -39,7 +39,19 @@ public struct VerifyCLIOptions: Equatable, Sendable {
     }
 }
 
+public enum BridgeCLIAction: String, Equatable, Sendable, CaseIterable {
+    /// Download and checksum-verify the binary, and build the libolm it links against.
+    case install
+    /// Install, then configure and register the bridge with this profile's homeserver.
+    case prepare
+    /// Start the homeserver and the bridge, and print the login flows the bridge really advertises.
+    case flows
+    /// List what is prepared for this profile.
+    case list
+}
+
 public enum RuntimeCommand: Equatable, Sendable {
+    case bridge(profile: String, action: BridgeCLIAction, network: String?)
     case bootstrap(profile: String, python: String)
     case start(profile: String)
     case status(profile: String)
@@ -60,7 +72,8 @@ public enum RuntimeCommand: Equatable, Sendable {
              let .backup(profile, _),
              let .restore(profile, _),
              let .verify(profile, _),
-             let .remove(profile, _, _):
+             let .remove(profile, _, _),
+             let .bridge(profile, _, _):
             profile
         }
     }
@@ -68,6 +81,7 @@ public enum RuntimeCommand: Equatable, Sendable {
     /// True when the command only reads runtime state and must not take the exclusive profile lock.
     public var observesOnly: Bool {
         if case .status = self { return true }
+        if case let .bridge(_, action, _) = self { return action == .list }
         return false
     }
 
@@ -93,6 +107,9 @@ public enum RuntimeCommand: Equatable, Sendable {
           Verify the prepared runtime, fixtures, reports, or destructive recovery.
       remove --profile <name> --confirm <name> [--export-report <path>]
           Stop and remove exactly one contained profile after confirmation.
+      bridge --profile <name> --action <install|prepare|flows|list> [--network <platform>]
+          Install, configure, or interrogate a network bridge for this profile.
+          Networks: instagram, facebookMessenger, whatsApp, telegram, iMessage.
     """
 
     public static func parse(_ arguments: [String]) throws -> RuntimeCommand {
@@ -162,6 +179,25 @@ public enum RuntimeCommand: Equatable, Sendable {
                     restoreBackup: options.value("--restore"),
                     reportName: options.value("--report")
                 )
+            )
+        case "bridge":
+            let options = try Options(
+                tokens,
+                valued: ["--profile", "--action", "--network"],
+                flags: []
+            )
+            let raw = try options.require("--action")
+            guard let action = BridgeCLIAction(rawValue: raw) else {
+                throw RuntimeCommandError.invalidValue(option: "--action", value: raw)
+            }
+            let network = options.value("--network")
+            if action != .list, network == nil {
+                throw RuntimeCommandError.missingOption("--network")
+            }
+            return .bridge(
+                profile: try options.require("--profile"),
+                action: action,
+                network: network
             )
         case "remove":
             let options = try Options(

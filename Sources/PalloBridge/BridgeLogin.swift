@@ -185,6 +185,11 @@ public struct BridgeLoginCompleteParams: Codable, Sendable, Equatable {
 public struct BridgeLoginStep: Codable, Sendable, Equatable {
     public let type: BridgeLoginStepType
     public let stepID: String
+    /// Identifies the login attempt this step belongs to.
+    ///
+    /// A bridge can have several logins in flight, so submitting a step names the attempt as well
+    /// as the step; the first response of a flow carries it and later requests echo it back.
+    public let loginID: String?
     public let instructions: String
     public let userInput: BridgeLoginUserInputParams?
     public let displayAndWait: BridgeLoginDisplayAndWaitParams?
@@ -194,6 +199,7 @@ public struct BridgeLoginStep: Codable, Sendable, Equatable {
     public init(
         type: BridgeLoginStepType,
         stepID: String,
+        loginID: String? = nil,
         instructions: String = "",
         userInput: BridgeLoginUserInputParams? = nil,
         displayAndWait: BridgeLoginDisplayAndWaitParams? = nil,
@@ -202,6 +208,7 @@ public struct BridgeLoginStep: Codable, Sendable, Equatable {
     ) {
         self.type = type
         self.stepID = stepID
+        self.loginID = loginID
         self.instructions = instructions
         self.userInput = userInput
         self.displayAndWait = displayAndWait
@@ -214,6 +221,7 @@ public struct BridgeLoginStep: Codable, Sendable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case type, instructions, cookies, complete
         case stepID = "step_id"
+        case loginID = "login_id"
         case userInput = "user_input"
         case displayAndWait = "display_and_wait"
     }

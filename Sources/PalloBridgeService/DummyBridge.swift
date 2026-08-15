@@ -1,4 +1,5 @@
 import Foundation
+import PalloBridge
 import PalloRuntime
 
 /// A deterministic stand-in for a real mautrix bridge.
@@ -35,6 +36,12 @@ public actor DummyBridge: SynapseHTTPTransport {
     public func send(_ request: SynapseHTTPRequest) async throws -> SynapseHTTPResponse {
         let path = request.url.path.removingPercentEncoding ?? request.url.path
         requestedPaths.append(path)
+        // The real bridge refuses any provisioning request that does not name the acting user.
+        guard let components = URLComponents(url: request.url, resolvingAgainstBaseURL: false),
+              components.queryItems?.contains(where: { $0.name == "user_id" && $0.value?.isEmpty == false }) == true
+        else {
+            return try encodeError(status: 403, code: "M_FORBIDDEN")
+        }
         let segments = path.split(separator: "/").map(String.init)
 
         // /_matrix/provision/v3/login/flows
@@ -51,7 +58,7 @@ public actor DummyBridge: SynapseHTTPTransport {
             stepIndex[flowID] = 0
             return try encode(script.steps[flowID]![0])
         }
-        // /_matrix/provision/v3/login/step/{stepID}/{type}
+        // /_matrix/provision/v3/login/step/{loginID}/{stepID}/{type}
         if segments.contains("step") {
             if let body = request.body,
                let values = try? JSONSerialization.jsonObject(with: body) as? [String: String] {
@@ -101,9 +108,10 @@ public extension DummyBridge.Script {
                 BridgeLoginStep(
                     type: .cookies,
                     stepID: "fi.mau.meta.cookies",
-                    instructions: "Sign in to Instagram.",
+                    loginID: "dummy-instagram-login",
+                    instructions: "Enter a JSON object with your cookies, or a cURL command copied from browser devtools.",
                     cookies: BridgeLoginCookiesParams(
-                        url: "https://www.instagram.com/",
+                        url: "https://www.instagram.com/accounts/login/",
                         userAgent: "Mozilla/5.0",
                         fields: ["sessionid", "csrftoken", "ds_user_id", "mid", "ig_did"].map {
                             BridgeLoginCookieField(
@@ -118,12 +126,14 @@ public extension DummyBridge.Script {
                                 ]
                             )
                         },
-                        waitForURLPattern: "^https://www\\.instagram\\.com/$"
+                        waitForURLPattern:
+                            "^https://www\\.instagram\\.com/(?:direct/(?:inbox/|t/[0-9]+/)?)?(?:\\?.*)?$"
                     )
                 ),
                 BridgeLoginStep(
                     type: .complete,
                     stepID: "fi.mau.meta.complete",
+                    loginID: "dummy-instagram-login",
                     complete: BridgeLoginCompleteParams(userLoginID: "17841400000000000")
                 ),
             ],
@@ -140,6 +150,7 @@ public extension DummyBridge.Script {
                 BridgeLoginStep(
                     type: .displayAndWait,
                     stepID: "fi.mau.whatsapp.qr",
+                    loginID: "dummy-whatsapp-login",
                     instructions: "Scan this code in WhatsApp on your phone.",
                     displayAndWait: BridgeLoginDisplayAndWaitParams(
                         type: .qr,
@@ -149,6 +160,7 @@ public extension DummyBridge.Script {
                 BridgeLoginStep(
                     type: .complete,
                     stepID: "fi.mau.whatsapp.complete",
+                    loginID: "dummy-whatsapp-login",
                     complete: BridgeLoginCompleteParams(userLoginID: "15551234567")
                 ),
             ],
@@ -165,6 +177,7 @@ public extension DummyBridge.Script {
                 BridgeLoginStep(
                     type: .userInput,
                     stepID: "fi.mau.telegram.phone",
+                    loginID: "dummy-telegram-login",
                     instructions: "Enter your phone number.",
                     userInput: BridgeLoginUserInputParams(fields: [
                         BridgeLoginInputField(
@@ -178,6 +191,7 @@ public extension DummyBridge.Script {
                 BridgeLoginStep(
                     type: .userInput,
                     stepID: "fi.mau.telegram.code",
+                    loginID: "dummy-telegram-login",
                     instructions: "Enter the code Telegram sent you.",
                     userInput: BridgeLoginUserInputParams(fields: [
                         BridgeLoginInputField(
@@ -191,6 +205,7 @@ public extension DummyBridge.Script {
                 BridgeLoginStep(
                     type: .userInput,
                     stepID: "fi.mau.telegram.2fa_password",
+                    loginID: "dummy-telegram-login",
                     instructions: "Enter your two-factor password.",
                     userInput: BridgeLoginUserInputParams(fields: [
                         BridgeLoginInputField(type: .password, id: "password", name: "Password"),
@@ -199,6 +214,7 @@ public extension DummyBridge.Script {
                 BridgeLoginStep(
                     type: .complete,
                     stepID: "fi.mau.telegram.complete",
+                    loginID: "dummy-telegram-login",
                     complete: BridgeLoginCompleteParams(userLoginID: "777000")
                 ),
             ],

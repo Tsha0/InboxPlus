@@ -1,4 +1,7 @@
 import Foundation
+import PalloBridge
+import PalloBridgeService
+import PalloCore
 import PalloRuntime
 
 func writeStandardError(_ message: String) {
@@ -35,6 +38,8 @@ func execute(_ command: RuntimeCommand) async throws -> String {
     defer { _ = lock }
 
     switch command {
+    case let .bridge(_, action, network):
+        return try await executeBridge(action: action, network: network, service: service)
     case let .bootstrap(_, python):
         let receipt = try await service.bootstrap(python: URL(fileURLWithPath: python))
         return """
@@ -44,16 +49,40 @@ func execute(_ command: RuntimeCommand) async throws -> String {
         """
     case .start:
         let monitor = InterruptMonitor()
-        let stopped = try await service.runForegroundSession(
-            interrupt: { await monitor.wait() },
+        let runtime = BridgeRuntime(paths: service.paths)
+        try await service.withRunningRuntime(
             onReady: { snapshot in
                 print(describe(snapshot))
-                print("supervising; press Ctrl-C to stop")
                 // The session blocks indefinitely, so a redirected stdout must not stay buffered.
                 fflush(stdout)
             }
-        )
-        return describe(stopped)
+        ) { supervisor, context in
+            // Bridges follow the homeserver: it is healthy by the time this runs, and each bridge
+            // config has to name the port it actually got.
+            try runtime.rebindToHomeserver(port: context.port)
+            try await runtime.withRunningBridges(
+                onBridgeReady: { record, snapshot in
+                    print("bridge \(record.bridgeID) \(describe(snapshot))")
+                    fflush(stdout)
+                },
+                // One bridge failing is reported and stepped over: taking the homeserver and every
+                // other network down with it would be a worse outcome than a single dark network.
+                onBridgeFailed: { record, error in
+                    writeStandardError("bridge \(record.bridgeID) failed to start: \(error)")
+                }
+            ) { _ in
+                print("supervising; press Ctrl-C to stop")
+                fflush(stdout)
+                await withTaskGroup(of: Void.self) { group in
+                    group.addTask { await supervisor.supervise() }
+                    group.addTask { await monitor.wait() }
+                    await group.next()
+                    group.cancelAll()
+                    await group.waitForAll()
+                }
+            }
+        }
+        return describe(try await service.status())
     case .status:
         return describe(try await service.status())
     case .stop:
@@ -180,6 +209,102 @@ func execute(_ command: RuntimeCommand) async throws -> String {
 struct VerificationFailed: Error, CustomStringConvertible {
     let summary: String
     var description: String { summary }
+}
+
+struct UnknownNetwork: Error, CustomStringConvertible {
+    let name: String
+    var description: String {
+        let available = BridgeCatalog.all.map { "\($0.platform.rawValue)" }.joined(separator: ", ")
+        return "unknown network '\(name)'; Pallo can bridge: \(available)"
+    }
+}
+
+func resolveNetwork(_ name: String) throws -> BridgeDescriptor {
+    guard let platform = Platform(rawValue: name),
+          let descriptor = BridgeCatalog.descriptor(for: platform)
+    else { throw UnknownNetwork(name: name) }
+    return descriptor
+}
+
+func executeBridge(
+    action: BridgeCLIAction,
+    network: String?,
+    service: RuntimeProfileService
+) async throws -> String {
+    let runtime = BridgeRuntime(paths: service.paths)
+
+    switch action {
+    case .list:
+        let prepared = try runtime.prepared()
+        guard !prepared.isEmpty else { return "no bridges prepared for '\(service.paths.profile.lastPathComponent)'" }
+        return prepared
+            .map { "\($0.bridgeID) \($0.version) port=\($0.appservicePort) sha256=\($0.sha256.prefix(12))…" }
+            .joined(separator: "\n")
+
+    case .install:
+        let descriptor = try resolveNetwork(network!)
+        guard descriptor.runtimeKind == .goBinary else {
+            return "\(descriptor.displayName) needs no download — it connects through macOS permissions"
+        }
+        let installer = BridgeInstaller(paths: service.paths)
+        let installed = try await installer.install(descriptor)
+        let directory = installer.directory(for: descriptor)
+        try await LibolmProvisioner().install(into: directory)
+        return """
+        installed \(descriptor.id) \(descriptor.version) \
+        sha256=\(installed.sha256) \
+        libolm=\(LibolmProvisioner.version) \
+        at \(installed.executable.path)
+        """
+
+    case .prepare:
+        let descriptor = try resolveNetwork(network!)
+        let state = try service.loadState()
+        guard let state else {
+            throw RuntimeProfileError.missingRuntimeManifest(service.manifestFile)
+        }
+        // Preparing needs the port the homeserver will use, and the registration must be on disk
+        // before Synapse reads `app_service_config_files` at startup, so this runs while stopped.
+        let record = try await runtime.prepare(
+            descriptor,
+            serverName: state.serverName,
+            homeserverPort: state.snapshot.loopbackPort ?? 8008,
+            ownerUserID: "@pallo:\(state.serverName)"
+        )
+        return """
+        prepared \(record.bridgeID) \(record.version) \
+        provisioning=127.0.0.1:\(record.appservicePort) \
+        registration=\(record.registrationFile)
+        start the profile to load it: PalloRuntimeCLI start --profile \
+        \(service.paths.profile.lastPathComponent)
+        """
+
+    case .flows:
+        let descriptor = try resolveNetwork(network!)
+        guard let record = try runtime.prepared(for: descriptor.platform) else {
+            throw BridgeRuntimeError.notPrepared(descriptor.id)
+        }
+        return try await service.withRunningRuntime { _, context in
+            try runtime.rebindToHomeserver(port: context.port)
+            let supervisor = try runtime.makeSupervisor(for: record)
+            let snapshot = try await supervisor.start()
+            var lines = ["bridge \(record.bridgeID) \(describe(snapshot))"]
+
+            let client = try runtime.provisioningClient(for: record)
+            let flows = try await client.loginFlows()
+            for flow in flows {
+                lines.append("  flow \(flow.id): \(flow.name) — \(flow.description)")
+            }
+            do {
+                try runtime.detectFlowDrift(descriptor, advertised: flows)
+                lines.append("  flows match the pinned expectation")
+            } catch {
+                lines.append("  WARNING: \(error)")
+            }
+            _ = try? await supervisor.stop()
+            return lines.joined(separator: "\n")
+        }
+    }
 }
 
 let arguments = Array(CommandLine.arguments.dropFirst())

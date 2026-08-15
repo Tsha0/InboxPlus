@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import PalloBridge
+@testable import PalloBridgeService
 @testable import PalloRuntime
 
 private func makeClient(_ script: DummyBridge.Script) throws -> (BridgeProvisioningClient, DummyBridge) {
@@ -8,6 +9,7 @@ private func makeClient(_ script: DummyBridge.Script) throws -> (BridgeProvision
     let client = try BridgeProvisioningClient(
         baseURL: URL(string: "http://127.0.0.1:29337")!,
         provisioningToken: "provisioning-secret",
+        userID: "@pallo:pallo.localhost",
         transport: bridge
     )
     return (client, bridge)
@@ -27,7 +29,8 @@ private func makeClient(_ script: DummyBridge.Script) throws -> (BridgeProvision
     #expect(throws: MatrixHTTPError.nonLoopbackBaseURL) {
         try BridgeProvisioningClient(
             baseURL: URL(string: "http://10.0.0.7:29337")!,
-            provisioningToken: "t"
+            provisioningToken: "t",
+            userID: "@pallo:pallo.localhost"
         )
     }
 }
@@ -46,7 +49,7 @@ private func makeClient(_ script: DummyBridge.Script) throws -> (BridgeProvision
     let step = try await client.startLogin(flowID: "instagram")
 
     #expect(step.type == .cookies)
-    #expect(step.cookies?.url == "https://www.instagram.com/")
+    #expect(step.cookies?.url == "https://www.instagram.com/accounts/login/")
     // These are the cookies mautrix-meta actually requires.
     #expect(
         Set(step.cookies?.requiredFieldIDs ?? [])
@@ -64,7 +67,12 @@ private func makeClient(_ script: DummyBridge.Script) throws -> (BridgeProvision
         "mid": "mid", "ig_did": "did",
     ]
     try BridgeProvisioningClient.validate(cookies, against: step)
-    let done = try await client.submit(stepID: step.stepID, type: .cookies, values: cookies)
+    let done = try await client.submit(
+        loginID: step.loginID!,
+        stepID: step.stepID,
+        type: .cookies,
+        values: cookies
+    )
 
     #expect(done.type == .complete)
     #expect(done.isTerminal)
@@ -101,7 +109,12 @@ private func makeClient(_ script: DummyBridge.Script) throws -> (BridgeProvision
 @Test func whatsAppCompletesAfterTheCodeIsScanned() async throws {
     let (client, _) = try makeClient(.whatsApp)
     let step = try await client.startLogin(flowID: "qr")
-    let done = try await client.submit(stepID: step.stepID, type: .displayAndWait, values: [:])
+    let done = try await client.submit(
+        loginID: step.loginID!,
+        stepID: step.stepID,
+        type: .displayAndWait,
+        values: [:]
+    )
     #expect(done.type == .complete)
 }
 
@@ -116,6 +129,7 @@ private func makeClient(_ script: DummyBridge.Script) throws -> (BridgeProvision
     try BridgeProvisioningClient.validate(["phone_number": "+15551234567"], against: phone)
 
     let code = try await client.submit(
+        loginID: phone.loginID!,
         stepID: phone.stepID,
         type: .userInput,
         values: ["phone_number": "+15551234567"]
@@ -123,6 +137,7 @@ private func makeClient(_ script: DummyBridge.Script) throws -> (BridgeProvision
     #expect(code.userInput?.fields.first?.type == .twoFactorCode)
 
     let password = try await client.submit(
+        loginID: code.loginID!,
         stepID: code.stepID,
         type: .userInput,
         values: ["code": "12345"]
@@ -130,6 +145,7 @@ private func makeClient(_ script: DummyBridge.Script) throws -> (BridgeProvision
     #expect(password.userInput?.fields.first?.type == .password)
 
     let done = try await client.submit(
+        loginID: password.loginID!,
         stepID: password.stepID,
         type: .userInput,
         values: ["password": "hunter2"]

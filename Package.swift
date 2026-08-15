@@ -17,17 +17,27 @@ let package = Package(
     targets: [
         .target(name: "PalloCore"),
         .target(name: "PalloGateway", dependencies: ["PalloCore"]),
-        .target(name: "PalloFeatures", dependencies: ["PalloCore", "PalloGateway"]),
-        .target(name: "PalloUI", dependencies: ["PalloCore", "PalloFeatures"]),
+        .target(name: "PalloFeatures", dependencies: ["PalloCore", "PalloGateway", "PalloBridge"]),
+        .target(name: "PalloUI", dependencies: ["PalloCore", "PalloFeatures", "PalloBridge"]),
         .executableTarget(
             name: "PalloApp",
-            dependencies: ["PalloGateway", "PalloFeatures", "PalloUI", "PalloMatrix", "PalloRuntime"]
+            dependencies: [
+                "PalloGateway", "PalloFeatures", "PalloUI", "PalloMatrix", "PalloRuntime",
+                "PalloBridge", "PalloBridgeService",
+            ]
         ),
         .target(name: "PalloRuntime"),
-        // The bridge contract: bridgev2 provisioning models, a client, and a deterministic dummy
-        // bridge that scripts each network's real login flow for tests.
-        .target(name: "PalloBridge", dependencies: ["PalloCore", "PalloRuntime"]),
-        .executableTarget(name: "PalloRuntimeCLI", dependencies: ["PalloRuntime"]),
+        // The bridge contract as pure data: bridgev2 protocol models, the network catalog, and the
+        // login state machine. Deliberately dependency-free beyond PalloCore so PalloFeatures and
+        // PalloUI can drive a login without importing the runtime or a process supervisor.
+        .target(name: "PalloBridge", dependencies: ["PalloCore"]),
+        // Everything that talks to a real bridge: provisioning client, installer, configuration,
+        // supervision, and the deterministic dummy bridge used as a contract-test fixture.
+        .target(name: "PalloBridgeService", dependencies: ["PalloBridge", "PalloCore", "PalloRuntime"]),
+        .executableTarget(
+            name: "PalloRuntimeCLI",
+            dependencies: ["PalloRuntime", "PalloBridge", "PalloBridgeService", "PalloCore"]
+        ),
         // The Matrix SDK stays behind this target. PalloFeatures and PalloUI must never import it,
         // so the app layer keeps depending only on the MessagingGateway protocol.
         .target(
@@ -41,10 +51,19 @@ let package = Package(
         ),
         .testTarget(name: "PalloCoreTests", dependencies: ["PalloCore"]),
         .testTarget(name: "PalloGatewayTests", dependencies: ["PalloCore", "PalloGateway"]),
-        .testTarget(name: "PalloFeaturesTests", dependencies: ["PalloCore", "PalloGateway", "PalloFeatures"]),
-        .testTarget(name: "PalloUITests", dependencies: ["PalloCore", "PalloFeatures", "PalloUI"]),
+        .testTarget(
+            name: "PalloFeaturesTests",
+            dependencies: ["PalloCore", "PalloGateway", "PalloFeatures", "PalloBridge"]
+        ),
+        .testTarget(
+            name: "PalloUITests",
+            dependencies: ["PalloCore", "PalloFeatures", "PalloUI", "PalloBridge"]
+        ),
         .testTarget(name: "PalloRuntimeTests", dependencies: ["PalloRuntime", "PalloRuntimeCLI"]),
-        .testTarget(name: "PalloBridgeTests", dependencies: ["PalloBridge", "PalloRuntime"]),
+        .testTarget(
+            name: "PalloBridgeTests",
+            dependencies: ["PalloBridge", "PalloBridgeService", "PalloCore", "PalloRuntime"]
+        ),
         .testTarget(
             name: "PalloMatrixTests",
             dependencies: ["PalloMatrix", "PalloCore", "PalloGateway", "PalloRuntime"]
