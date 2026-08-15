@@ -14,14 +14,26 @@ enum GatewaySelection {
     /// Set `PALLO_PROFILE=<name>` to run against a prepared, running developer profile.
     static let profileEnvironmentKey = "PALLO_PROFILE"
 
-    static func makeGateway(
+    /// What the app runs on. Media loading is paired with the gateway because both need the same
+    /// authenticated client — fixtures get a controller with no loader, which simply never
+    /// downloads rather than pretending to.
+    struct Services {
+        let gateway: any MessagingGateway
+        let media: MediaController
+    }
+
+    @MainActor
+    static func makeServices(
         environment: [String: String] = ProcessInfo.processInfo.environment
-    ) -> any MessagingGateway {
+    ) -> Services {
         guard let profileName = environment[profileEnvironmentKey], !profileName.isEmpty else {
             FileHandle.standardError.write(Data(
                 "Pallo: no \(profileEnvironmentKey) set — running on demo fixtures.\n".utf8
             ))
-            return InMemoryMessagingGateway(seed: Fixtures.demoSnapshot)
+            return Services(
+                gateway: InMemoryMessagingGateway(seed: Fixtures.demoSnapshot),
+                media: MediaController()
+            )
         }
 
         do {
@@ -54,16 +66,31 @@ enum GatewaySelection {
 
                 """.utf8
             ))
-            return MatrixMessagingGateway(
-                client: client,
-                invitePolicy: .forBridges(ids: bridgeIDs, serverName: state.serverName)
+            // Media lives beside the rest of the profile's private data and is bounded, so a long
+            // history cannot fill the disk on its own.
+            // Per profile, not per runtime root: two profiles are two separate installations and
+            // must not share cached message content.
+            let cacheDirectory = paths.profile.appendingPathComponent("media")
+            let cache = try MediaCache(directory: cacheDirectory)
+            let loader = MediaLoader(
+                cache: cache,
+                fetcher: MatrixMediaFetcher(client: client),
+                freeSpace: VolumeFreeSpaceReporter(url: cacheDirectory)
+            )
+
+            return Services(
+                gateway: MatrixMessagingGateway(
+                    client: client,
+                    invitePolicy: .forBridges(ids: bridgeIDs, serverName: state.serverName)
+                ),
+                media: MediaController(loader: loader)
             )
         } catch {
             // Surface the reason instead of silently substituting fake conversations.
             FileHandle.standardError.write(Data(
                 "Pallo: could not attach to profile '\(profileName)': \(error)\n".utf8
             ))
-            return InMemoryMessagingGateway(seed: .empty)
+            return Services(gateway: InMemoryMessagingGateway(seed: .empty), media: MediaController())
         }
     }
 }

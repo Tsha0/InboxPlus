@@ -117,9 +117,18 @@ public final class PalloAppModel {
     private var bufferingEventTaskID: UUID?
     private var bufferedStartupEvents: [GatewayEvent] = []
 
-    public init(gateway: any MessagingGateway, directory: ContactDirectory = .init()) {
+    /// Lazy media loading for the transcript. Without a loader it simply never downloads, which is
+    /// what previews and fixture runs want.
+    public let media: MediaController
+
+    public init(
+        gateway: any MessagingGateway,
+        directory: ContactDirectory = .init(),
+        media: MediaController = MediaController()
+    ) {
         self.gateway = gateway
         self.directory = directory
+        self.media = media
     }
 
     public func start() async throws {
@@ -271,6 +280,57 @@ public final class PalloAppModel {
         sendFailuresByRoute[submission.route] = nil
         if draftRevision == submission.draftRevision {
             draft = ""
+        }
+    }
+
+    // MARK: - Attachment composition
+
+    /// Files staged for the open conversation, kept per route so switching conversations does not
+    /// carry someone's photo into a different chat.
+    public private(set) var stagedAttachmentsByRoute: [ConversationRoute: [OutgoingAttachment]] = [:]
+
+    public func stagedAttachments(for route: ConversationRoute) -> [OutgoingAttachment] {
+        stagedAttachmentsByRoute[route] ?? []
+    }
+
+    public func capabilities(for route: ConversationRoute) -> ConversationCapabilities {
+        conversations.first { $0.route == route }?.capabilities ?? .textOnly
+    }
+
+    /// Stages a chosen file, rejecting it now rather than failing the send later.
+    @discardableResult
+    public func stageAttachment(at fileURL: URL, for route: ConversationRoute) -> AttachmentRejection? {
+        do {
+            let attachment = try OutgoingAttachment.describing(fileURL: fileURL)
+            try attachment.validate(against: capabilities(for: route))
+            stagedAttachmentsByRoute[route, default: []].append(attachment)
+            sendFailuresByRoute[route] = nil
+            return nil
+        } catch let rejection as AttachmentRejection {
+            sendFailuresByRoute[route] = rejection.message
+            return rejection
+        } catch {
+            let rejection = AttachmentRejection.unreadable(error.localizedDescription)
+            sendFailuresByRoute[route] = rejection.message
+            return rejection
+        }
+    }
+
+    public func removeStagedAttachment(_ attachment: OutgoingAttachment, for route: ConversationRoute) {
+        stagedAttachmentsByRoute[route]?.removeAll { $0 == attachment }
+        if stagedAttachmentsByRoute[route]?.isEmpty == true {
+            stagedAttachmentsByRoute[route] = nil
+        }
+    }
+
+    /// Sends everything staged for a route, then the text, in that order.
+    ///
+    /// A file that fails to send stays staged: dropping it would lose the user's choice with
+    /// nothing to show for it.
+    public func sendStagedAttachments(to route: ConversationRoute) async throws {
+        for attachment in stagedAttachments(for: route) {
+            _ = try await gateway.send(attachment, to: route)
+            removeStagedAttachment(attachment, for: route)
         }
     }
 

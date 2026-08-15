@@ -9,6 +9,8 @@ public struct ConversationSummary: Identifiable, Hashable, Sendable {
     public let latestPreview: String
     public let latestActivity: Date
     public let unreadCount: Int
+    /// What the composer is allowed to offer here.
+    public let capabilities: ConversationCapabilities
 
     public init(
         route: ConversationRoute,
@@ -16,7 +18,8 @@ public struct ConversationSummary: Identifiable, Hashable, Sendable {
         title: String,
         latestPreview: String,
         latestActivity: Date,
-        unreadCount: Int
+        unreadCount: Int,
+        capabilities: ConversationCapabilities = .mediaCapable
     ) {
         self.route = route
         self.platform = platform
@@ -24,6 +27,7 @@ public struct ConversationSummary: Identifiable, Hashable, Sendable {
         self.latestPreview = latestPreview
         self.latestActivity = latestActivity
         self.unreadCount = unreadCount
+        self.capabilities = capabilities
     }
 }
 
@@ -89,7 +93,8 @@ public enum InboxProjector {
                     title: conversation.title,
                     latestPreview: conversation.latestPreview,
                     latestActivity: conversation.latestActivity,
-                    unreadCount: conversation.unreadCount
+                    unreadCount: conversation.unreadCount,
+                    capabilities: conversation.capabilities
                 )
             )
         }

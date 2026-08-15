@@ -3,7 +3,7 @@ import Testing
 @testable import PalloGateway
 @testable import PalloFeatures
 
-private struct FailingGateway: MessagingGateway {
+private struct FailingGateway: TextOnlyTestGateway {
     struct Failure: Error {}
 
     func loadSnapshot() async throws -> MessagingSnapshot { throw Failure() }

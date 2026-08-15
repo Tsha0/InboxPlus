@@ -4,7 +4,7 @@ import Testing
 @testable import PalloGateway
 @testable import PalloFeatures
 
-private actor OrderingTestGateway: MessagingGateway {
+private actor OrderingTestGateway: TextOnlyTestGateway {
     private let snapshot: MessagingSnapshot
     private var continuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
 

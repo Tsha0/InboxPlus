@@ -4,7 +4,7 @@ import Testing
 @testable import PalloGateway
 @testable import PalloFeatures
 
-private actor AppModelTestGateway: MessagingGateway {
+private actor AppModelTestGateway: TextOnlyTestGateway {
     private let snapshot: MessagingSnapshot
     private var continuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
 
@@ -43,7 +43,7 @@ private actor AppModelTestGateway: MessagingGateway {
     }
 }
 
-private actor ControlledSendGateway: MessagingGateway {
+private actor ControlledSendGateway: TextOnlyTestGateway {
     struct Submission: Equatable, Sendable {
         let body: String
         let route: ConversationRoute
@@ -80,7 +80,7 @@ private actor ControlledSendGateway: MessagingGateway {
     }
 }
 
-private actor RetrySendGateway: MessagingGateway {
+private actor RetrySendGateway: TextOnlyTestGateway {
     private let snapshot: MessagingSnapshot
     private var failsSends = true
 
@@ -104,7 +104,7 @@ private actor RetrySendGateway: MessagingGateway {
     }
 }
 
-private actor OrderedSendGateway: MessagingGateway {
+private actor OrderedSendGateway: TextOnlyTestGateway {
     private struct PendingSend {
         let route: ConversationRoute
         let continuation: CheckedContinuation<SendReceipt, any Error>
@@ -151,7 +151,7 @@ private actor OrderedSendGateway: MessagingGateway {
     }
 }
 
-private actor ControlledStartGateway: MessagingGateway {
+private actor ControlledStartGateway: TextOnlyTestGateway {
     private let snapshot: MessagingSnapshot
     private var snapshotContinuations: [CheckedContinuation<MessagingSnapshot, any Error>] = []
     private var eventContinuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
@@ -205,7 +205,7 @@ private actor ControlledStartGateway: MessagingGateway {
     }
 }
 
-private actor CooperativeStartGateway: MessagingGateway {
+private actor CooperativeStartGateway: TextOnlyTestGateway {
     private let snapshot: MessagingSnapshot
     private var snapshotContinuations: [
         UUID: CheckedContinuation<MessagingSnapshot, any Error>

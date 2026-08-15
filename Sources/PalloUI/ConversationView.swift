@@ -1,6 +1,41 @@
+import AppKit
 import SwiftUI
 import PalloCore
 import PalloFeatures
+
+/// Files chosen but not yet sent, each removable before it goes anywhere.
+private struct StagedAttachmentsRow: View {
+    let attachments: [OutgoingAttachment]
+    let remove: (OutgoingAttachment) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(attachments, id: \.self) { attachment in
+                    HStack(spacing: 6) {
+                        Image(systemName: AttachmentFormatting.symbol(for: attachment.kind))
+                            .foregroundStyle(.secondary)
+                        Text(attachment.filename)
+                            .font(.caption)
+                            .lineLimit(1)
+                        Button {
+                            remove(attachment)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.tertiary)
+                        .accessibilityLabel("Remove \(attachment.filename)")
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(.quaternary.opacity(0.6), in: .capsule)
+                }
+            }
+        }
+        .accessibilityIdentifier("staged-attachments")
+    }
+}
 
 public struct ConversationSendFailureDescriptor: Equatable, Sendable {
     public let route: ConversationRoute
@@ -113,7 +148,7 @@ public struct ConversationView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(messages) { message in
-                        MessageBubble(message: message)
+                        MessageBubble(model: model, message: message)
                             .id(message.id)
                     }
                 }
@@ -127,9 +162,39 @@ public struct ConversationView: View {
         }
     }
 
+    private var capabilities: ConversationCapabilities {
+        model.capabilities(for: route)
+    }
+
+    private var stagedAttachments: [OutgoingAttachment] {
+        model.stagedAttachments(for: route)
+    }
+
+    private var canSend: Bool {
+        !trimmedDraft.isEmpty || !stagedAttachments.isEmpty
+    }
+
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if !stagedAttachments.isEmpty {
+                StagedAttachmentsRow(
+                    attachments: stagedAttachments,
+                    remove: { model.removeStagedAttachment($0, for: route) }
+                )
+            }
             HStack(spacing: 10) {
+                // Absent, not disabled, when the network cannot take attachments at all: an action
+                // that can never work here has no business occupying the composer.
+                if capabilities.acceptsAttachments {
+                    Button(action: chooseAttachment) {
+                        Image(systemName: "paperclip")
+                            .font(.title3)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Attach a file")
+                    .accessibilityIdentifier("attach-file")
+                }
                 TextField("Message…", text: $model.draft)
                     .textFieldStyle(.plain)
                     .focused($composerFocused)
@@ -143,8 +208,8 @@ public struct ConversationView: View {
                         .font(.title2)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(trimmedDraft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.accentColor))
-                .disabled(trimmedDraft.isEmpty)
+                .foregroundStyle(canSend ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
+                .disabled(!canSend)
                 .accessibilityLabel(
                     model.sendFailure(for: route) == nil ? "Send message" : "Retry message"
                 )
@@ -164,15 +229,35 @@ public struct ConversationView: View {
     }
 
     private func send() {
-        guard !trimmedDraft.isEmpty else { return }
+        guard canSend else { return }
         let submission = model.captureDraft(to: route)
         Task {
             do {
+                // Attachments first, so a caption typed alongside a photo arrives after it rather
+                // than referring to something not yet on screen.
+                try await model.sendStagedAttachments(to: route)
                 try await model.sendDraft(submission)
             } catch {
                 model.reportSendFailure(error, for: submission)
             }
         }
+    }
+
+    /// Uses the system's own open panel, so Pallo reads only what the user actually chose.
+    private func chooseAttachment() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.prompt = "Attach"
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls {
+            if let rejection = model.stageAttachment(at: url, for: route) {
+                linkError = rejection.message
+                return
+            }
+        }
+        linkError = nil
     }
 
     private func scrollToLatest(_ proxy: ScrollViewProxy, animated: Bool = true) {
@@ -195,6 +280,7 @@ public struct ConversationView: View {
 }
 
 private struct MessageBubble: View {
+    @Bindable var model: PalloAppModel
     let message: Message
 
     private var failureReason: String? {
@@ -202,19 +288,37 @@ private struct MessageBubble: View {
         return reason
     }
 
+    /// An attachment carries its own caption, so repeating the body above it would print the
+    /// filename twice. Text alongside media is only shown when it says something different.
+    private var showsBody: Bool {
+        guard !message.attachments.isEmpty else { return true }
+        let body = message.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !body.isEmpty && !message.attachments.contains { $0.displayName == body }
+    }
+
     var body: some View {
         HStack {
             if message.isOutgoing { Spacer(minLength: 60) }
             VStack(alignment: message.isOutgoing ? .trailing : .leading, spacing: 3) {
-                Text(message.body)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .foregroundStyle(message.isOutgoing ? Color.white : Color.primary)
-                    .background(
-                        message.isOutgoing ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary),
-                        in: .rect(cornerRadius: 12)
+                ForEach(message.attachments) { attachment in
+                    AttachmentView(
+                        model: model,
+                        attachment: attachment,
+                        accountID: message.route.accountID,
+                        messageID: message.id
                     )
-                    .textSelection(.enabled)
+                }
+                if showsBody {
+                    Text(message.body)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .foregroundStyle(message.isOutgoing ? Color.white : Color.primary)
+                        .background(
+                            message.isOutgoing ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.quaternary),
+                            in: .rect(cornerRadius: 12)
+                        )
+                        .textSelection(.enabled)
+                }
                 HStack(spacing: 4) {
                     if let failureReason {
                         Image(systemName: "exclamationmark.circle.fill")
@@ -234,9 +338,18 @@ private struct MessageBubble: View {
             if !message.isOutgoing { Spacer(minLength: 60) }
         }
         .frame(maxWidth: .infinity, alignment: message.isOutgoing ? .trailing : .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(message.isOutgoing ? "You" : "Them"): \(message.body)"
-        )
+        // Combining would swallow the attachment's own controls — its play button and its
+        // "Open in app" action have to stay reachable.
+        .accessibilityElement(children: message.attachments.isEmpty ? .combine : .contain)
+        .accessibilityLabel(MessageBubble.accessibilityLabel(for: message))
+    }
+
+    static func accessibilityLabel(for message: Message) -> String {
+        let speaker = message.isOutgoing ? "You" : "Them"
+        guard !message.attachments.isEmpty else { return "\(speaker): \(message.body)" }
+        let described = message.attachments
+            .map(AttachmentFormatting.accessibilityLabel(for:))
+            .joined(separator: ", ")
+        return "\(speaker): \(described)"
     }
 }

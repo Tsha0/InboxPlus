@@ -43,4 +43,7 @@ public protocol MessagingGateway: Sendable {
     func loadSnapshot() async throws -> MessagingSnapshot
     func events() async -> AsyncStream<GatewayEvent>
     func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt
+    /// Uploads and sends a local file. Like `sendText`, the receipt is only `acknowledged` once
+    /// the server has confirmed it.
+    func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt
 }

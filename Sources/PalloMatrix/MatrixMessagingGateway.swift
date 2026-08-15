@@ -147,6 +147,71 @@ public actor MatrixMessagingGateway: MessagingGateway {
         )
     }
 
+    public func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt {
+        let matrixClient = try await client.requireClient()
+        guard let room = try matrixClient.getRoom(roomId: route.conversationID) else {
+            throw MatrixGatewayError.unknownRoom(route.conversationID)
+        }
+        await attachTimeline(to: room)
+
+        let timeline = try await room.timeline()
+        let parameters = UploadParameters(
+            source: .file(filename: attachment.fileURL.path),
+            caption: attachment.caption,
+            formattedCaption: nil,
+            mentions: nil,
+            inReplyTo: nil
+        )
+        let size = attachment.byteCount > 0 ? UInt64(attachment.byteCount) : nil
+        let width = attachment.pixelSize.map { UInt64($0.width) }
+        let height = attachment.pixelSize.map { UInt64($0.height) }
+        let seconds = attachment.duration.map { Double($0.components.seconds) }
+
+        let handle = switch attachment.kind {
+        case .image:
+            try timeline.sendImage(
+                params: parameters,
+                thumbnailSource: nil,
+                imageInfo: ImageInfo(
+                    height: height, width: width, mimetype: attachment.mimeType, size: size,
+                    thumbnailInfo: nil, thumbnailSource: nil, blurhash: nil, isAnimated: nil
+                )
+            )
+        case .video:
+            try timeline.sendVideo(
+                params: parameters,
+                thumbnailSource: nil,
+                videoInfo: VideoInfo(
+                    duration: seconds, height: height, width: width, mimetype: attachment.mimeType,
+                    size: size, thumbnailInfo: nil, thumbnailSource: nil, blurhash: nil
+                )
+            )
+        case .audio:
+            try timeline.sendAudio(
+                params: parameters,
+                audioInfo: AudioInfo(duration: seconds, size: size, mimetype: attachment.mimeType)
+            )
+        default:
+            try timeline.sendFile(
+                params: parameters,
+                fileInfo: FileInfo(
+                    mimetype: attachment.mimeType, size: size,
+                    thumbnailInfo: nil, thumbnailSource: nil
+                )
+            )
+        }
+
+        // Upload then send; only after this has the server taken the media at all. The timeline
+        // listener still owns promoting the echo to `acknowledged`.
+        try await handle.join()
+
+        return SendReceipt(
+            messageID: attachment.fileURL.absoluteString,
+            route: route,
+            deliveryState: .pending
+        )
+    }
+
     // MARK: - Lifecycle
 
     public func start() async throws {
@@ -364,7 +429,7 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
     private func messages(from items: [TimelineItem]) -> [Message] {
         items.compactMap { item in
             guard let event = item.asEvent() else { return nil }
-            return normalizer.normalize(event, roomID: roomID).message
+            return normalizer.normalize(event, roomID: roomID)
         }
     }
 

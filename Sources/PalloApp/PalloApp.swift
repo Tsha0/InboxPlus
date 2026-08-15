@@ -30,10 +30,14 @@ final class PalloAppDelegate: NSObject, NSApplicationDelegate {
 struct PalloApp: App {
     @NSApplicationDelegateAdaptor(PalloAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
-    @State private var model = PalloAppModel(
-        gateway: GatewaySelection.makeGateway(),
-        directory: Fixtures.directory
-    )
+    @State private var model = {
+        let services = GatewaySelection.makeServices()
+        return PalloAppModel(
+            gateway: services.gateway,
+            directory: Fixtures.directory,
+            media: services.media
+        )
+    }()
 
     var body: some Scene {
         WindowGroup("Pallo", id: "main") {
