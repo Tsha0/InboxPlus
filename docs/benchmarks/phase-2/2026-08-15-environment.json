@@ -1,0 +1,16 @@
+{
+  "architecture": "arm64",
+  "cpuSeconds": 84.732144,
+  "databaseBytes": 326430720,
+  "elapsedSeconds": 579.410049042,
+  "hardwareModel": "Mac15,7",
+  "heartbeatProbePriority": "userInitiated",
+  "operatingSystem": "Version 26.5.1 (Build 25F80)",
+  "peakResidentBytes": 167919616,
+  "physicalMemoryBytes": 19327352832,
+  "pythonVersion": "3.12.7",
+  "requirementsLockSHA256": "b57db5ecc3784d2ef6f2c13ff5cf55c471e91a3fb57cb92992954baa368f14c6",
+  "seed": 20260813,
+  "swiftVersion": "6.2",
+  "synapseVersion": "1.158.0"
+}
