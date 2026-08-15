@@ -1348,10 +1348,18 @@ private final class SpawnEvidence: @unchecked Sendable {
     }
 
     func waitForPID() -> pid_t? {
-        guard semaphore.wait(timeout: .now() + 2) == .success else { return nil }
+        guard semaphore.wait(timeout: .now() + spawnWaitSeconds) == .success else { return nil }
         return pid
     }
 }
+
+/// How long to wait for a real child process to appear.
+///
+/// This is a guard against hanging forever, not an assertion about speed. It was two seconds, which
+/// held on a developer machine and failed on a CI runner: the first `posix_spawn` of a test run
+/// competes with the harness starting up on a slower, shared, virtualised host. A test that fails
+/// because the machine is busy reports nothing about the code.
+private let spawnWaitSeconds: Double = 30
 
 private final class ConcurrentSpawnGate: @unchecked Sendable {
     private let lock = NSLock()
@@ -1376,7 +1384,7 @@ private final class ConcurrentSpawnGate: @unchecked Sendable {
     }
 
     func waitForFirstSpawn() -> pid_t? {
-        guard firstSpawned.wait(timeout: .now() + 2) == .success else { return nil }
+        guard firstSpawned.wait(timeout: .now() + spawnWaitSeconds) == .success else { return nil }
         return pids.first
     }
 
