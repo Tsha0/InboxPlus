@@ -27,13 +27,23 @@ struct NavigationRailView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Text("P")
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(Color.accentColor, in: .rect(cornerRadius: 10))
-                .accessibilityLabel("Pallo")
-                .padding(.bottom, 4)
+            // The real app icon, not a monogram: the rail is where the app introduces itself,
+            // and a stand-in "P" reads as unfinished next to the icon in the Dock. The mascot
+            // ships as a bundled resource because `swift run` has no .app bundle to read it from.
+            Group {
+                if let mascot = Bundle.module.image(forResource: "PalloMascot") {
+                    Image(nsImage: mascot)
+                        .resizable()
+                        .clipShape(.rect(cornerRadius: 8))
+                } else {
+                    Image(systemName: "message.fill")
+                        .foregroundStyle(.white)
+                        .background(Color.accentColor, in: .rect(cornerRadius: 10))
+                }
+            }
+            .frame(width: 32, height: 32)
+            .accessibilityLabel("Pallo")
+            .padding(.bottom, 4)
 
             ForEach([SidebarSection.inbox, .contacts]) { section in
                 railButton(section)

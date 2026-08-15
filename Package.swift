@@ -18,7 +18,11 @@ let package = Package(
         .target(name: "PalloCore"),
         .target(name: "PalloGateway", dependencies: ["PalloCore"]),
         .target(name: "PalloFeatures", dependencies: ["PalloCore", "PalloGateway", "PalloBridge"]),
-        .target(name: "PalloUI", dependencies: ["PalloCore", "PalloFeatures", "PalloBridge"]),
+        .target(
+            name: "PalloUI",
+            dependencies: ["PalloCore", "PalloFeatures", "PalloBridge"],
+            resources: [.process("Resources")]
+        ),
         .executableTarget(
             name: "PalloApp",
             dependencies: [

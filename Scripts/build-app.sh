@@ -43,6 +43,9 @@ cp "$BIN_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 # profile, and this is what prepares one.
 cp "$BIN_DIR/PalloRuntimeCLI" "$APP_DIR/Contents/MacOS/PalloRuntimeCLI"
 cp Resources/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
+# SwiftPM resource bundles the executable loads through `Bundle.module` — which traps when the
+# bundle is absent, so a missing copy here is a crash on launch, not a missing image.
+cp -R "$BIN_DIR/Pallo_PalloUI.bundle" "$APP_DIR/Contents/Resources/Pallo_PalloUI.bundle"
 
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
