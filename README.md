@@ -4,7 +4,9 @@
   <img src="docs/assets/pallo-mascot.png" alt="Pallo, the app's blue puppy mascot" width="320">
 </p>
 
-Pallo is a local-first universal messaging inbox for macOS. This repository currently contains the native vertical slice described in `docs/superpowers/plans/2026-08-12-pallo-native-vertical-slice.md`.
+Pallo is a local-first universal messaging inbox for macOS. This repository contains the native
+vertical slice and the Phase 2 local Synapse runtime spike. Design documents and implementation
+plans are kept outside version control.
 
 ## Requirements
 
