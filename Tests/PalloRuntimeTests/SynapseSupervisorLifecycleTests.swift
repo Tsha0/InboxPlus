@@ -560,7 +560,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     defer { fixture.remove() }
     let process = try FoundationManagedProcessFactory().make(ManagedProcessConfiguration(
         executable: URL(fileURLWithPath: "/bin/sleep"),
-        arguments: ["5"],
+        arguments: [childLifetimeSeconds],
         environment: [:],
         workingDirectory: fixture.profile,
         profileRoot: fixture.profile,
@@ -595,7 +595,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     ).make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
     let identity = try await process!.launch()
 
@@ -615,7 +615,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let process = try FoundationManagedProcessFactory().make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
     let first = try await process.launch()
     var unexpectedSecond: ManagedProcessIdentity?
@@ -649,7 +649,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     }).make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
     let firstLaunch = Task { try await process.launch() }
     try #require(gate.waitForFirstSpawn() != nil)
@@ -685,7 +685,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let supervisor = SynapseSupervisor(
         configuration: ManagedProcessConfiguration(
             executable: URL(fileURLWithPath: "/bin/sleep"),
-            arguments: ["5"],
+            arguments: [childLifetimeSeconds],
             environment: [:],
             workingDirectory: fixture.profile,
             profileRoot: fixture.profile,
@@ -727,7 +727,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let process = try factory.make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
     let identity = try await process.launch()
 
@@ -749,7 +749,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let process = try factory.make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
     let launch = Task { try await process.launch() }
     try #require(spawn.waitForPID() != nil)
@@ -775,7 +775,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let process = try factory.make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
 
     do {
@@ -804,7 +804,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let fixture = try SecureProcessDirectories(prefix: "PalloOwnerReleaseTests")
     defer { fixture.remove() }
     var process: (any ManagedProcess)? = try FoundationManagedProcessFactory().make(
-        try managedConfiguration(fixture: fixture, executable: "/bin/sleep", arguments: ["5"])
+        try managedConfiguration(fixture: fixture, executable: "/bin/sleep", arguments: [childLifetimeSeconds])
     )
     let identity = try await process!.launch()
 
@@ -1352,6 +1352,16 @@ private final class SpawnEvidence: @unchecked Sendable {
         return pid
     }
 }
+
+/// How long the throwaway child processes these tests spawn stay alive.
+///
+/// These tests assert on a *live* child: that it is still owned, still signalable, still there.
+/// The child was `sleep 5`, which on a CI runner expired part-way through a test body that took
+/// thirteen seconds — the child was reaped and every ownership check then failed with
+/// `processNotOwned`, which reads like a supervision bug and is actually a fixture that did not
+/// outlive its test. Long enough that no plausible machine outruns it, short enough that a leaked
+/// one is gone in two minutes.
+private let childLifetimeSeconds = "120"
 
 /// How long to wait for a real child process to appear.
 ///
