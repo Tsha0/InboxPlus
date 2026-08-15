@@ -160,6 +160,11 @@ PalloApp          the executable; chooses fixtures or a live profile at launch
 PalloRuntimeCLI   the developer tool for everything above
 ```
 
+Each network is drawn with its own mark on its own brand colour, converted from
+[Simple Icons](https://simpleicons.org) (CC0) into Swift vector paths at authoring time — no
+bundled images, no SVG parsing at runtime. The marks are trademarks of their owners and are used to
+identify networks, not to imply affiliation.
+
 `MessagingGateway` is the seam. The app layer never imports the Matrix SDK, which is why the whole
 UI runs unchanged on fixtures.
 

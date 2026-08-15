@@ -79,6 +79,28 @@ crypto library.
 
 Requires `cmake` on the host (`brew install cmake`).
 
+## Brand marks
+
+| Name | Version | Licence | Notes |
+| --- | --- | --- | --- |
+| [Simple Icons](https://simpleicons.org) | `13.20.0` | CC0-1.0 | Source SVGs for the twelve network marks. Converted to Swift vector paths by `Scripts/make-platform-glyphs.swift`; nothing from the package is shipped or linked. |
+
+The SVG files are CC0. The marks they depict remain the trademarks of their respective owners —
+Pallo draws them to identify which network a conversation belongs to, which is what a messaging
+client uses them for, and claims no affiliation with or endorsement by any of them.
+
+The conversion happens once, at authoring time, so the app carries no SVG parser and no bundled
+images. Regenerate with:
+
+```sh
+swift Scripts/make-platform-glyphs.swift Scripts/brand-icons \
+  Sources/PalloUI/PlatformGlyphPaths.swift /tmp/badges.png
+```
+
+Look at the contact sheet it writes. Arc conversion is the error-prone part and a wrong logo is
+obvious to the eye and invisible in a diff — the first run of this silently produced a blank
+Discord, a Messenger with no bolt and a WhatsApp with no bubble.
+
 ## The generated inventory
 
 `docs/sbom.cdx.json` is the machine-readable inventory, in CycloneDX 1.5, emitted from the same
