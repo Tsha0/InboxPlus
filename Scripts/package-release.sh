@@ -49,6 +49,9 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
 cp "$BIN_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 cp "$BIN_DIR/PalloRuntimeCLI" "$APP_DIR/Contents/MacOS/PalloRuntimeCLI"
+# SwiftPM resource bundles the executable loads through `Bundle.module` — which traps when the
+# bundle is absent, so a missing copy here is a crash on launch, not a missing image.
+cp -R "$BIN_DIR/Pallo_PalloUI.bundle" "$APP_DIR/Contents/Resources/Pallo_PalloUI.bundle"
 
 # A real bundle, so the app has a stable identity, a menu bar, and somewhere to declare the
 # permission usage strings macOS shows the user.
