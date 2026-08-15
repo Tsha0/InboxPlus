@@ -496,7 +496,9 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     defer { try? FileManager.default.removeItem(at: root) }
     let process = try FoundationManagedProcessFactory().make(ManagedProcessConfiguration(
         executable: URL(fileURLWithPath: "/bin/sh"),
-        arguments: ["-c", "sleep 0.1; printf should-not-land"],
+        // The child must outlive launch identity stabilization (two consecutive reads, 5 ms apart)
+        // even under full-suite parallel load, or launch() races its exit.
+        arguments: ["-c", "sleep 0.5; printf should-not-land"],
         environment: [:],
         workingDirectory: profile,
         profileRoot: profile,

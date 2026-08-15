@@ -38,6 +38,9 @@ let package = Package(
         .testTarget(name: "PalloFeaturesTests", dependencies: ["PalloCore", "PalloGateway", "PalloFeatures"]),
         .testTarget(name: "PalloUITests", dependencies: ["PalloCore", "PalloFeatures", "PalloUI"]),
         .testTarget(name: "PalloRuntimeTests", dependencies: ["PalloRuntime", "PalloRuntimeCLI"]),
-        .testTarget(name: "PalloMatrixTests", dependencies: ["PalloMatrix", "PalloCore", "PalloGateway"]),
+        .testTarget(
+            name: "PalloMatrixTests",
+            dependencies: ["PalloMatrix", "PalloCore", "PalloGateway", "PalloRuntime"]
+        ),
     ]
 )

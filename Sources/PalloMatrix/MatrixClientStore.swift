@@ -145,6 +145,10 @@ public struct MatrixClientStore: Sendable {
             .homeserverUrl(url: homeserverURL.absoluteString)
             .sqliteStore(config: sqlite)
             .userAgent(userAgent: "Pallo/0.1 (macOS; local-first)")
+            // Pallo pins the homeserver it talks to, and that Synapse enables MSC3575/MSC4186
+            // sliding sync by default, so the version is declared rather than discovered. Without
+            // it the sync service fails to start with "Sliding sync version is missing".
+            .slidingSyncVersionBuilder(versionBuilder: .native)
     }
 
     private func writeSecurely(_ data: Data, to url: URL) throws {

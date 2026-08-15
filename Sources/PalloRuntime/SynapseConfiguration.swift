@@ -19,6 +19,8 @@ public struct SynapseConfiguration: Sendable {
     public let mediaPath: URL
     public let signingKeyPath: URL
     public let credentials: SynapseCredentials
+    /// Where `AppServiceRegistration.write(to:)` drops the bridge registrations Synapse must load.
+    public let appServiceDirectory: URL
 
     private let profile: RuntimePaths
     private let configurationFilePath: URL
@@ -46,6 +48,7 @@ public struct SynapseConfiguration: Sendable {
         mediaPath = profile.data.appendingPathComponent("media", isDirectory: true)
         signingKeyPath = profile.configuration.appendingPathComponent("pallo.signing.key", isDirectory: false)
         self.credentials = credentials
+        appServiceDirectory = profile.configuration.appendingPathComponent("appservices", isDirectory: true)
         self.profile = profile
         configurationFilePath = profile.configuration.appendingPathComponent("homeserver.yaml", isDirectory: false)
         pidFilePath = profile.state.appendingPathComponent("homeserver.pid", isDirectory: false)
@@ -89,6 +92,7 @@ public struct SynapseConfiguration: Sendable {
             database: \(yamlString(databasePath.path))
         media_store_path: \(yamlString(mediaPath.path))
         signing_key_path: \(yamlString(signingKeyPath.path))
+        \(renderedAppServiceConfigFiles)
         trusted_key_servers: []
         suppress_key_server_warning: true
         enable_registration: false
@@ -191,15 +195,37 @@ public struct SynapseConfiguration: Sendable {
         return configurationFilePath
     }
 
+    /// Registration files present right now, sorted so a re-render of an unchanged profile is byte-identical.
+    public var appServiceRegistrationFiles: [URL] {
+        let contents = try? FileManager.default.contentsOfDirectory(
+            at: appServiceDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
+        return (contents ?? [])
+            .filter { $0.pathExtension == "yaml" }
+            .sorted { $0.path < $1.path }
+    }
+
+    private var renderedAppServiceConfigFiles: String {
+        let files = appServiceRegistrationFiles
+        guard !files.isEmpty else {
+            return "app_service_config_files: []"
+        }
+        return (["app_service_config_files:"] + files.map { "  - \(yamlString($0.path))" })
+            .joined(separator: "\n")
+    }
+
     private var renderedScalarValues: [String] {
         [
             serverName,
+            appServiceDirectory.path,
             pidFilePath.path,
             databasePath.path,
             mediaPath.path,
             signingKeyPath.path,
             credentials.registrationSecret,
-        ]
+        ] + appServiceRegistrationFiles.map(\.path)
     }
 
     private func validateConfigurationDestination() throws {
