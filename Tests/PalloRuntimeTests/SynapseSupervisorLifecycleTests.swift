@@ -494,12 +494,16 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: profile.path)
     try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: logs.path)
     defer { try? FileManager.default.removeItem(at: root) }
+    // The child must not write until the profile has been swapped, or there is nothing for the log
+    // writer to reject. A timed sleep makes that a race the machine can lose — it did, on CI, where
+    // the swap took longer than the half second the child waited. Widening the sleep would only
+    // move the race, and past the `waitForExit` timeout it would make the test pass for the wrong
+    // reason, since a timeout throws too. So the child waits for a file this test creates *after*
+    // the swap, and the ordering stops depending on speed at all.
+    let gate = root.appendingPathComponent("swap-complete")
     let process = try FoundationManagedProcessFactory().make(ManagedProcessConfiguration(
         executable: URL(fileURLWithPath: "/bin/sh"),
-        // This scenario needs the child still running when the profile is swapped below, so it must
-        // outlive launch even under full-suite load. A child that exits first writes before the
-        // swap, and there is nothing left for the log writer to reject.
-        arguments: ["-c", "sleep 0.5; printf should-not-land"],
+        arguments: ["-c", "while [ ! -e \"$1\" ]; do sleep 0.05; done; printf should-not-land", "sh", gate.path],
         environment: [:],
         workingDirectory: profile,
         profileRoot: profile,
@@ -511,6 +515,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
 
     try FileManager.default.moveItem(at: profile, to: root.appendingPathComponent("moved-profile"))
     try FileManager.default.createSymbolicLink(at: profile, withDestinationURL: outside)
+    FileManager.default.createFile(atPath: gate.path, contents: Data())
 
     await #expect(throws: (any Error).self) {
         try await process.waitForExit(matching: identity, timeout: .seconds(2))
@@ -560,7 +565,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     defer { fixture.remove() }
     let process = try FoundationManagedProcessFactory().make(ManagedProcessConfiguration(
         executable: URL(fileURLWithPath: "/bin/sleep"),
-        arguments: ["5"],
+        arguments: [childLifetimeSeconds],
         environment: [:],
         workingDirectory: fixture.profile,
         profileRoot: fixture.profile,
@@ -595,7 +600,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     ).make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
     let identity = try await process!.launch()
 
@@ -615,7 +620,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let process = try FoundationManagedProcessFactory().make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
     let first = try await process.launch()
     var unexpectedSecond: ManagedProcessIdentity?
@@ -649,7 +654,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     }).make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
     let firstLaunch = Task { try await process.launch() }
     try #require(gate.waitForFirstSpawn() != nil)
@@ -685,7 +690,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let supervisor = SynapseSupervisor(
         configuration: ManagedProcessConfiguration(
             executable: URL(fileURLWithPath: "/bin/sleep"),
-            arguments: ["5"],
+            arguments: [childLifetimeSeconds],
             environment: [:],
             workingDirectory: fixture.profile,
             profileRoot: fixture.profile,
@@ -727,7 +732,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let process = try factory.make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
     let identity = try await process.launch()
 
@@ -749,7 +754,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let process = try factory.make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
     let launch = Task { try await process.launch() }
     try #require(spawn.waitForPID() != nil)
@@ -775,7 +780,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let process = try factory.make(try managedConfiguration(
         fixture: fixture,
         executable: "/bin/sleep",
-        arguments: ["5"]
+        arguments: [childLifetimeSeconds]
     ))
 
     do {
@@ -804,7 +809,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let fixture = try SecureProcessDirectories(prefix: "PalloOwnerReleaseTests")
     defer { fixture.remove() }
     var process: (any ManagedProcess)? = try FoundationManagedProcessFactory().make(
-        try managedConfiguration(fixture: fixture, executable: "/bin/sleep", arguments: ["5"])
+        try managedConfiguration(fixture: fixture, executable: "/bin/sleep", arguments: [childLifetimeSeconds])
     )
     let identity = try await process!.launch()
 
@@ -1348,10 +1353,28 @@ private final class SpawnEvidence: @unchecked Sendable {
     }
 
     func waitForPID() -> pid_t? {
-        guard semaphore.wait(timeout: .now() + 2) == .success else { return nil }
+        guard semaphore.wait(timeout: .now() + spawnWaitSeconds) == .success else { return nil }
         return pid
     }
 }
+
+/// How long the throwaway child processes these tests spawn stay alive.
+///
+/// These tests assert on a *live* child: that it is still owned, still signalable, still there.
+/// The child was `sleep 5`, which on a CI runner expired part-way through a test body that took
+/// thirteen seconds — the child was reaped and every ownership check then failed with
+/// `processNotOwned`, which reads like a supervision bug and is actually a fixture that did not
+/// outlive its test. Long enough that no plausible machine outruns it, short enough that a leaked
+/// one is gone in two minutes.
+private let childLifetimeSeconds = "120"
+
+/// How long to wait for a real child process to appear.
+///
+/// This is a guard against hanging forever, not an assertion about speed. It was two seconds, which
+/// held on a developer machine and failed on a CI runner: the first `posix_spawn` of a test run
+/// competes with the harness starting up on a slower, shared, virtualised host. A test that fails
+/// because the machine is busy reports nothing about the code.
+private let spawnWaitSeconds: Double = 30
 
 private final class ConcurrentSpawnGate: @unchecked Sendable {
     private let lock = NSLock()
@@ -1376,7 +1399,7 @@ private final class ConcurrentSpawnGate: @unchecked Sendable {
     }
 
     func waitForFirstSpawn() -> pid_t? {
-        guard firstSpawned.wait(timeout: .now() + 2) == .success else { return nil }
+        guard firstSpawned.wait(timeout: .now() + spawnWaitSeconds) == .success else { return nil }
         return pids.first
     }
 
