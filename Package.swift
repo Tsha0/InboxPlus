@@ -23,8 +23,15 @@ let package = Package(
             name: "PalloApp",
             dependencies: [
                 "PalloGateway", "PalloFeatures", "PalloUI", "PalloMatrix", "PalloRuntime",
-                "PalloBridge", "PalloBridgeService",
+                "PalloBridge", "PalloBridgeService", "PalloIMessage",
             ]
+        ),
+        // iMessage does not go through Matrix: it is read from the local Messages database and
+        // sent by asking Messages itself. It therefore implements the gateway seam directly.
+        .target(
+            name: "PalloIMessage",
+            dependencies: ["PalloCore", "PalloGateway"],
+            linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .target(name: "PalloRuntime"),
         // The bridge contract as pure data: bridgev2 protocol models, the network catalog, and the
@@ -63,6 +70,11 @@ let package = Package(
         .testTarget(
             name: "PalloBridgeTests",
             dependencies: ["PalloBridge", "PalloBridgeService", "PalloCore", "PalloRuntime"]
+        ),
+        .testTarget(
+            name: "PalloIMessageTests",
+            dependencies: ["PalloIMessage", "PalloCore", "PalloGateway"],
+            linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .testTarget(
             name: "PalloMatrixTests",

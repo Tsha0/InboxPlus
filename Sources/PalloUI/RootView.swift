@@ -15,6 +15,8 @@ public struct RootView: View {
     @State private var section: SidebarSection = .inbox
     @State private var accountFlow: AccountFlow?
     @State private var connectFailure: String?
+    /// Informational, not a failure — reusing the failure alert would title good news as an error.
+    @State private var connectNotice: String?
 
     private let makeLoginSession: BridgeLoginSessionProvider?
 
@@ -93,7 +95,14 @@ public struct RootView: View {
             case .iMessagePermissions:
                 IMessagePermissionsView(
                     onConnect: {
-                        finishConnecting(platform: .iMessage, userLoginID: "imessage-local")
+                        // There is nothing to sign in to. Pallo opens the Messages database at
+                        // launch, so a grant made just now takes effect on the next launch — and
+                        // adding an account here would invent one the gateway never produced.
+                        accountFlow = nil
+                        connectNotice = """
+                        iMessage is ready. Quit and reopen Pallo to load your conversations — \
+                        macOS only applies Full Disk Access to a newly launched process.
+                        """
                     },
                     onCancel: { accountFlow = nil }
                 )
@@ -109,6 +118,17 @@ public struct RootView: View {
             Button("OK", role: .cancel) { connectFailure = nil }
         } message: {
             Text(connectFailure ?? "")
+        }
+        .alert(
+            "iMessage is connected",
+            isPresented: Binding(
+                get: { connectNotice != nil },
+                set: { if !$0 { connectNotice = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { connectNotice = nil }
+        } message: {
+            Text(connectNotice ?? "")
         }
     }
 

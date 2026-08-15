@@ -2,6 +2,7 @@ import Foundation
 import PalloFeatures
 import PalloGateway
 import PalloBridgeService
+import PalloIMessage
 import PalloMatrix
 import PalloRuntime
 
@@ -78,11 +79,19 @@ enum GatewaySelection {
                 freeSpace: VolumeFreeSpaceReporter(url: cacheDirectory)
             )
 
+            let matrix = MatrixMessagingGateway(
+                client: client,
+                invitePolicy: .forBridges(ids: bridgeIDs, serverName: state.serverName)
+            )
+
+            // iMessage never reaches the homeserver, so it sits beside the Matrix gateway rather
+            // than behind it. It is only added when the Messages database is actually readable:
+            // offering a source that will throw on every read is worse than not offering it.
+            var sources: [any MessagingGateway] = [matrix]
+            if let imessage = makeIMessageGateway() { sources.append(imessage) }
+
             return Services(
-                gateway: MatrixMessagingGateway(
-                    client: client,
-                    invitePolicy: .forBridges(ids: bridgeIDs, serverName: state.serverName)
-                ),
+                gateway: sources.count == 1 ? matrix : CompositeMessagingGateway(sources),
                 media: MediaController(loader: loader)
             )
         } catch {
@@ -91,6 +100,24 @@ enum GatewaySelection {
                 "Pallo: could not attach to profile '\(profileName)': \(error)\n".utf8
             ))
             return Services(gateway: InMemoryMessagingGateway(seed: .empty), media: MediaController())
+        }
+    }
+}
+
+extension GatewaySelection {
+    /// Opens the local Messages database, or explains why it could not.
+    ///
+    /// Full Disk Access is the usual reason and it cannot be requested programmatically, so the
+    /// failure is written to stderr rather than swallowed — a silently missing iMessage looks like
+    /// a bug in Pallo rather than a permission the user has not granted.
+    static func makeIMessageGateway() -> IMessageGateway? {
+        do {
+            return IMessageGateway(store: try IMessageStore())
+        } catch {
+            FileHandle.standardError.write(Data(
+                "Pallo: iMessage is not available: \(error)\n".utf8
+            ))
+            return nil
         }
     }
 }

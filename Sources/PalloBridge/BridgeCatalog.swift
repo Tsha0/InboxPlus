@@ -222,7 +222,8 @@ public enum BridgeCatalog {
     )
 
     /// No download and no supervised process: iMessage is reached through macOS itself, so the
-    /// "login" is a permissions grant.
+    /// "login" is a permissions grant. Reading and sending are implemented natively in
+    /// `PalloIMessage`, not by a bridge.
     public static let iMessage = BridgeDescriptor(
         id: "imessage",
         platform: .iMessage,
