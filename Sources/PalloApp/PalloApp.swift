@@ -34,7 +34,7 @@ struct PalloApp: App {
         let services = GatewaySelection.makeServices()
         return PalloAppModel(
             gateway: services.gateway,
-            directory: Fixtures.directory,
+            directory: services.directory,
             media: services.media
         )
     }()

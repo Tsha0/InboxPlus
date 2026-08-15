@@ -21,6 +21,10 @@ enum GatewaySelection {
     struct Services {
         let gateway: any MessagingGateway
         let media: MediaController
+        /// Manually linked people. Fixture contacts belong only to the fixture gateway: a demo
+        /// person sitting in Contacts beside real conversations, linked to identities that do not
+        /// exist, is indistinguishable from a bug.
+        let directory: ContactDirectory
     }
 
     @MainActor
@@ -34,7 +38,8 @@ enum GatewaySelection {
             ))
             return Services(
                 gateway: InMemoryMessagingGateway(seed: Fixtures.demoSnapshot),
-                media: MediaController()
+                media: MediaController(),
+                directory: Fixtures.directory
             )
         }
 
@@ -93,14 +98,20 @@ enum GatewaySelection {
 
             return Services(
                 gateway: sources.count == 1 ? matrix : CompositeMessagingGateway(sources),
-                media: MediaController(loader: loader)
+                media: MediaController(loader: loader),
+                // Real accounts start with no linked people. Linking is something the user does.
+                directory: ContactDirectory()
             )
         } catch {
             // Surface the reason instead of silently substituting fake conversations.
             FileHandle.standardError.write(Data(
                 "Pallo: could not attach to profile '\(profileName)': \(error)\n".utf8
             ))
-            return Services(gateway: InMemoryMessagingGateway(seed: .empty), media: MediaController())
+            return Services(
+                gateway: InMemoryMessagingGateway(seed: .empty),
+                media: MediaController(),
+                directory: ContactDirectory()
+            )
         }
     }
 }
