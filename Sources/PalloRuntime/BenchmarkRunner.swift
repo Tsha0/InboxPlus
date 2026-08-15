@@ -29,7 +29,12 @@ public struct BenchmarkRunner: Sendable {
         let collector = BenchmarkCollector()
 
         // Runs on the main executor for the whole workload so scheduling delay is measurable.
-        let heartbeat = Task { @MainActor in
+        //
+        // The priority is explicit and load-bearing. This probe stands in for an app's UI main
+        // thread, which macOS runs at user-initiated QoS. Inheriting the benchmark's own lower
+        // priority instead lets the saturated import workers deschedule the probe for minutes at a
+        // time, which measures QoS starvation of the instrument rather than timeline responsiveness.
+        let heartbeat = Task(priority: .userInitiated) { @MainActor in
             let start = clock.now
             await Self.measureHeartbeat(
                 intervalSeconds: Self.heartbeatIntervalSeconds,
