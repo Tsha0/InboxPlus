@@ -86,10 +86,40 @@ import Testing
 }
 
 @Test func askingForAnUnsupportedNetworkFailsWithAnActionableReason() {
-    #expect(throws: BridgeCatalogError.unsupportedPlatform(.discord)) {
-        try BridgeCatalog.require(.discord)
+    // Google Chat publishes no macOS binary, so there is nothing to checksum and nothing to run.
+    #expect(throws: BridgeCatalogError.unsupportedPlatform(.googleChat)) {
+        try BridgeCatalog.require(.googleChat)
     }
-    #expect(BridgeCatalogError.unsupportedPlatform(.discord).description.contains("Discord"))
+    #expect(BridgeCatalogError.unsupportedPlatform(.googleChat).description.contains("Google Chat"))
+}
+
+@Test func anUnavailableNetworkSaysWhyRatherThanJustBeingAbsent() throws {
+    for platform in Platform.allCases {
+        let reason = BridgeCatalog.unavailabilityReason(for: platform)
+        if BridgeCatalog.isAvailable(platform) {
+            #expect(reason == nil)
+        } else {
+            #expect(reason?.isEmpty == false)
+        }
+    }
+    // The three the design lists but Phase 6 could not deliver each name their own obstacle.
+    #expect(BridgeCatalog.unavailabilityReason(for: .googleChat)?.contains("Python-only") == true)
+    #expect(BridgeCatalog.unavailabilityReason(for: .irc)?.contains("no pinned macOS") == true)
+    #expect(BridgeCatalog.unavailabilityReason(for: .matrix)?.contains("multi-account") == true)
+}
+
+@Test func everyPhase6BridgePinsItsOwnReleaseTag() throws {
+    // The mautrix projects share a version scheme but not a release train; assuming one tag across
+    // all of them would point several downloads at tags that do not exist.
+    for descriptor in BridgeCatalog.all {
+        guard let artifact = descriptor.artifact else { continue }
+        #expect(
+            artifact.downloadURL.absoluteString.contains("/download/\(descriptor.version)/"),
+            "\(descriptor.id) downloads from a tag that is not the version it claims"
+        )
+        #expect(artifact.downloadURL.absoluteString.hasSuffix(artifact.assetName))
+        #expect(artifact.assetName.hasSuffix("-darwin-arm64"))
+    }
 }
 
 @Test func instagramIsPinnedToTheVersionItsFlowsWereReadFrom() throws {

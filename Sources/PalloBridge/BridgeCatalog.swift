@@ -21,6 +21,10 @@ public enum BridgeCredentialStyle: String, Codable, Sendable, Equatable {
     case qrCode
     case phoneNumber
     case systemPermissions
+    /// A token copied out of the network's own web client.
+    case token
+    /// A revocable secondary password the network issues for third-party clients.
+    case appPassword
 
     public var summary: String {
         switch self {
@@ -28,6 +32,8 @@ public enum BridgeCredentialStyle: String, Codable, Sendable, Equatable {
         case .qrCode: "Scan a QR code with your phone"
         case .phoneNumber: "Enter your phone number and the code you receive"
         case .systemPermissions: "Grant macOS permissions — no password needed"
+        case .token: "Paste a token from the network's web client"
+        case .appPassword: "Use an app password you generate on the network"
         }
     }
 }
@@ -124,8 +130,13 @@ public enum BridgeCatalog {
 
     /// Only `darwin-arm64` is pinned: Pallo targets Apple silicon, and pinning a hash for a
     /// platform that is never verified end to end would be a hash nobody has checked.
+    ///
+    /// Each bridge carries its own release tag. The mautrix projects share a calendar-versioning
+    /// scheme but not a release train, so assuming one version across all of them would point
+    /// several downloads at tags that do not exist.
     private static func mautrixArtifact(
         repository: String,
+        version: String = mautrixVersion,
         assetName: String,
         sha256: String
     ) -> BridgeArtifact {
@@ -133,7 +144,7 @@ public enum BridgeCatalog {
             assetName: assetName,
             sha256: sha256,
             downloadURL: URL(
-                string: "https://github.com/mautrix/\(repository)/releases/download/\(mautrixVersion)/\(assetName)"
+                string: "https://github.com/mautrix/\(repository)/releases/download/\(version)/\(assetName)"
             )!
         )
     }
@@ -225,9 +236,176 @@ public enum BridgeCatalog {
         sourceURL: URL(string: "https://github.com/mautrix/imessage")!
     )
 
+    // MARK: - Phase 6 networks
+    //
+    // Every hash below is taken verbatim from the named tag's own `sha256sums.txt`. None of these
+    // bridges has been driven with a real account, so `expectedLoginFlowIDs` stays empty and drift
+    // detection stays silent rather than asserting a guess — the same rule Phase 4 applied to
+    // everything except Instagram.
+
+    public static let signal = BridgeDescriptor(
+        id: "signal",
+        platform: .signal,
+        displayName: "Signal",
+        version: "v0.2607.0",
+        runtimeKind: .goBinary,
+        credentialStyle: .qrCode,
+        artifact: mautrixArtifact(
+            repository: "signal",
+            version: "v0.2607.0",
+            assetName: "mautrix-signal-darwin-arm64",
+            sha256: "2a0bd679879fac2e4def2d778be54970bf0144bcd7c11ee474e25851a6527172"
+        ),
+        // Read from a running v0.2607.0 bridge.
+        expectedLoginFlowIDs: ["qr"],
+        license: "AGPL-3.0-or-later",
+        sourceURL: URL(string: "https://github.com/mautrix/signal")!
+    )
+
+    public static let slack = BridgeDescriptor(
+        id: "slack",
+        platform: .slack,
+        displayName: "Slack",
+        version: "v0.2607.0",
+        runtimeKind: .goBinary,
+        credentialStyle: .token,
+        artifact: mautrixArtifact(
+            repository: "slack",
+            version: "v0.2607.0",
+            assetName: "mautrix-slack-darwin-arm64",
+            sha256: "e29a63d74aed302c3957b3869c593d4ed702c98e052ae6830274ba29ea679721"
+        ),
+        // Read from a running bridge.
+        expectedLoginFlowIDs: ["token", "app"],
+        license: "AGPL-3.0-or-later",
+        sourceURL: URL(string: "https://github.com/mautrix/slack")!
+    )
+
+    public static let x = BridgeDescriptor(
+        id: "twitter",
+        platform: .x,
+        displayName: "X",
+        version: "v0.2606.0",
+        runtimeKind: .goBinary,
+        credentialStyle: .cookies,
+        artifact: mautrixArtifact(
+            repository: "twitter",
+            version: "v0.2606.0",
+            assetName: "mautrix-twitter-darwin-arm64",
+            sha256: "d6b679939548604c9a07bed986f2d5cfa204ce1b705ee4fbc385c5e9be7646f4"
+        ),
+        // Read from a running bridge.
+        expectedLoginFlowIDs: ["cookies"],
+        license: "AGPL-3.0-or-later",
+        sourceURL: URL(string: "https://github.com/mautrix/twitter")!
+    )
+
+    public static let linkedIn = BridgeDescriptor(
+        id: "linkedin",
+        platform: .linkedIn,
+        displayName: "LinkedIn",
+        version: "v0.2604.0",
+        runtimeKind: .goBinary,
+        credentialStyle: .cookies,
+        artifact: mautrixArtifact(
+            repository: "linkedin",
+            version: "v0.2604.0",
+            assetName: "mautrix-linkedin-darwin-arm64",
+            sha256: "91754517c40a90691f9c35f13a39189776679d4cf2a07654bca5ef3a07ae571f"
+        ),
+        // Read from a running bridge.
+        expectedLoginFlowIDs: ["cookies"],
+        license: "AGPL-3.0-or-later",
+        sourceURL: URL(string: "https://github.com/mautrix/linkedin")!
+    )
+
+    public static let googleMessages = BridgeDescriptor(
+        id: "gmessages",
+        platform: .googleMessages,
+        displayName: "Google Messages",
+        version: "v0.2605.0",
+        runtimeKind: .goBinary,
+        credentialStyle: .qrCode,
+        artifact: mautrixArtifact(
+            repository: "gmessages",
+            version: "v0.2605.0",
+            assetName: "mautrix-gmessages-darwin-arm64",
+            sha256: "d45c1a5e4ce317f0288930f71ecb32375b1a755567469eaac581d17d6b1777b9"
+        ),
+        // Read from a running bridge.
+        expectedLoginFlowIDs: ["google"],
+        license: "AGPL-3.0-or-later",
+        sourceURL: URL(string: "https://github.com/mautrix/gmessages")!
+    )
+
+    public static let googleVoice = BridgeDescriptor(
+        id: "gvoice",
+        platform: .googleVoice,
+        displayName: "Google Voice",
+        version: "v0.2605.0",
+        runtimeKind: .goBinary,
+        credentialStyle: .cookies,
+        artifact: mautrixArtifact(
+            repository: "gvoice",
+            version: "v0.2605.0",
+            assetName: "mautrix-gvoice-darwin-arm64",
+            sha256: "a259d45000dd34c144a71b017d0a193bf13b414d1321d7f2113736cbae0df4da"
+        ),
+        // Read from a running bridge.
+        expectedLoginFlowIDs: ["cookies"],
+        license: "AGPL-3.0-or-later",
+        sourceURL: URL(string: "https://github.com/mautrix/gvoice")!
+    )
+
+    public static let bluesky = BridgeDescriptor(
+        id: "bluesky",
+        platform: .bluesky,
+        displayName: "Bluesky",
+        version: "v0.2510.0",
+        runtimeKind: .goBinary,
+        credentialStyle: .appPassword,
+        artifact: mautrixArtifact(
+            repository: "bluesky",
+            version: "v0.2510.0",
+            assetName: "mautrix-bluesky-darwin-arm64",
+            sha256: "3d73810caa9dcf6c174e465eb94dac7031e3d9d6d9522aa27484d3adc6c29892"
+        ),
+        // Read from a running bridge.
+        expectedLoginFlowIDs: ["password"],
+        license: "AGPL-3.0-or-later",
+        sourceURL: URL(string: "https://github.com/mautrix/bluesky")!
+    )
+
     public static let all: [BridgeDescriptor] = [
         instagram, facebookMessenger, whatsApp, telegram, iMessage,
+        signal, slack, x, linkedIn, googleMessages, googleVoice, bluesky,
     ]
+
+    /// Networks the design lists that Pallo still cannot connect, with the reason.
+    ///
+    /// Recorded rather than left as an absence so the picker can say why, and so a later phase does
+    /// not rediscover the same three dead ends.
+    public static func unavailabilityReason(for platform: Platform) -> String? {
+        guard !isAvailable(platform) else { return nil }
+        switch platform {
+        case .discord:
+            // Installed and checksum-verified successfully, then exited immediately on launch: the
+            // current release is still the pre-`bridgev2` architecture and does not speak the
+            // provisioning protocol every other bridge here uses.
+            return "The Discord bridge has not been rewritten for the protocol Pallo speaks, so it "
+                + "cannot be driven from the app yet."
+        case .googleChat:
+            return "The Google Chat bridge is Python-only and publishes no macOS binary to verify."
+        case .irc:
+            return "The maintained IRC bridges are Python and Node projects with no pinned macOS "
+                + "release, so there is nothing to checksum."
+        case .matrix:
+            return "Connecting a second Matrix homeserver needs multi-account support, which Pallo "
+                + "does not have yet."
+        default:
+            return "Not yet available in Pallo."
+        }
+    }
 
     public static func descriptor(for platform: Platform) -> BridgeDescriptor? {
         all.first { $0.platform == platform }

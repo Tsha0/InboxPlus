@@ -81,11 +81,11 @@ public struct AccountPickerView: View {
                             .foregroundStyle(.green)
                     }
                 }
-                Text(subtitle(descriptor: descriptor, isConnected: isConnected))
+                Text(subtitle(platform: platform, descriptor: descriptor, isConnected: isConnected))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
-                    .lineLimit(2, reservesSpace: true)
+                    .lineLimit(3, reservesSpace: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
@@ -95,16 +95,20 @@ public struct AccountPickerView: View {
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.55)
-        .help(subtitle(descriptor: descriptor, isConnected: isConnected))
+        .help(subtitle(platform: platform, descriptor: descriptor, isConnected: isConnected))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(platform.accessibilityLabel)
-        .accessibilityHint(subtitle(descriptor: descriptor, isConnected: isConnected))
+        .accessibilityHint(subtitle(platform: platform, descriptor: descriptor, isConnected: isConnected))
         .accessibilityIdentifier("picker-\(platform.rawValue)")
     }
 
-    private func subtitle(descriptor: BridgeDescriptor?, isConnected: Bool) -> String {
+    /// An unavailable network says why it is unavailable. "Not yet available" invites the user to
+    /// keep checking back for something that is blocked on a reason they could have been told.
+    private func subtitle(platform: Platform, descriptor: BridgeDescriptor?, isConnected: Bool) -> String {
         if isConnected { return "Already connected" }
-        guard let descriptor else { return "Not yet available in Pallo" }
+        guard let descriptor else {
+            return BridgeCatalog.unavailabilityReason(for: platform) ?? "Not yet available in Pallo"
+        }
         return descriptor.credentialStyle.summary
     }
 }
