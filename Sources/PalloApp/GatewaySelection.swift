@@ -27,9 +27,10 @@ enum GatewaySelection {
     static func makeServices(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Services {
-        guard let profileName = environment[profileEnvironmentKey], !profileName.isEmpty else {
+        guard let profileName = resolveProfileName(environment: environment) else {
             FileHandle.standardError.write(Data(
-                "Pallo: no \(profileEnvironmentKey) set — running on demo fixtures.\n".utf8
+                ("Pallo: no \(profileEnvironmentKey) set and no prepared profile found — "
+                    + "running on demo fixtures.\n").utf8
             ))
             return Services(
                 gateway: InMemoryMessagingGateway(seed: Fixtures.demoSnapshot),
@@ -105,6 +106,35 @@ enum GatewaySelection {
 }
 
 extension GatewaySelection {
+    /// Decides which profile to attach to.
+    ///
+    /// The environment variable wins, but an app launched from Finder inherits no environment at
+    /// all — so a bundled Pallo would always fall back to fixtures no matter how many real profiles
+    /// existed. When exactly one profile is prepared, that is unambiguously the one meant, and
+    /// using it is what makes a double-clicked app behave like the one started from a shell.
+    ///
+    /// With several profiles nothing is guessed: picking one at random would silently attach to the
+    /// wrong account.
+    static func resolveProfileName(environment: [String: String]) -> String? {
+        if let named = environment[profileEnvironmentKey], !named.isEmpty { return named }
+
+        guard let root = try? RuntimeProfileService.developerRuntimeRoot(environment: environment),
+              let entries = try? FileManager.default.contentsOfDirectory(
+                  at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+              ) else { return nil }
+
+        // Ask the store whether a profile is real rather than testing for a filename: the layout
+        // is the store's business, and duplicating it here is how this silently stops working the
+        // next time that file is renamed.
+        let prepared = entries.filter { entry in
+            guard let paths = try? RuntimePaths(root: root, profileName: entry.lastPathComponent),
+                  let state = try? RuntimeProfileStore(paths: paths).load() else { return false }
+            return state != nil
+        }
+        guard prepared.count == 1 else { return nil }
+        return prepared[0].lastPathComponent
+    }
+
     /// Opens the local Messages database, or explains why it could not.
     ///
     /// Full Disk Access is the usual reason and it cannot be requested programmatically, so the

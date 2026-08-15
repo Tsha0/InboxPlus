@@ -30,7 +30,47 @@ for the full gap list.
 - Homebrew CPython 3.12 — for the local Synapse runtime
 - `cmake` (`brew install cmake`) — needed once per profile to build libolm
 
-## Quick start
+## Install
+
+Build a real, double-clickable `Pallo.app` and put it in `/Applications`:
+
+```bash
+Scripts/build-app.sh --install
+```
+
+Then prepare a profile and start the runtime, which must stay running while you use Pallo:
+
+```bash
+/Applications/Pallo.app/Contents/MacOS/PalloRuntimeCLI bootstrap --profile demo \
+  --python /opt/homebrew/opt/python@3.12/bin/python3.12
+/Applications/Pallo.app/Contents/MacOS/PalloRuntimeCLI start --profile demo
+```
+
+Open Pallo from Finder. With exactly one prepared profile it attaches automatically; with several,
+set `PALLO_PROFILE` to name one, because guessing would silently attach to the wrong account.
+
+This build is **ad-hoc signed and runs on this Mac only**. Gatekeeper on anyone else's Mac will
+refuse it — distributing to other people needs an Apple Developer ID and
+`Scripts/package-release.sh`, which has never been run. See
+[Phase 7](docs/testing/phase-7-lifecycle-and-security.md).
+
+> Set `PALLO_SIGNING_IDENTITY` before building to sign with a real or self-signed certificate.
+> Worth doing: macOS ties Full Disk Access and Automation grants to a code identity, and an ad-hoc
+> signature's identity changes on every build — which is why permissions are re-requested after
+> every rebuild.
+
+### iMessage
+
+iMessage is read from the local Messages database rather than bridged, so it needs a permission
+rather than a password:
+
+1. **System Settings → Privacy & Security → Full Disk Access**
+2. Add `/Applications/Pallo.app`
+3. **Quit and reopen Pallo** — macOS only applies the grant to a newly launched process
+
+Sending prompts separately for Automation control of Messages the first time.
+
+## Developing
 
 ```bash
 swift build
@@ -85,7 +125,7 @@ guesses what a network will ask for.
 | Facebook Messenger | web sign-in | installs and registers |
 | WhatsApp | QR pairing | installs and registers |
 | Telegram | phone number | installs and registers |
-| iMessage | macOS permissions | permission probe only |
+| iMessage | macOS permissions | reads and sends natively |
 
 **Only Instagram has been driven with a real account.** The rest install, register, supervise and
 serve their genuine login flows; that is not the same as proven.
@@ -109,6 +149,7 @@ PalloApp          the executable; chooses fixtures or a live profile at launch
   PalloMatrix     Matrix Rust SDK, event normalization, invite policy   (SDK stays here)
   PalloBridge     bridge catalog and login protocol, as pure data
   PalloBridgeService  installer, configuration, supervision, provisioning
+  PalloIMessage   the local Messages database and Apple-event sending
   PalloRuntime    Synapse bootstrap, process supervision, backups, diagnostics, SBOM
 PalloRuntimeCLI   the developer tool for everything above
 ```
@@ -164,7 +205,7 @@ Per-phase acceptance notes, including what each phase deliberately did *not* del
 ## Tests
 
 ```bash
-swift test                    # 531 tests, no network, no homeserver
+swift test                    # 563 tests, no network, no homeserver
 ```
 
 Tests that need a real Synapse are opt-in, because they are slow and download things:
