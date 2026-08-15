@@ -37,7 +37,7 @@ struct PalloApp: App {
 
     var body: some Scene {
         WindowGroup("Pallo", id: "main") {
-            RootView(model: model)
+            RootView(model: model, makeLoginSession: BridgeSelection.makeProvider())
                 .task {
                     do { try await model.start() }
                     catch is CancellationError {}

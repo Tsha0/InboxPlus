@@ -186,6 +186,70 @@ public final class PalloAppModel {
         !disconnectedAccountIDs.contains(accountID)
     }
 
+    // MARK: - Accounts
+
+    /// When each account last produced traffic, so "connected" can be distinguished from "silent".
+    public private(set) var lastActivityByAccount: [String: Date] = [:]
+
+    public func lastActivity(for accountID: String) -> Date? {
+        lastActivityByAccount[accountID]
+    }
+
+    public var platformsWithAccounts: Set<Platform> {
+        Set(accounts.map(\.platform))
+    }
+
+    /// Records a newly connected account.
+    ///
+    /// The one-account-per-platform rule is enforced here as well as in the picker: the picker
+    /// disables an already-connected network, but a view is a convenience, not the rule.
+    public func addAccount(_ account: ConnectedAccount) throws {
+        try AccountPolicy.validate(accounts + [account])
+        accounts.append(account)
+        disconnectedAccountIDs.remove(account.id)
+        rebuildInbox()
+    }
+
+    /// Marks an account disconnected without touching anything it delivered.
+    ///
+    /// History stays: a disconnected account is a connection problem, and deleting someone's
+    /// messages is never the right response to one.
+    public func disconnect(accountID: String) {
+        guard accounts.contains(where: { $0.id == accountID }) else { return }
+        disconnectedAccountIDs.insert(accountID)
+        health = .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
+    }
+
+    public func reconnect(accountID: String) {
+        disconnectedAccountIDs.remove(accountID)
+        if disconnectedAccountIDs.isEmpty { health = .healthy }
+    }
+
+    /// Removes an account and everything it brought with it.
+    ///
+    /// Separate from `disconnect` and destructive on purpose — the caller must have confirmed with
+    /// the user, because nothing here can be undone.
+    public func eraseAccount(accountID: String) {
+        accounts.removeAll { $0.id == accountID }
+        let removedIdentityIDs = Set(
+            identities.filter { $0.accountID == accountID }.map(\.id)
+        )
+        identities.removeAll { $0.accountID == accountID }
+        for route in messagesByRoute.keys where route.accountID == accountID {
+            messagesByRoute[route] = nil
+        }
+        conversations.removeAll { $0.accountID == accountID }
+        for identityID in removedIdentityIDs {
+            guard let personID = directory.personID(linkedTo: identityID) else { continue }
+            try? directory.unlink(remoteIdentityID: identityID, from: personID)
+        }
+        disconnectedAccountIDs.remove(accountID)
+        lastActivityByAccount[accountID] = nil
+        if openRoute?.accountID == accountID { detailSelection = .empty }
+        if disconnectedAccountIDs.isEmpty, case .needsAttention = health { health = .healthy }
+        rebuildInbox()
+    }
+
     public func captureDraft(to route: ConversationRoute) -> DraftSubmission {
         let previousGeneration = latestSendGenerationByRoute[route, default: 0]
         precondition(previousGeneration < UInt64.max, "Send generation exhausted")
@@ -268,6 +332,10 @@ public final class PalloAppModel {
         identities = snapshot.identities
         conversations = snapshot.conversations
         messagesByRoute = snapshot.messagesByRoute.mapValues { $0.sorted { $0.timestamp < $1.timestamp } }
+        lastActivityByAccount = Dictionary(
+            snapshot.conversations.map { ($0.accountID, $0.latestActivity) },
+            uniquingKeysWith: max
+        )
         rebuildInbox()
     }
 
@@ -415,6 +483,10 @@ public final class PalloAppModel {
                 messages.insert(message, at: insertion ?? messages.endIndex)
             }
             messagesByRoute[message.route] = messages
+            let accountID = message.route.accountID
+            if message.timestamp > lastActivityByAccount[accountID] ?? .distantPast {
+                lastActivityByAccount[accountID] = message.timestamp
+            }
             if
                 let conversationIndex = conversations.firstIndex(where: { $0.route == message.route }),
                 message.timestamp > conversations[conversationIndex].latestActivity

@@ -1,12 +1,42 @@
 import SwiftUI
+import PalloBridge
+import PalloCore
 import PalloFeatures
+
+/// Opens a login session against the bridge for one network.
+///
+/// Supplied by the app layer, which owns the bridge processes. `PalloUI` stays ignorant of how a
+/// bridge is installed or supervised — it only renders the conversation the bridge asks for.
+public typealias BridgeLoginSessionProvider =
+    @MainActor (Platform) async throws -> any BridgeLoginSession
 
 public struct RootView: View {
     @Bindable var model: PalloAppModel
     @State private var section: SidebarSection = .inbox
+    @State private var accountFlow: AccountFlow?
+    @State private var connectFailure: String?
 
-    public init(model: PalloAppModel) {
+    private let makeLoginSession: BridgeLoginSessionProvider?
+
+    enum AccountFlow: Identifiable {
+        case picker
+        case login(Platform, BridgeLoginController)
+        case iMessagePermissions
+
+        // The platform is carried alongside the controller because the controller is main-actor
+        // isolated and `id` is not.
+        var id: String {
+            switch self {
+            case .picker: "picker"
+            case let .login(platform, _): "login-\(platform.rawValue)"
+            case .iMessagePermissions: "imessage"
+            }
+        }
+    }
+
+    public init(model: PalloAppModel, makeLoginSession: BridgeLoginSessionProvider? = nil) {
         self.model = model
+        self.makeLoginSession = makeLoginSession
     }
 
     private var selectedInboxID: InboxItem.ID? {
@@ -44,6 +74,86 @@ public struct RootView: View {
             }
         }
         .frame(minWidth: 900, minHeight: 600)
+        .sheet(item: $accountFlow) { flow in
+            switch flow {
+            case .picker:
+                AccountPickerView(
+                    connectedPlatforms: model.platformsWithAccounts,
+                    onSelect: startConnecting,
+                    onCancel: { accountFlow = nil }
+                )
+            case let .login(platform, controller):
+                LoginStepView(
+                    controller: controller,
+                    onFinished: { userLoginID in
+                        finishConnecting(platform: platform, userLoginID: userLoginID)
+                    },
+                    onCancel: { accountFlow = nil }
+                )
+            case .iMessagePermissions:
+                IMessagePermissionsView(
+                    onConnect: {
+                        finishConnecting(platform: .iMessage, userLoginID: "imessage-local")
+                    },
+                    onCancel: { accountFlow = nil }
+                )
+            }
+        }
+        .alert(
+            "Could not start the bridge",
+            isPresented: Binding(
+                get: { connectFailure != nil },
+                set: { if !$0 { connectFailure = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { connectFailure = nil }
+        } message: {
+            Text(connectFailure ?? "")
+        }
+    }
+
+    private func startConnecting(_ platform: Platform) {
+        // iMessage authenticates through macOS rather than a bridge process, so it takes the
+        // permissions route instead of a login flow.
+        guard platform != .iMessage else {
+            accountFlow = .iMessagePermissions
+            return
+        }
+        guard let makeLoginSession else {
+            connectFailure = """
+            This build is running on demo fixtures, so there is no bridge to sign in to. \
+            Start a runtime profile and relaunch with PALLO_PROFILE set.
+            """
+            accountFlow = nil
+            return
+        }
+        Task { @MainActor in
+            do {
+                let session = try await makeLoginSession(platform)
+                accountFlow = .login(
+                    platform,
+                    BridgeLoginController(platform: platform, session: session)
+                )
+            } catch {
+                connectFailure = String(describing: error)
+                accountFlow = nil
+            }
+        }
+    }
+
+    private func finishConnecting(platform: Platform, userLoginID: String) {
+        do {
+            try model.addAccount(
+                ConnectedAccount(
+                    id: "\(platform.rawValue):\(userLoginID)",
+                    platform: platform,
+                    displayName: userLoginID.isEmpty ? platform.accessibilityLabel : userLoginID
+                )
+            )
+        } catch {
+            connectFailure = String(describing: error)
+        }
+        accountFlow = nil
     }
 
     @ViewBuilder private var sidebar: some View {
@@ -65,7 +175,12 @@ public struct RootView: View {
             AccountsListView(
                 accounts: model.accounts,
                 health: model.health,
-                isConnected: model.isConnected
+                isConnected: model.isConnected,
+                lastActivity: { model.lastActivity(for: $0) },
+                onAddAccount: { accountFlow = .picker },
+                onDisconnect: { model.disconnect(accountID: $0.id) },
+                onReconnect: { model.reconnect(accountID: $0.id) },
+                onErase: { model.eraseAccount(accountID: $0.id) }
             )
         }
     }
