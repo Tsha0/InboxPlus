@@ -841,7 +841,14 @@ public final class InterruptMonitor: @unchecked Sendable {
     private var continuation: CheckedContinuation<Void, Never>?
     private var fired = false
 
-    public init(signals: [Int32] = [SIGINT, SIGTERM]) {
+    private var parentWatchdog: DispatchSourceTimer?
+
+    /// - Parameter exitWhenParentExits: also stop when the process that launched this one goes
+    ///   away. The app runs the runtime as a child, and a signal-only shutdown leaves the whole
+    ///   runtime alive and holding the profile lock whenever the app dies without getting to send
+    ///   one — a crash, a force quit, `kill -9`. Noticing the parent is gone is the only shutdown
+    ///   path that survives those, because SIGKILL cannot be caught by the thing being killed.
+    public init(signals: [Int32] = [SIGINT, SIGTERM], exitWhenParentExits: Bool = false) {
         for number in signals { Darwin.signal(number, SIG_IGN) }
         sources = signals.map { number in
             DispatchSource.makeSignalSource(signal: number, queue: .global())
@@ -850,10 +857,31 @@ public final class InterruptMonitor: @unchecked Sendable {
             source.setEventHandler { [weak self] in self?.fire() }
             source.resume()
         }
+        if exitWhenParentExits { watchParentProcess() }
+    }
+
+    /// Fires once this process is reparented, which is what being orphaned looks like.
+    ///
+    /// Polled rather than observed: `kqueue`'s `NOTE_EXIT` watches a child, and there is no
+    /// equivalent for watching a parent. A second of latency on shutdown costs nothing.
+    private func watchParentProcess() {
+        let original = getppid()
+        // Already orphaned before the watch even started — launched from something already gone.
+        guard original > 1 else { fire(); return }
+
+        let timer = DispatchSource.makeTimerSource(queue: .global())
+        timer.schedule(deadline: .now() + 1, repeating: 1)
+        timer.setEventHandler { [weak self] in
+            guard getppid() != original else { return }
+            self?.fire()
+        }
+        timer.resume()
+        parentWatchdog = timer
     }
 
     deinit {
         for source in sources { source.cancel() }
+        parentWatchdog?.cancel()
     }
 
     public func wait() async {

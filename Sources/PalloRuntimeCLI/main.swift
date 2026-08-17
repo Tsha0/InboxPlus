@@ -75,8 +75,8 @@ func execute(_ command: RuntimeCommand) async throws -> String {
         python=\(receipt.pythonVersion) synapse=\(receipt.synapseVersion) \
         packages=\(receipt.installedPackages.count)
         """
-    case .start:
-        let monitor = InterruptMonitor()
+    case let .start(_, exitWithParent):
+        let monitor = InterruptMonitor(exitWhenParentExits: exitWithParent)
         let runtime = BridgeRuntime(paths: service.paths)
         try await service.withRunningRuntime(
             onReady: { snapshot in

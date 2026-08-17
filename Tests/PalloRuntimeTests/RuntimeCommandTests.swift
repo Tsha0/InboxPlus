@@ -48,7 +48,12 @@ import Testing
 }
 
 @Test(arguments: [
-    (["start", "--profile", "alpha"], RuntimeCommand.start(profile: "alpha")),
+    (["start", "--profile", "alpha"], RuntimeCommand.start(profile: "alpha", exitWithParent: false)),
+    // The app passes this so its runtime does not outlive it; a shell session leaves it off.
+    (
+        ["start", "--profile", "alpha", "--exit-with-parent"],
+        RuntimeCommand.start(profile: "alpha", exitWithParent: true)
+    ),
     (["status", "--profile", "alpha"], RuntimeCommand.status(profile: "alpha")),
     (["stop", "--profile", "alpha"], RuntimeCommand.stop(profile: "alpha")),
 ])
