@@ -9,9 +9,12 @@ import PalloRuntime
 
 /// Chooses which gateway the app runs on at launch.
 ///
-/// Phase 3 has no onboarding yet, so the real Matrix runtime is selected explicitly by naming a
-/// prepared developer profile. Without one the app runs on fixtures — and says so, rather than
-/// presenting demo data as if it were live.
+/// A prepared profile is selected by name, or discovered when there is exactly one. Without one the
+/// app runs on fixtures — and says so, rather than presenting demo data as if it were live.
+///
+/// Nothing here waits for the runtime. Selecting a profile only decides *what* to attach to; the
+/// homeserver and the bridges are started behind the first use of the gateway, because a cold
+/// runtime takes tens of seconds and the window has to appear now.
 enum GatewaySelection {
     /// Set `PALLO_PROFILE=<name>` to run against a prepared, running developer profile.
     static let profileEnvironmentKey = "PALLO_PROFILE"
@@ -47,73 +50,21 @@ enum GatewaySelection {
         do {
             let root = try RuntimeProfileService.developerRuntimeRoot(environment: environment)
             let paths = try RuntimePaths(root: root, profileName: profileName)
-            let state = try RuntimeProfileStore(paths: paths).load()
-            guard let state, let port = state.snapshot.loopbackPort else {
-                throw GatewaySelectionError.profileNotRunning(profileName)
-            }
 
-            let store = MatrixClientStore(profile: paths)
-            let provisioner = try MatrixAccountProvisioner(
-                baseURL: URL(string: "http://127.0.0.1:\(port)")!,
-                serverName: state.serverName,
-                registrationSecret: state.registrationSecret
-            )
-            let client = PalloMatrixClient(
-                homeserverURL: URL(string: "http://127.0.0.1:\(port)")!,
-                store: store,
-                provisioner: provisioner
-            )
-            // Bridges invite this account into the portals they create, so the gateway needs to
-            // know which local users are allowed to do that. Anything not in a prepared bridge's
-            // own namespace is ignored.
-            let prepared = (try? BridgeRuntime(paths: paths).prepared()) ?? []
-            let bridgeIDs = prepared.map(\.bridgeID)
-            // A portal room belongs to the network that created it, not to Matrix. The catalog is
-            // what knows which network a bridge identifier means, and it lives here rather than in
-            // the gateway so the Matrix layer keeps no opinion about bridges.
-            let bridgeAccounts = prepared.compactMap { record -> BridgeAccountDescriptor? in
-                guard let descriptor = BridgeCatalog.all.first(where: { $0.id == record.bridgeID })
-                else { return nil }
-                return BridgeAccountDescriptor(
-                    bridgeID: record.bridgeID,
-                    platform: descriptor.platform,
-                    displayName: descriptor.displayName
-                )
-            }
-            FileHandle.standardError.write(Data(
-                """
-                Pallo: using local Matrix runtime '\(profileName)' on port \(port)\
-                \(bridgeIDs.isEmpty ? "" : " with bridges: \(bridgeIDs.joined(separator: ", "))").
+            // The media controller exists before the runtime does, so the transcript can render
+            // immediately and attach its loader once there is a homeserver to fetch from.
+            let media = MediaController()
 
-                """.utf8
-            ))
-            // Media lives beside the rest of the profile's private data and is bounded, so a long
-            // history cannot fill the disk on its own.
-            // Per profile, not per runtime root: two profiles are two separate installations and
-            // must not share cached message content.
-            let cacheDirectory = paths.profile.appendingPathComponent("media")
-            let cache = try MediaCache(directory: cacheDirectory)
-            let loader = MediaLoader(
-                cache: cache,
-                fetcher: MatrixMediaFetcher(client: client),
-                freeSpace: VolumeFreeSpaceReporter(url: cacheDirectory)
+            let gateway = DeferredRuntimeGateway(
+                paths: paths,
+                profileName: profileName,
+                build: { state in try makeMatrixGateway(paths: paths, state: state) },
+                onReady: { state in await attachMedia(media, paths: paths, state: state) }
             )
-
-            let matrix = MatrixMessagingGateway(
-                client: client,
-                invitePolicy: .forBridges(ids: bridgeIDs, serverName: state.serverName),
-                bridgeAccounts: bridgeAccounts
-            )
-
-            // iMessage never reaches the homeserver, so it sits beside the Matrix gateway rather
-            // than behind it. It is only added when the Messages database is actually readable:
-            // offering a source that will throw on every read is worse than not offering it.
-            var sources: [any MessagingGateway] = [matrix]
-            if let imessage = makeIMessageGateway() { sources.append(imessage) }
 
             return Services(
-                gateway: sources.count == 1 ? matrix : CompositeMessagingGateway(sources),
-                media: MediaController(loader: loader),
+                gateway: gateway,
+                media: media,
                 // Real accounts start with no linked people. Linking is something the user does.
                 directory: ContactDirectory()
             )
@@ -132,6 +83,96 @@ enum GatewaySelection {
 }
 
 extension GatewaySelection {
+    /// Builds the real gateway, once the homeserver behind it is answering.
+    static func makeMatrixGateway(
+        paths: RuntimePaths,
+        state: RuntimeProfileState
+    ) throws -> any MessagingGateway {
+        guard let port = state.snapshot.loopbackPort else {
+            throw GatewaySelectionError.profileNotRunning(paths.profile.lastPathComponent)
+        }
+        let homeserver = URL(string: "http://127.0.0.1:\(port)")!
+        let client = PalloMatrixClient(
+            homeserverURL: homeserver,
+            store: MatrixClientStore(profile: paths),
+            provisioner: try MatrixAccountProvisioner(
+                baseURL: homeserver,
+                serverName: state.serverName,
+                registrationSecret: state.registrationSecret
+            )
+        )
+
+        // Bridges invite this account into the portals they create, so the gateway needs to know
+        // which local users are allowed to do that. Anything not in a prepared bridge's own
+        // namespace is ignored.
+        let prepared = (try? BridgeRuntime(paths: paths).prepared()) ?? []
+        let bridgeIDs = prepared.map(\.bridgeID)
+        // A portal room belongs to the network that created it, not to Matrix. The catalog is what
+        // knows which network a bridge identifier means, and it lives here rather than in the
+        // gateway so the Matrix layer keeps no opinion about bridges.
+        let bridgeAccounts = prepared.compactMap { record -> BridgeAccountDescriptor? in
+            guard let descriptor = BridgeCatalog.all.first(where: { $0.id == record.bridgeID })
+            else { return nil }
+            return BridgeAccountDescriptor(
+                bridgeID: record.bridgeID,
+                platform: descriptor.platform,
+                displayName: descriptor.displayName
+            )
+        }
+        FileHandle.standardError.write(Data(
+            """
+            Pallo: using local Matrix runtime on port \(port)\
+            \(bridgeIDs.isEmpty ? "" : " with bridges: \(bridgeIDs.joined(separator: ", "))").
+
+            """.utf8
+        ))
+
+        let matrix = MatrixMessagingGateway(
+            client: client,
+            invitePolicy: .forBridges(ids: bridgeIDs, serverName: state.serverName),
+            bridgeAccounts: bridgeAccounts
+        )
+
+        // iMessage never reaches the homeserver, so it sits beside the Matrix gateway rather than
+        // behind it. It is only added when the Messages database is actually readable: offering a
+        // source that will throw on every read is worse than not offering it.
+        var sources: [any MessagingGateway] = [matrix]
+        if let imessage = makeIMessageGateway() { sources.append(imessage) }
+        return sources.count == 1 ? matrix : CompositeMessagingGateway(sources)
+    }
+
+    /// Gives the media controller something to download with, now that there is a homeserver.
+    static func attachMedia(
+        _ media: MediaController,
+        paths: RuntimePaths,
+        state: RuntimeProfileState
+    ) async {
+        guard let port = state.snapshot.loopbackPort else { return }
+        // Media lives beside the rest of the profile's private data and is bounded, so a long
+        // history cannot fill the disk on its own. Per profile, not per runtime root: two profiles
+        // are two separate installations and must not share cached message content.
+        let cacheDirectory = paths.profile.appendingPathComponent("media")
+        guard let cache = try? MediaCache(directory: cacheDirectory) else { return }
+
+        let homeserver = URL(string: "http://127.0.0.1:\(port)")!
+        guard let provisioner = try? MatrixAccountProvisioner(
+            baseURL: homeserver,
+            serverName: state.serverName,
+            registrationSecret: state.registrationSecret
+        ) else { return }
+        let client = PalloMatrixClient(
+            homeserverURL: homeserver,
+            store: MatrixClientStore(profile: paths),
+            provisioner: provisioner
+        )
+        let loader = MediaLoader(
+            cache: cache,
+            fetcher: MatrixMediaFetcher(client: client),
+            freeSpace: VolumeFreeSpaceReporter(url: cacheDirectory)
+        )
+        await MainActor.run { media.attach(loader: loader) }
+    }
+
     /// Decides which profile to attach to.
     ///
     /// The environment variable wins, but an app launched from Finder inherits no environment at

@@ -21,7 +21,10 @@ public final class MediaController {
         case paused(String)
     }
 
-    private let loader: MediaLoader?
+    /// Not a `let`: the loader needs the running homeserver behind it, and the runtime is started
+    /// after the window appears. Until it arrives the controller behaves exactly like one that
+    /// never had a loader — it shows placeholders rather than pretending to download.
+    private var loader: MediaLoader?
     private var states: [String: State] = [:]
 
     /// Set when the disk is under pressure, so the UI can say so once rather than per attachment.
@@ -31,6 +34,18 @@ public final class MediaController {
     /// placeholder rather than reaching for a network that is not there.
     public init(loader: MediaLoader? = nil) {
         self.loader = loader
+    }
+
+    /// Supplies the loader once the runtime it needs is serving.
+    ///
+    /// Attachments that were asked for while there was nothing to fetch them with are left `idle`,
+    /// so the next time their view appears they load rather than staying blank forever.
+    public func attach(loader: MediaLoader) {
+        self.loader = loader
+        states = states.filter { _, state in
+            if case .idle = state { return false }
+            return true
+        }
     }
 
     public func state(for attachment: MessageAttachment) -> State {

@@ -53,7 +53,7 @@ public enum BridgeCLIAction: String, Equatable, Sendable, CaseIterable {
 public enum RuntimeCommand: Equatable, Sendable {
     case bridge(profile: String, action: BridgeCLIAction, network: String?)
     case bootstrap(profile: String, python: String)
-    case start(profile: String)
+    case start(profile: String, exitWithParent: Bool)
     case status(profile: String)
     case stop(profile: String)
     case benchmark(profile: String, options: BenchmarkCLIOptions)
@@ -72,7 +72,7 @@ public enum RuntimeCommand: Equatable, Sendable {
         case .sbom:
             nil
         case let .bootstrap(profile, _),
-             let .start(profile),
+             let .start(profile, _),
              let .status(profile),
              let .stop(profile),
              let .benchmark(profile, _),
@@ -100,8 +100,10 @@ public enum RuntimeCommand: Equatable, Sendable {
     Commands:
       bootstrap --profile <name> --python <path>
           Prepare the pinned profile-local Synapse runtime.
-      start --profile <name>
-          Launch the supervised loopback-only Synapse process.
+      start --profile <name> [--exit-with-parent]
+          Launch the supervised loopback-only Synapse process and every prepared bridge.
+          --exit-with-parent also stops when the launching process goes away, which is how
+          the app takes its runtime down with it even if the app is killed outright.
       status --profile <name>
           Report the persisted lifecycle phase and health.
       stop --profile <name>
@@ -138,8 +140,11 @@ public enum RuntimeCommand: Equatable, Sendable {
                 python: try options.require("--python")
             )
         case "start":
-            let options = try Options(tokens, valued: ["--profile"], flags: [])
-            return .start(profile: try options.require("--profile"))
+            let options = try Options(tokens, valued: ["--profile"], flags: ["--exit-with-parent"])
+            return .start(
+                profile: try options.require("--profile"),
+                exitWithParent: options.flag("--exit-with-parent")
+            )
         case "status":
             let options = try Options(tokens, valued: ["--profile"], flags: [])
             return .status(profile: try options.require("--profile"))
