@@ -28,6 +28,7 @@ public final class BridgeLoginController {
 
     private let session: any BridgeLoginSession
     private var activeLoginID: String?
+    private var waitTask: Task<Void, Never>?
 
     public init(platform: Platform, session: any BridgeLoginSession) {
         self.platform = platform
@@ -80,6 +81,9 @@ public final class BridgeLoginController {
     }
 
     public func begin(flowID: String) async {
+        // Switching flows — QR to phone number, say — leaves the first attempt running on the
+        // bridge unless it is ended here.
+        cancel()
         phase = .loadingFlows
         do {
             adopt(try await session.startLogin(flowID: flowID))
@@ -133,7 +137,54 @@ public final class BridgeLoginController {
 
     public func dismissFailure() { failureMessage = nil }
 
+    /// Abandons the login: stops waiting, and tells the bridge to drop what it opened.
+    ///
+    /// Closing the window is not enough. The bridge keeps the attempt — and the WhatsApp session
+    /// behind it — alive until it is told otherwise, and it refuses to start new ones once several
+    /// are in flight, so a few abandoned attempts leave the next login failing for no visible
+    /// reason.
+    public func cancel() {
+        waitTask?.cancel()
+        waitTask = nil
+        guard let loginID = activeLoginID else { return }
+        activeLoginID = nil
+        if case .finished = phase { return }
+        let session = session
+        Task { try? await session.cancelLogin(loginID: loginID) }
+    }
+
+    /// Asks the bridge for whatever follows a waiting step, and adopts it when it arrives.
+    ///
+    /// A `display_and_wait` step only advances while a client is asking: the provisioning API
+    /// answers the wait with a long-lived POST that returns either the next code or the finished
+    /// login. Without it WhatsApp's QR is drawn once and never replaced, so by the time it is
+    /// scanned the code has rotated and the phone reports a connection failure.
+    private func waitForNextStep(after step: BridgeLoginStep) {
+        guard let loginID = activeLoginID ?? step.loginID else {
+            phase = .failed("The bridge did not identify this login attempt.")
+            return
+        }
+        let session = session
+        waitTask = Task { [weak self] in
+            do {
+                let next = try await session.submit(
+                    loginID: loginID,
+                    stepID: step.stepID,
+                    type: step.type,
+                    values: [:]
+                )
+                guard !Task.isCancelled else { return }
+                self?.adopt(next)
+            } catch {
+                guard !Task.isCancelled, let self else { return }
+                phase = .failed(describe(error))
+            }
+        }
+    }
+
     private func adopt(_ step: BridgeLoginStep) {
+        waitTask?.cancel()
+        waitTask = nil
         if let loginID = step.loginID { activeLoginID = loginID }
         failureMessage = nil
         values = [:]
@@ -147,6 +198,7 @@ public final class BridgeLoginController {
                 }
             }
             phase = .step(step)
+            if step.type == .displayAndWait { waitForNextStep(after: step) }
         }
     }
 

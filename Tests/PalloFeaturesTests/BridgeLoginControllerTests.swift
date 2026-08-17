@@ -77,7 +77,13 @@ private actor RecordingSession: BridgeLoginSession {
         return steps[index]
     }
 
+    func cancelLogin(loginID: String) async throws { cancelled.append(loginID) }
+
+    private(set) var cancelled: [String] = []
+
     func recorded() -> [(loginID: String, stepID: String, values: [String: String])] { submissions }
+
+    func cancellations() -> [String] { cancelled }
 }
 
 @MainActor
@@ -224,6 +230,86 @@ private actor RecordingSession: BridgeLoginSession {
 
     // The phone confirms it, not the button; offering Continue would imply the user can hurry it.
     #expect(!controller.canSubmit)
+}
+
+/// Spins the main actor until the controller reaches the state under test, or gives up.
+@MainActor
+private func waitUntil(_ condition: @MainActor () -> Bool) async {
+    for _ in 0..<10_000 {
+        if condition() { return }
+        await Task.yield()
+    }
+}
+
+private func qrStep(data: String, loginID: String = "login-1") -> BridgeLoginStep {
+    BridgeLoginStep(
+        type: .displayAndWait,
+        stepID: "fi.mau.whatsapp.qr",
+        loginID: loginID,
+        displayAndWait: BridgeLoginDisplayAndWaitParams(type: .qr, data: data)
+    )
+}
+
+@MainActor
+@Test func aWaitingStepAsksTheBridgeForTheNextCodeWithoutTheUser() async {
+    // Break caught: WhatsApp's QR rotates every few seconds. Showing the first code and never
+    // asking again leaves a stale code on screen, and scanning it fails on the phone.
+    let session = RecordingSession(
+        flows: [BridgeLoginFlow(id: "qr", name: "QR", description: "")],
+        steps: [qrStep(data: "2@first"), qrStep(data: "2@second"), completeStep(loginID: "login-1")]
+    )
+    let controller = BridgeLoginController(platform: .whatsApp, session: session)
+    await controller.start()
+
+    await waitUntil { controller.currentStep?.displayAndWait?.data == "2@second" }
+    #expect(controller.currentStep?.displayAndWait?.data == "2@second")
+
+    await waitUntil { controller.phase == .finished(userLoginID: "17841400000000000") }
+    #expect(controller.phase == .finished(userLoginID: "17841400000000000"))
+
+    let recorded = await session.recorded()
+    #expect(recorded.count == 2)
+    #expect(recorded.allSatisfy { $0.stepID == "fi.mau.whatsapp.qr" && $0.values.isEmpty })
+}
+
+@MainActor
+@Test func cancellingAWaitingStepStopsAskingTheBridge() async {
+    let session = RecordingSession(
+        flows: [BridgeLoginFlow(id: "qr", name: "QR", description: "")],
+        steps: [qrStep(data: "2@first"), qrStep(data: "2@second"), completeStep(loginID: "login-1")]
+    )
+    let controller = BridgeLoginController(platform: .whatsApp, session: session)
+    await controller.start()
+    controller.cancel()
+
+    for _ in 0..<200 { await Task.yield() }
+    #expect(controller.phase == .step(qrStep(data: "2@first")))
+
+    // Break caught: walking away left the attempt — and the WhatsApp session behind it — running
+    // on the bridge, which refuses to start new logins once several are in flight.
+    var spins = 0
+    while await session.cancellations().isEmpty, spins < 10_000 {
+        await Task.yield()
+        spins += 1
+    }
+    #expect(await session.cancellations() == ["login-1"])
+}
+
+@MainActor
+@Test func aFinishedLoginIsNotCancelledWhenTheWindowCloses() async {
+    let session = RecordingSession(
+        flows: [instagramFlow],
+        steps: [cookieStep(), completeStep()]
+    )
+    let controller = BridgeLoginController(platform: .instagram, session: session)
+    await controller.start()
+    controller.replaceValues(["sessionid": "s", "csrftoken": "c"])
+    await controller.submit()
+    controller.cancel()
+
+    for _ in 0..<200 { await Task.yield() }
+    // Cancelling a login that already produced an account would log the account straight back out.
+    #expect(await session.cancellations().isEmpty)
 }
 
 @MainActor
