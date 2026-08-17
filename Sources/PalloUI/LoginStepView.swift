@@ -42,6 +42,9 @@ public struct LoginStepView: View {
         .frame(minWidth: 560, minHeight: 560)
         .background(.background)
         .task { await controller.start() }
+        // Escape and the close button dismiss the sheet without going through Cancel; the bridge
+        // has to hear about those too.
+        .onDisappear { controller.cancel() }
         .accessibilityIdentifier("login-flow")
     }
 
@@ -108,7 +111,7 @@ public struct LoginStepView: View {
             }
 
         case .displayAndWait:
-            DisplayAndWaitStepView(parameters: step.displayAndWait)
+            DisplayAndWaitStepView(parameters: step.displayAndWait, instructions: step.instructions)
 
         case .clientHTTP, .webAuthn:
             // Modelled so the step decodes and the user is told plainly, rather than the login
@@ -142,8 +145,11 @@ public struct LoginStepView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("Cancel", action: onCancel)
-                .keyboardShortcut(.cancelAction)
+            Button("Cancel") {
+                controller.cancel()
+                onCancel()
+            }
+            .keyboardShortcut(.cancelAction)
             if case let .finished(userLoginID) = controller.phase {
                 Button("Done") { onFinished(userLoginID) }
                     .keyboardShortcut(.defaultAction)
@@ -207,16 +213,25 @@ private extension BridgeLoginInputField {
 /// A `display_and_wait` step: show the code, wait for the bridge to say it was accepted.
 struct DisplayAndWaitStepView: View {
     let parameters: BridgeLoginDisplayAndWaitParams?
+    /// What to do with the code, in full. The header shows this too, but on one truncated line —
+    /// and for a phone-number login the instructions are the only place that says where in
+    /// WhatsApp the code goes, so a code shown without them is a code nobody can use.
+    let instructions: String
 
     var body: some View {
         VStack(spacing: 16) {
             switch parameters?.type {
             case .qr:
                 if let data = parameters?.data, let image = QRCodeRenderer.image(for: data) {
+                    // Drawn at the size it was rendered: resizing resamples the module grid, and a
+                    // camera reads an evenly gridded code far more reliably than a resampled one.
                     Image(nsImage: image)
                         .interpolation(.none)
-                        .resizable()
-                        .frame(width: 240, height: 240)
+                        // A scanner needs the light quiet zone around the code; in dark mode the
+                        // window background supplies the opposite of one.
+                        .padding(16)
+                        .background(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                         .accessibilityLabel("QR code to scan")
                         .accessibilityIdentifier("login-qr")
                 } else {
@@ -229,6 +244,14 @@ struct DisplayAndWaitStepView: View {
                     .accessibilityIdentifier("login-code")
             case .nothing, .none:
                 ProgressView()
+            }
+            if !instructions.isEmpty {
+                Text(instructions)
+                    .font(.callout)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 420)
+                    .accessibilityIdentifier("login-instructions")
             }
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)

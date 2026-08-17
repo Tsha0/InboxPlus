@@ -14,6 +14,12 @@ public protocol BridgeLoginSession: Sendable {
         type: BridgeLoginStepType,
         values: [String: String]
     ) async throws -> BridgeLoginStep
+    /// Tells the bridge an attempt is over, so it drops the connection it opened to the network.
+    ///
+    /// An abandoned attempt is not free: a QR login holds an open WhatsApp session for as long as
+    /// the bridge keeps it, and a bridge refuses to start more once too many are in flight. Walking
+    /// away from a login has to end it on the bridge too, not only in the window.
+    func cancelLogin(loginID: String) async throws
 }
 
 /// A recorded login session that replays a scripted sequence of steps.
@@ -54,4 +60,7 @@ public actor ScriptedLoginSession: BridgeLoginSession {
         }
         return steps[index]
     }
+
+    /// Nothing was opened on a network, so nothing has to be closed.
+    public func cancelLogin(loginID: String) async throws {}
 }

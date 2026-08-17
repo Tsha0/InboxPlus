@@ -11,6 +11,7 @@ import PalloRuntime
 /// request is attributed to nobody and refused as lacking login permission.
 public struct BridgeProvisioningClient: BridgeLoginSession, Sendable {
     private let client: MatrixHTTPClient
+    private let waitClient: MatrixHTTPClient
     private let userID: String
 
     public init(
@@ -23,6 +24,14 @@ public struct BridgeProvisioningClient: BridgeLoginSession, Sendable {
             baseURL: baseURL,
             accessToken: provisioningToken,
             transport: transport
+        )
+        // A `display_and_wait` submission is a long poll: the bridge holds it open until the code
+        // is scanned or rotated, which is far longer than a normal request may take.
+        waitClient = try MatrixHTTPClient(
+            baseURL: baseURL,
+            accessToken: provisioningToken,
+            transport: transport,
+            requestTimeout: .seconds(300)
         )
         self.userID = userID
     }
@@ -55,11 +64,21 @@ public struct BridgeProvisioningClient: BridgeLoginSession, Sendable {
         type: BridgeLoginStepType,
         values: [String: String]
     ) async throws -> BridgeLoginStep {
-        try await client.send(
+        try await (type == .displayAndWait ? waitClient : client).send(
             .post,
             path: ["_matrix", "provision", "v3", "login", "step", loginID, stepID, type.rawValue],
             query: actingUser,
             body: try JSONSerialization.data(withJSONObject: values)
+        )
+    }
+
+    /// Ends an attempt the user walked away from, releasing the network session it holds open.
+    public func cancelLogin(loginID: String) async throws {
+        let _: EmptyMatrixResponse = try await client.send(
+            .post,
+            path: ["_matrix", "provision", "v3", "login", "cancel", loginID],
+            query: actingUser,
+            body: Data("{}".utf8)
         )
     }
 
