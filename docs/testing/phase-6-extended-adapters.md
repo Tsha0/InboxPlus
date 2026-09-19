@@ -41,10 +41,10 @@ Expect 491 tests passing.
 
 ```sh
 for n in signal slack x linkedIn googleMessages googleVoice bluesky; do
-  PalloRuntimeCLI bridge --profile demo --action install --network "$n"
-  PalloRuntimeCLI bridge --profile demo --action prepare --network "$n"
+  MimoRuntimeCLI bridge --profile demo --action install --network "$n"
+  MimoRuntimeCLI bridge --profile demo --action prepare --network "$n"
 done
-PalloRuntimeCLI start --profile demo
+MimoRuntimeCLI start --profile demo
 ```
 
 Network names are case-sensitive and match the `Platform` case, so it is `linkedIn`, not
@@ -84,11 +84,11 @@ guess.
   send and receive, deep links, offline recovery, disconnect, removal. That needs eleven accounts
   on eleven networks. Only Instagram has ever been driven with real credentials, and several of
   these networks ban accounts for using unofficial clients.
-- **Two networks are listed but disabled, with the reason shown.** Both are blocked on work Pallo
+- **Two networks are listed but disabled, with the reason shown.** Both are blocked on work Mimo
   could plausibly do, so hiding them would misrepresent the roadmap as the product.
   - **Discord** — the current release is still the pre-`bridgev2` architecture and does not speak
     the provisioning protocol every other bridge here uses.
-  - **External Matrix** — needs multi-account support, which Pallo does not have.
+  - **External Matrix** — needs multi-account support, which Mimo does not have.
 - **Four networks are not offered at all.** A permanent disabled entry suggests something is
   coming; these are not.
   - **IRC** and **Google Chat** have no route. Their maintained bridges are Python and Node
@@ -97,5 +97,5 @@ guess.
     bridges work and keep their catalog entries, so a profile that already runs one still
     attributes its conversations to the right network instead of reporting them as Matrix. They
     simply cannot be added.
-- **Credential styles are Pallo's expectation, not the bridge's word.** They describe the flow in
+- **Credential styles are Mimo's expectation, not the bridge's word.** They describe the flow in
   the picker before anything is running; what actually gets rendered is whatever the bridge returns.
