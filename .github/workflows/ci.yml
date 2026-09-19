@@ -18,7 +18,7 @@ permissions:
 jobs:
   test:
     name: Build and test
-    # Pallo is macOS-only: AppKit, SwiftUI, CryptoKit, Keychain and the Messages database all are.
+    # Mimo is macOS-only: AppKit, SwiftUI, CryptoKit, Keychain and the Messages database all are.
     # There is no Linux job to add because there is nothing that would compile there.
     runs-on: macos-latest
     timeout-minutes: 45
@@ -49,7 +49,7 @@ jobs:
       - name: Build
         run: swift build --build-tests
 
-      # The live-runtime and live-bridge tests are opt-in behind PALLO_RUNTIME_PYTHON and are
+      # The live-runtime and live-bridge tests are opt-in behind MIMO_RUNTIME_PYTHON and are
       # deliberately NOT enabled here: they start a real Synapse and download real bridge binaries,
       # which makes a CI failure a report about the network rather than about the change.
       - name: Test
@@ -78,21 +78,21 @@ jobs:
           restore-keys: spm-${{ runner.os }}-
 
       - name: Regenerate the brand marks
-        run: swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/PalloUI/PlatformGlyphPaths.swift
+        run: swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/MimoUI/PlatformGlyphPaths.swift
 
       - name: Regenerate the app icon
-        run: swift Scripts/make-icon.swift docs/assets/pallo-mascot.png Resources/AppIcon.icns
+        run: swift Scripts/make-icon.swift docs/assets/mimo-mascot.png Resources/AppIcon.icns
 
       - name: Regenerate the bill of materials
-        run: swift run PalloRuntimeCLI sbom --output docs/sbom.cdx.json
+        run: swift run MimoRuntimeCLI sbom --output docs/sbom.cdx.json
 
       - name: Fail if anything drifted
         run: |
           if ! git diff --quiet; then
             echo "::error::A generated file is out of date. Regenerate and commit:"
-            echo "  swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/PalloUI/PlatformGlyphPaths.swift"
-            echo "  swift Scripts/make-icon.swift docs/assets/pallo-mascot.png Resources/AppIcon.icns"
-            echo "  swift run PalloRuntimeCLI sbom --output docs/sbom.cdx.json"
+            echo "  swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/MimoUI/PlatformGlyphPaths.swift"
+            echo "  swift Scripts/make-icon.swift docs/assets/mimo-mascot.png Resources/AppIcon.icns"
+            echo "  swift run MimoRuntimeCLI sbom --output docs/sbom.cdx.json"
             git diff --stat
             exit 1
           fi
@@ -124,16 +124,16 @@ jobs:
 
       - name: Verify the bundle
         run: |
-          codesign --verify --strict build/Pallo.app
+          codesign --verify --strict build/Mimo.app
           # The CLI ships inside the bundle and is how a profile is prepared; if it cannot run,
           # the bundle is useless even though it assembled.
-          build/Pallo.app/Contents/MacOS/PalloRuntimeCLI sbom > /dev/null
+          build/Mimo.app/Contents/MacOS/MimoRuntimeCLI sbom > /dev/null
           echo "Bundle assembled and its CLI runs."
 
       - name: Upload the unsigned bundle
         uses: actions/upload-artifact@v4
         with:
-          name: Pallo-unsigned-${{ github.sha }}
-          path: build/Pallo.app
+          name: Mimo-unsigned-${{ github.sha }}
+          path: build/Mimo.app
           retention-days: 14
           if-no-files-found: error

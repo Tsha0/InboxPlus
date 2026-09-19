@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-python_path=${PALLO_RUNTIME_PYTHON:-/opt/homebrew/opt/python@3.12/bin/python3.12}
+python_path=${MIMO_RUNTIME_PYTHON:-/opt/homebrew/opt/python@3.12/bin/python3.12}
 temporary_runtime=$(mktemp -d)
 temporary_lock=$(mktemp Runtime/Synapse/requirements.lock.XXXXXX)
 trap 'rm -rf "$temporary_runtime"; rm -f "$temporary_lock"' EXIT INT TERM

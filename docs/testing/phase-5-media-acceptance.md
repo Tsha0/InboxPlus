@@ -2,7 +2,7 @@
 
 Phase 5 turns the transcript from a list of sentences into rendered content: photos are drawn,
 audio and video play inline, files open in Finder, app-only content offers a verified way out to
-its own app, and anything Pallo cannot draw still says what the bridge reported.
+its own app, and anything Mimo cannot draw still says what the bridge reported.
 
 ## What Phase 5 changed
 
@@ -10,14 +10,14 @@ Phase 3 normalized every Matrix event into a `Message` and then threw away what 
 gateway called `normalize(...).message` and dropped the kind. An image arrived as the word
 "Photo". Phase 5 carries the payload the whole way:
 
-- `MessageKind` and `MessageAttachment` in `PalloCore`, so the renderer switches on content
+- `MessageKind` and `MessageAttachment` in `MimoCore`, so the renderer switches on content
   without importing an SDK.
 - `MatrixEventNormalizer` populates attachments — source, thumbnail, mime type, size, dimensions,
   duration — from what the bridge actually reported.
-- `MediaCache` and `MediaLoader` in `PalloGateway`: lazy, bounded, LRU, private on disk.
-- `MediaController` in `PalloFeatures` makes loading observable per attachment.
-- `AttachmentView` in `PalloUI` renders each kind, including the fallbacks.
-- `DeepLinkVerifier` in `PalloCore` decides what may be handed to the system.
+- `MediaCache` and `MediaLoader` in `MimoGateway`: lazy, bounded, LRU, private on disk.
+- `MediaController` in `MimoFeatures` makes loading observable per attachment.
+- `AttachmentView` in `MimoUI` renders each kind, including the fallbacks.
+- `DeepLinkVerifier` in `MimoCore` decides what may be handed to the system.
 - `OutgoingAttachment` and `ConversationCapabilities` add the sending half, with the composer's
   attach control driven by what the conversation actually accepts.
 
@@ -28,7 +28,7 @@ swift test && swift build -c release && git diff --check
 ```
 
 Expect 489 tests passing (419 before Phase 5). The live-runtime tests remain opt-in behind
-`PALLO_RUNTIME_PYTHON`, unchanged.
+`MIMO_RUNTIME_PYTHON`, unchanged.
 
 ## 2. See media arrive
 
@@ -53,7 +53,7 @@ which is the cheapest possible way to observe that the cache is genuinely lazy.
 
 ## 3. Send an attachment
 
-Open a conversation and click the paperclip. The system's own open panel appears, so Pallo reads
+Open a conversation and click the paperclip. The system's own open panel appears, so Mimo reads
 only the file actually chosen. The file is staged as a removable chip below the composer and is not
 sent until Send is pressed — staging is not sending.
 
@@ -73,7 +73,7 @@ never steer a write.
 **Cleanup never destroys anything irreplaceable.** Eviction is least-recently-used and touches only
 reproducible files. A file that cannot be fetched again is kept even when that leaves the cache
 over budget — being over budget is a smaller harm than losing something permanently. Under disk
-pressure Pallo stops downloading and says so, in words that state nothing was deleted; a silent
+pressure Mimo stops downloading and says so, in words that state nothing was deleted; a silent
 stop reads as a broken app, and a user who fears their history was trimmed will not trust it again.
 
 **Only a verified link leaves the app.** An **Open in app** action is built solely from an `https`
@@ -92,7 +92,7 @@ transient network blip must not cost a photo permanently.
 **Nothing is invented.** A duration, size or dimension the bridge did not report is left out rather
 than shown as zero. A `0:00` under a voice message is a claim; absence is the truth.
 
-**Pallo does not autoplay.** Audio and video present controls and wait.
+**Mimo does not autoplay.** Audio and video present controls and wait.
 
 **A file is refused when it is chosen, not when it is sent.** Kind and size are checked against the
 conversation's declared capabilities at the moment of picking, and the refusal names both the file's
@@ -112,7 +112,7 @@ dropping it would lose their choice with nothing to show for it.
   is the same code-identity problem that causes the repeated permission prompts.
 - **Galleries render as a stack, not a grid.** Every item is present and individually loadable;
   the layout is simply one per row.
-- **Link previews are not generated.** The design lists them as a supported category. Pallo shows
+- **Link previews are not generated.** The design lists them as a supported category. Mimo shows
   what a bridge supplies and does not fetch page metadata itself.
 - **Thumbnails are parsed but not preferred.** `MessageAttachment.thumbnail` is populated from the
   event, but the full-size source is what gets downloaded; a slow connection therefore waits for

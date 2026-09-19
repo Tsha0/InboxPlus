@@ -1,19 +1,17 @@
 #!/usr/bin/env swift
 //
-// Builds Pallo's app icon from the mascot artwork.
+// Builds Mimo's app icon from the mascot artwork.
 //
 //   swift Scripts/make-icon.swift [source.png] [output.icns]
 //
-// The source is a full-body character on a square canvas. Dropped into an icon slot unchanged it
-// becomes an unreadable smudge at 16pt, which is the size that actually appears in the menu bar,
-// the Dock's recent list and Finder's list view. So the head is cropped out and placed on the
-// rounded-rectangle plate macOS expects, using the artwork's own background colour.
+// The source is a face-focused avatar on a square canvas. Place the complete head on a warm
+// cream macOS plate, with a tighter face crop for the smallest Finder and menu-bar slots.
 
 import AppKit
 import Foundation
 
 let arguments = CommandLine.arguments
-let sourcePath = arguments.count > 1 ? arguments[1] : "docs/assets/pallo-mascot.png"
+let sourcePath = arguments.count > 1 ? arguments[1] : "docs/assets/mimo-mascot.png"
 let outputPath = arguments.count > 2 ? arguments[2] : "Resources/AppIcon.icns"
 
 // macOS icon geometry: a 1024 canvas whose artwork occupies the middle 824, leaving the margin
@@ -25,15 +23,14 @@ let cornerRadius = plateSize * 0.2237
 
 /// The region of the source holding the head, as fractions of the image so the crop survives the
 /// artwork being re-exported at another resolution.
-let cropOrigin = CGPoint(x: 0.101, y: 0.032)
-let cropSize: CGFloat = 0.800
+let cropOrigin = CGPoint(x: 0, y: 0)
+let cropSize: CGFloat = 1.0
 
 /// A tighter crop on the face alone, used for the smallest slots.
 ///
-/// At 16pt the full character collapses into a blue smudge: there are simply not enough pixels for
-/// ears, satchel and body. Apple's own icons simplify at small sizes rather than scaling the large
-/// artwork down, so the small slots zoom to the face, where the eyes and nose still read.
-let smallCropOrigin = CGPoint(x: 0.255, y: 0.085)
+/// At 16pt the whole head leaves too few pixels for the eyes and smile. The small slots zoom
+/// to the face so these features still read.
+let smallCropOrigin = CGPoint(x: 0.25, y: 0.30)
 let smallCropSize: CGFloat = 0.500
 /// Slots at or below this pixel size use the tighter crop.
 let smallSlotThreshold = 32
@@ -65,33 +62,8 @@ let smallCropRect = CGRect(
 )
 let face = sourceCG.cropping(to: smallCropRect) ?? head
 
-/// Samples a corner of the source so the plate matches the artwork rather than a colour picked by
-/// eye that drifts if the mascot is ever redrawn.
-func backgroundColour(of image: CGImage) -> CGColor {
-    var pixel = [UInt8](repeating: 0, count: 4)
-    let space = CGColorSpaceCreateDeviceRGB()
-    guard let context = CGContext(
-        data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
-        space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-    ) else { return CGColor(red: 0.98, green: 0.95, blue: 0.87, alpha: 1) }
-    // Draw the whole image scaled into one pixel's worth of the top-left corner region.
-    context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
-    _ = context
-    return CGColor(
-        red: CGFloat(pixel[0]) / 255,
-        green: CGFloat(pixel[1]) / 255,
-        blue: CGFloat(pixel[2]) / 255,
-        alpha: 1
-    )
-}
-
-// Sample an actual corner rather than the average of the whole image, which would be muddied by
-// the blue of the character.
-let cornerSample = sourceCG.cropping(
-    to: CGRect(x: 0, y: 0, width: width * 0.05, height: height * 0.05)
-)
-let plateColour = cornerSample.map(backgroundColour(of:))
-    ?? CGColor(red: 0.98, green: 0.95, blue: 0.87, alpha: 1)
+// The avatar has transparency; an explicit cream plate keeps it legible on any desktop.
+let plateColour = CGColor(red: 0.98, green: 0.95, blue: 0.87, alpha: 1)
 
 func renderPlate(artwork: CGImage) -> CGImage? {
 guard let context = CGContext(
@@ -158,7 +130,7 @@ guard let master = renderPlate(artwork: head),
 
 let fileManager = FileManager.default
 let workingDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
-    .appendingPathComponent("PalloIcon-\(UUID().uuidString)")
+    .appendingPathComponent("MimoIcon-\(UUID().uuidString)")
 let iconset = workingDirectory.appendingPathComponent("AppIcon.iconset")
 try fileManager.createDirectory(at: iconset, withIntermediateDirectories: true)
 
