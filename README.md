@@ -87,7 +87,7 @@ swift test
 swift run Mimo
 ```
 
-With no profile configured the app runs on deterministic local fixtures and says so on stderr.
+With no profile configured the app starts with an empty inbox and contacts list.
 Nothing connects and no network is contacted.
 
 To run against a real local homeserver:
@@ -156,7 +156,7 @@ a profile that already runs one keeps attributing its conversations correctly.
 ## How it fits together
 
 ```
-MimoApp          the executable; chooses fixtures or a live profile at launch
+MimoApp          the executable; chooses an empty inbox or a live profile at launch
   MimoUI         SwiftUI views — inbox, conversation, login engine, account management
   MimoFeatures   app model, inbox projection, contact linking, media loading
   MimoGateway    the MessagingGateway seam, media cache, in-memory fake

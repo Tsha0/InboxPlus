@@ -60,6 +60,7 @@ let package = Package(
                 .product(name: "MatrixRustSDK", package: "matrix-rust-components-swift"),
             ]
         ),
+        .testTarget(name: "MimoAppTests", dependencies: ["MimoApp"]),
         .testTarget(name: "MimoCoreTests", dependencies: ["MimoCore"]),
         .testTarget(name: "MimoGatewayTests", dependencies: ["MimoCore", "MimoGateway"]),
         .testTarget(
