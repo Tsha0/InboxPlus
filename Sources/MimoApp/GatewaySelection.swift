@@ -10,7 +10,7 @@ import MimoRuntime
 /// Chooses which gateway the app runs on at launch.
 ///
 /// A prepared profile is selected by name, or discovered when there is exactly one. Without one the
-/// app runs on fixtures — and says so, rather than presenting demo data as if it were live.
+/// app starts empty. Demo conversations belong only in previews and tests.
 ///
 /// Nothing here waits for the runtime. Selecting a profile only decides *what* to attach to; the
 /// homeserver and the bridges are started behind the first use of the gateway, because a cold
@@ -20,7 +20,7 @@ enum GatewaySelection {
     static let profileEnvironmentKey = "MIMO_PROFILE"
 
     /// What the app runs on. Media loading is paired with the gateway because both need the same
-    /// authenticated client — fixtures get a controller with no loader, which simply never
+    /// authenticated client — an unconfigured app gets no loader, which simply never
     /// downloads rather than pretending to.
     struct Services {
         let gateway: any MessagingGateway
@@ -38,12 +38,12 @@ enum GatewaySelection {
         guard let profileName = resolveProfileName(environment: environment) else {
             FileHandle.standardError.write(Data(
                 ("Mimo: no \(profileEnvironmentKey) set and no prepared profile found — "
-                    + "running on demo fixtures.\n").utf8
+                    + "starting with an empty inbox.\n").utf8
             ))
             return Services(
-                gateway: InMemoryMessagingGateway(seed: Fixtures.demoSnapshot),
+                gateway: InMemoryMessagingGateway(seed: .empty),
                 media: MediaController(),
-                directory: Fixtures.directory
+                directory: ContactDirectory()
             )
         }
 
@@ -176,7 +176,7 @@ extension GatewaySelection {
     /// Decides which profile to attach to.
     ///
     /// The environment variable wins, but an app launched from Finder inherits no environment at
-    /// all — so a bundled Mimo would always fall back to fixtures no matter how many real profiles
+    /// all — so a bundled Mimo would always start empty no matter how many real profiles
     /// existed. When exactly one profile is prepared, that is unambiguously the one meant, and
     /// using it is what makes a double-clicked app behave like the one started from a shell.
     ///
