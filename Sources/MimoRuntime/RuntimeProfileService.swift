@@ -69,10 +69,20 @@ public struct RuntimeProfileService: Sendable {
 
     /// Repository root holding `Runtime/Synapse`, overridable for installed or relocated runs.
     public static func resolvedPackageRoot(
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        executableURL: URL? = Bundle.main.executableURL
     ) -> URL {
         if let override = environment["MIMO_RUNTIME_PACKAGE_ROOT"], !override.isEmpty {
             return URL(fileURLWithPath: override, isDirectory: true).standardizedFileURL
+        }
+        // Both the app and its CLI live in Contents/MacOS. Prefer bundled runtime inputs so
+        // launching from Finder does not depend on a checkout or the working directory.
+        if let executableURL {
+            let resources = executableURL.deletingLastPathComponent()
+                .deletingLastPathComponent().appendingPathComponent("Resources", isDirectory: true)
+            if FileManager.default.fileExists(
+                atPath: resources.appendingPathComponent("Runtime/Synapse/runtime-manifest.json").path
+            ) { return resources.standardizedFileURL }
         }
         return URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
     }
