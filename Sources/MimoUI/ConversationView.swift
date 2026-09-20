@@ -145,17 +145,20 @@ public struct ConversationView: View {
 
     private var transcript: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) {
-                    ForEach(messages) { message in
-                        MessageBubble(model: model, message: message)
-                            .id(message.id)
-                    }
+            // Use the native list's bounded row layout. A LazyVStack combined with
+            // scrollTo(bottom) can repeatedly invalidate its estimated heights on
+            // macOS when switching chats, trapping the main thread in layout.
+            List {
+                ForEach(messages) { message in
+                    MessageBubble(model: model, message: message)
+                        .id(message.id)
+                        .listRowInsets(EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 14)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .onChange(of: messages.count) { scrollToLatest(proxy) }
             .onChange(of: route) { scrollToLatest(proxy, animated: false) }
             .onAppear { scrollToLatest(proxy, animated: false) }
