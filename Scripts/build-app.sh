@@ -42,6 +42,9 @@ cp "$BIN_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
 # Shipped alongside so the runtime can be driven without a checkout: the app needs a prepared
 # profile, and this is what prepares one.
 cp "$BIN_DIR/MimoRuntimeCLI" "$APP_DIR/Contents/MacOS/MimoRuntimeCLI"
+mkdir -p "$APP_DIR/Contents/Resources/Runtime/Synapse"
+cp Runtime/Synapse/runtime-manifest.json Runtime/Synapse/requirements.lock \
+  "$APP_DIR/Contents/Resources/Runtime/Synapse/"
 cp Resources/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 # SwiftPM resource bundles the executable loads through `Bundle.module` — which traps when the
 # bundle is absent, so a missing copy here is a crash on launch, not a missing image.

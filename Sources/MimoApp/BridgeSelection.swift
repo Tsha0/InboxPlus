@@ -26,8 +26,12 @@ enum BridgeSelection {
             let descriptor = try BridgeCatalog.require(platform)
             let root = try RuntimeProfileService.developerRuntimeRoot(environment: environment)
             let paths = try RuntimePaths(root: root, profileName: profileName)
-            guard let state = try RuntimeProfileStore(paths: paths).load(),
-                  let port = state.snapshot.loopbackPort
+            // The picker can be opened while the inbox is still starting the homeserver.
+            // Wait for readiness instead of treating a missing or stale port as a login error.
+            let state = try await ManagedRuntime.shared.ensureRunning(
+                paths: paths, profileName: profileName
+            )
+            guard let port = state.snapshot.loopbackPort
             else { throw GatewaySelectionError.profileNotRunning(profileName) }
 
             let runtime = BridgeRuntime(paths: paths)

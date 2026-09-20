@@ -164,8 +164,8 @@ public struct RootView: View {
         }
         guard let makeLoginSession else {
             connectFailure = """
-            This build is running on demo fixtures, so there is no bridge to sign in to. \
-            Start a runtime profile and relaunch with MIMO_PROFILE set.
+            Account setup is not ready. No unique messaging profile was selected. \
+            Prepare a messaging profile and reopen Mimo before connecting a network.
             """
             accountFlow = nil
             return
