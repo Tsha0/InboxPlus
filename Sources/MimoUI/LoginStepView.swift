@@ -175,12 +175,14 @@ struct UserInputStepView: View {
         Form {
             ForEach(step.userInput?.fields ?? [], id: \.id) { field in
                 VStack(alignment: .leading, spacing: 4) {
-                    field.editor(
-                        value: Binding(
-                            get: { controller.values[field.id] ?? "" },
-                            set: { controller.setValue($0, for: field.id) }
+                    LabeledContent(field.name) {
+                        field.editor(
+                            value: Binding(
+                                get: { controller.values[field.id] ?? "" },
+                                set: { controller.setValue($0, for: field.id) }
+                            )
                         )
-                    )
+                    }
                     if !field.description.isEmpty {
                         Text(field.description)
                             .font(.caption)
@@ -195,17 +197,32 @@ struct UserInputStepView: View {
     }
 }
 
-private extension BridgeLoginInputField {
+extension BridgeLoginInputField {
     /// Secret fields get a `SecureField` so the value is never drawn on screen.
     @ViewBuilder
     func editor(value: Binding<String>) -> some View {
-        if type.isSecret {
-            SecureField(name, text: value)
-                .textContentType(type == .password ? .password : .oneTimeCode)
-                .accessibilityIdentifier("login-field-\(id)")
-        } else {
-            TextField(name, text: value)
-                .accessibilityIdentifier("login-field-\(id)")
+        ZStack(alignment: .leading) {
+            if type.isSecret {
+                SecureField("", text: value)
+                    .textContentType(type == .password ? .password : .oneTimeCode)
+            } else {
+                TextField("", text: value)
+            }
+            if value.wrappedValue.isEmpty {
+                Text(inputPlaceholder)
+                    .foregroundStyle(.tertiary)
+                    .padding(.leading, 5)
+                    .allowsHitTesting(false)
+            }
+        }
+        .accessibilityLabel(name)
+        .accessibilityIdentifier("login-field-\(id)")
+    }
+
+    var inputPlaceholder: String {
+        switch type {
+        case .phoneNumber: "e.g. +65 8123 4567"
+        default: name
         }
     }
 }

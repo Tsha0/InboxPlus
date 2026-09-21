@@ -1,4 +1,5 @@
 import Testing
+@testable import MimoBridge
 @testable import MimoCore
 @testable import MimoFeatures
 @testable import MimoUI
@@ -71,4 +72,14 @@ import Testing
     #expect(descriptor.message == "Fixture gateway unavailable")
     #expect(descriptor.accessibilityLabel == "Message could not be sent: Fixture gateway unavailable")
     #expect(descriptor.accessibilityIdentifier == "send-error-instagram-primary-maya-instagram")
+}
+
+@Test func phoneLoginFieldShowsAnInternationalFormatExample() {
+    let field = BridgeLoginInputField(
+        type: .phoneNumber,
+        id: "phone_number",
+        name: "Phone number"
+    )
+
+    #expect(field.inputPlaceholder == "e.g. +65 8123 4567")
 }
