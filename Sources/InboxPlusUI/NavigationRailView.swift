@@ -27,21 +27,8 @@ struct NavigationRailView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            // The generated Inbox+ mark is bundled for both packaged and SwiftPM launches.
-            Group {
-                if let logo = Bundle.module.image(forResource: "InboxPlusLogo") {
-                    Image(nsImage: logo)
-                        .resizable()
-                        .clipShape(.rect(cornerRadius: 8))
-                } else {
-                    Image(systemName: "message.fill")
-                        .foregroundStyle(InboxPlusTheme.paper)
-                        .background(InboxPlusTheme.ink, in: .rect(cornerRadius: 10))
-                }
-            }
-            .frame(width: 32, height: 32)
-            .accessibilityLabel("Inbox+")
-            .padding(.bottom, 4)
+            InboxPlusLogoButton()
+                .padding(.bottom, 4)
 
             ForEach([SidebarSection.inbox, .contacts]) { section in
                 railButton(section)
