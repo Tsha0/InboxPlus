@@ -15,6 +15,7 @@ let package = Package(
         .package(url: "https://github.com/matrix-org/matrix-rust-components-swift", exact: "26.08.11"),
     ],
     targets: [
+        .executableTarget(name: "InboxPlusRuntimeBundler", dependencies: ["InboxPlusRuntime", "InboxPlusBridgeService"]),
         .target(name: "InboxPlusCore"),
         .target(name: "InboxPlusGateway", dependencies: ["InboxPlusCore"]),
         .target(name: "InboxPlusFeatures", dependencies: ["InboxPlusCore", "InboxPlusGateway", "InboxPlusBridge"]),

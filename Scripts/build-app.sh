@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 APP_NAME="Inbox+"
 EXECUTABLE_NAME="InboxPlus"
 BUNDLE_ID="com.inboxplus.app"
@@ -40,12 +40,10 @@ rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
 cp "$BIN_DIR/$EXECUTABLE_NAME" "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
-# Shipped alongside so the runtime can be driven without a checkout: the app needs a prepared
-# profile, and this is what prepares one.
+# Shipped alongside so the app can supervise its local runtime without a checkout.
 cp "$BIN_DIR/InboxPlusRuntimeCLI" "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI"
-mkdir -p "$APP_DIR/Contents/Resources/Runtime/Synapse"
-cp Runtime/Synapse/runtime-manifest.json Runtime/Synapse/requirements.lock \
-  "$APP_DIR/Contents/Resources/Runtime/Synapse/"
+echo "==> Bundling the self-contained messaging runtime"
+"$REPO_ROOT/Scripts/prepare-bundled-runtime.sh" "$APP_DIR/Contents/Resources/Runtime"
 cp Resources/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 # SwiftPM resource bundles the executable loads through `Bundle.module` — which traps when the
 # bundle is absent, so a missing copy here is a crash on launch, not a missing image.
@@ -88,6 +86,7 @@ else
 fi
 
 # Inner binaries before the outer bundle: signing outside-in invalidates the outer signature.
+"$REPO_ROOT/Scripts/sign-bundled-runtime.sh" "$APP_DIR/Contents/Resources/Runtime" "$IDENTITY"
 codesign --force --sign "$IDENTITY" "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI"
 codesign --force --sign "$IDENTITY" \
   --entitlements "$REPO_ROOT/Scripts/inboxplus.entitlements" \
@@ -104,14 +103,7 @@ fi
 echo
 echo "Built $APP_DIR"
 echo
-echo "Next:"
-echo "  1. Prepare a profile if you have not already:"
-echo "       \"$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI\" bootstrap --profile demo \\"
-echo "         --python /opt/homebrew/opt/python@3.12/bin/python3.12"
-echo "  2. Start the runtime and leave it running:"
-echo "       \"$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI\" start --profile demo"
-echo "  3. Open Inbox+. With exactly one prepared profile it attaches automatically;"
-echo "     otherwise set INBOXPLUS_PROFILE."
+echo "Open Inbox+. First launch prepares your inbox automatically."
 echo
 echo "For iMessage, add this exact path to Full Disk Access, then reopen Inbox+:"
 echo "  $APP_DIR"

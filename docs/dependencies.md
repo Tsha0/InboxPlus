@@ -12,14 +12,14 @@ end would be a hash nobody has checked.
 | --- | --- | --- | --- |
 | [matrix-rust-components-swift](https://github.com/matrix-org/matrix-rust-components-swift) | `26.08.11` (exact) | Apache-2.0 | Checksum-verified 279 MB binary xcframework. Pinned exactly — SDK/bridge protocol drift must never arrive silently through a version range. |
 
-## Runtime, fetched into a profile
+## Runtime bundled with the app and network bridges fetched into a profile
 
 ### Homeserver
 
 | Name | Version | Licence | Verification |
 | --- | --- | --- | --- |
-| Synapse | `1.158.0` | AGPL-3.0-or-later | Installed from `Runtime/Synapse/requirements.lock` into a profile-local virtualenv; the receipt is validated against `runtime-manifest.json`. |
-| CPython | 3.12 (host-provided) | PSF-2.0 | Supplied by the operator, recorded in the bootstrap receipt. |
+| Synapse | `1.158.0` | AGPL-3.0-or-later | Bundled from `Runtime/Synapse/requirements.lock`; copied into a private profile and checked against `runtime-manifest.json` on first launch. |
+| [CPython / python-build-standalone](https://github.com/astral-sh/python-build-standalone/releases/tag/20260929) | `3.12.14`, distribution `20260929` | PSF-2.0 | Portable Apple Silicon archive, SHA-256 `1bb3e53d231ee2c8881e8daf6426f4dd95bff0dda496af0f3af300357aa998d0`; included in the signed app. |
 
 ### Network bridges (`BridgeCatalog`)
 
@@ -74,7 +74,9 @@ the same defect, so upstream will not fix it. The patch is pinned as an exact be
 the source ever stops matching verbatim, the build fails rather than applying a fuzzy edit to a
 crypto library.
 
-Requires `cmake` on the host (`brew install cmake`).
+Built once when assembling the app with CMake, then signed and bundled. Network installation copies
+the shipped library; app users do not need CMake. Developer CLI runs outside the bundle can still
+build it on demand.
 
 ## Brand marks
 

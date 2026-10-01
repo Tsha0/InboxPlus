@@ -14,6 +14,7 @@ import Testing
     let outcome = BridgeInstallOutcome(platform: .telegram, profile: "work")
     // The bridge is registered but the running homeserver has not read that registration, so an
     // outcome that read as "connected" would send the user to a login that cannot complete.
-    #expect(outcome.message.contains("Restart"))
-    #expect(outcome.message.contains("--profile work"))
+    #expect(outcome.message.contains("Quit and"))
+    #expect(outcome.message.contains("reopen Inbox+"))
+    #expect(!outcome.message.contains("RuntimeCLI"))
 }

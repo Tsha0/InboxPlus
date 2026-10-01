@@ -2,6 +2,36 @@
   "bomFormat" : "CycloneDX",
   "components" : [
     {
+      "description" : "Portable Apple Silicon interpreter shipped inside the app; upstream distribution 20260929.",
+      "externalReferences" : [
+        {
+          "type" : "vcs",
+          "url" : "https:\/\/github.com\/astral-sh\/python-build-standalone"
+        },
+        {
+          "type" : "distribution",
+          "url" : "https:\/\/github.com\/astral-sh\/python-build-standalone\/releases\/download\/20260929\/cpython-3.12.14%2B20260929-aarch64-apple-darwin-install_only_stripped.tar.gz"
+        }
+      ],
+      "hashes" : [
+        {
+          "alg" : "SHA-256",
+          "content" : "1bb3e53d231ee2c8881e8daf6426f4dd95bff0dda496af0f3af300357aa998d0"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "PSF-2.0"
+          }
+        }
+      ],
+      "name" : "cpython",
+      "purl" : "pkg:generic\/cpython@3.12.14",
+      "type" : "application",
+      "version" : "3.12.14"
+    },
+    {
       "description" : "Built from a checksum-verified tarball with a pinned one-line patch; upstream is archived and does not compile with a current clang.",
       "externalReferences" : [
         {
@@ -231,7 +261,7 @@
       "version" : "v0.2607.0"
     },
     {
-      "description" : "Installed into a profile-local virtualenv from a locked requirements file.",
+      "description" : "Bundled with locked Python dependencies, then copied to a private profile at first launch.",
       "externalReferences" : [
         {
           "type" : "vcs",
@@ -266,7 +296,7 @@
     },
     "timestamp" : "1970-01-01T00:00:00Z"
   },
-  "serialNumber" : "urn:uuid:42C77064-982A-4ECD-AC30-B376C3EDA155",
+  "serialNumber" : "urn:uuid:1AF35FA5-3DD8-48BB-89A6-92E0B441FA1F",
   "specVersion" : "1.5",
   "version" : 1
 }

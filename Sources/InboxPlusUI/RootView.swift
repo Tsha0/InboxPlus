@@ -67,6 +67,17 @@ public struct RootView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
+            if model.health == .starting {
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("Preparing your inbox…")
+                }
+                .font(.callout)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(Color.secondary.opacity(0.15))
+                .accessibilityIdentifier("startup-progress")
+            }
             if let message = model.healthBannerMessage {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)

@@ -24,7 +24,7 @@ OUTPUT_DIR="${1:-build/release}"
 APP_NAME="Inbox+"
 EXECUTABLE_NAME="InboxPlus"
 BUNDLE_ID="com.inboxplus.app"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 fail() { echo "error: $*" >&2; exit 1; }
 
@@ -50,6 +50,7 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
 cp "$BIN_DIR/$EXECUTABLE_NAME" "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
 cp "$BIN_DIR/InboxPlusRuntimeCLI" "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI"
+"$REPO_ROOT/Scripts/prepare-bundled-runtime.sh" "$APP_DIR/Contents/Resources/Runtime"
 # SwiftPM resource bundles the executable loads through `Bundle.module` — which traps when the
 # bundle is absent, so a missing copy here is a crash on launch, not a missing image.
 cp -R "$BIN_DIR/InboxPlus_InboxPlusUI.bundle" "$APP_DIR/Contents/Resources/InboxPlus_InboxPlusUI.bundle"
@@ -84,6 +85,7 @@ PLIST
 # 2. Sign inner binaries before the bundle. Signing outside-in invalidates the outer signature.
 echo "==> Signing"
 ENTITLEMENTS="$REPO_ROOT/Scripts/inboxplus.entitlements"
+"$REPO_ROOT/Scripts/sign-bundled-runtime.sh" "$APP_DIR/Contents/Resources/Runtime" "$INBOXPLUS_SIGNING_IDENTITY"
 codesign --force --timestamp --options runtime \
   --sign "$INBOXPLUS_SIGNING_IDENTITY" \
   "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI"

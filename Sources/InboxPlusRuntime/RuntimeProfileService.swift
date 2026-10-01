@@ -113,6 +113,19 @@ public struct RuntimeProfileService: Sendable {
         let receipt = try await RuntimeBootstrapper(requirementsLock: requirementsLockFile)
             .bootstrap(python: python, manifest: manifest, paths: paths)
 
+        try finishBootstrap()
+        return receipt
+    }
+
+    /// Installs the signed, self-contained runtime shipped in the app. No downloads or build tools.
+    public func bootstrapBundled() throws -> PreparedRuntimeReceipt {
+        try createProfileDirectories()
+        let receipt = try BundledRuntime(packageRoot: packageRoot).install(paths: paths)
+        try finishBootstrap()
+        return receipt
+    }
+
+    private func finishBootstrap() throws {
         let existing = try store.load()
         let registrationSecret = existing?.registrationSecret ?? Self.freshRegistrationSecret()
         let virtualPython = paths.runtime.appendingPathComponent("venv/bin/python")
@@ -137,7 +150,6 @@ public struct RuntimeProfileService: Sendable {
                 snapshot: .stopped
             )
         )
-        return receipt
     }
 
     // MARK: - Lifecycle
@@ -744,8 +756,8 @@ public struct RuntimeProfileService: Sendable {
         }
     }
 
-    /// Synapse must be launched through the framework's `Python.app` stub so the child keeps a
-    /// stable executable path for identity verification.
+    /// Resolve the interpreter's stable executable path for process identity verification, using
+    /// the framework stub for Homebrew Python or the standalone binary for bundled Python.
     static func stableLaunchExecutable(virtualPython: URL) throws -> URL {
         let process = Process()
         process.executableURL = virtualPython
@@ -767,10 +779,16 @@ public struct RuntimeProfileService: Sendable {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Resources/Python.app/Contents/MacOS/Python")
-        guard FileManager.default.isExecutableFile(atPath: applicationExecutable.path) else {
+        if FileManager.default.isExecutableFile(atPath: applicationExecutable.path) {
+            return applicationExecutable
+        }
+        // Portable CPython has no framework application stub. Resolve its real executable so
+        // the supervisor can compare the process identity against a stable path.
+        let standalone = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+        guard FileManager.default.isExecutableFile(atPath: standalone.path) else {
             throw RuntimeProfileError.pythonExecutableUnavailable
         }
-        return applicationExecutable
+        return standalone
     }
 }
 

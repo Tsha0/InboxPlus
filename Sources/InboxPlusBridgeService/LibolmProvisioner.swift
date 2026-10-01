@@ -87,13 +87,17 @@ public struct LibolmProvisioner: Sendable {
 
     private let fetcher: any BridgeArtifactFetching
     private let cmake: URL?
+    private let bundledLibrary: URL?
 
     public init(
         fetcher: any BridgeArtifactFetching = URLSessionBridgeArtifactFetcher(),
-        cmake: URL? = LibolmProvisioner.locateCMake()
+        cmake: URL? = LibolmProvisioner.locateCMake(),
+        bundledLibrary: URL? = RuntimeProfileService.resolvedPackageRoot()
+            .appendingPathComponent("Runtime/libolm.3.dylib")
     ) {
         self.fetcher = fetcher
         self.cmake = cmake
+        self.bundledLibrary = bundledLibrary
     }
 
     public static func locateCMake() -> URL? {
@@ -118,6 +122,12 @@ public struct LibolmProvisioner: Sendable {
     public func install(into directory: URL) async throws -> URL {
         let destination = directory.appendingPathComponent(Self.libraryName, isDirectory: false)
         if FileManager.default.fileExists(atPath: destination.path) { return destination }
+        if let bundledLibrary, FileManager.default.fileExists(atPath: bundledLibrary.path) {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            try FileManager.default.copyItem(at: bundledLibrary, to: destination)
+            return destination
+        }
         guard let cmake else { throw LibolmError.cmakeMissing }
 
         let workspace = directory.appendingPathComponent(".libolm-build", isDirectory: true)

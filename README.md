@@ -17,7 +17,7 @@ It is conversation-focused. There are no feeds, posts, stories or calls.
 account, loads real conversations, sends and receives, renders media, and supervises the prepared network
 bridges alongside the homeserver.
 
-It is not something to hand to anyone else yet. Nothing is code-signed or notarized, no network has
+It is not something to hand to anyone else yet. No distributable build has been notarized, no network has
 been certified against a live account except Instagram, and a recorded benchmark verdict from Phase
 2 — `Require PostgreSQL` — has not been revisited even though the storage load has since grown. See
 [`docs/testing/phase-8-release-certification.md`](docs/testing/phase-8-release-certification.md)
@@ -30,8 +30,8 @@ The interface uses a monochrome palette that adapts to light and dark appearance
 
 This rename changes the app identity to `com.inboxplus.app`, the runtime root to
 `~/Library/Application Support/Inbox+/DeveloperRuntime`, and the local homeserver name to
-`inboxplus.localhost`. Existing profiles from earlier builds are not automatically migrated; prepare
-a fresh Inbox+ profile using the commands below. Keep earlier profile data backed up and do not
+`inboxplus.localhost`. Existing profiles from earlier builds are not automatically migrated; the bundled app creates
+a fresh Inbox+ profile automatically. Keep earlier profile data backed up and do not
 reuse its homeserver database under the new server name. Grant macOS permissions to Inbox+ again
 and update development environment variables to the `INBOXPLUS_` prefix.
 
@@ -39,8 +39,14 @@ and update development environment variables to the `INBOXPLUS_` prefix.
 
 - Apple silicon Mac, macOS 15 or later
 - Swift 6.2 toolchain or newer (developed against Swift 6.3 / Xcode 26.5)
-- Homebrew CPython 3.12 — for the local Synapse runtime
-- `cmake` (`brew install cmake`) — needed once per profile to build libolm
+The bundled app includes portable CPython 3.12.14, Synapse and libolm. App users do not need
+Homebrew, Python, CMake or a terminal. The local runtime runs as a child process and stops when
+the app quits.
+
+Building the bundle requires CMake and Rust (Synapse ships no macOS wheel). An optional
+`INBOXPLUS_RUNTIME_SEED=/path/to/venv` reuses only a pinned Python 3.12 environment's installed
+packages; the complete inventory and native library dependencies are verified before bundling.
+Its credentials, configuration and databases are never copied.
 
 ## Install
 
@@ -50,16 +56,13 @@ Build a real, double-clickable `Inbox+.app` and put it in `/Applications`:
 Scripts/build-app.sh --install
 ```
 
-Then prepare a profile and start the runtime, which must stay running while you use Inbox+:
+Open Inbox+ from Finder. On first launch it creates a private `default` profile and prepares the
+bundled messaging runtime automatically, without downloading software. Add a network from Settings;
+its checksum-verified bridge downloads when needed. After a newly installed connection asks you to
+quit and reopen Inbox+, choose that network again to sign in. No terminal session is needed.
 
-```bash
-/Applications/Inbox+.app/Contents/MacOS/InboxPlusRuntimeCLI bootstrap --profile demo \
-  --python /opt/homebrew/opt/python@3.12/bin/python3.12
-/Applications/Inbox+.app/Contents/MacOS/InboxPlusRuntimeCLI start --profile demo
-```
-
-Open Inbox+ from Finder. With exactly one prepared profile it attaches automatically; with several,
-set `INBOXPLUS_PROFILE` to name one, because guessing would silently attach to the wrong account.
+With exactly one existing prepared profile the app uses it. With several, set `INBOXPLUS_PROFILE`
+to name one; it never guesses which account to use.
 
 This build is **ad-hoc signed and runs on this Mac only**. Gatekeeper on anyone else's Mac will
 refuse it — distributing to other people needs an Apple Developer ID and

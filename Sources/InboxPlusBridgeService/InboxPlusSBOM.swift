@@ -15,6 +15,17 @@ public enum InboxPlusSBOM {
     ) -> [SBOMComponent] {
         var components: [SBOMComponent] = [
             SBOMComponent(
+                name: "cpython",
+                version: "3.12.14",
+                kind: .application,
+                license: "PSF-2.0",
+                sha256: "1bb3e53d231ee2c8881e8daf6426f4dd95bff0dda496af0f3af300357aa998d0",
+                sourceURL: "https://github.com/astral-sh/python-build-standalone",
+                downloadURL: "https://github.com/astral-sh/python-build-standalone/releases/download/20260929/cpython-3.12.14%2B20260929-aarch64-apple-darwin-install_only_stripped.tar.gz",
+                purl: "pkg:generic/cpython@3.12.14",
+                notes: "Portable Apple Silicon interpreter shipped inside the app; upstream distribution 20260929."
+            ),
+            SBOMComponent(
                 name: "matrix-rust-components-swift",
                 version: matrixSDKVersion,
                 kind: .framework,
@@ -31,7 +42,7 @@ public enum InboxPlusSBOM {
                 license: "AGPL-3.0-or-later",
                 sourceURL: "https://github.com/element-hq/synapse",
                 purl: "pkg:pypi/matrix-synapse@\(synapseVersion)",
-                notes: "Installed into a profile-local virtualenv from a locked requirements file."
+                notes: "Bundled with locked Python dependencies, then copied to a private profile at first launch."
             ),
             SBOMComponent(
                 name: "libolm",

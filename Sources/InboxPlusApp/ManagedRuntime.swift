@@ -31,6 +31,8 @@ actor ManagedRuntime {
         }
     }
 
+    private var preparation: Task<Void, Error>?
+
     private nonisolated let stoppable = StoppableChild()
 
     private var child: Process? {
@@ -65,6 +67,23 @@ actor ManagedRuntime {
         if let state = try? await servingState(paths: paths) {
             progress("attached to the runtime already serving '\(profileName)'")
             return state
+        }
+
+        if try RuntimeProfileStore(paths: paths).load() == nil {
+            progress("preparing your inbox…")
+            if preparation == nil {
+                preparation = Task.detached {
+                    let service = RuntimeProfileService(
+                        paths: paths, packageRoot: RuntimeProfileService.resolvedPackageRoot()
+                    )
+                    let lock = try service.acquireProfileLock()
+                    defer { withExtendedLifetime(lock) {} }
+                    // Another caller may have completed setup before the lock was acquired.
+                    if try service.loadState() == nil { _ = try service.bootstrapBundled() }
+                }
+            }
+            do { try await preparation?.value; preparation = nil }
+            catch { preparation = nil; throw error }
         }
 
         // Read before launching: the file still holds the *previous* session's phase, and

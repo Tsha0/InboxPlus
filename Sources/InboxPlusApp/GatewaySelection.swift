@@ -9,8 +9,8 @@ import InboxPlusRuntime
 
 /// Chooses which gateway the app runs on at launch.
 ///
-/// A prepared profile is selected by name, or discovered when there is exactly one. Without one the
-/// app starts empty. Demo conversations belong only in previews and tests.
+/// A prepared profile is selected by name, or discovered when there is exactly one. A packaged app
+/// creates its default profile on first launch; a bare developer executable starts empty. Demo conversations belong only in previews and tests.
 ///
 /// Nothing here waits for the runtime. Selecting a profile only decides *what* to attach to; the
 /// homeserver and the bridges are started behind the first use of the gateway, because a cold
@@ -186,20 +186,27 @@ extension GatewaySelection {
         if let named = environment[profileEnvironmentKey], !named.isEmpty { return named }
 
         guard let root = try? RuntimeProfileService.developerRuntimeRoot(environment: environment),
-              let entries = try? FileManager.default.contentsOfDirectory(
-                  at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
-              ) else { return nil }
+              FileManager.default.fileExists(atPath: root.path) ||
+                BundledRuntime(packageRoot: RuntimeProfileService.resolvedPackageRoot(environment: environment)).isAvailable
+        else { return nil }
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+        )) ?? []
 
         // Ask the store whether a profile is real rather than testing for a filename: the layout
         // is the store's business, and duplicating it here is how this silently stops working the
         // next time that file is renamed.
         let prepared = entries.filter { entry in
             guard let paths = try? RuntimePaths(root: root, profileName: entry.lastPathComponent),
-                  let state = try? RuntimeProfileStore(paths: paths).load() else { return false }
-            return state != nil
+                  (try? RuntimeProfileStore(paths: paths).load()) != nil else { return false }
+            return true
         }
-        guard prepared.count == 1 else { return nil }
-        return prepared[0].lastPathComponent
+        if prepared.count == 1 { return prepared[0].lastPathComponent }
+        if prepared.isEmpty,
+           BundledRuntime(packageRoot: RuntimeProfileService.resolvedPackageRoot(environment: environment)).isAvailable {
+            return "default"
+        }
+        return nil
     }
 
     /// Opens the local Messages database, or explains why it could not.

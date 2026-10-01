@@ -30,11 +30,8 @@ public struct BridgeInstallOutcome: Sendable, Equatable {
     /// appservice registrations once at startup, so this bridge stays invisible until then.
     public var message: String {
         """
-        Inbox+ downloaded and registered the \(platform.accessibilityLabel) bridge. Restart the \
-        profile runtime so the homeserver loads it, then choose \(platform.accessibilityLabel) \
-        again to sign in:
-
-        InboxPlusRuntimeCLI start --profile \(profile)
+        Inbox+ downloaded and registered the \(platform.accessibilityLabel) connection. Quit and \
+        reopen Inbox+ to finish setup, then choose \(platform.accessibilityLabel) again to sign in.
         """
     }
 }

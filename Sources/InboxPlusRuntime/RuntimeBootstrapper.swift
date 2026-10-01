@@ -679,7 +679,7 @@ public struct RuntimeBootstrapper: Sendable {
         }
     }
 
-    private static func parsePinnedPackages(_ data: Data) throws -> [String: String] {
+    static func parsePinnedPackages(_ data: Data) throws -> [String: String] {
         guard let contents = String(data: data, encoding: .utf8) else {
             throw RuntimeBootstrapError.invalidPackageListing("package listing is not UTF-8")
         }
