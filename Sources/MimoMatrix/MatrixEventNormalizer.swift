@@ -4,9 +4,8 @@ import MimoCore
 
 /// Maps Matrix timeline events onto Mimo's domain model.
 ///
-/// The design forbids silently dropping anything: every event Mimo cannot render natively still
-/// becomes a visible message with a placeholder body, and unknown or undecryptable events are
-/// labelled rather than hidden.
+/// Conversation metadata is kept out of chat history and inbox previews. Actual messages Mimo
+/// cannot render natively still get a placeholder, including unknown or undecryptable messages.
 public struct MatrixEventNormalizer: Sendable {
     public let accountID: String
 
@@ -24,9 +23,9 @@ public struct MatrixEventNormalizer: Sendable {
         _ item: EventTimelineItem,
         roomID: String,
         accountID: String? = nil
-    ) -> Message {
+    ) -> Message? {
         let identifier = identifier(for: item.eventOrTransactionId)
-        var described = describe(item.content, identifier: identifier)
+        guard var described = describe(item.content, identifier: identifier) else { return nil }
 
         // A shared Reel or Story reaches the bridge as plain text carrying a link; the link is the
         // only thing that says what it really is.
@@ -84,7 +83,7 @@ public struct MatrixEventNormalizer: Sendable {
 
     // MARK: - Content
 
-    func describe(_ content: TimelineItemContent, identifier: String) -> Described {
+    func describe(_ content: TimelineItemContent, identifier: String) -> Described? {
         switch content {
         case let .msgLike(msgLike):
             describe(msgLike.kind, identifier: identifier)
@@ -92,12 +91,14 @@ public struct MatrixEventNormalizer: Sendable {
             Described(body: "\(displayName ?? "Someone") \(Self.describe(change))", kind: .membership)
         case .profileChange:
             Described(body: "Updated their profile", kind: .membership)
-        case let .state(_, state):
-            Described(body: "Conversation setting changed (\(Self.describe(state)))", kind: .state)
+        case .state:
+            // Bridges replay settings and avatars while syncing. These are metadata, not chat
+            // messages; omit them before either historical or live events reach the inbox.
+            nil
         case let .failedToParseMessageLike(eventType, _):
             Described(body: "Unsupported message (\(eventType))", kind: .unsupported)
-        case let .failedToParseState(eventType, _, _):
-            Described(body: "Unsupported conversation change (\(eventType))", kind: .unsupported)
+        case .failedToParseState:
+            nil
         case .callInvite:
             Described(body: "Call invitation", kind: .unsupported)
         case .rtcNotification:
@@ -338,14 +339,6 @@ public struct MatrixEventNormalizer: Sendable {
         }
     }
 
-    private static func describe(_ state: OtherState) -> String {
-        switch state {
-        case .roomName: "name"
-        case .roomTopic: "topic"
-        case .roomAvatar: "avatar"
-        default: "settings"
-        }
-    }
 }
 
 /// Orders a conversation deterministically.
