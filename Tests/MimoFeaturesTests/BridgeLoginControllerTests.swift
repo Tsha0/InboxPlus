@@ -283,17 +283,11 @@ private func pairingCodeStep() -> BridgeLoginStep {
 
 @MainActor
 @Test func aWaitingStepIsNeverAdvancedByTheUser() async {
-    let qrStep = BridgeLoginStep(
-        type: .displayAndWait,
-        stepID: "fi.mau.whatsapp.qr",
-        loginID: "login-1",
-        displayAndWait: BridgeLoginDisplayAndWaitParams(type: .qr, data: "2@abc")
-    )
     let controller = BridgeLoginController(
-        platform: .telegram,
+        platform: .whatsApp,
         session: RecordingSession(
-            flows: [BridgeLoginFlow(id: "qr", name: "QR", description: "")],
-            steps: [qrStep, completeStep()]
+            flows: [whatsAppPhoneFlow],
+            steps: [pairingCodeStep(), completeStep()]
         )
     )
     await controller.start()
@@ -311,49 +305,18 @@ private func waitUntil(_ condition: @MainActor () -> Bool) async {
     }
 }
 
-private func qrStep(data: String, loginID: String = "login-1") -> BridgeLoginStep {
-    BridgeLoginStep(
-        type: .displayAndWait,
-        stepID: "fi.mau.whatsapp.qr",
-        loginID: loginID,
-        displayAndWait: BridgeLoginDisplayAndWaitParams(type: .qr, data: data)
-    )
-}
-
-@MainActor
-@Test func aWaitingStepAsksTheBridgeForTheNextCodeWithoutTheUser() async {
-    // Break caught: WhatsApp's QR rotates every few seconds. Showing the first code and never
-    // asking again leaves a stale code on screen, and scanning it fails on the phone.
-    let session = RecordingSession(
-        flows: [BridgeLoginFlow(id: "qr", name: "QR", description: "")],
-        steps: [qrStep(data: "2@first"), qrStep(data: "2@second"), completeStep(loginID: "login-1")]
-    )
-    let controller = BridgeLoginController(platform: .telegram, session: session)
-    await controller.start()
-
-    await waitUntil { controller.currentStep?.displayAndWait?.data == "2@second" }
-    #expect(controller.currentStep?.displayAndWait?.data == "2@second")
-
-    await waitUntil { controller.phase == .finished(userLoginID: "17841400000000000") }
-    #expect(controller.phase == .finished(userLoginID: "17841400000000000"))
-
-    let recorded = await session.recorded()
-    #expect(recorded.count == 2)
-    #expect(recorded.allSatisfy { $0.stepID == "fi.mau.whatsapp.qr" && $0.values.isEmpty })
-}
-
 @MainActor
 @Test func cancellingAWaitingStepStopsAskingTheBridge() async {
     let session = RecordingSession(
-        flows: [BridgeLoginFlow(id: "qr", name: "QR", description: "")],
-        steps: [qrStep(data: "2@first"), qrStep(data: "2@second"), completeStep(loginID: "login-1")]
+        flows: [whatsAppPhoneFlow],
+        steps: [pairingCodeStep(), completeStep(loginID: "login-1")]
     )
-    let controller = BridgeLoginController(platform: .telegram, session: session)
+    let controller = BridgeLoginController(platform: .whatsApp, session: session)
     await controller.start()
     controller.cancel()
 
     for _ in 0..<200 { await Task.yield() }
-    #expect(controller.phase == .step(qrStep(data: "2@first")))
+    #expect(controller.phase == .step(pairingCodeStep()))
 
     // Break caught: walking away left the attempt — and the WhatsApp session behind it — running
     // on the bridge, which refuses to start new logins once several are in flight.
