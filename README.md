@@ -1,10 +1,10 @@
-# Mimo
+# Inbox+
 
 <p align="center">
-  <img src="docs/assets/mimo-mascot.png" alt="Mimo, the app's blue puppy mascot" width="320">
+  <img src="docs/assets/inboxplus-logo.png" alt="Inbox+ logo" width="320">
 </p>
 
-Mimo is a local-first universal messaging inbox for macOS. It brings conversations from several
+Inbox+ is a local-first universal messaging inbox for macOS. It brings conversations from several
 networks into one native SwiftUI app, and it does it without an operated cloud: the application, a
 local Matrix homeserver, the bridge processes, your credentials, the message database and the media
 cache all live on your Mac.
@@ -14,7 +14,7 @@ It is conversation-focused. There are no feeds, posts, stories or calls.
 ## Status
 
 **A working development build, not a release.** On a Mac with a prepared profile it connects a real
-account, loads real conversations, sends and receives, renders media, and supervises eight network
+account, loads real conversations, sends and receives, renders media, and supervises the prepared network
 bridges alongside the homeserver.
 
 It is not something to hand to anyone else yet. Nothing is code-signed or notarized, no network has
@@ -25,11 +25,15 @@ for the full gap list.
 
 ## Development profile compatibility
 
-This rename changes the app identity to `com.mimo.app`, the runtime root to
-`~/Library/Application Support/Mimo/DeveloperRuntime`, and the local homeserver name to
+The project is now **Inbox+**. The app rebrand is being developed separately; the current
+`main` branch still uses `Mimo` module and executable names, `MIMO_` environment variables,
+and `Mimo.app`. The commands below match that branch.
+
+Current development builds use the app identity `com.mimo.app`, the runtime root
+`~/Library/Application Support/Mimo/DeveloperRuntime`, and the local homeserver name
 `mimo.localhost`. Existing profiles from earlier builds are not automatically migrated; prepare
-a fresh Mimo profile using the commands below. Keep earlier profile data backed up and do not
-reuse its homeserver database under the new server name. Grant macOS permissions to Mimo again
+a fresh Inbox+ profile using the commands below. Keep earlier profile data backed up and do not
+reuse its homeserver database under the new server name. Grant macOS permissions to the installed app again
 and update development environment variables to the `MIMO_` prefix.
 
 ## Requirements
@@ -47,7 +51,7 @@ Build a real, double-clickable `Mimo.app` and put it in `/Applications`:
 Scripts/build-app.sh --install
 ```
 
-Then prepare a profile and start the runtime, which must stay running while you use Mimo:
+Then prepare a profile and start the runtime, which must stay running while you use Inbox+:
 
 ```bash
 /Applications/Mimo.app/Contents/MacOS/MimoRuntimeCLI bootstrap --profile demo \
@@ -55,7 +59,7 @@ Then prepare a profile and start the runtime, which must stay running while you 
 /Applications/Mimo.app/Contents/MacOS/MimoRuntimeCLI start --profile demo
 ```
 
-Open Mimo from Finder. With exactly one prepared profile it attaches automatically; with several,
+Open the installed `Mimo.app` from Finder. With exactly one prepared profile it attaches automatically; with several,
 set `MIMO_PROFILE` to name one, because guessing would silently attach to the wrong account.
 
 This build is **ad-hoc signed and runs on this Mac only**. Gatekeeper on anyone else's Mac will
@@ -75,7 +79,7 @@ rather than a password:
 
 1. **System Settings → Privacy & Security → Full Disk Access**
 2. Add `/Applications/Mimo.app`
-3. **Quit and reopen Mimo** — macOS only applies the grant to a newly launched process
+3. **Quit and reopen the app** — macOS only applies the grant to a newly launched process
 
 Sending prompts separately for Automation control of Messages the first time.
 
@@ -105,7 +109,7 @@ swift run -c release MimoRuntimeCLI start --profile demo
 MIMO_PROFILE=demo swift run -c release Mimo
 ```
 
-Then **Settings → Add** and pick a network. Sign in on the network's own page; Mimo captures only
+Then **Settings → Add** and pick a network. Sign in on the network's own page; Inbox+ captures only
 the credentials the bridge declared it needs.
 
 `swift run` produces a bare executable rather than an `.app` bundle, and macOS starts unbundled
@@ -116,20 +120,17 @@ to a code identity, and an ad-hoc signature's identity changes every time you bu
 
 ## Networks
 
-Ten networks can be connected. Two more — Google Messages and Google Voice — remain in the
+Five networks can be connected. Two more — Google Messages and Google Voice — remain in the
 catalog so an existing profile keeps working, but are no longer offered.
 
-Twelve networks are in the catalog in total. Eleven download a bridge binary pinned to an exact version and
+Seven networks are in the catalog in total. Six download a bridge binary pinned to an exact version and
 SHA-256, verified before it is ever made executable; iMessage has nothing to download, because it
-is reached through macOS itself. A bridge's own login flow is what gets rendered — Mimo never
+is reached through macOS itself. A bridge's own login flow is what gets rendered — Inbox+ never
 guesses what a network will ask for.
 
 | Network | Login | Verified |
 | --- | --- | --- |
 | Instagram | web sign-in | live account |
-| Slack | token | flows read from a running bridge |
-| X | web sign-in | flows read from a running bridge |
-| LinkedIn | web sign-in | flows read from a running bridge |
 | Facebook Messenger | web sign-in | installs and registers |
 | WhatsApp | phone number and pairing code | installs and registers |
 | Telegram | phone number | installs and registers |
@@ -138,12 +139,13 @@ guesses what a network will ask for.
 **Only Instagram has been driven with a real account.** The rest install, register, supervise and
 serve their genuine login flows; that is not the same as proven.
 
-Two networks are listed but disabled, with the reason shown in the picker: Discord (its current
-release predates the bridge protocol Mimo speaks) and external Matrix (needs multi-account
-support). Both are blocked on work Mimo could plausibly do.
+X, Slack, and LinkedIn appear as disabled coming-soon tiles and have no connection implementation.
+Two other networks are listed but disabled, with the reason shown in the picker: Discord (its current
+release predates the bridge protocol Inbox+ speaks) and external Matrix (needs multi-account
+support). Both are blocked on work Inbox+ could plausibly do.
 
 Four are not offered at all. IRC and Google Chat have no route — their maintained bridges publish
-no pinned macOS release, so there is nothing Mimo could verify before running one, and a
+no pinned macOS release, so there is nothing Inbox+ could verify before running one, and a
 permanently greyed-out entry would only suggest it was coming. Google Messages and Google Voice are
 out of scope by decision rather than obstacle; their bridges still work and stay in the catalog, so
 a profile that already runs one keeps attributing its conversations correctly.
@@ -197,8 +199,8 @@ remove       stop and remove exactly one profile, after confirmation
 - **No operated cloud.** Nothing leaves your Mac except traffic to the networks you connect.
 - **Nothing unverified is executed.** Bridges are pinned to an exact version and a SHA-256 taken
   verbatim from upstream; bytes are hashed and compared before anything is made executable.
-- **Passwords go to the network, not to Mimo.** Web sign-ins load the network's real page in a
-  non-persistent webview. Mimo captures only the declared credentials.
+- **Passwords go to the network, not to Inbox+.** Web sign-ins load the network's real page in a
+  non-persistent webview. Inbox+ captures only the declared credentials.
 - **Secrets stay out of reach.** Configs, registrations and cached media are `0600` in `0700`
   directories; the client store passphrase lives in the Keychain.
 - **Diagnostics are redacted.** `MimoRuntimeCLI diagnostics` removes tokens, cookies, message
