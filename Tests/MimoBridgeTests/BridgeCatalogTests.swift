@@ -181,8 +181,12 @@ import Testing
     #expect(BridgeCatalog.pickerOrder.count == Set(BridgeCatalog.pickerOrder).count)
     for platform in platforms {
         #expect(!BridgeCatalog.canConnect(platform))
-        // Existing profiles still need their bridge metadata and runtime support.
-        #expect(try BridgeCatalog.require(platform).platform == platform)
+        #expect(!BridgeCatalog.isAvailable(platform))
+        #expect(BridgeCatalog.descriptor(for: platform) == nil)
+        #expect(BridgeCatalog.unavailabilityReason(for: platform) == "It's coming soon")
+        #expect(throws: BridgeCatalogError.unsupportedPlatform(platform)) {
+            try BridgeCatalog.require(platform)
+        }
     }
     for platform in [Platform.instagram, .facebookMessenger, .whatsApp, .telegram, .iMessage] {
         #expect(BridgeCatalog.canConnect(platform))

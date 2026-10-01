@@ -12,8 +12,8 @@ private func testRoot() -> URL {
 }
 
 private func fixtureRegistration(
-    id: String = "slack",
-    senderLocalpart: String = "slackbot",
+    id: String = "telegram",
+    senderLocalpart: String = "telegrambot",
     serverName: String = "mimo.localhost",
     url: String? = "http://127.0.0.1:29328"
 ) -> AppServiceRegistration {
@@ -58,10 +58,10 @@ private func permissions(of url: URL) throws -> Int {
     let registration = fixtureRegistration()
 
     #expect(registration.users == [
-        AppServiceNamespace(exclusive: true, regex: "@slack_.*:mimo\\.localhost"),
+        AppServiceNamespace(exclusive: true, regex: "@telegram_.*:mimo\\.localhost"),
     ])
     #expect(registration.aliases == [
-        AppServiceNamespace(exclusive: true, regex: "#slack_.*:mimo\\.localhost"),
+        AppServiceNamespace(exclusive: true, regex: "#telegram_.*:mimo\\.localhost"),
     ])
     #expect(registration.rooms.isEmpty)
 }
@@ -78,7 +78,7 @@ private func permissions(of url: URL) throws -> Int {
     }
 }
 
-@Test(arguments: ["sla ck", "slack/../etc", "slack:bridge"])
+@Test(arguments: ["tele gram", "telegram/../etc", "telegram:bridge"])
 func anUnsafeIdentifierIsRejected(_ id: String) throws {
     // Break caught: an id containing path or Matrix separators escapes the registration directory.
     #expect(throws: AppServiceRegistrationError.invalidIdentifier(id)) {
@@ -87,17 +87,17 @@ func anUnsafeIdentifierIsRejected(_ id: String) throws {
 }
 
 @Test func anUnsafeSenderLocalpartIsRejected() throws {
-    #expect(throws: AppServiceRegistrationError.invalidSenderLocalpart("slack bot")) {
-        try fixtureRegistration(senderLocalpart: "slack bot").validate()
+    #expect(throws: AppServiceRegistrationError.invalidSenderLocalpart("telegram bot")) {
+        try fixtureRegistration(senderLocalpart: "telegram bot").validate()
     }
 }
 
 @Test func anEmptyTokenIsRejected() throws {
     let registration = AppServiceRegistration(
-        id: "slack",
+        id: "telegram",
         asToken: "",
         hsToken: String(repeating: "h", count: 43),
-        senderLocalpart: "slackbot"
+        senderLocalpart: "telegrambot"
     )
 
     #expect(throws: AppServiceRegistrationError.emptyToken) {
@@ -108,10 +108,10 @@ func anUnsafeIdentifierIsRejected(_ id: String) throws {
 @Test func aShortTokenIsRejected() throws {
     // Break caught: a guessable appservice token lets any local process impersonate the bridge.
     let registration = AppServiceRegistration(
-        id: "slack",
+        id: "telegram",
         asToken: String(repeating: "a", count: 31),
         hsToken: String(repeating: "h", count: 43),
-        senderLocalpart: "slackbot"
+        senderLocalpart: "telegrambot"
     )
 
     #expect(throws: AppServiceRegistrationError.tokenTooShort(minimum: 32)) {
@@ -122,10 +122,10 @@ func anUnsafeIdentifierIsRejected(_ id: String) throws {
 @Test func anEmptyNamespaceRegexIsRejected() throws {
     // Break caught: an empty regex matches every user, giving the bridge the whole homeserver.
     let registration = AppServiceRegistration(
-        id: "slack",
+        id: "telegram",
         asToken: String(repeating: "a", count: 43),
         hsToken: String(repeating: "h", count: 43),
-        senderLocalpart: "slackbot",
+        senderLocalpart: "telegrambot",
         users: [AppServiceNamespace(exclusive: true, regex: "")]
     )
 
@@ -143,7 +143,7 @@ func anUnsafeIdentifierIsRejected(_ id: String) throws {
 
     let file = try registration.write(to: directory)
 
-    #expect(file == directory.appendingPathComponent("slack.yaml", isDirectory: false))
+    #expect(file == directory.appendingPathComponent("telegram.yaml", isDirectory: false))
     #expect(try permissions(of: directory) == 0o700)
     #expect(try permissions(of: file) == 0o600)
     #expect(try String(contentsOf: file, encoding: .utf8) == registration.render())
@@ -157,7 +157,7 @@ func anUnsafeIdentifierIsRejected(_ id: String) throws {
     try fixtureRegistration(url: nil).write(to: directory)
 
     let contents = try FileManager.default.contentsOfDirectory(atPath: directory.path)
-    #expect(contents == ["slack.yaml"])
+    #expect(contents == ["telegram.yaml"])
 }
 
 @Test func randomTokensAreLongAndDoNotRepeat() throws {
@@ -184,13 +184,13 @@ func anUnsafeIdentifierIsRejected(_ id: String) throws {
     let configuration = try fixtureConfiguration(root: root)
     let whatsapp = try fixtureRegistration(id: "whatsapp", senderLocalpart: "whatsappbot")
         .write(to: configuration.appServiceDirectory)
-    let slack = try fixtureRegistration().write(to: configuration.appServiceDirectory)
+    let telegram = try fixtureRegistration().write(to: configuration.appServiceDirectory)
 
     let yaml = try configuration.render()
 
     #expect(yaml.contains("""
     app_service_config_files:
-      - '\(slack.path)'
+      - '\(telegram.path)'
       - '\(whatsapp.path)'
     """))
 }

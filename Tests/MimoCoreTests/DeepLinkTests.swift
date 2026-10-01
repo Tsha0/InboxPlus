@@ -9,8 +9,7 @@ import Testing
 }
 
 @Test func asubdomainOfAnOwnedDomainIsVerified() throws {
-    // Slack workspaces live on per-team subdomains, so exact matching would reject every real link.
-    _ = try DeepLinkVerifier.verify("https://mimo.slack.com/archives/C01/p1", for: .slack)
+    _ = try DeepLinkVerifier.verify("https://www.instagram.com/p/1", for: .instagram)
 }
 
 @Test func aLookalikeDomainIsRejected() {
@@ -87,5 +86,13 @@ func onlyHttpsIsAccepted(_ raw: String) {
     let forged = Data(#"{"url":"https://evil.example/p","platform":"instagram"}"#.utf8)
     #expect(throws: DecodingError.self) {
         try JSONDecoder().decode(VerifiedDeepLink.self, from: forged)
+    }
+}
+
+@Test(arguments: [Platform.x, .slack, .linkedIn])
+func comingSoonPlatformsHaveNoLinkHandlers(_ platform: Platform) {
+    #expect(DeepLinkVerifier.verifiableDomains(for: platform).isEmpty)
+    #expect(throws: DeepLinkVerificationError.platformHasNoVerifiableLinks(platform)) {
+        try DeepLinkVerifier.verify("https://example.com/message", for: platform)
     }
 }
