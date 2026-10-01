@@ -16,16 +16,17 @@ Edit this Inbox+ app logo. Replace the vertically separated x and + with ONE uni
 
 ## Click animation
 
-Click the navigation-rail logo to open a small black animation panel. The original stacked artwork
-transitions into native vector crosses, which pull together, twist, pulse and settle into the exact
-final generated mark. Replay starts from the beginning; clicking outside dismisses the panel.
-Reduce Motion replaces the movement with a short crossfade. The animation has no sound.
+Click the navigation-rail logo to give its asterisk a smooth full turn and a soft monochrome glow
+inside the main window. The black tile stays fixed. Repeated clicks continue the spin and refresh
+the glow. Reduce Motion keeps only the brief glow, without rotation or scaling. The interaction
+opens no panel and has no sound.
 
-`inboxplus-logo-merge.gif` is a standalone preview rendered from the same SwiftUI artwork.
+`inboxplus-logo-merge.gif` preserves the earlier x-and-plus merge concept as a standalone animation;
+it is no longer the click behavior. Its rendering artwork lives in `Scripts/LogoMergeArtwork.swift`.
 Regenerate it with:
 
 ```bash
-swiftc -parse-as-library Sources/InboxPlusUI/LogoMergeArtwork.swift \
+swiftc -parse-as-library Scripts/LogoMergeArtwork.swift \
   Scripts/render-logo-animation.swift -o /tmp/render-inboxplus-logo
 /tmp/render-inboxplus-logo /tmp/inboxplus-logo-preview
 cp /tmp/inboxplus-logo-preview/inboxplus-logo-merge.gif docs/assets/inboxplus-logo-merge.gif
