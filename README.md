@@ -131,7 +131,7 @@ guesses what a network will ask for.
 | X | web sign-in | flows read from a running bridge |
 | LinkedIn | web sign-in | flows read from a running bridge |
 | Facebook Messenger | web sign-in | installs and registers |
-| WhatsApp | QR pairing | installs and registers |
+| WhatsApp | phone number and pairing code | installs and registers |
 | Telegram | phone number | installs and registers |
 | iMessage | macOS permissions | reads and sends natively |
 

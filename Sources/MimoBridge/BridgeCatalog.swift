@@ -188,7 +188,7 @@ public enum BridgeCatalog {
         displayName: "WhatsApp",
         version: mautrixVersion,
         runtimeKind: .goBinary,
-        credentialStyle: .qrCode,
+        credentialStyle: .phoneNumber,
         artifact: mautrixArtifact(
             repository: "whatsapp",
             assetName: "mautrix-whatsapp-darwin-arm64",
