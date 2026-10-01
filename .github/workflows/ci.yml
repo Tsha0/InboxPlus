@@ -119,6 +119,12 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
+      - name: Record runtime build tools
+        run: |
+          cmake --version
+          rustc --version
+          cargo --version
+
       - name: Build the app bundle
         run: Scripts/build-app.sh
 

@@ -168,6 +168,9 @@ public struct LibolmProvisioner: Sendable {
             [
                 "-S", source.path,
                 "-B", build.path,
+                // libolm's archived build declares pre-3.5 policies, removed in CMake 4.
+                // Set the supported compatibility floor externally without changing the source pin.
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
                 "-DCMAKE_BUILD_TYPE=Release",
                 "-DBUILD_SHARED_LIBS=ON",
                 "-DOLM_TESTS=OFF",

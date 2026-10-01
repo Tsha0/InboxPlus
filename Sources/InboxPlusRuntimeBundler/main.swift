@@ -4,7 +4,15 @@ import InboxPlusRuntime
 
 // Build-time helper only; it is never copied into the app bundle.
 @main struct RuntimeBundler {
-    static func main() async throws {
+    static func main() async {
+        do { try await run() }
+        catch {
+            FileHandle.standardError.write(Data("Runtime bundling failed: \(error)\n".utf8))
+            exit(1)
+        }
+    }
+
+    private static func run() async throws {
         let arguments = Array(CommandLine.arguments.dropFirst())
         guard arguments.count == 2 else { fatalError("usage: InboxPlusRuntimeBundler libolm|bootstrap <directory>") }
         let directory = URL(fileURLWithPath: arguments[1])
