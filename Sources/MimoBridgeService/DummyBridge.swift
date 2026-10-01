@@ -140,26 +140,36 @@ public extension DummyBridge.Script {
         ]
     )
 
-    /// WhatsApp: a QR code the user scans with their phone.
+    /// WhatsApp: phone number followed by a pairing code entered in the mobile app.
     static let whatsApp = DummyBridge.Script(
         flows: [
-            BridgeLoginFlow(id: "qr", name: "QR code", description: "Scan a QR code"),
+            BridgeLoginFlow(id: "phone", name: "Pairing code", description: "Link with your phone number"),
         ],
         steps: [
-            "qr": [
+            "phone": [
+                BridgeLoginStep(
+                    type: .userInput,
+                    stepID: "fi.mau.whatsapp.login.phone",
+                    loginID: "dummy-whatsapp-login",
+                    userInput: BridgeLoginUserInputParams(fields: [
+                        BridgeLoginInputField(
+                            type: .phoneNumber,
+                            id: "phone_number",
+                            name: "Phone number",
+                            description: "Your WhatsApp phone number in international format"
+                        ),
+                    ])
+                ),
                 BridgeLoginStep(
                     type: .displayAndWait,
-                    stepID: "fi.mau.whatsapp.qr",
+                    stepID: "fi.mau.whatsapp.login.code",
                     loginID: "dummy-whatsapp-login",
-                    instructions: "Scan this code in WhatsApp on your phone.",
-                    displayAndWait: BridgeLoginDisplayAndWaitParams(
-                        type: .qr,
-                        data: "2@abcdefghijklmnop"
-                    )
+                    instructions: "Input the pairing code in the WhatsApp mobile app to log in",
+                    displayAndWait: BridgeLoginDisplayAndWaitParams(type: .code, data: "ABCD-EFGH")
                 ),
                 BridgeLoginStep(
                     type: .complete,
-                    stepID: "fi.mau.whatsapp.complete",
+                    stepID: "fi.mau.whatsapp.login.complete",
                     loginID: "dummy-whatsapp-login",
                     complete: BridgeLoginCompleteParams(userLoginID: "15551234567")
                 ),

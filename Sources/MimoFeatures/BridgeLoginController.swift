@@ -5,15 +5,15 @@ import MimoCore
 
 /// Drives one network login from flow selection through to a connected account.
 ///
-/// The controller knows the shape of a `bridgev2` login but nothing about any particular network:
+/// The controller knows the shape of a `bridgev2` login:
 /// every screen is chosen by the step type the bridge returns, so a network Mimo has never heard
-/// of logs in correctly as long as its bridge speaks the protocol.
+/// of logs in correctly as long as its bridge speaks the protocol. WhatsApp only offers phone pairing.
 @MainActor
 @Observable
 public final class BridgeLoginController {
     public enum Phase: Equatable {
         case loadingFlows
-        /// More than one way in — the user picks, e.g. WhatsApp's QR versus phone number.
+        /// More than one way in — the user picks, e.g. Facebook's sign-in domains.
         case choosingFlow([BridgeLoginFlow])
         case step(BridgeLoginStep)
         case submitting(BridgeLoginStep)
@@ -65,9 +65,14 @@ public final class BridgeLoginController {
     public func start() async {
         phase = .loadingFlows
         do {
-            let flows = try await session.loginFlows()
+            let advertisedFlows = try await session.loginFlows()
+            let flows = platform == .whatsApp
+                ? advertisedFlows.filter { $0.id == "phone" }
+                : advertisedFlows
             guard !flows.isEmpty else {
-                phase = .failed("This bridge offers no way to sign in.")
+                phase = .failed(platform == .whatsApp
+                    ? "This bridge does not offer phone number linking for WhatsApp."
+                    : "This bridge offers no way to sign in.")
                 return
             }
             if flows.count == 1 {
@@ -81,9 +86,12 @@ public final class BridgeLoginController {
     }
 
     public func begin(flowID: String) async {
-        // Switching flows — QR to phone number, say — leaves the first attempt running on the
-        // bridge unless it is ended here.
+        // Switching flows leaves the first attempt running on the bridge unless it is ended here.
         cancel()
+        guard platform != .whatsApp || flowID == "phone" else {
+            phase = .failed("WhatsApp only supports phone number linking in Mimo.")
+            return
+        }
         phase = .loadingFlows
         do {
             adopt(try await session.startLogin(flowID: flowID))
@@ -157,8 +165,7 @@ public final class BridgeLoginController {
     ///
     /// A `display_and_wait` step only advances while a client is asking: the provisioning API
     /// answers the wait with a long-lived POST that returns either the next code or the finished
-    /// login. Without it WhatsApp's QR is drawn once and never replaced, so by the time it is
-    /// scanned the code has rotated and the phone reports a connection failure.
+    /// login. Phone pairing uses this to finish once the code is entered in the mobile app.
     private func waitForNextStep(after step: BridgeLoginStep) {
         guard let loginID = activeLoginID ?? step.loginID else {
             phase = .failed("The bridge did not identify this login attempt.")
