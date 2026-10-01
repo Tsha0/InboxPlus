@@ -104,7 +104,6 @@ public enum DeepLinkVerifier {
         case .whatsApp: ["whatsapp.com", "wa.me"]
         case .facebookMessenger: ["messenger.com", "m.me", "facebook.com", "fb.com"]
         case .telegram: ["t.me", "telegram.me", "telegram.org"]
-        case .signal: ["signal.me", "signal.group", "signal.org"]
         case .discord: ["discord.com", "discord.gg"]
         case .slack: ["slack.com"]
         case .x: ["x.com", "twitter.com"]
@@ -113,7 +112,6 @@ public enum DeepLinkVerifier {
         case .googleChat: ["chat.google.com"]
         case .googleVoice: ["voice.google.com"]
         case .matrix: ["matrix.to"]
-        case .bluesky: ["bsky.app"]
         // iMessage and IRC have no web link an app claims, so nothing here can be verified and
         // an empty list is the honest answer rather than a guess.
         case .iMessage, .irc: []

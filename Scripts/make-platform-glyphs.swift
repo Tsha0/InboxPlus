@@ -28,12 +28,10 @@ let mapping: [(platform: String, slug: String, hex: String)] = [
     ("whatsApp", "whatsapp", "25D366"),
     ("facebookMessenger", "messenger", "00B2FF"),
     ("telegram", "telegram", "26A5E4"),
-    ("signal", "signal", "3B45FD"),
     ("discord", "discord", "5865F2"),
     ("slack", "slack", "4A154B"),
     ("x", "x", "000000"),
     ("linkedIn", "linkedin", "0A66C2"),
-    ("bluesky", "bluesky", "0285FF"),
     ("iMessage", "imessage", "34DA50"),
     ("matrix", "matrix", "000000"),
 ]

@@ -103,7 +103,7 @@ func namedSecretsInConfigFilesAreRemoved(_ line: String) {
 
 @Test func ordinaryDiagnosticTextIsLeftAlone() {
     // Redaction that eats the log defeats the purpose of collecting it.
-    let line = "bridge signal phase=healthy port=52295 restarts=0"
+    let line = "bridge slack phase=healthy port=52295 restarts=0"
     #expect(redactor.redact(line) == line)
 }
 

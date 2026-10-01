@@ -37,13 +37,11 @@ but not a release train.
 | Facebook Messenger | [mautrix/meta](https://github.com/mautrix/meta) | `v0.2607.0` | `mautrix-meta-darwin-arm64` |
 | WhatsApp | [mautrix/whatsapp](https://github.com/mautrix/whatsapp) | `v0.2607.0` | `mautrix-whatsapp-darwin-arm64` |
 | Telegram | [mautrix/telegram](https://github.com/mautrix/telegram) | `v0.2607.0` | `mautrix-telegram-darwin-arm64` |
-| Signal | [mautrix/signal](https://github.com/mautrix/signal) | `v0.2607.0` | `mautrix-signal-darwin-arm64` |
 | Slack | [mautrix/slack](https://github.com/mautrix/slack) | `v0.2607.0` | `mautrix-slack-darwin-arm64` |
 | X | [mautrix/twitter](https://github.com/mautrix/twitter) | `v0.2606.0` | `mautrix-twitter-darwin-arm64` |
 | LinkedIn | [mautrix/linkedin](https://github.com/mautrix/linkedin) | `v0.2604.0` | `mautrix-linkedin-darwin-arm64` |
 | Google Messages | [mautrix/gmessages](https://github.com/mautrix/gmessages) | `v0.2605.0` | `mautrix-gmessages-darwin-arm64` |
 | Google Voice | [mautrix/gvoice](https://github.com/mautrix/gvoice) | `v0.2605.0` | `mautrix-gvoice-darwin-arm64` |
-| Bluesky | [mautrix/bluesky](https://github.com/mautrix/bluesky) | `v0.2510.0` | `mautrix-bluesky-darwin-arm64` |
 
 The hashes are not repeated here. They live in `BridgeCatalog`, and `docs/sbom.cdx.json` is
 generated from it — a hash transcribed into prose is a hash that will eventually disagree with the

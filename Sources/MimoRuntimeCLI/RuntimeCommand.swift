@@ -121,7 +121,7 @@ public enum RuntimeCommand: Equatable, Sendable {
       bridge --profile <name> --action <install|prepare|flows|list> [--network <platform>]
           Install, configure, or interrogate a network bridge for this profile.
           Networks: instagram, facebookMessenger, whatsApp, telegram, iMessage,
-          signal, slack, x, linkedIn, googleMessages, googleVoice, bluesky.
+          slack, x, linkedIn, googleMessages, googleVoice.
       diagnostics --profile <name> --output <path>
           Export a redacted diagnostics bundle that is safe to attach to a bug report.
       sbom [--output <path>]
