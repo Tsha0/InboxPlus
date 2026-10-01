@@ -29,11 +29,11 @@ The project is now **Inbox+**. The app rebrand is being developed separately; th
 `main` branch still uses `Mimo` module and executable names, `MIMO_` environment variables,
 and `Mimo.app`. The commands below match that branch.
 
-Current development builds use the app identity `com.mimo.app`, the runtime root to
-`~/Library/Application Support/Mimo/DeveloperRuntime`, and the local homeserver name to
+Current development builds use the app identity `com.mimo.app`, the runtime root
+`~/Library/Application Support/Mimo/DeveloperRuntime`, and the local homeserver name
 `mimo.localhost`. Existing profiles from earlier builds are not automatically migrated; prepare
 a fresh Inbox+ profile using the commands below. Keep earlier profile data backed up and do not
-reuse its homeserver database under the new server name. Grant macOS permissions to Inbox+ again
+reuse its homeserver database under the new server name. Grant macOS permissions to the installed app again
 and update development environment variables to the `MIMO_` prefix.
 
 ## Requirements
