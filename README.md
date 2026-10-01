@@ -1,7 +1,7 @@
 # Inbox+
 
 <p align="center">
-  <img src="docs/assets/inboxplus-logo.png" alt="Inbox+ overlapping x and plus asterisk logo" width="320">
+  <img src="docs/assets/inboxplus-logo.png" alt="Inbox+ logo" width="320">
 </p>
 
 Inbox+ is a local-first universal messaging inbox for macOS. It brings conversations from several
@@ -17,59 +17,57 @@ It is conversation-focused. There are no feeds, posts, stories or calls.
 account, loads real conversations, sends and receives, renders media, and supervises the prepared network
 bridges alongside the homeserver.
 
-It is not something to hand to anyone else yet. No distributable build has been notarized, no network has
+It is not something to hand to anyone else yet. Nothing is code-signed or notarized, no network has
 been certified against a live account except Instagram, and a recorded benchmark verdict from Phase
 2 — `Require PostgreSQL` — has not been revisited even though the storage load has since grown. See
 [`docs/testing/phase-8-release-certification.md`](docs/testing/phase-8-release-certification.md)
 for the full gap list.
 
-The display name is **Inbox+**; Swift modules and command-line executables use `InboxPlus`.
-The interface uses a monochrome palette that adapts to light and dark appearance.
-
 ## Development profile compatibility
 
-This rename changes the app identity to `com.inboxplus.app`, the runtime root to
-`~/Library/Application Support/Inbox+/DeveloperRuntime`, and the local homeserver name to
-`inboxplus.localhost`. Existing profiles from earlier builds are not automatically migrated; the bundled app creates
-a fresh Inbox+ profile automatically. Keep earlier profile data backed up and do not
-reuse its homeserver database under the new server name. Grant macOS permissions to Inbox+ again
-and update development environment variables to the `INBOXPLUS_` prefix.
+The project is now **Inbox+**. The app rebrand is being developed separately; the current
+`main` branch still uses `Mimo` module and executable names, `MIMO_` environment variables,
+and `Mimo.app`. The commands below match that branch.
+
+Current development builds use the app identity `com.mimo.app`, the runtime root
+`~/Library/Application Support/Mimo/DeveloperRuntime`, and the local homeserver name
+`mimo.localhost`. Existing profiles from earlier builds are not automatically migrated; prepare
+a fresh Inbox+ profile using the commands below. Keep earlier profile data backed up and do not
+reuse its homeserver database under the new server name. Grant macOS permissions to the installed app again
+and update development environment variables to the `MIMO_` prefix.
 
 ## Requirements
 
 - Apple silicon Mac, macOS 15 or later
 - Swift 6.2 toolchain or newer (developed against Swift 6.3 / Xcode 26.5)
-The bundled app includes portable CPython 3.12.14, Synapse and libolm. App users do not need
-Homebrew, Python, CMake or a terminal. The local runtime runs as a child process and stops when
-the app quits.
-
-Building the bundle requires CMake and Rust (Synapse ships no macOS wheel). An optional
-`INBOXPLUS_RUNTIME_SEED=/path/to/venv` reuses only a pinned Python 3.12 environment's installed
-packages; the complete inventory and native library dependencies are verified before bundling.
-Its credentials, configuration and databases are never copied.
+- Homebrew CPython 3.12 — for the local Synapse runtime
+- `cmake` (`brew install cmake`) — needed once per profile to build libolm
 
 ## Install
 
-Build a real, double-clickable `Inbox+.app` and put it in `/Applications`:
+Build a real, double-clickable `Mimo.app` and put it in `/Applications`:
 
 ```bash
 Scripts/build-app.sh --install
 ```
 
-Open Inbox+ from Finder. On first launch it creates a private `default` profile and prepares the
-bundled messaging runtime automatically, without downloading software. Add a network from Settings;
-its checksum-verified bridge downloads when needed. After a newly installed connection asks you to
-quit and reopen Inbox+, choose that network again to sign in. No terminal session is needed.
+Then prepare a profile and start the runtime, which must stay running while you use Inbox+:
 
-With exactly one existing prepared profile the app uses it. With several, set `INBOXPLUS_PROFILE`
-to name one; it never guesses which account to use.
+```bash
+/Applications/Mimo.app/Contents/MacOS/MimoRuntimeCLI bootstrap --profile demo \
+  --python /opt/homebrew/opt/python@3.12/bin/python3.12
+/Applications/Mimo.app/Contents/MacOS/MimoRuntimeCLI start --profile demo
+```
+
+Open the installed `Mimo.app` from Finder. With exactly one prepared profile it attaches automatically; with several,
+set `MIMO_PROFILE` to name one, because guessing would silently attach to the wrong account.
 
 This build is **ad-hoc signed and runs on this Mac only**. Gatekeeper on anyone else's Mac will
 refuse it — distributing to other people needs an Apple Developer ID and
 `Scripts/package-release.sh`, which has never been run. See
 [Phase 7](docs/testing/phase-7-lifecycle-and-security.md).
 
-> Set `INBOXPLUS_SIGNING_IDENTITY` before building to sign with a real or self-signed certificate.
+> Set `MIMO_SIGNING_IDENTITY` before building to sign with a real or self-signed certificate.
 > Worth doing: macOS ties Full Disk Access and Automation grants to a code identity, and an ad-hoc
 > signature's identity changes on every build — which is why permissions are re-requested after
 > every rebuild.
@@ -80,8 +78,8 @@ iMessage is read from the local Messages database rather than bridged, so it nee
 rather than a password:
 
 1. **System Settings → Privacy & Security → Full Disk Access**
-2. Add `/Applications/Inbox+.app`
-3. **Quit and reopen Inbox+** — macOS only applies the grant to a newly launched process
+2. Add `/Applications/Mimo.app`
+3. **Quit and reopen the app** — macOS only applies the grant to a newly launched process
 
 Sending prompts separately for Automation control of Messages the first time.
 
@@ -90,7 +88,7 @@ Sending prompts separately for Automation control of Messages the first time.
 ```bash
 swift build
 swift test
-swift run InboxPlus
+swift run Mimo
 ```
 
 With no profile configured the app starts with an empty inbox and contacts list.
@@ -100,15 +98,15 @@ To run against a real local homeserver:
 
 ```bash
 # once per profile
-swift run InboxPlusRuntimeCLI bootstrap --profile demo --python /opt/homebrew/opt/python@3.12/bin/python3.12
-swift run InboxPlusRuntimeCLI bridge --profile demo --action install --network instagram
-swift run InboxPlusRuntimeCLI bridge --profile demo --action prepare --network instagram
+swift run MimoRuntimeCLI bootstrap --profile demo --python /opt/homebrew/opt/python@3.12/bin/python3.12
+swift run MimoRuntimeCLI bridge --profile demo --action install --network instagram
+swift run MimoRuntimeCLI bridge --profile demo --action prepare --network instagram
 
 # shell 1 — Synapse and every prepared bridge
-swift run -c release InboxPlusRuntimeCLI start --profile demo
+swift run -c release MimoRuntimeCLI start --profile demo
 
 # shell 2 — the app, attached to that profile
-INBOXPLUS_PROFILE=demo swift run -c release InboxPlus
+MIMO_PROFILE=demo swift run -c release Mimo
 ```
 
 Then **Settings → Add** and pick a network. Sign in on the network's own page; Inbox+ captures only
@@ -116,7 +114,7 @@ the credentials the bridge declared it needs.
 
 `swift run` produces a bare executable rather than an `.app` bundle, and macOS starts unbundled
 processes as background-only — the window draws but never becomes key, so it takes no clicks and no
-keyboard input. `InboxPlusAppDelegate` promotes the process to a regular app at launch, which is what
+keyboard input. `MimoAppDelegate` promotes the process to a regular app at launch, which is what
 makes the window usable. It is also why macOS re-asks for permissions on every rebuild: grants bind
 to a code identity, and an ad-hoc signature's identity changes every time you build.
 
@@ -158,20 +156,20 @@ a profile that already runs one keeps attributing its conversations correctly.
 ## How it fits together
 
 ```
-InboxPlusApp          the executable; chooses an empty inbox or a live profile at launch
-  InboxPlusUI         SwiftUI views — inbox, conversation, login engine, account management
-  InboxPlusFeatures   app model, inbox projection, contact linking, media loading
-  InboxPlusGateway    the MessagingGateway seam, media cache, in-memory fake
-  InboxPlusCore       domain model — messages, attachments, platforms, deep links
-  InboxPlusMatrix     Matrix Rust SDK, event normalization, invite policy   (SDK stays here)
-  InboxPlusBridge     bridge catalog and login protocol, as pure data
-  InboxPlusBridgeService  installer, configuration, supervision, provisioning
-  InboxPlusIMessage   the local Messages database and Apple-event sending
-  InboxPlusRuntime    Synapse bootstrap, process supervision, backups, diagnostics, SBOM
-InboxPlusRuntimeCLI   the developer tool for everything above
+MimoApp          the executable; chooses an empty inbox or a live profile at launch
+  MimoUI         SwiftUI views — inbox, conversation, login engine, account management
+  MimoFeatures   app model, inbox projection, contact linking, media loading
+  MimoGateway    the MessagingGateway seam, media cache, in-memory fake
+  MimoCore       domain model — messages, attachments, platforms, deep links
+  MimoMatrix     Matrix Rust SDK, event normalization, invite policy   (SDK stays here)
+  MimoBridge     bridge catalog and login protocol, as pure data
+  MimoBridgeService  installer, configuration, supervision, provisioning
+  MimoIMessage   the local Messages database and Apple-event sending
+  MimoRuntime    Synapse bootstrap, process supervision, backups, diagnostics, SBOM
+MimoRuntimeCLI   the developer tool for everything above
 ```
 
-Each network is drawn with its own mark in monochrome, converted from
+Each network is drawn with its own mark on its own brand colour, converted from
 [Simple Icons](https://simpleicons.org) (CC0) into Swift vector paths at authoring time — no
 bundled images, no SVG parsing at runtime. The marks are trademarks of their owners and are used to
 identify networks, not to imply affiliation.
@@ -205,7 +203,7 @@ remove       stop and remove exactly one profile, after confirmation
   non-persistent webview. Inbox+ captures only the declared credentials.
 - **Secrets stay out of reach.** Configs, registrations and cached media are `0600` in `0700`
   directories; the client store passphrase lives in the Keychain.
-- **Diagnostics are redacted.** `InboxPlusRuntimeCLI diagnostics` removes tokens, cookies, message
+- **Diagnostics are redacted.** `MimoRuntimeCLI diagnostics` removes tokens, cookies, message
   bodies and attachment URLs, and pseudonymises identifiers rather than deleting them, so a bundle
   is still readable. Databases and key material are never collected at all.
 - **Deep links are verified.** An **Open in app** action only ever follows an `https` link on a
@@ -247,9 +245,9 @@ Three checks must pass before a merge is allowed:
 If **Generated files are current** fails, regenerate and commit:
 
 ```bash
-swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/InboxPlusUI/PlatformGlyphPaths.swift
-swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns
-swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json
+swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/MimoUI/PlatformGlyphPaths.swift
+swift Scripts/make-icon.swift docs/assets/mimo-mascot.png Resources/AppIcon.icns
+swift run MimoRuntimeCLI sbom --output docs/sbom.cdx.json
 ```
 
 CI runs on a shared, virtualised macOS runner that is markedly slower than a developer Mac. A test
@@ -266,7 +264,7 @@ swift test                    # 583 tests, no network, no homeserver
 Tests that need a real Synapse are opt-in, because they are slow and download things:
 
 ```bash
-INBOXPLUS_RUNTIME_PYTHON=/opt/homebrew/opt/python@3.12/bin/python3.12 swift test
+MIMO_RUNTIME_PYTHON=/opt/homebrew/opt/python@3.12/bin/python3.12 swift test
 ```
 
 None of them touch a real network account.
