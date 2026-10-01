@@ -1,6 +1,6 @@
 # Phase 8 release certification — status
 
-Phase 8 is the gate that says Mimo is ready to hand to the public: a live-network black-box suite,
+Phase 8 is the gate that says Inbox+ is ready to hand to the public: a live-network black-box suite,
 clean-Mac installation, an upgrade matrix, failure injection, performance, accessibility, website
 artifacts, checksums, release notes, and a license inventory.
 
@@ -15,7 +15,7 @@ and what already exists, so the gate is not mistaken for a formality.
 | Checksums | Done for inputs — every bridge and libolm is pinned and verified before execution. Release-artifact checksums are emitted by `Scripts/package-release.sh`, which has never run. |
 | Failure injection | Partial. Bridge-crash isolation was demonstrated for real in Phase 6; supervisor restart, log-failure, data-loss and restore paths are covered by the Phase 2 suite. |
 | Performance | Partial and **stale**. `docs/benchmarks/phase-2/` measured the runtime alone, before the Matrix client, nine bridges and the media cache existed. Its verdict was `Require PostgreSQL`. |
-| Accessibility | Partial. Views carry labels, hints and identifiers, and those are asserted in `MimoUITests`. No audit with VoiceOver, Full Keyboard Access, Increase Contrast or Reduce Motion has been done. |
+| Accessibility | Partial. Views carry labels, hints and identifiers, and those are asserted in `InboxPlusUITests`. No audit with VoiceOver, Full Keyboard Access, Increase Contrast or Reduce Motion has been done. |
 | Release notes | Not written. |
 | Website artifacts | Not started. |
 
@@ -24,7 +24,7 @@ and what already exists, so the gate is not mistaken for a formality.
 - **Live-network black-box suite** — needs accounts on eleven networks. Only Instagram has ever
   been driven with real credentials. Several of these networks permanently ban accounts for using
   unofficial clients, so this needs throwaway accounts created deliberately, not a personal one.
-- **Clean-Mac installation** — needs a second Mac, or a VM, that has never had Mimo, Homebrew
+- **Clean-Mac installation** — needs a second Mac, or a VM, that has never had Inbox+, Homebrew
   Python, or `cmake` on it. Every install path here has been exercised only on a machine that
   already had its prerequisites.
 - **Upgrade matrix** — needs at least two signed releases to upgrade between. There are none.

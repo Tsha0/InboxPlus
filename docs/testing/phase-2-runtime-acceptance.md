@@ -10,10 +10,10 @@ agent, no signing, no redistribution.
 - Swift 6.2 toolchain (`swift --version`).
 - Homebrew CPython 3.12 at `/opt/homebrew/opt/python@3.12/bin/python3.12`.
 - Run every command from the repository root, so `Runtime/Synapse` resolves. To run from elsewhere,
-  set `MIMO_RUNTIME_PACKAGE_ROOT` to the repository root.
+  set `INBOXPLUS_RUNTIME_PACKAGE_ROOT` to the repository root.
 
-Profiles live under `~/Library/Application Support/Mimo/DeveloperRuntime/<profile>` with
-user-only permissions. Override the root with `MIMO_RUNTIME_ROOT` for disposable runs.
+Profiles live under `~/Library/Application Support/Inbox+/DeveloperRuntime/<profile>` with
+user-only permissions. Override the root with `INBOXPLUS_RUNTIME_ROOT` for disposable runs.
 
 ## Runtime ownership model
 
@@ -31,7 +31,7 @@ signal guarantees sound. Consequently:
 ## 1. Prepare the pinned runtime
 
 ```sh
-swift run MimoRuntimeCLI bootstrap --profile phase-2-acceptance \
+swift run InboxPlusRuntimeCLI bootstrap --profile phase-2-acceptance \
   --python /opt/homebrew/opt/python@3.12/bin/python3.12
 ```
 
@@ -46,7 +46,7 @@ bootstrap again rather than upgrading in place.
 ## 2. Verify the prepared runtime and its configuration
 
 ```sh
-swift run MimoRuntimeCLI verify --profile phase-2-acceptance
+swift run InboxPlusRuntimeCLI verify --profile phase-2-acceptance
 ```
 
 Expect: `configuration=loopback-only` and the pinned Python and Synapse versions.
@@ -55,7 +55,7 @@ Inspect the generated configuration directly if you want to confirm the safety p
 
 ```sh
 grep -E 'bind_addresses|enable_registration|allow_guest_access|send_federation' \
-  ~/Library/Application\ Support/Mimo/DeveloperRuntime/phase-2-acceptance/configuration/homeserver.yaml
+  ~/Library/Application\ Support/Inbox+/DeveloperRuntime/phase-2-acceptance/configuration/homeserver.yaml
 ```
 
 Expect `bind_addresses: ['127.0.0.1']`, registration and guest access disabled, federation off.
@@ -65,7 +65,7 @@ Expect `bind_addresses: ['127.0.0.1']`, registration and guest access disabled, 
 In one shell:
 
 ```sh
-swift run MimoRuntimeCLI start --profile phase-2-acceptance
+swift run InboxPlusRuntimeCLI start --profile phase-2-acceptance
 ```
 
 Expect `phase=healthy port=<allocated> pid=<pid>` then `supervising; press Ctrl-C to stop`.
@@ -73,24 +73,24 @@ Expect `phase=healthy port=<allocated> pid=<pid>` then `supervising; press Ctrl-
 In a second shell, while the first is supervising:
 
 ```sh
-swift run MimoRuntimeCLI status --profile phase-2-acceptance   # phase=healthy
-swift run MimoRuntimeCLI stop   --profile phase-2-acceptance   # refuses: the session owns it
+swift run InboxPlusRuntimeCLI status --profile phase-2-acceptance   # phase=healthy
+swift run InboxPlusRuntimeCLI stop   --profile phase-2-acceptance   # refuses: the session owns it
 ```
 
 Interrupt the first shell with Ctrl-C. It reports `phase=stopped`. Then:
 
 ```sh
-swift run MimoRuntimeCLI status --profile phase-2-acceptance   # phase=stopped
+swift run InboxPlusRuntimeCLI status --profile phase-2-acceptance   # phase=stopped
 ```
 
 Health is layered: the exact child process must match its recorded identity, the loopback
 `/_matrix/client/versions` endpoint must respond, and an authenticated `whoami` must succeed using a
-dedicated `mimo_probe` account whose token is stored `0600` inside the profile.
+dedicated `inboxplus_probe` account whose token is stored `0600` inside the profile.
 
 ## 4. Reconcile deterministic fixtures
 
 ```sh
-swift run MimoRuntimeCLI verify --profile phase-2-acceptance --fixture-rooms 10
+swift run InboxPlusRuntimeCLI verify --profile phase-2-acceptance --fixture-rooms 10
 ```
 
 Expect: `rooms=10/10 reconciled exactly`. Room aliases are derived from the seed, so repeating this
@@ -99,7 +99,7 @@ command adopts the same rooms instead of creating new ones.
 ## 5. Run a reduced benchmark
 
 ```sh
-swift run MimoRuntimeCLI benchmark --profile phase-2-acceptance \
+swift run InboxPlusRuntimeCLI benchmark --profile phase-2-acceptance \
   --seed 42 --rooms 20 --messages 1000
 ```
 
@@ -110,14 +110,14 @@ Confirm no secrets were written:
 
 ```sh
 grep -rE 'registration_shared_secret|access_token' \
-  ~/Library/Application\ Support/Mimo/DeveloperRuntime/phase-2-acceptance/reports || echo clean
+  ~/Library/Application\ Support/Inbox+/DeveloperRuntime/phase-2-acceptance/reports || echo clean
 ```
 
 ## 6. Back up, damage, and recover
 
 ```sh
-swift run MimoRuntimeCLI backup --profile phase-2-acceptance --name acceptance
-swift run MimoRuntimeCLI verify --profile phase-2-acceptance \
+swift run InboxPlusRuntimeCLI backup --profile phase-2-acceptance --name acceptance
+swift run InboxPlusRuntimeCLI verify --profile phase-2-acceptance \
   --simulate-data-loss --restore acceptance
 ```
 
@@ -132,7 +132,7 @@ target. A restore into a non-empty profile is refused.
 Close other workloads first; this run is the measurement of record.
 
 ```sh
-swift run -c release MimoRuntimeCLI benchmark --profile phase-2-acceptance \
+swift run -c release InboxPlusRuntimeCLI benchmark --profile phase-2-acceptance \
   --seed 20260813 --rooms 2000 --messages 100000 --import-workers 3
 ```
 
@@ -141,7 +141,7 @@ The command emits JSON and Markdown even when the verdict is PostgreSQL-required
 ## 8. Remove the profile and export evidence
 
 ```sh
-swift run MimoRuntimeCLI remove --profile phase-2-acceptance \
+swift run InboxPlusRuntimeCLI remove --profile phase-2-acceptance \
   --confirm phase-2-acceptance --export-report docs/benchmarks/phase-2/
 ```
 
@@ -200,6 +200,6 @@ swift test && swift build -c release && git diff --check
 Real-Synapse integration tests are opt-in:
 
 ```sh
-MIMO_RUNTIME_PYTHON=/opt/homebrew/opt/python@3.12/bin/python3.12 \
+INBOXPLUS_RUNTIME_PYTHON=/opt/homebrew/opt/python@3.12/bin/python3.12 \
   swift test --filter 'RuntimeBootstrapperRealIntegrationTests|SynapseSupervisorRealIntegrationTests'
 ```

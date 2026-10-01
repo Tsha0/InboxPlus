@@ -16,13 +16,13 @@
 
 ## Manual
 
-- Run `swift run Mimo` on Apple silicon/macOS 15+.
+- Run `swift run InboxPlus` on Apple silicon/macOS 15+.
 - Verify the compact three-pane layout at 900×600 and larger.
 - Verify keyboard navigation reaches inbox rows, contact cards, composer, send, and menu-bar actions.
 - Verify VoiceOver announces platform names without visible network-name labels.
 - Verify Maya opens a contact summary before either network conversation.
-- Verify closing the window preserves the menu-bar process and Open Mimo restores it.
-- Verify Quit Mimo terminates the process.
+- Verify closing the window preserves the menu-bar process and Open Inbox+ restores it.
+- Verify Quit Inbox+ terminates the process.
 
 ## Out of scope for this gate
 
@@ -50,14 +50,14 @@ Recorded 2026-08-13 01:15 SGT.
 
 | Item | Result | Evidence |
 | --- | --- | --- |
-| Run `swift run Mimo` on Apple silicon/macOS 15+ | PASS | The product built, launched on the environment above, and remained running until explicitly interrupted. |
-| Compact three-pane layout at 900×600 and larger | UNVERIFIED | Computer Use rejected `Mimo` as an addressable app, and its running-app inventory contained no Mimo entry, so no app screenshot or accessibility tree was available. |
+| Run `swift run InboxPlus` on Apple silicon/macOS 15+ | PASS | The product built, launched on the environment above, and remained running until explicitly interrupted. |
+| Compact three-pane layout at 900×600 and larger | UNVERIFIED | Computer Use rejected `InboxPlus` as an addressable app, and its running-app inventory contained no Inbox+ entry, so no app screenshot or accessibility tree was available. |
 | Keyboard navigation reaches inbox rows, contact cards, composer, send, and menu-bar actions | UNVERIFIED | No addressable app accessibility tree was available for keyboard traversal. |
 | VoiceOver announces platform names without visible network-name labels | UNVERIFIED | No addressable app accessibility tree was available for VoiceOver inspection. |
 | Maya opens a contact summary before either network conversation | UNVERIFIED | No addressable app accessibility tree was available for interaction. |
-| Closing the window preserves the menu-bar process and Open Mimo restores it | UNVERIFIED | No addressable app accessibility tree was available for window or menu-bar interaction. |
-| Quit Mimo terminates the process | UNVERIFIED | The menu-bar Quit action could not be reached. The test process was instead interrupted from its launching terminal, after which `pgrep -x Mimo` confirmed that no Mimo process remained. |
+| Closing the window preserves the menu-bar process and Open Inbox+ restores it | UNVERIFIED | No addressable app accessibility tree was available for window or menu-bar interaction. |
+| Quit Inbox+ terminates the process | UNVERIFIED | The menu-bar Quit action could not be reached. The test process was instead interrupted from its launching terminal, after which `pgrep -x InboxPlus` confirmed that no Inbox+ process remained. |
 
 There were no observed manual failures. Six UI-only items remain environment-caused
 `UNVERIFIED`; they require a bundled app or a human-run pass on a host that exposes
-the launched Mimo process to macOS accessibility tooling.
+the launched Inbox+ process to macOS accessibility tooling.

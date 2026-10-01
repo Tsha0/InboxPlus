@@ -39,10 +39,10 @@ Expect 491 tests passing.
 
 ```sh
 for n in slack x linkedIn googleMessages googleVoice; do
-  MimoRuntimeCLI bridge --profile demo --action install --network "$n"
-  MimoRuntimeCLI bridge --profile demo --action prepare --network "$n"
+  InboxPlusRuntimeCLI bridge --profile demo --action install --network "$n"
+  InboxPlusRuntimeCLI bridge --profile demo --action prepare --network "$n"
 done
-MimoRuntimeCLI start --profile demo
+InboxPlusRuntimeCLI start --profile demo
 ```
 
 Network names are case-sensitive and match the `Platform` case, so it is `linkedIn`, not
@@ -81,11 +81,11 @@ guess.
   send and receive, deep links, offline recovery, disconnect, removal. That needs nine accounts
   on nine networks. Only Instagram has ever been driven with real credentials, and several of
   these networks ban accounts for using unofficial clients.
-- **Two networks are listed but disabled, with the reason shown.** Both are blocked on work Mimo
+- **Two networks are listed but disabled, with the reason shown.** Both are blocked on work Inbox+
   could plausibly do, so hiding them would misrepresent the roadmap as the product.
   - **Discord** — the current release is still the pre-`bridgev2` architecture and does not speak
     the provisioning protocol every other bridge here uses.
-  - **External Matrix** — needs multi-account support, which Mimo does not have.
+  - **External Matrix** — needs multi-account support, which Inbox+ does not have.
 - **Four networks are not offered at all.** A permanent disabled entry suggests something is
   coming; these are not.
   - **IRC** and **Google Chat** have no route. Their maintained bridges are Python and Node
@@ -94,5 +94,5 @@ guess.
     bridges work and keep their catalog entries, so a profile that already runs one still
     attributes its conversations to the right network instead of reporting them as Matrix. They
     simply cannot be added.
-- **Credential styles are Mimo's expectation, not the bridge's word.** They describe the flow in
+- **Credential styles are Inbox+'s expectation, not the bridge's word.** They describe the flow in
   the picker before anything is running; what actually gets rendered is whatever the bridge returns.

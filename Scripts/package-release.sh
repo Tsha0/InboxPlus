@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Builds, signs, notarizes and staples a Mimo release.
+# Builds, signs, notarizes and staples an Inbox+ release.
 #
 # Nothing here can run without an Apple Developer ID. That is not a limitation of the script — it
 # is the point: macOS binds permission grants (Full Disk Access, Automation, Screen Recording) to
@@ -9,9 +9,9 @@
 # That is why development builds re-prompt for permission constantly.
 #
 # Required environment:
-#   MIMO_SIGNING_IDENTITY   "Developer ID Application: Your Name (TEAMID)"
-#   MIMO_TEAM_ID            Your 10-character Apple team identifier
-#   MIMO_NOTARY_PROFILE     A notarytool keychain profile name, created once with:
+#   INBOXPLUS_SIGNING_IDENTITY   "Developer ID Application: Your Name (TEAMID)"
+#   INBOXPLUS_TEAM_ID            Your 10-character Apple team identifier
+#   INBOXPLUS_NOTARY_PROFILE     A notarytool keychain profile name, created once with:
 #                              xcrun notarytool store-credentials <name> \
 #                                --apple-id <you@example.com> --team-id <TEAMID> \
 #                                --password <app-specific-password>
@@ -21,18 +21,19 @@
 set -euo pipefail
 
 OUTPUT_DIR="${1:-build/release}"
-APP_NAME="Mimo"
-BUNDLE_ID="com.mimo.app"
+APP_NAME="Inbox+"
+EXECUTABLE_NAME="InboxPlus"
+BUNDLE_ID="com.inboxplus.app"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 fail() { echo "error: $*" >&2; exit 1; }
 
-for var in MIMO_SIGNING_IDENTITY MIMO_TEAM_ID MIMO_NOTARY_PROFILE; do
+for var in INBOXPLUS_SIGNING_IDENTITY INBOXPLUS_TEAM_ID INBOXPLUS_NOTARY_PROFILE; do
   [ -n "${!var:-}" ] || fail "$var is not set; see the header of this script"
 done
 
-VERSION="$(grep -o 'current = "[^"]*"' "$REPO_ROOT/Sources/MimoCore/MimoVersion.swift" | cut -d'"' -f2)"
-[ -n "$VERSION" ] || fail "could not read the version from Sources/MimoCore/MimoVersion.swift"
+VERSION="$(grep -o 'current = "[^"]*"' "$REPO_ROOT/Sources/InboxPlusCore/InboxPlusVersion.swift" | cut -d'"' -f2)"
+[ -n "$VERSION" ] || fail "could not read the version from Sources/InboxPlusCore/InboxPlusVersion.swift"
 echo "==> Packaging $APP_NAME $VERSION"
 
 # 1. Test before building anything shippable. A release that was never green is not a release.
@@ -47,11 +48,14 @@ APP_DIR="$REPO_ROOT/$OUTPUT_DIR/$APP_NAME.app"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 
-cp "$BIN_DIR/$APP_NAME" "$APP_DIR/Contents/MacOS/$APP_NAME"
-cp "$BIN_DIR/MimoRuntimeCLI" "$APP_DIR/Contents/MacOS/MimoRuntimeCLI"
+cp "$BIN_DIR/$EXECUTABLE_NAME" "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
+cp "$BIN_DIR/InboxPlusRuntimeCLI" "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI"
 # SwiftPM resource bundles the executable loads through `Bundle.module` — which traps when the
 # bundle is absent, so a missing copy here is a crash on launch, not a missing image.
-cp -R "$BIN_DIR/Mimo_MimoUI.bundle" "$APP_DIR/Contents/Resources/Mimo_MimoUI.bundle"
+cp -R "$BIN_DIR/InboxPlus_InboxPlusUI.bundle" "$APP_DIR/Contents/Resources/InboxPlus_InboxPlusUI.bundle"
+
+swift "$REPO_ROOT/Scripts/make-icon.swift" "$REPO_ROOT/docs/assets/inboxplus-logo.png" "$REPO_ROOT/Resources/AppIcon.icns"
+cp "$REPO_ROOT/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 
 # A real bundle, so the app has a stable identity, a menu bar, and somewhere to declare the
 # permission usage strings macOS shows the user.
@@ -60,30 +64,32 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleExecutable</key><string>$APP_NAME</string>
+  <key>CFBundleExecutable</key><string>$EXECUTABLE_NAME</string>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundleName</key><string>$APP_NAME</string>
+  <key>CFBundleDisplayName</key><string>$APP_NAME</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>NSAppleEventsUsageDescription</key>
-  <string>Mimo uses Automation to send iMessages on your behalf. It is never used for anything else.</string>
+  <string>Inbox+ uses Automation to send iMessages on your behalf. It is never used for anything else.</string>
   <key>NSDesktopFolderUsageDescription</key>
-  <string>Mimo asks for a folder only when you attach a file to a message.</string>
+  <string>Inbox+ asks for a folder only when you attach a file to a message.</string>
 </dict>
 </plist>
 PLIST
 
 # 2. Sign inner binaries before the bundle. Signing outside-in invalidates the outer signature.
 echo "==> Signing"
-ENTITLEMENTS="$REPO_ROOT/Scripts/mimo.entitlements"
+ENTITLEMENTS="$REPO_ROOT/Scripts/inboxplus.entitlements"
 codesign --force --timestamp --options runtime \
-  --sign "$MIMO_SIGNING_IDENTITY" \
-  "$APP_DIR/Contents/MacOS/MimoRuntimeCLI"
+  --sign "$INBOXPLUS_SIGNING_IDENTITY" \
+  "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI"
 codesign --force --timestamp --options runtime \
   --entitlements "$ENTITLEMENTS" \
-  --sign "$MIMO_SIGNING_IDENTITY" \
+  --sign "$INBOXPLUS_SIGNING_IDENTITY" \
   "$APP_DIR"
 
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
@@ -92,7 +98,7 @@ codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 echo "==> Notarizing"
 ZIP="$REPO_ROOT/$OUTPUT_DIR/$APP_NAME-$VERSION.zip"
 ditto -c -k --keepParent "$APP_DIR" "$ZIP"
-xcrun notarytool submit "$ZIP" --keychain-profile "$MIMO_NOTARY_PROFILE" --wait
+xcrun notarytool submit "$ZIP" --keychain-profile "$INBOXPLUS_NOTARY_PROFILE" --wait
 
 # Stapling attaches the ticket, so the app launches on a Mac that is offline.
 xcrun stapler staple "$APP_DIR"
@@ -104,8 +110,8 @@ ditto -c -k --keepParent "$APP_DIR" "$ZIP"
 
 # 5. The bill of materials and checksums ship with the release, not after it.
 echo "==> Generating release artifacts"
-"$APP_DIR/Contents/MacOS/MimoRuntimeCLI" sbom \
-  --output "$REPO_ROOT/$OUTPUT_DIR/mimo-$VERSION.cdx.json"
+"$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI" sbom \
+  --output "$REPO_ROOT/$OUTPUT_DIR/inboxplus-$VERSION.cdx.json"
 
 (cd "$REPO_ROOT/$OUTPUT_DIR" && shasum -a 256 ./*.zip ./*.cdx.json > "SHA256SUMS.txt")
 

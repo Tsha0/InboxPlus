@@ -1,7 +1,7 @@
 # Third-party dependency inventory
 
-Everything Mimo executes that it did not write, with the exact version and the content hash that
-was verified before it ran. Mimo is AGPL-3.0-or-later; every entry below is compatible.
+Everything Inbox+ executes that it did not write, with the exact version and the content hash that
+was verified before it ran. Inbox+ is AGPL-3.0-or-later; every entry below is compatible.
 
 Only `darwin-arm64` artifacts are pinned. Pinning a hash for a platform nobody has verified end to
 end would be a hash nobody has checked.
@@ -56,7 +56,7 @@ iMessage has no artifact: it is reached through macOS itself and authenticates b
 | Discord | The current release is still the pre-`bridgev2` architecture. It installs and verifies, then exits immediately, because it does not speak the provisioning protocol every other bridge here uses. |
 | Google Chat | Python-only; publishes no macOS binary, so there is nothing to checksum. |
 | IRC | The maintained bridges are Python and Node projects with no pinned macOS release. |
-| External Matrix | Needs multi-account support, which Mimo does not have. |
+| External Matrix | Needs multi-account support, which Inbox+ does not have. |
 
 ### libolm
 
@@ -84,7 +84,7 @@ Requires `cmake` on the host (`brew install cmake`).
 | [Simple Icons](https://simpleicons.org) | `13.20.0` | CC0-1.0 | Source SVGs for the twelve network marks. Converted to Swift vector paths by `Scripts/make-platform-glyphs.swift`; nothing from the package is shipped or linked. |
 
 The SVG files are CC0. The marks they depict remain the trademarks of their respective owners —
-Mimo draws them to identify which network a conversation belongs to, which is what a messaging
+Inbox+ draws them to identify which network a conversation belongs to, which is what a messaging
 client uses them for, and claims no affiliation with or endorsement by any of them.
 
 The conversion happens once, at authoring time, so the app carries no SVG parser and no bundled
@@ -92,7 +92,7 @@ images. Regenerate with:
 
 ```sh
 swift Scripts/make-platform-glyphs.swift Scripts/brand-icons \
-  Sources/MimoUI/PlatformGlyphPaths.swift /tmp/badges.png
+  Sources/InboxPlusUI/PlatformGlyphPaths.swift /tmp/badges.png
 ```
 
 Look at the contact sheet it writes. Arc conversion is the error-prone part and a wrong logo is
@@ -105,7 +105,7 @@ Discord, a Messenger with no bolt and a WhatsApp with no bubble.
 pins the code enforces:
 
 ```sh
-MimoRuntimeCLI sbom --output docs/sbom.cdx.json
+InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json
 ```
 
 It is deterministic — identical pins produce a byte-identical document — so two releases can be

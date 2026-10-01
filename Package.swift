@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "Mimo",
+    name: "InboxPlus",
     platforms: [.macOS(.v15)],
     products: [
-        .executable(name: "Mimo", targets: ["MimoApp"]),
-        .library(name: "MimoRuntime", targets: ["MimoRuntime"]),
-        .executable(name: "MimoRuntimeCLI", targets: ["MimoRuntimeCLI"]),
+        .executable(name: "InboxPlus", targets: ["InboxPlusApp"]),
+        .library(name: "InboxPlusRuntime", targets: ["InboxPlusRuntime"]),
+        .executable(name: "InboxPlusRuntimeCLI", targets: ["InboxPlusRuntimeCLI"]),
     ],
     dependencies: [
         // Pinned exactly: the SDK ships a checksum-verified binary xcframework, and bridge/SDK
@@ -15,75 +15,75 @@ let package = Package(
         .package(url: "https://github.com/matrix-org/matrix-rust-components-swift", exact: "26.08.11"),
     ],
     targets: [
-        .target(name: "MimoCore"),
-        .target(name: "MimoGateway", dependencies: ["MimoCore"]),
-        .target(name: "MimoFeatures", dependencies: ["MimoCore", "MimoGateway", "MimoBridge"]),
+        .target(name: "InboxPlusCore"),
+        .target(name: "InboxPlusGateway", dependencies: ["InboxPlusCore"]),
+        .target(name: "InboxPlusFeatures", dependencies: ["InboxPlusCore", "InboxPlusGateway", "InboxPlusBridge"]),
         .target(
-            name: "MimoUI",
-            dependencies: ["MimoCore", "MimoFeatures", "MimoBridge"],
+            name: "InboxPlusUI",
+            dependencies: ["InboxPlusCore", "InboxPlusFeatures", "InboxPlusBridge"],
             resources: [.process("Resources")]
         ),
         .executableTarget(
-            name: "MimoApp",
+            name: "InboxPlusApp",
             dependencies: [
-                "MimoGateway", "MimoFeatures", "MimoUI", "MimoMatrix", "MimoRuntime",
-                "MimoBridge", "MimoBridgeService", "MimoIMessage",
+                "InboxPlusGateway", "InboxPlusFeatures", "InboxPlusUI", "InboxPlusMatrix", "InboxPlusRuntime",
+                "InboxPlusBridge", "InboxPlusBridgeService", "InboxPlusIMessage",
             ]
         ),
         // iMessage does not go through Matrix: it is read from the local Messages database and
         // sent by asking Messages itself. It therefore implements the gateway seam directly.
         .target(
-            name: "MimoIMessage",
-            dependencies: ["MimoCore", "MimoGateway"],
+            name: "InboxPlusIMessage",
+            dependencies: ["InboxPlusCore", "InboxPlusGateway"],
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
-        .target(name: "MimoRuntime"),
+        .target(name: "InboxPlusRuntime"),
         // The bridge contract as pure data: bridgev2 protocol models, the network catalog, and the
-        // login state machine. Deliberately dependency-free beyond MimoCore so MimoFeatures and
-        // MimoUI can drive a login without importing the runtime or a process supervisor.
-        .target(name: "MimoBridge", dependencies: ["MimoCore"]),
+        // login state machine. Deliberately dependency-free beyond InboxPlusCore so InboxPlusFeatures and
+        // InboxPlusUI can drive a login without importing the runtime or a process supervisor.
+        .target(name: "InboxPlusBridge", dependencies: ["InboxPlusCore"]),
         // Everything that talks to a real bridge: provisioning client, installer, configuration,
         // supervision, and the deterministic dummy bridge used as a contract-test fixture.
-        .target(name: "MimoBridgeService", dependencies: ["MimoBridge", "MimoCore", "MimoRuntime"]),
+        .target(name: "InboxPlusBridgeService", dependencies: ["InboxPlusBridge", "InboxPlusCore", "InboxPlusRuntime"]),
         .executableTarget(
-            name: "MimoRuntimeCLI",
-            dependencies: ["MimoRuntime", "MimoBridge", "MimoBridgeService", "MimoCore"]
+            name: "InboxPlusRuntimeCLI",
+            dependencies: ["InboxPlusRuntime", "InboxPlusBridge", "InboxPlusBridgeService", "InboxPlusCore"]
         ),
-        // The Matrix SDK stays behind this target. MimoFeatures and MimoUI must never import it,
+        // The Matrix SDK stays behind this target. InboxPlusFeatures and InboxPlusUI must never import it,
         // so the app layer keeps depending only on the MessagingGateway protocol.
         .target(
-            name: "MimoMatrix",
+            name: "InboxPlusMatrix",
             dependencies: [
-                "MimoCore",
-                "MimoGateway",
-                "MimoRuntime",
+                "InboxPlusCore",
+                "InboxPlusGateway",
+                "InboxPlusRuntime",
                 .product(name: "MatrixRustSDK", package: "matrix-rust-components-swift"),
             ]
         ),
-        .testTarget(name: "MimoAppTests", dependencies: ["MimoApp"]),
-        .testTarget(name: "MimoCoreTests", dependencies: ["MimoCore"]),
-        .testTarget(name: "MimoGatewayTests", dependencies: ["MimoCore", "MimoGateway"]),
+        .testTarget(name: "InboxPlusAppTests", dependencies: ["InboxPlusApp"]),
+        .testTarget(name: "InboxPlusCoreTests", dependencies: ["InboxPlusCore"]),
+        .testTarget(name: "InboxPlusGatewayTests", dependencies: ["InboxPlusCore", "InboxPlusGateway"]),
         .testTarget(
-            name: "MimoFeaturesTests",
-            dependencies: ["MimoCore", "MimoGateway", "MimoFeatures", "MimoBridge"]
+            name: "InboxPlusFeaturesTests",
+            dependencies: ["InboxPlusCore", "InboxPlusGateway", "InboxPlusFeatures", "InboxPlusBridge"]
         ),
         .testTarget(
-            name: "MimoUITests",
-            dependencies: ["MimoCore", "MimoFeatures", "MimoUI", "MimoBridge"]
+            name: "InboxPlusUITests",
+            dependencies: ["InboxPlusCore", "InboxPlusFeatures", "InboxPlusUI", "InboxPlusBridge"]
         ),
-        .testTarget(name: "MimoRuntimeTests", dependencies: ["MimoRuntime", "MimoRuntimeCLI"]),
+        .testTarget(name: "InboxPlusRuntimeTests", dependencies: ["InboxPlusRuntime", "InboxPlusRuntimeCLI"]),
         .testTarget(
-            name: "MimoBridgeTests",
-            dependencies: ["MimoBridge", "MimoBridgeService", "MimoCore", "MimoRuntime"]
+            name: "InboxPlusBridgeTests",
+            dependencies: ["InboxPlusBridge", "InboxPlusBridgeService", "InboxPlusCore", "InboxPlusRuntime"]
         ),
         .testTarget(
-            name: "MimoIMessageTests",
-            dependencies: ["MimoIMessage", "MimoCore", "MimoGateway"],
+            name: "InboxPlusIMessageTests",
+            dependencies: ["InboxPlusIMessage", "InboxPlusCore", "InboxPlusGateway"],
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
         .testTarget(
-            name: "MimoMatrixTests",
-            dependencies: ["MimoMatrix", "MimoCore", "MimoGateway", "MimoRuntime"]
+            name: "InboxPlusMatrixTests",
+            dependencies: ["InboxPlusMatrix", "InboxPlusCore", "InboxPlusGateway", "InboxPlusRuntime"]
         ),
     ]
 )

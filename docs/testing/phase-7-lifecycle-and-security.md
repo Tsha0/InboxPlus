@@ -1,6 +1,6 @@
 # Phase 7 production lifecycle and security — developer acceptance
 
-Phase 7 covers what has to be true before Mimo can be handed to someone else: a signed bundle, a
+Phase 7 covers what has to be true before Inbox+ can be handed to someone else: a signed bundle, a
 bill of materials, diagnostics that are safe to share, and a way to remove the whole thing.
 
 Part of it is delivered and tested. Part of it cannot be done on this machine, and that part is
@@ -17,7 +17,7 @@ Expect 531 tests passing.
 ## 2. Software bill of materials
 
 ```sh
-MimoRuntimeCLI sbom --output docs/sbom.cdx.json
+InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json
 ```
 
 CycloneDX 1.5, generated from `BridgeCatalog` and the runtime pins rather than maintained by hand.
@@ -40,7 +40,7 @@ worse than none, because it will be believed.
 ## 3. Redacted diagnostics
 
 ```sh
-MimoRuntimeCLI diagnostics --profile demo --output ~/Desktop/mimo-diagnostics
+InboxPlusRuntimeCLI diagnostics --profile demo --output ~/Desktop/inboxplus-diagnostics
 ```
 
 Collects logs and configuration only, passes every byte through `DiagnosticsRedactor`, and writes
@@ -67,7 +67,7 @@ cannot show that two events concern the same person, which is usually the thing 
 pseudonym is salted, so it cannot be reversed by hashing a suspected handle.
 
 **This design was corrected by running it.** The first version excluded files by exact name. Run
-against a real profile, it collected `mimo.signing.key` — the homeserver's raw ed25519 key — because
+against a real profile, it collected `inboxplus.signing.key` — the homeserver's raw ed25519 key — because
 the blocklist said `signing.key` and the file had a prefix. It also collected a probe credential
 file. Exclusion is now deny-by-substring, which fails safe: it can only ever exclude too much, and
 excluding a log is a nuisance where including a key is a compromise. Both files are now regression
@@ -76,24 +76,24 @@ tests.
 ## 4. Signing and notarization
 
 `Scripts/package-release.sh` builds an `.app` bundle, signs inner binaries before the bundle, signs
-with the hardened runtime and `Scripts/mimo.entitlements`, notarizes, staples, re-zips after
+with the hardened runtime and `Scripts/inboxplus.entitlements`, notarizes, staples, re-zips after
 stapling, then emits the bill of materials and `SHA256SUMS.txt`.
 
 **It has never run.** It requires:
 
 ```sh
-export MIMO_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
-export MIMO_TEAM_ID="XXXXXXXXXX"
-export MIMO_NOTARY_PROFILE="mimo-notary"
+export INBOXPLUS_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export INBOXPLUS_TEAM_ID="XXXXXXXXXX"
+export INBOXPLUS_NOTARY_PROFILE="inboxplus-notary"
 ```
 
 Without a Developer ID there is nothing to sign with, so the script has only been checked for
 syntax and for failing cleanly when the variables are absent. Every step in it is unverified.
 
 The entitlements are deliberately narrow. `disable-library-validation` is present because bridges
-are Go binaries built elsewhere and the runtime is a Python interpreter, none of which carry Mimo's
-signature. JIT and unsigned executable memory are deliberately absent: Mimo runs no interpreted
-code of its own, so granting either would widen the attack surface for nothing. Mimo is not
+are Go binaries built elsewhere and the runtime is a Python interpreter, none of which carry Inbox+'s
+signature. JIT and unsigned executable memory are deliberately absent: Inbox+ runs no interpreted
+code of its own, so granting either would widen the attack surface for nothing. Inbox+ is not
 sandboxed — supervising downloaded processes is not something the App Sandbox permits — so hardened
 runtime plus notarization is the applicable protection for Developer ID distribution.
 
@@ -111,15 +111,15 @@ against an ad-hoc binary returns black.
 
 - **Nothing is signed or notarized.** Blocked on an Apple Developer ID. The script exists and is
   unverified.
-- **No launch-at-login.** `SMAppService` registers a bundled application, and Mimo has no signed
+- **No launch-at-login.** `SMAppService` registers a bundled application, and Inbox+ has no signed
   bundle yet, so this is blocked behind the same door.
 - **No atomic updater and no rollback.** These need a release feed, a signed artifact to update
   *to*, and a version to roll back *from* — none of which exist before the first signed release.
-  `MimoVersion.compare` is in place and tested, because comparing versions as text is how an
+  `InboxPlusVersion.compare` is in place and tested, because comparing versions as text is how an
   updater offers `0.9.0` as an upgrade from `0.10.0`.
-- **No in-app uninstall flow.** The design requires **Settings → Uninstall Mimo** and a standalone
+- **No in-app uninstall flow.** The design requires **Settings → Uninstall Inbox+** and a standalone
   uninstaller. The machinery exists and is tested — `ProfileRemover` and
-  `MimoRuntimeCLI remove --profile <name> --confirm <name>` stop the runtime and remove exactly one
+  `InboxPlusRuntimeCLI remove --profile <name> --confirm <name>` stop the runtime and remove exactly one
   contained profile — but it is not surfaced in the app and there is no separate signed uninstaller
   binary.
 - **No vulnerability scanning in CI.** The SBOM is the input a scanner needs and is now generated;

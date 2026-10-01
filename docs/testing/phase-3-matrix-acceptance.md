@@ -1,6 +1,6 @@
 # Phase 3 Matrix client and bridge contract — developer acceptance
 
-The reproducible sequence for accepting Phase 3: Mimo's inbox is driven by a real Matrix
+The reproducible sequence for accepting Phase 3: Inbox+'s inbox is driven by a real Matrix
 homeserver rather than fixtures, and the bridge provisioning contract every Phase 4 adapter will
 use is implemented and tested.
 
@@ -10,10 +10,10 @@ Phase 1 built the app on `InMemoryMessagingGateway` with hardcoded fixtures. Pha
 supervised local Synapse runtime. The two were never connected — nothing the app displayed came
 from a server.
 
-Phase 3 fills the `MessagingGateway` seam (`Sources/MimoGateway/MessagingGateway.swift`) with a
-real Matrix-backed implementation. `MimoFeatures` and `MimoUI` were not modified: the app layer
+Phase 3 fills the `MessagingGateway` seam (`Sources/InboxPlusGateway/MessagingGateway.swift`) with a
+real Matrix-backed implementation. `InboxPlusFeatures` and `InboxPlusUI` were not modified: the app layer
 still depends only on the protocol, which is what made the swap a one-line change in
-`Sources/MimoApp/MimoApp.swift`.
+`Sources/InboxPlusApp/InboxPlusApp.swift`.
 
 ## Prerequisites
 
@@ -32,7 +32,7 @@ swift test && swift build -c release && git diff --check
 Expect 355 tests passing. Real-Synapse integration tests are opt-in:
 
 ```sh
-MIMO_RUNTIME_PYTHON=/opt/homebrew/opt/python@3.12/bin/python3.12 swift test
+INBOXPLUS_RUNTIME_PYTHON=/opt/homebrew/opt/python@3.12/bin/python3.12 swift test
 ```
 
 That additionally runs, against a real homeserver:
@@ -46,39 +46,39 @@ That additionally runs, against a real homeserver:
 ## 2. Prepare and start a runtime
 
 ```sh
-swift run MimoRuntimeCLI bootstrap --profile demo \
+swift run InboxPlusRuntimeCLI bootstrap --profile demo \
   --python /opt/homebrew/opt/python@3.12/bin/python3.12
-swift run MimoRuntimeCLI start --profile demo
+swift run InboxPlusRuntimeCLI start --profile demo
 ```
 
 Leave that session supervising. Note the allocated port from its `phase=healthy port=<n>` line.
 
 ## 3. Seed real conversations
 
-Any Matrix client can populate the homeserver. The account Mimo drives is `@mimo:mimo.localhost`,
-whose password is derived from the profile's registration secret — Mimo registers it on first
+Any Matrix client can populate the homeserver. The account Inbox+ drives is `@inboxplus:inboxplus.localhost`,
+whose password is derived from the profile's registration secret — Inbox+ registers it on first
 connect, so it exists after the app has run once.
 
 To create conversations from a second account, register one through Synapse's shared-secret admin
-endpoint, create rooms, invite `@mimo`, and send messages. Room identifiers contain `!` and `:`
+endpoint, create rooms, invite `@inboxplus`, and send messages. Room identifiers contain `!` and `:`
 and **must be percent-encoded** in request paths.
 
 ## 4. Run the app against the live runtime
 
 ```sh
-MIMO_PROFILE=demo swift run -c release Mimo
+INBOXPLUS_PROFILE=demo swift run -c release InboxPlus
 ```
 
 Expect on stderr:
 
 ```
-Mimo: using local Matrix runtime 'demo' on port <n>.
+InboxPlus: using local Matrix runtime 'demo' on port <n>.
 ```
 
 Expect in the window: the inbox lists the real rooms with their real latest-message previews,
 timestamps, and unread badges. Open one and its real history appears; type a message and it sends.
 
-Without `MIMO_PROFILE` the app prints that it is running on demo fixtures. If the named profile is
+Without `INBOXPLUS_PROFILE` the app prints that it is running on demo fixtures. If the named profile is
 absent or not running, the app reports why and shows an empty inbox — it never presents fixture
 conversations as though they were live.
 
@@ -100,7 +100,7 @@ others leaves a profile that can never be opened again.
 server name's regex metacharacters, and writes it `0600`. Registration paths flow through the same
 YAML scalar validation as every other configuration value, so a hostile filename cannot inject.
 
-**Nothing is silently dropped.** `MatrixEventNormalizer` maps every timeline event onto Mimo's
+**Nothing is silently dropped.** `MatrixEventNormalizer` maps every timeline event onto Inbox+'s
 model. Undecryptable, redacted, unparseable, and unknown event types all become visible messages
 with a placeholder body and a `NormalizedEventKind` describing what they were. Attachments prefer
 the sender's caption, fall back to the filename, and only then to a generic label, so an attachment
@@ -110,10 +110,10 @@ is never rendered as an empty message.
 stable tie-break, so bridged out-of-order events do not shuffle. Timeline diffs dedupe by event
 identifier, so replayed or duplicated diffs cannot double-post.
 
-**The bridge contract.** `MimoBridge` implements the mautrix `bridgev2` provisioning protocol —
+**The bridge contract.** `InboxPlusBridge` implements the mautrix `bridgev2` provisioning protocol —
 all six step types, all ten input field types, and the display and cookie parameter shapes — taken
 from the real connectors rather than invented. `DummyBridge` scripts the genuine login flows for
-Instagram (cookies), WhatsApp (QR), and Telegram (phone, code, two-factor), so every view Mimo must
+Instagram (cookies), WhatsApp (QR), and Telegram (phone, code, two-factor), so every view Inbox+ must
 render is exercised without credentials or a live network. Field patterns are validated locally, so
 an obviously wrong value never reaches a remote service.
 
