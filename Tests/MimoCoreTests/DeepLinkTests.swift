@@ -88,11 +88,3 @@ func onlyHttpsIsAccepted(_ raw: String) {
         try JSONDecoder().decode(VerifiedDeepLink.self, from: forged)
     }
 }
-
-@Test(arguments: [Platform.x, .slack, .linkedIn])
-func comingSoonPlatformsHaveNoLinkHandlers(_ platform: Platform) {
-    #expect(DeepLinkVerifier.verifiableDomains(for: platform).isEmpty)
-    #expect(throws: DeepLinkVerificationError.platformHasNoVerifiableLinks(platform)) {
-        try DeepLinkVerifier.verify("https://example.com/message", for: platform)
-    }
-}

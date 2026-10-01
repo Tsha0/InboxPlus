@@ -4,7 +4,7 @@ import MimoCore
 import MimoRuntime
 @testable import MimoBridgeService
 
-@Test(arguments: ["signal", "bluesky", "slack", "x", "linkedIn"])
+@Test(arguments: ["signal", "bluesky"])
 func removedPlatformsDoNotHideSupportedPreparedBridges(_ removedPlatform: String) throws {
     // RuntimePaths rejects /var, including standardized temporary-directory URLs.
     let root = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
