@@ -23,6 +23,9 @@ enum BridgeSelection {
         else { return nil }
 
         return { @MainActor platform in
+            guard BridgeCatalog.canConnect(platform) else {
+                throw BridgeCatalogError.unsupportedPlatform(platform)
+            }
             let descriptor = try BridgeCatalog.require(platform)
             let root = try RuntimeProfileService.developerRuntimeRoot(environment: environment)
             let paths = try RuntimePaths(root: root, profileName: profileName)

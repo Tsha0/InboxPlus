@@ -398,7 +398,12 @@ struct PreparedBridgeStore: Sendable {
         init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             let platform = try container.decode(String.self, forKey: .platform)
-            bridge = Platform(rawValue: platform) == nil ? nil : try PreparedBridge(from: decoder)
+            guard let supportedPlatform = Platform(rawValue: platform),
+                  BridgeCatalog.descriptor(for: supportedPlatform) != nil else {
+                bridge = nil
+                return
+            }
+            bridge = try PreparedBridge(from: decoder)
         }
     }
 

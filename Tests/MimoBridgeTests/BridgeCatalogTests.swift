@@ -82,11 +82,11 @@ import Testing
     // longer being something you can add.
     let offeredAndAvailable = BridgeCatalog.all
         .map(\.platform)
-        .filter { !BridgeCatalog.notOffered.contains($0) }
-    let availableCount = order.prefix { BridgeCatalog.isAvailable($0) }.count
+        .filter { BridgeCatalog.canConnect($0) }
+    let availableCount = order.prefix { BridgeCatalog.canConnect($0) }.count
     #expect(availableCount == offeredAndAvailable.count)
     #expect(
-        order.dropFirst(availableCount).allSatisfy { !BridgeCatalog.isAvailable($0) },
+        order.dropFirst(availableCount).allSatisfy { !BridgeCatalog.canConnect($0) },
         "an available network was sorted below an unavailable one"
     )
 }
