@@ -82,11 +82,11 @@ import Testing
     // longer being something you can add.
     let offeredAndAvailable = BridgeCatalog.all
         .map(\.platform)
-        .filter { !BridgeCatalog.notOffered.contains($0) }
-    let availableCount = order.prefix { BridgeCatalog.isAvailable($0) }.count
+        .filter { BridgeCatalog.canConnect($0) }
+    let availableCount = order.prefix { BridgeCatalog.canConnect($0) }.count
     #expect(availableCount == offeredAndAvailable.count)
     #expect(
-        order.dropFirst(availableCount).allSatisfy { !BridgeCatalog.isAvailable($0) },
+        order.dropFirst(availableCount).allSatisfy { !BridgeCatalog.canConnect($0) },
         "an available network was sorted below an unavailable one"
     )
 }
@@ -171,5 +171,23 @@ import Testing
     // violation that nothing else in the build would catch.
     for descriptor in BridgeCatalog.all {
         #expect(descriptor.license == "AGPL-3.0-or-later", "\(descriptor.id) licence drifted")
+    }
+}
+
+@Test func comingSoonNetworksCannotBeAddedAndAppearLast() throws {
+    let platforms: Set<Platform> = [.x, .slack, .linkedIn]
+    #expect(BridgeCatalog.comingSoon == platforms)
+    #expect(Set(BridgeCatalog.pickerOrder.suffix(3)) == platforms)
+    #expect(BridgeCatalog.pickerOrder.count == Set(BridgeCatalog.pickerOrder).count)
+    for platform in platforms {
+        #expect(!BridgeCatalog.canConnect(platform))
+        // Existing profiles still need their bridge metadata and runtime support.
+        #expect(try BridgeCatalog.require(platform).platform == platform)
+    }
+    for platform in [Platform.instagram, .facebookMessenger, .whatsApp, .telegram, .iMessage] {
+        #expect(BridgeCatalog.canConnect(platform))
+    }
+    for platform in BridgeCatalog.notOffered {
+        #expect(!BridgeCatalog.canConnect(platform))
     }
 }

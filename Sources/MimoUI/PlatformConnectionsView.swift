@@ -48,7 +48,7 @@ public struct PlatformConnectionsView: View {
 
     private func row(for platform: Platform) -> some View {
         let account = accounts.first { $0.platform == platform }
-        let isAvailable = BridgeCatalog.isAvailable(platform)
+        let isAvailable = BridgeCatalog.canConnect(platform)
 
         return HStack(spacing: 10) {
             PlatformBadge(platform: platform)
@@ -98,7 +98,8 @@ public struct PlatformConnectionsView: View {
                 ? "Connected as \(account.displayName)"
                 : "Disconnected — messages are kept"
         }
-        if BridgeCatalog.isAvailable(platform) {
+        if BridgeCatalog.comingSoon.contains(platform) { return "It's coming soon" }
+        if BridgeCatalog.canConnect(platform) {
             return "Not connected"
         }
         return BridgeCatalog.unavailabilityReason(for: platform) ?? "Not yet available in Mimo"

@@ -397,13 +397,24 @@ public enum BridgeCatalog {
     ///   They simply cannot be added.
     public static let notOffered: Set<Platform> = [.irc, .googleChat, .googleMessages, .googleVoice]
 
+    /// Bridges retained for existing accounts but not ready for new connections.
+    public static let comingSoon: Set<Platform> = [.x, .slack, .linkedIn]
+
+    public static func canConnect(_ platform: Platform) -> Bool {
+        isAvailable(platform) && !notOffered.contains(platform) && !comingSoon.contains(platform)
+    }
+
     /// Every platform the picker shows, available ones first, then alphabetically.
+    /// Coming-soon networks always appear at the end.
     ///
     /// The ones Mimo cannot connect *yet* are still listed and disabled, with the reason.
     public static var pickerOrder: [Platform] {
         Platform.allCases.filter { !notOffered.contains($0) }.sorted { lhs, rhs in
-            let lhsAvailable = isAvailable(lhs)
-            let rhsAvailable = isAvailable(rhs)
+            let lhsComingSoon = comingSoon.contains(lhs)
+            let rhsComingSoon = comingSoon.contains(rhs)
+            if lhsComingSoon != rhsComingSoon { return !lhsComingSoon }
+            let lhsAvailable = canConnect(lhs)
+            let rhsAvailable = canConnect(rhs)
             if lhsAvailable != rhsAvailable { return lhsAvailable }
             return lhs.accessibilityLabel.localizedCaseInsensitiveCompare(rhs.accessibilityLabel)
                 == .orderedAscending
