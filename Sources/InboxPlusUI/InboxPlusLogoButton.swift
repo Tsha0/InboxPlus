@@ -1,99 +1,65 @@
 import SwiftUI
 
-/// A small, replayable brand moment anchored to the logo rather than a modal over the inbox.
+/// A brief spin and glow on the navigation logo, within the main window.
 struct InboxPlusLogoButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isPresented = false
     @State private var isHovering = false
+    @State private var rotation = 0.0
+    @State private var glow = 0.0
+    @State private var activation: Date?
 
     var body: some View {
-        Button { isPresented.toggle() } label: {
+        Button(action: play) {
             Group {
                 if let logo = Bundle.module.image(forResource: "InboxPlusLogo") {
-                    Image(nsImage: logo).resizable()
+                    Image(nsImage: logo)
+                        .resizable()
+                        .rotationEffect(.degrees(rotation))
                 } else {
                     Image(systemName: "asterisk")
                         .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(.white)
+                        .rotationEffect(.degrees(rotation))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(.black)
                 }
             }
             .frame(width: 32, height: 32)
+            .background(.black)
             .clipShape(.rect(cornerRadius: 8))
-            .scaleEffect(isHovering && !reduceMotion ? 1.06 : 1)
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(.white.opacity(glow * 0.45), lineWidth: 1)
+            }
+            .shadow(color: InboxPlusTheme.ink.opacity(glow * 0.4), radius: glow * 7)
+            .scaleEffect(reduceMotion ? 1 : (isHovering ? 1.04 : 1) + glow * 0.04)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isHovering)
             .contentShape(.rect(cornerRadius: 8))
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .accessibilityLabel("Inbox+ logo")
-        .accessibilityHint("Play the logo animation")
+        .accessibilityHint(reduceMotion ? "Glow the logo" : "Spin and glow the logo")
         .accessibilityIdentifier("rail-logo")
-        .help("Watch x + become Inbox+")
-        .popover(isPresented: $isPresented, arrowEdge: .trailing) {
-            LogoMergePopover()
+        .help("Animate the Inbox+ logo")
+        .onChange(of: reduceMotion) {
+            if reduceMotion { withAnimation(nil) { rotation = 0 } }
         }
-    }
-}
-
-private struct LogoMergePopover: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var startedAt = Date()
-    @State private var isPlaying = true
-    private let stackedLogo = Bundle.module.image(forResource: "InboxPlusLogoStacked")
-    private let finalLogo = Bundle.module.image(forResource: "InboxPlusLogo")
-
-    var body: some View {
-        VStack(spacing: 0) {
-            TimelineView(.animation(paused: !isPlaying)) { context in
-                LogoMergeArtwork(
-                    elapsed: isPlaying ? max(0, context.date.timeIntervalSince(startedAt)) : LogoMergeArtwork.duration,
-                    reduceMotion: reduceMotion,
-                    stackedLogo: stackedLogo,
-                    finalLogo: finalLogo
-                )
-            }
-            .frame(width: 220, height: 220)
-
-            HStack {
-                Text("Inbox+")
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
-                Spacer()
-                Button { replay() } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(width: 32, height: 32)
-                        .background(.white.opacity(0.1), in: .circle)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Replay logo animation")
-                .accessibilityIdentifier("logo-replay")
-                .help("Replay")
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 20)
-        }
-        .background(.black)
-        .preferredColorScheme(.dark)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Inbox+ logo animation: x and plus merge into an asterisk")
-        .onAppear { replay() }
-        .onChange(of: reduceMotion) { replay() }
-        .task(id: startedAt) {
+        .task(id: activation) {
+            guard activation != nil else { return }
             do {
-                try await Task.sleep(for: .seconds(reduceMotion ? 0.45 : LogoMergeArtwork.duration))
-                isPlaying = false
+                try await Task.sleep(for: .milliseconds(180))
+                withAnimation(.easeOut(duration: 0.85)) { glow = 0 }
             } catch {
-                // Replay or dismissal cancels the previous playback without changing the new one.
+                // A new click cancels the old fade; the latest click owns the glow.
             }
         }
     }
 
-    private func replay() {
-        isPlaying = true
-        startedAt = Date()
+    private func play() {
+        if !reduceMotion {
+            withAnimation(.easeOut(duration: 0.9)) { rotation += 360 }
+        }
+        withAnimation(.easeOut(duration: 0.13)) { glow = 1 }
+        activation = Date()
     }
 }

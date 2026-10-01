@@ -1,5 +1,5 @@
-// Compile alongside the shared artwork, then run with an output directory:
-// swiftc -parse-as-library Sources/InboxPlusUI/LogoMergeArtwork.swift \
+// Compile alongside the archived merge artwork, then run with an output directory:
+// swiftc -parse-as-library Scripts/LogoMergeArtwork.swift \
 //   Scripts/render-logo-animation.swift -o /tmp/render-inboxplus-logo
 // /tmp/render-inboxplus-logo docs/assets
 import AppKit

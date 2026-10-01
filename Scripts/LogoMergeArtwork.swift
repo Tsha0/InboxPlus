@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Time-driven artwork shared by the live interaction and the standalone animation renderer.
+/// Archived logo-merge concept used by the standalone animation renderer.
 /// The generated originals bookend a native vector animation, keeping the final brand exact.
 struct LogoMergeArtwork: View {
     static let duration: TimeInterval = 3.4
