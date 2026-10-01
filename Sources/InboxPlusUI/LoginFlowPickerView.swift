@@ -1,8 +1,7 @@
 import InboxPlusBridge
 import SwiftUI
 
-/// Shown when a bridge offers more than one way in — WhatsApp's QR versus phone number, or
-/// Facebook's several sign-in domains.
+/// Shown when a bridge offers more than one way in, such as Facebook's sign-in domains.
 struct LoginFlowPickerView: View {
     let flows: [BridgeLoginFlow]
     let onSelect: (BridgeLoginFlow) -> Void

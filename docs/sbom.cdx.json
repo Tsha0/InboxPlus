@@ -145,36 +145,6 @@
       "externalReferences" : [
         {
           "type" : "vcs",
-          "url" : "https:\/\/github.com\/mautrix\/linkedin"
-        },
-        {
-          "type" : "distribution",
-          "url" : "https:\/\/github.com\/mautrix\/linkedin\/releases\/download\/v0.2604.0\/mautrix-linkedin-darwin-arm64"
-        }
-      ],
-      "hashes" : [
-        {
-          "alg" : "SHA-256",
-          "content" : "91754517c40a90691f9c35f13a39189776679d4cf2a07654bca5ef3a07ae571f"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "AGPL-3.0-or-later"
-          }
-        }
-      ],
-      "name" : "mautrix-linkedin-darwin-arm64",
-      "purl" : "pkg:github\/mautrix\/linkedin@v0.2604.0",
-      "type" : "application",
-      "version" : "v0.2604.0"
-    },
-    {
-      "description" : "Downloaded on demand and verified before it is made executable.",
-      "externalReferences" : [
-        {
-          "type" : "vcs",
           "url" : "https:\/\/github.com\/mautrix\/meta"
         },
         {
@@ -197,36 +167,6 @@
       ],
       "name" : "mautrix-meta-darwin-arm64",
       "purl" : "pkg:github\/mautrix\/meta@v0.2607.0",
-      "type" : "application",
-      "version" : "v0.2607.0"
-    },
-    {
-      "description" : "Downloaded on demand and verified before it is made executable.",
-      "externalReferences" : [
-        {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/mautrix\/slack"
-        },
-        {
-          "type" : "distribution",
-          "url" : "https:\/\/github.com\/mautrix\/slack\/releases\/download\/v0.2607.0\/mautrix-slack-darwin-arm64"
-        }
-      ],
-      "hashes" : [
-        {
-          "alg" : "SHA-256",
-          "content" : "e29a63d74aed302c3957b3869c593d4ed702c98e052ae6830274ba29ea679721"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "AGPL-3.0-or-later"
-          }
-        }
-      ],
-      "name" : "mautrix-slack-darwin-arm64",
-      "purl" : "pkg:github\/mautrix\/slack@v0.2607.0",
       "type" : "application",
       "version" : "v0.2607.0"
     },
@@ -259,36 +199,6 @@
       "purl" : "pkg:github\/mautrix\/telegram@v0.2607.0",
       "type" : "application",
       "version" : "v0.2607.0"
-    },
-    {
-      "description" : "Downloaded on demand and verified before it is made executable.",
-      "externalReferences" : [
-        {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/mautrix\/twitter"
-        },
-        {
-          "type" : "distribution",
-          "url" : "https:\/\/github.com\/mautrix\/twitter\/releases\/download\/v0.2606.0\/mautrix-twitter-darwin-arm64"
-        }
-      ],
-      "hashes" : [
-        {
-          "alg" : "SHA-256",
-          "content" : "d6b679939548604c9a07bed986f2d5cfa204ce1b705ee4fbc385c5e9be7646f4"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "AGPL-3.0-or-later"
-          }
-        }
-      ],
-      "name" : "mautrix-twitter-darwin-arm64",
-      "purl" : "pkg:github\/mautrix\/twitter@v0.2606.0",
-      "type" : "application",
-      "version" : "v0.2606.0"
     },
     {
       "description" : "Downloaded on demand and verified before it is made executable.",
@@ -356,7 +266,7 @@
     },
     "timestamp" : "1970-01-01T00:00:00Z"
   },
-  "serialNumber" : "urn:uuid:88C39DF2-434A-4D7E-87F8-BECE6E9E2DA1",
+  "serialNumber" : "urn:uuid:42C77064-982A-4ECD-AC30-B376C3EDA155",
   "specVersion" : "1.5",
   "version" : 1
 }

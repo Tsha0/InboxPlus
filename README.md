@@ -14,7 +14,7 @@ It is conversation-focused. There are no feeds, posts, stories or calls.
 ## Status
 
 **A working development build, not a release.** On a Mac with a prepared profile it connects a real
-account, loads real conversations, sends and receives, renders media, and supervises eight network
+account, loads real conversations, sends and receives, renders media, and supervises the prepared network
 bridges alongside the homeserver.
 
 It is not something to hand to anyone else yet. Nothing is code-signed or notarized, no network has
@@ -119,10 +119,10 @@ to a code identity, and an ad-hoc signature's identity changes every time you bu
 
 ## Networks
 
-Ten networks can be connected. Two more — Google Messages and Google Voice — remain in the
+Five networks can be connected. Two more — Google Messages and Google Voice — remain in the
 catalog so an existing profile keeps working, but are no longer offered.
 
-Twelve networks are in the catalog in total. Eleven download a bridge binary pinned to an exact version and
+Seven networks are in the catalog in total. Six download a bridge binary pinned to an exact version and
 SHA-256, verified before it is ever made executable; iMessage has nothing to download, because it
 is reached through macOS itself. A bridge's own login flow is what gets rendered — Inbox+ never
 guesses what a network will ask for.
@@ -130,18 +130,16 @@ guesses what a network will ask for.
 | Network | Login | Verified |
 | --- | --- | --- |
 | Instagram | web sign-in | live account |
-| Slack | token | flows read from a running bridge |
-| X | web sign-in | flows read from a running bridge |
-| LinkedIn | web sign-in | flows read from a running bridge |
 | Facebook Messenger | web sign-in | installs and registers |
-| WhatsApp | QR pairing | installs and registers |
+| WhatsApp | phone number and pairing code | installs and registers |
 | Telegram | phone number | installs and registers |
 | iMessage | macOS permissions | reads and sends natively |
 
 **Only Instagram has been driven with a real account.** The rest install, register, supervise and
 serve their genuine login flows; that is not the same as proven.
 
-Two networks are listed but disabled, with the reason shown in the picker: Discord (its current
+X, Slack, and LinkedIn appear as disabled coming-soon tiles and have no connection implementation.
+Two other networks are listed but disabled, with the reason shown in the picker: Discord (its current
 release predates the bridge protocol Inbox+ speaks) and external Matrix (needs multi-account
 support). Both are blocked on work Inbox+ could plausibly do.
 

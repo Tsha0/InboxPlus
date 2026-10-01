@@ -13,7 +13,7 @@ func removedPlatformsDoNotHideSupportedPreparedBridges(_ removedPlatform: String
     defer { try? FileManager.default.removeItem(at: root) }
     let store = PreparedBridgeStore(paths: try RuntimePaths(root: root, profileName: "test"))
     let supported = PreparedBridge(
-        bridgeID: "slack", platform: .slack, displayName: "Slack", version: "test",
+        bridgeID: "telegram", platform: .telegram, displayName: "Telegram", version: "test",
         serverName: "inboxplus.localhost", ownerUserID: "@inboxplus:inboxplus.localhost",
         executable: "/unused/bridge", configurationFile: "/unused/config.yaml",
         registrationFile: "/unused/registration.yaml", appservicePort: 29337,

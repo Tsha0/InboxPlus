@@ -14,7 +14,6 @@ public enum AppNativeContentDetector {
         switch platform {
         case .instagram: ["/reel/", "/reels/", "/stories/", "/tv/"]
         case .facebookMessenger: ["/reel/", "/stories/", "/watch/"]
-        case .x: ["/i/status/", "/i/spaces/"]
         default: []
         }
     }

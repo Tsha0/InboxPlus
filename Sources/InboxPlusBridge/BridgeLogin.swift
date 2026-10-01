@@ -1,6 +1,6 @@
 import Foundation
 
-/// A login method a bridge advertises, e.g. WhatsApp's "QR code" or Facebook's "facebook.com".
+/// A login method a bridge advertises, e.g. WhatsApp's "Pairing code" or Facebook's "facebook.com".
 public struct BridgeLoginFlow: Codable, Sendable, Equatable {
     public let id: String
     public let name: String

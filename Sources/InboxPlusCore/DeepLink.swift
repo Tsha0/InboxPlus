@@ -105,16 +105,12 @@ public enum DeepLinkVerifier {
         case .facebookMessenger: ["messenger.com", "m.me", "facebook.com", "fb.com"]
         case .telegram: ["t.me", "telegram.me", "telegram.org"]
         case .discord: ["discord.com", "discord.gg"]
-        case .slack: ["slack.com"]
-        case .x: ["x.com", "twitter.com"]
-        case .linkedIn: ["linkedin.com", "lnkd.in"]
         case .googleMessages: ["messages.google.com"]
         case .googleChat: ["chat.google.com"]
         case .googleVoice: ["voice.google.com"]
         case .matrix: ["matrix.to"]
-        // iMessage and IRC have no web link an app claims, so nothing here can be verified and
-        // an empty list is the honest answer rather than a guess.
-        case .iMessage, .irc: []
+        // Coming-soon placeholders and networks without web links have no supported domains.
+        case .iMessage, .irc, .slack, .x, .linkedIn: []
         }
     }
 }

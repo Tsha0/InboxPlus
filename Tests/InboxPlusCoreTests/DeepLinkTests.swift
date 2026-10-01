@@ -9,8 +9,7 @@ import Testing
 }
 
 @Test func asubdomainOfAnOwnedDomainIsVerified() throws {
-    // Slack workspaces live on per-team subdomains, so exact matching would reject every real link.
-    _ = try DeepLinkVerifier.verify("https://inboxplus.slack.com/archives/C01/p1", for: .slack)
+    _ = try DeepLinkVerifier.verify("https://www.instagram.com/p/1", for: .instagram)
 }
 
 @Test func aLookalikeDomainIsRejected() {

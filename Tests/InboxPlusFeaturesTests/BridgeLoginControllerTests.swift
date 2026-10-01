@@ -44,6 +44,7 @@ private actor RecordingSession: BridgeLoginSession {
     private let steps: [BridgeLoginStep]
     private let failure: (any Error)?
     private var index = 0
+    private(set) var startedFlowIDs: [String] = []
     private(set) var submissions: [(loginID: String, stepID: String, values: [String: String])] = []
 
     init(flows: [BridgeLoginFlow], steps: [BridgeLoginStep], failure: (any Error)? = nil) {
@@ -61,6 +62,7 @@ private actor RecordingSession: BridgeLoginSession {
         guard flows.contains(where: { $0.id == flowID }) else {
             throw BridgeLoginError.unknownFlow(flowID)
         }
+        startedFlowIDs.append(flowID)
         index = 0
         return steps[0]
     }
@@ -106,12 +108,80 @@ private actor RecordingSession: BridgeLoginSession {
     let qr = BridgeLoginFlow(id: "qr", name: "QR code", description: "")
     let phone = BridgeLoginFlow(id: "phone", name: "Phone number", description: "")
     let controller = BridgeLoginController(
-        platform: .whatsApp,
+        platform: .telegram,
         session: RecordingSession(flows: [qr, phone], steps: [completeStep()])
     )
     await controller.start()
 
     #expect(controller.phase == .choosingFlow([qr, phone]))
+}
+
+private let whatsAppPhoneFlow = BridgeLoginFlow(id: "phone", name: "Pairing code", description: "")
+
+private func whatsAppPhoneStep() -> BridgeLoginStep {
+    BridgeLoginStep(
+        type: .userInput,
+        stepID: "fi.mau.whatsapp.login.phone",
+        loginID: "login-1",
+        userInput: BridgeLoginUserInputParams(fields: [
+            BridgeLoginInputField(type: .phoneNumber, id: "phone_number", name: "Phone number")
+        ])
+    )
+}
+
+@MainActor
+@Test func whatsAppStartsPhoneLinkingEvenWhenTheBridgeOffersQRFirst() async {
+    let session = RecordingSession(
+        flows: [BridgeLoginFlow(id: "qr", name: "QR", description: ""), whatsAppPhoneFlow],
+        steps: [whatsAppPhoneStep(), pairingCodeStep(), completeStep()]
+    )
+    let controller = BridgeLoginController(platform: .whatsApp, session: session)
+    await controller.start()
+    #expect(controller.phase == .step(whatsAppPhoneStep()))
+    #expect(await session.startedFlowIDs == ["phone"])
+
+    controller.setValue("+15551234567", for: "phone_number")
+    #expect(controller.canSubmit)
+    await controller.submit()
+    #expect(controller.currentStep?.displayAndWait?.type == .code)
+    #expect(!controller.canSubmit)
+    await waitUntil { controller.phase == .finished(userLoginID: "17841400000000000") }
+    #expect(controller.phase == .finished(userLoginID: "17841400000000000"))
+    let recorded = await session.recorded()
+    #expect(recorded.first?.values == ["phone_number": "+15551234567"])
+    #expect(recorded.last?.stepID == "fi.mau.whatsapp.login.code")
+    #expect(recorded.last?.values.isEmpty == true)
+}
+
+@MainActor
+@Test func whatsAppFailsWithoutStartingQRWhenPhoneLinkingIsUnavailable() async {
+    let session = RecordingSession(
+        flows: [BridgeLoginFlow(id: "qr", name: "QR", description: "")], steps: []
+    )
+    let controller = BridgeLoginController(platform: .whatsApp, session: session)
+    await controller.start()
+    #expect(controller.phase == .failed("This bridge does not offer phone number linking for WhatsApp."))
+    #expect(await session.startedFlowIDs.isEmpty)
+}
+
+@MainActor
+@Test func whatsAppCannotStartQRDirectly() async {
+    let session = RecordingSession(
+        flows: [BridgeLoginFlow(id: "qr", name: "QR", description: "")], steps: []
+    )
+    let controller = BridgeLoginController(platform: .whatsApp, session: session)
+    await controller.begin(flowID: "qr")
+    #expect(controller.phase == .failed("WhatsApp only supports phone number linking in Inbox+."))
+    #expect(await session.startedFlowIDs.isEmpty)
+}
+
+private func pairingCodeStep() -> BridgeLoginStep {
+    BridgeLoginStep(
+        type: .displayAndWait,
+        stepID: "fi.mau.whatsapp.login.code",
+        loginID: "login-1",
+        displayAndWait: BridgeLoginDisplayAndWaitParams(type: .code, data: "ABCD-EFGH")
+    )
 }
 
 @MainActor
@@ -213,17 +283,11 @@ private actor RecordingSession: BridgeLoginSession {
 
 @MainActor
 @Test func aWaitingStepIsNeverAdvancedByTheUser() async {
-    let qrStep = BridgeLoginStep(
-        type: .displayAndWait,
-        stepID: "fi.mau.whatsapp.qr",
-        loginID: "login-1",
-        displayAndWait: BridgeLoginDisplayAndWaitParams(type: .qr, data: "2@abc")
-    )
     let controller = BridgeLoginController(
         platform: .whatsApp,
         session: RecordingSession(
-            flows: [BridgeLoginFlow(id: "qr", name: "QR", description: "")],
-            steps: [qrStep, completeStep()]
+            flows: [whatsAppPhoneFlow],
+            steps: [pairingCodeStep(), completeStep()]
         )
     )
     await controller.start()
@@ -241,49 +305,18 @@ private func waitUntil(_ condition: @MainActor () -> Bool) async {
     }
 }
 
-private func qrStep(data: String, loginID: String = "login-1") -> BridgeLoginStep {
-    BridgeLoginStep(
-        type: .displayAndWait,
-        stepID: "fi.mau.whatsapp.qr",
-        loginID: loginID,
-        displayAndWait: BridgeLoginDisplayAndWaitParams(type: .qr, data: data)
-    )
-}
-
-@MainActor
-@Test func aWaitingStepAsksTheBridgeForTheNextCodeWithoutTheUser() async {
-    // Break caught: WhatsApp's QR rotates every few seconds. Showing the first code and never
-    // asking again leaves a stale code on screen, and scanning it fails on the phone.
-    let session = RecordingSession(
-        flows: [BridgeLoginFlow(id: "qr", name: "QR", description: "")],
-        steps: [qrStep(data: "2@first"), qrStep(data: "2@second"), completeStep(loginID: "login-1")]
-    )
-    let controller = BridgeLoginController(platform: .whatsApp, session: session)
-    await controller.start()
-
-    await waitUntil { controller.currentStep?.displayAndWait?.data == "2@second" }
-    #expect(controller.currentStep?.displayAndWait?.data == "2@second")
-
-    await waitUntil { controller.phase == .finished(userLoginID: "17841400000000000") }
-    #expect(controller.phase == .finished(userLoginID: "17841400000000000"))
-
-    let recorded = await session.recorded()
-    #expect(recorded.count == 2)
-    #expect(recorded.allSatisfy { $0.stepID == "fi.mau.whatsapp.qr" && $0.values.isEmpty })
-}
-
 @MainActor
 @Test func cancellingAWaitingStepStopsAskingTheBridge() async {
     let session = RecordingSession(
-        flows: [BridgeLoginFlow(id: "qr", name: "QR", description: "")],
-        steps: [qrStep(data: "2@first"), qrStep(data: "2@second"), completeStep(loginID: "login-1")]
+        flows: [whatsAppPhoneFlow],
+        steps: [pairingCodeStep(), completeStep(loginID: "login-1")]
     )
     let controller = BridgeLoginController(platform: .whatsApp, session: session)
     await controller.start()
     controller.cancel()
 
     for _ in 0..<200 { await Task.yield() }
-    #expect(controller.phase == .step(qrStep(data: "2@first")))
+    #expect(controller.phase == .step(pairingCodeStep()))
 
     // Break caught: walking away left the attempt — and the WhatsApp session behind it — running
     // on the bridge, which refuses to start new logins once several are in flight.

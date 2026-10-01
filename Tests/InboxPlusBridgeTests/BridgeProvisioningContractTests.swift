@@ -94,28 +94,41 @@ private func makeClient(_ script: DummyBridge.Script) throws -> (BridgeProvision
     #expect(await bridge.submissions().isEmpty)
 }
 
-// MARK: - WhatsApp: the QR flow
+// MARK: - WhatsApp: phone pairing
 
-@Test func whatsAppLoginDisplaysAQRCodeAndWaits() async throws {
+@Test func whatsAppLoginRequestsAPhoneNumber() async throws {
     let (client, _) = try makeClient(.whatsApp)
-    let step = try await client.startLogin(flowID: "qr")
+    let step = try await client.startLogin(flowID: "phone")
 
-    #expect(step.type == .displayAndWait)
-    #expect(step.displayAndWait?.type == .qr)
-    #expect(step.displayAndWait?.data?.isEmpty == false)
+    #expect(step.type == .userInput)
+    #expect(step.userInput?.fields.first?.type == .phoneNumber)
+    #expect(step.userInput?.fields.first?.id == "phone_number")
     #expect(!step.isTerminal)
 }
 
-@Test func whatsAppCompletesAfterTheCodeIsScanned() async throws {
-    let (client, _) = try makeClient(.whatsApp)
-    let step = try await client.startLogin(flowID: "qr")
+@Test func whatsAppDisplaysAPairingCodeThenCompletes() async throws {
+    let (client, bridge) = try makeClient(.whatsApp)
+    let phone = try await client.startLogin(flowID: "phone")
+    let code = try await client.submit(
+        loginID: phone.loginID!,
+        stepID: phone.stepID,
+        type: .userInput,
+        values: ["phone_number": "+15551234567"]
+    )
+    #expect(code.type == .displayAndWait)
+    #expect(code.displayAndWait?.type == .code)
+    #expect(code.displayAndWait?.data == "ABCD-EFGH")
+    #expect(!code.instructions.isEmpty)
+    #expect(await bridge.submissions().first == ["phone_number": "+15551234567"])
+
     let done = try await client.submit(
-        loginID: step.loginID!,
-        stepID: step.stepID,
+        loginID: code.loginID!,
+        stepID: code.stepID,
         type: .displayAndWait,
         values: [:]
     )
     #expect(done.type == .complete)
+    #expect(done.complete?.userLoginID == "15551234567")
 }
 
 // MARK: - Telegram: multi-step input including two-factor

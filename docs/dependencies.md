@@ -37,9 +37,6 @@ but not a release train.
 | Facebook Messenger | [mautrix/meta](https://github.com/mautrix/meta) | `v0.2607.0` | `mautrix-meta-darwin-arm64` |
 | WhatsApp | [mautrix/whatsapp](https://github.com/mautrix/whatsapp) | `v0.2607.0` | `mautrix-whatsapp-darwin-arm64` |
 | Telegram | [mautrix/telegram](https://github.com/mautrix/telegram) | `v0.2607.0` | `mautrix-telegram-darwin-arm64` |
-| Slack | [mautrix/slack](https://github.com/mautrix/slack) | `v0.2607.0` | `mautrix-slack-darwin-arm64` |
-| X | [mautrix/twitter](https://github.com/mautrix/twitter) | `v0.2606.0` | `mautrix-twitter-darwin-arm64` |
-| LinkedIn | [mautrix/linkedin](https://github.com/mautrix/linkedin) | `v0.2604.0` | `mautrix-linkedin-darwin-arm64` |
 | Google Messages | [mautrix/gmessages](https://github.com/mautrix/gmessages) | `v0.2605.0` | `mautrix-gmessages-darwin-arm64` |
 | Google Voice | [mautrix/gvoice](https://github.com/mautrix/gvoice) | `v0.2605.0` | `mautrix-gvoice-darwin-arm64` |
 
@@ -50,6 +47,8 @@ one actually enforced.
 iMessage has no artifact: it is reached through macOS itself and authenticates by permission grant.
 
 ### Networks deliberately absent
+
+X, Slack, and LinkedIn are display-only coming-soon placeholders; they have no bridge artifacts.
 
 | Network | Why |
 | --- | --- |

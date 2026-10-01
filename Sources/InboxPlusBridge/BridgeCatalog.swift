@@ -21,8 +21,6 @@ public enum BridgeCredentialStyle: String, Codable, Sendable, Equatable {
     case qrCode
     case phoneNumber
     case systemPermissions
-    /// A token copied out of the network's own web client.
-    case token
 
     public var summary: String {
         switch self {
@@ -30,7 +28,6 @@ public enum BridgeCredentialStyle: String, Codable, Sendable, Equatable {
         case .qrCode: "Scan a QR code with your phone"
         case .phoneNumber: "Enter your phone number and the code you receive"
         case .systemPermissions: "Grant macOS permissions — no password needed"
-        case .token: "Paste a token from the network's web client"
         }
     }
 }
@@ -188,7 +185,7 @@ public enum BridgeCatalog {
         displayName: "WhatsApp",
         version: mautrixVersion,
         runtimeKind: .goBinary,
-        credentialStyle: .qrCode,
+        credentialStyle: .phoneNumber,
         artifact: mautrixArtifact(
             repository: "whatsapp",
             assetName: "mautrix-whatsapp-darwin-arm64",
@@ -241,63 +238,6 @@ public enum BridgeCatalog {
     // detection stays silent rather than asserting a guess — the same rule Phase 4 applied to
     // everything except Instagram.
 
-    public static let slack = BridgeDescriptor(
-        id: "slack",
-        platform: .slack,
-        displayName: "Slack",
-        version: "v0.2607.0",
-        runtimeKind: .goBinary,
-        credentialStyle: .token,
-        artifact: mautrixArtifact(
-            repository: "slack",
-            version: "v0.2607.0",
-            assetName: "mautrix-slack-darwin-arm64",
-            sha256: "e29a63d74aed302c3957b3869c593d4ed702c98e052ae6830274ba29ea679721"
-        ),
-        // Read from a running bridge.
-        expectedLoginFlowIDs: ["token", "app"],
-        license: "AGPL-3.0-or-later",
-        sourceURL: URL(string: "https://github.com/mautrix/slack")!
-    )
-
-    public static let x = BridgeDescriptor(
-        id: "twitter",
-        platform: .x,
-        displayName: "X",
-        version: "v0.2606.0",
-        runtimeKind: .goBinary,
-        credentialStyle: .cookies,
-        artifact: mautrixArtifact(
-            repository: "twitter",
-            version: "v0.2606.0",
-            assetName: "mautrix-twitter-darwin-arm64",
-            sha256: "d6b679939548604c9a07bed986f2d5cfa204ce1b705ee4fbc385c5e9be7646f4"
-        ),
-        // Read from a running bridge.
-        expectedLoginFlowIDs: ["cookies"],
-        license: "AGPL-3.0-or-later",
-        sourceURL: URL(string: "https://github.com/mautrix/twitter")!
-    )
-
-    public static let linkedIn = BridgeDescriptor(
-        id: "linkedin",
-        platform: .linkedIn,
-        displayName: "LinkedIn",
-        version: "v0.2604.0",
-        runtimeKind: .goBinary,
-        credentialStyle: .cookies,
-        artifact: mautrixArtifact(
-            repository: "linkedin",
-            version: "v0.2604.0",
-            assetName: "mautrix-linkedin-darwin-arm64",
-            sha256: "91754517c40a90691f9c35f13a39189776679d4cf2a07654bca5ef3a07ae571f"
-        ),
-        // Read from a running bridge.
-        expectedLoginFlowIDs: ["cookies"],
-        license: "AGPL-3.0-or-later",
-        sourceURL: URL(string: "https://github.com/mautrix/linkedin")!
-    )
-
     public static let googleMessages = BridgeDescriptor(
         id: "gmessages",
         platform: .googleMessages,
@@ -338,7 +278,7 @@ public enum BridgeCatalog {
 
     public static let all: [BridgeDescriptor] = [
         instagram, facebookMessenger, whatsApp, telegram, iMessage,
-        slack, x, linkedIn, googleMessages, googleVoice,
+        googleMessages, googleVoice,
     ]
 
     /// Networks the design lists that Inbox+ still cannot connect, with the reason.
@@ -348,6 +288,8 @@ public enum BridgeCatalog {
     public static func unavailabilityReason(for platform: Platform) -> String? {
         guard !isAvailable(platform) else { return nil }
         switch platform {
+        case .x, .slack, .linkedIn:
+            return "It's coming soon"
         case .discord:
             // Installed and checksum-verified successfully, then exited immediately on launch: the
             // current release is still the pre-`bridgev2` architecture and does not speak the
@@ -397,13 +339,24 @@ public enum BridgeCatalog {
     ///   They simply cannot be added.
     public static let notOffered: Set<Platform> = [.irc, .googleChat, .googleMessages, .googleVoice]
 
+    /// Display-only placeholders without connection implementations.
+    public static let comingSoon: Set<Platform> = [.x, .slack, .linkedIn]
+
+    public static func canConnect(_ platform: Platform) -> Bool {
+        isAvailable(platform) && !notOffered.contains(platform) && !comingSoon.contains(platform)
+    }
+
     /// Every platform the picker shows, available ones first, then alphabetically.
+    /// Coming-soon networks always appear at the end.
     ///
     /// The ones Inbox+ cannot connect *yet* are still listed and disabled, with the reason.
     public static var pickerOrder: [Platform] {
         Platform.allCases.filter { !notOffered.contains($0) }.sorted { lhs, rhs in
-            let lhsAvailable = isAvailable(lhs)
-            let rhsAvailable = isAvailable(rhs)
+            let lhsComingSoon = comingSoon.contains(lhs)
+            let rhsComingSoon = comingSoon.contains(rhs)
+            if lhsComingSoon != rhsComingSoon { return !lhsComingSoon }
+            let lhsAvailable = canConnect(lhs)
+            let rhsAvailable = canConnect(rhs)
             if lhsAvailable != rhsAvailable { return lhsAvailable }
             return lhs.accessibilityLabel.localizedCaseInsensitiveCompare(rhs.accessibilityLabel)
                 == .orderedAscending

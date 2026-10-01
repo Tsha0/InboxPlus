@@ -4,8 +4,8 @@ import SwiftUI
 
 /// Lets the user choose a network to connect.
 ///
-/// All sixteen platforms are listed. The eleven Inbox+ cannot bridge yet are shown disabled with the
-/// reason, because a roadmap presented as a product is how people end up believing a network works.
+/// Offered platforms are listed with connectable networks first and coming-soon networks last.
+/// Networks that cannot be added are disabled and explain their availability.
 public struct AccountPickerView: View {
     private let connectedPlatforms: Set<Platform>
     private let onSelect: (Platform) -> Void
@@ -64,7 +64,7 @@ public struct AccountPickerView: View {
         let isConnected = connectedPlatforms.contains(platform)
         // The one-account-per-platform rule is the app's, enforced in `AccountPolicy`; showing an
         // already-connected network as selectable would invite an error rather than prevent one.
-        let isEnabled = descriptor != nil && !isConnected
+        let isEnabled = BridgeCatalog.canConnect(platform) && !isConnected
 
         Button {
             onSelect(platform)
@@ -102,9 +102,9 @@ public struct AccountPickerView: View {
         .accessibilityIdentifier("picker-\(platform.rawValue)")
     }
 
-    /// An unavailable network says why it is unavailable. "Not yet available" invites the user to
-    /// keep checking back for something that is blocked on a reason they could have been told.
+    /// Explain whether the network is coming soon, connected, or ready for setup.
     private func subtitle(platform: Platform, descriptor: BridgeDescriptor?, isConnected: Bool) -> String {
+        if BridgeCatalog.comingSoon.contains(platform) { return "It's coming soon" }
         if isConnected { return "Already connected" }
         guard let descriptor else {
             return BridgeCatalog.unavailabilityReason(for: platform) ?? "Not yet available in Inbox+"
