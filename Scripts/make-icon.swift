@@ -1,17 +1,16 @@
 #!/usr/bin/env swift
 //
-// Builds Mimo's app icon from the mascot artwork.
+// Builds Inbox+'s app icon from the generated overlapping x / + asterisk artwork.
 //
 //   swift Scripts/make-icon.swift [source.png] [output.icns]
 //
-// The source is a face-focused avatar on a square canvas. Place the complete head on a warm
-// cream macOS plate, with a tighter face crop for the smallest Finder and menu-bar slots.
+// Preserve the complete logo at every size on a black macOS icon plate.
 
 import AppKit
 import Foundation
 
 let arguments = CommandLine.arguments
-let sourcePath = arguments.count > 1 ? arguments[1] : "docs/assets/mimo-mascot.png"
+let sourcePath = arguments.count > 1 ? arguments[1] : "docs/assets/inboxplus-logo.png"
 let outputPath = arguments.count > 2 ? arguments[2] : "Resources/AppIcon.icns"
 
 // macOS icon geometry: a 1024 canvas whose artwork occupies the middle 824, leaving the margin
@@ -21,19 +20,11 @@ let plateInset: CGFloat = 100
 let plateSize = canvas - plateInset * 2
 let cornerRadius = plateSize * 0.2237
 
-/// The region of the source holding the head, as fractions of the image so the crop survives the
+/// The region of the source holding the complete mark, as fractions of the image so the crop survives the
 /// artwork being re-exported at another resolution.
 let cropOrigin = CGPoint(x: 0, y: 0)
 let cropSize: CGFloat = 1.0
 
-/// A tighter crop on the face alone, used for the smallest slots.
-///
-/// At 16pt the whole head leaves too few pixels for the eyes and smile. The small slots zoom
-/// to the face so these features still read.
-let smallCropOrigin = CGPoint(x: 0.25, y: 0.30)
-let smallCropSize: CGFloat = 0.500
-/// Slots at or below this pixel size use the tighter crop.
-let smallSlotThreshold = 32
 
 guard let sourceImage = NSImage(contentsOfFile: sourcePath),
       let sourceCG = sourceImage.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
@@ -54,16 +45,7 @@ guard let head = sourceCG.cropping(to: cropRect) else {
     exit(1)
 }
 
-let smallCropRect = CGRect(
-    x: smallCropOrigin.x * width,
-    y: smallCropOrigin.y * height,
-    width: smallCropSize * width,
-    height: smallCropSize * height
-)
-let face = sourceCG.cropping(to: smallCropRect) ?? head
-
-// The avatar has transparency; an explicit cream plate keeps it legible on any desktop.
-let plateColour = CGColor(red: 0.98, green: 0.95, blue: 0.87, alpha: 1)
+let plateColour = CGColor(gray: 0, alpha: 1)
 
 func renderPlate(artwork: CGImage) -> CGImage? {
 guard let context = CGContext(
@@ -97,13 +79,13 @@ context.setFillColor(plateColour)
 context.fillPath()
 context.restoreGState()
 
-// The head is clipped to the plate so nothing bleeds past the rounded corners, and inset slightly
+// The logo is clipped to the plate so nothing bleeds past the rounded corners, and inset slightly
 // so it does not crowd the edges at small sizes.
 context.saveGState()
 context.addPath(plate)
 context.clip()
 
-let artInset = plateSize * 0.045
+let artInset: CGFloat = 0
 let artRect = plateRect.insetBy(dx: artInset, dy: artInset)
 context.setBlendMode(.normal)
 context.draw(artwork, in: artRect)
@@ -120,8 +102,7 @@ context.restoreGState()
 return context.makeImage()
 }
 
-guard let master = renderPlate(artwork: head),
-      let smallMaster = renderPlate(artwork: face) else {
+guard let master = renderPlate(artwork: head) else {
     FileHandle.standardError.write(Data("error: could not render the icon\n".utf8))
     exit(1)
 }
@@ -130,7 +111,7 @@ guard let master = renderPlate(artwork: head),
 
 let fileManager = FileManager.default
 let workingDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
-    .appendingPathComponent("MimoIcon-\(UUID().uuidString)")
+    .appendingPathComponent("InboxPlusIcon-\(UUID().uuidString)")
 let iconset = workingDirectory.appendingPathComponent("AppIcon.iconset")
 try fileManager.createDirectory(at: iconset, withIntermediateDirectories: true)
 
@@ -153,7 +134,7 @@ for variant in variants {
     ) else { continue }
     scaled.interpolationQuality = .high
     scaled.clear(CGRect(x: 0, y: 0, width: variant.pixels, height: variant.pixels))
-    let artwork = variant.pixels <= smallSlotThreshold ? smallMaster : master
+    let artwork = master
     scaled.draw(artwork, in: CGRect(x: 0, y: 0, width: variant.pixels, height: variant.pixels))
 
     guard let image = scaled.makeImage() else { continue }
