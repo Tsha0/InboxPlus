@@ -42,7 +42,7 @@ private let box = CGRect(x: 0, y: 0, width: 24, height: 24)
 
 @Test func aMarkIsOffsetByTheRectItIsDrawnIn() throws {
     let moved = try #require(
-        PlatformGlyph.path(for: .signal, in: CGRect(x: 100, y: 50, width: 24, height: 24))
+        PlatformGlyph.path(for: .whatsApp, in: CGRect(x: 100, y: 50, width: 24, height: 24))
     )
     #expect(moved.boundingRect.minX >= 99.5)
     #expect(moved.boundingRect.minY >= 49.5)

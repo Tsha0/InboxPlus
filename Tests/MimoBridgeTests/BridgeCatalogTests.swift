@@ -29,7 +29,7 @@ import Testing
 @Test func aMalformedChecksumIsRejected() {
     let broken = BridgeDescriptor(
         id: "broken",
-        platform: .signal,
+        platform: .whatsApp,
         displayName: "Broken",
         version: "v1",
         runtimeKind: .goBinary,
@@ -51,7 +51,7 @@ import Testing
 @Test func aBridgeIdentifierUnsafeForAnAppserviceRegistrationIsRejected() {
     let hostile = BridgeDescriptor(
         id: "../../etc/passwd",
-        platform: .signal,
+        platform: .whatsApp,
         displayName: "Hostile",
         version: "v1",
         runtimeKind: .nativeAdapter,

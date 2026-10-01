@@ -15,7 +15,6 @@ public enum AppNativeContentDetector {
         case .instagram: ["/reel/", "/reels/", "/stories/", "/tv/"]
         case .facebookMessenger: ["/reel/", "/stories/", "/watch/"]
         case .x: ["/i/status/", "/i/spaces/"]
-        case .bluesky: ["/profile/"]
         default: []
         }
     }

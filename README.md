@@ -127,11 +127,9 @@ guesses what a network will ask for.
 | Network | Login | Verified |
 | --- | --- | --- |
 | Instagram | web sign-in | live account |
-| Signal | QR pairing | flows read from a running bridge |
 | Slack | token | flows read from a running bridge |
 | X | web sign-in | flows read from a running bridge |
 | LinkedIn | web sign-in | flows read from a running bridge |
-| Bluesky | app password | flows read from a running bridge |
 | Facebook Messenger | web sign-in | installs and registers |
 | WhatsApp | QR pairing | installs and registers |
 | Telegram | phone number | installs and registers |

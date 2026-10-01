@@ -35,7 +35,7 @@ private func makePaths() throws -> (RuntimePaths, URL) {
 private func descriptor(sha256: String) -> BridgeDescriptor {
     BridgeDescriptor(
         id: "testbridge",
-        platform: .signal,
+        platform: .whatsApp,
         displayName: "Test",
         version: "v1.2.3",
         runtimeKind: .goBinary,

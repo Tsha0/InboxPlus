@@ -385,7 +385,21 @@ struct PreparedBridgeStore: Sendable {
 
     func load() throws -> [PreparedBridge] {
         guard let data = try? Data(contentsOf: file) else { return [] }
-        return (try? JSONDecoder().decode([PreparedBridge].self, from: data)) ?? []
+        return (try? JSONDecoder().decode([SupportedRecord].self, from: data))?
+            .compactMap(\.bridge) ?? []
+    }
+
+    /// Removed platforms must not prevent the other accounts in an existing profile from loading.
+    private struct SupportedRecord: Decodable {
+        let bridge: PreparedBridge?
+
+        private enum CodingKeys: String, CodingKey { case platform }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            let platform = try container.decode(String.self, forKey: .platform)
+            bridge = Platform(rawValue: platform) == nil ? nil : try PreparedBridge(from: decoder)
+        }
     }
 
     func upsert(_ record: PreparedBridge) throws {

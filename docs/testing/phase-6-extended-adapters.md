@@ -1,6 +1,6 @@
 # Phase 6 extended adapters — developer acceptance
 
-Phase 6 widens the catalog from five networks to twelve. Nothing in the Phase 4 machinery changed
+Phase 6 widens the catalog from five networks to ten. Nothing in the Phase 4 machinery changed
 to make this work, which was the point of building it that way: each new network is a pinned
 descriptor, not new code.
 
@@ -13,15 +13,13 @@ descriptor, not new code.
 | WhatsApp | mautrix/whatsapp | v0.2607.0 | — | installs |
 | Telegram | mautrix/telegram | v0.2607.0 | — | installs |
 | iMessage | native | — | — | permissions probe |
-| Signal | mautrix/signal | v0.2607.0 | `qr` | flows read live |
 | Slack | mautrix/slack | v0.2607.0 | `token`, `app` | flows read live |
 | X | mautrix/twitter | v0.2606.0 | `cookies` | flows read live |
 | LinkedIn | mautrix/linkedin | v0.2604.0 | `cookies` | flows read live |
 | Google Messages | mautrix/gmessages | v0.2605.0 | `google` | flows read live |
 | Google Voice | mautrix/gvoice | v0.2605.0 | `cookies` | flows read live |
-| Bluesky | mautrix/bluesky | v0.2510.0 | `password` | flows read live |
 
-Every hash is taken verbatim from the named tag's own `sha256sums.txt`, and every one of the eight
+Every hash is taken verbatim from the named tag's own `sha256sums.txt`, and each of the remaining
 new binaries was downloaded and verified through `BridgeInstaller` — a pin that has never been
 checked against real bytes is not a pin.
 
@@ -40,7 +38,7 @@ Expect 491 tests passing.
 ## 2. Install and register every network
 
 ```sh
-for n in signal slack x linkedIn googleMessages googleVoice bluesky; do
+for n in slack x linkedIn googleMessages googleVoice; do
   MimoRuntimeCLI bridge --profile demo --action install --network "$n"
   MimoRuntimeCLI bridge --profile demo --action prepare --network "$n"
 done
@@ -53,27 +51,26 @@ Network names are case-sensitive and match the `Platform` case, so it is `linked
 Expect one healthy line per bridge:
 
 ```
-bridge signal phase=healthy port=52295 pid=… restarts=0 health=healthy
 bridge slack  phase=healthy port=52345 pid=… restarts=0 health=healthy
 …
 ```
 
-Eight bridges plus Synapse run side by side on one profile, each with its own directory, database,
+The bridges and Synapse run side by side on one profile, each with its own directory, database,
 loopback port, provisioning secret, registration and supervisor.
 
 ## What Phase 6 demonstrated
 
-**The adapter contract generalises.** Seven networks were added without changing the installer, the
+**The adapter contract generalises.** Five networks were added without changing the installer, the
 configuration renderer, the supervisor, the provisioning client, or the login UI. The login engine
-draws whatever step a bridge returns, so Slack's token form, Signal's QR pairing and Bluesky's app
-password all render from the same code that was written for Instagram.
+draws whatever step a bridge returns, so Slack's token form and X's cookie form both render from
+the same code that was written for Instagram.
 
 **Bridge isolation holds under a real fault.** Discord was in the catalog when this ran, installed
 and checksum-verified cleanly, then exited immediately on launch. Every other bridge came up
 healthy and the homeserver was undisturbed — the failure was reported and stepped over, exactly as
 the design requires. It was found by running the thing, not by reasoning about it.
 
-**A pinned expectation is only worth what it was read from.** Seven flow lists are now recorded
+**A pinned expectation is only worth what it was read from.** Five flow lists are now recorded
 from live bridges rather than guessed. Facebook Messenger, WhatsApp and Telegram still have empty
 lists because no one has run them, and drift detection stays silent there rather than asserting a
 guess.
@@ -81,8 +78,8 @@ guess.
 ## What Phase 6 did not deliver
 
 - **No network is certified.** Certification means a live account: fresh login, history import,
-  send and receive, deep links, offline recovery, disconnect, removal. That needs eleven accounts
-  on eleven networks. Only Instagram has ever been driven with real credentials, and several of
+  send and receive, deep links, offline recovery, disconnect, removal. That needs nine accounts
+  on nine networks. Only Instagram has ever been driven with real credentials, and several of
   these networks ban accounts for using unofficial clients.
 - **Two networks are listed but disabled, with the reason shown.** Both are blocked on work Mimo
   could plausibly do, so hiding them would misrepresent the roadmap as the product.

@@ -23,8 +23,6 @@ public enum BridgeCredentialStyle: String, Codable, Sendable, Equatable {
     case systemPermissions
     /// A token copied out of the network's own web client.
     case token
-    /// A revocable secondary password the network issues for third-party clients.
-    case appPassword
 
     public var summary: String {
         switch self {
@@ -33,7 +31,6 @@ public enum BridgeCredentialStyle: String, Codable, Sendable, Equatable {
         case .phoneNumber: "Enter your phone number and the code you receive"
         case .systemPermissions: "Grant macOS permissions — no password needed"
         case .token: "Paste a token from the network's web client"
-        case .appPassword: "Use an app password you generate on the network"
         }
     }
 }
@@ -244,25 +241,6 @@ public enum BridgeCatalog {
     // detection stays silent rather than asserting a guess — the same rule Phase 4 applied to
     // everything except Instagram.
 
-    public static let signal = BridgeDescriptor(
-        id: "signal",
-        platform: .signal,
-        displayName: "Signal",
-        version: "v0.2607.0",
-        runtimeKind: .goBinary,
-        credentialStyle: .qrCode,
-        artifact: mautrixArtifact(
-            repository: "signal",
-            version: "v0.2607.0",
-            assetName: "mautrix-signal-darwin-arm64",
-            sha256: "2a0bd679879fac2e4def2d778be54970bf0144bcd7c11ee474e25851a6527172"
-        ),
-        // Read from a running v0.2607.0 bridge.
-        expectedLoginFlowIDs: ["qr"],
-        license: "AGPL-3.0-or-later",
-        sourceURL: URL(string: "https://github.com/mautrix/signal")!
-    )
-
     public static let slack = BridgeDescriptor(
         id: "slack",
         platform: .slack,
@@ -358,28 +336,9 @@ public enum BridgeCatalog {
         sourceURL: URL(string: "https://github.com/mautrix/gvoice")!
     )
 
-    public static let bluesky = BridgeDescriptor(
-        id: "bluesky",
-        platform: .bluesky,
-        displayName: "Bluesky",
-        version: "v0.2510.0",
-        runtimeKind: .goBinary,
-        credentialStyle: .appPassword,
-        artifact: mautrixArtifact(
-            repository: "bluesky",
-            version: "v0.2510.0",
-            assetName: "mautrix-bluesky-darwin-arm64",
-            sha256: "3d73810caa9dcf6c174e465eb94dac7031e3d9d6d9522aa27484d3adc6c29892"
-        ),
-        // Read from a running bridge.
-        expectedLoginFlowIDs: ["password"],
-        license: "AGPL-3.0-or-later",
-        sourceURL: URL(string: "https://github.com/mautrix/bluesky")!
-    )
-
     public static let all: [BridgeDescriptor] = [
         instagram, facebookMessenger, whatsApp, telegram, iMessage,
-        signal, slack, x, linkedIn, googleMessages, googleVoice, bluesky,
+        slack, x, linkedIn, googleMessages, googleVoice,
     ]
 
     /// Networks the design lists that Mimo still cannot connect, with the reason.
