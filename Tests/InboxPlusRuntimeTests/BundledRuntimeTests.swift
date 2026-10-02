@@ -45,3 +45,38 @@ import Testing
         #expect(try fm.contentsOfDirectory(atPath: paths.profile.path).isEmpty)
     }
 }
+
+
+@Test func bundledRuntimeAcceptsInternalRelativeLinksUnderPrivateTmp() throws {
+    let fm = FileManager.default
+    let root = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
+        .appendingPathComponent("InboxPlusBundledLinks-\(UUID())")
+    defer { try? fm.removeItem(at: root) }
+    let pythonRoot = root.appendingPathComponent("venv")
+    let bin = pythonRoot.appendingPathComponent("bin")
+    try fm.createDirectory(at: bin, withIntermediateDirectories: true)
+    try Data("bundled interpreter".utf8).write(to: bin.appendingPathComponent("python3.12"))
+    try fm.createSymbolicLink(atPath: bin.appendingPathComponent("python").path,
+                              withDestinationPath: "python3.12")
+
+    #expect(throws: Never.self) { try BundledRuntime.validateSymlinks(in: pythonRoot) }
+}
+
+@Test func bundledRuntimeRejectsRelativeLinksOutsideItsCanonicalRoot() throws {
+    let fm = FileManager.default
+    let root = URL(fileURLWithPath: "/private/tmp", isDirectory: true)
+        .appendingPathComponent("InboxPlusBundledLinks-\(UUID())")
+    defer { try? fm.removeItem(at: root) }
+    let pythonRoot = root.appendingPathComponent("venv")
+    let bin = pythonRoot.appendingPathComponent("bin")
+    let outside = root.appendingPathComponent("venv-untrusted")
+    try fm.createDirectory(at: bin, withIntermediateDirectories: true)
+    try fm.createDirectory(at: outside, withIntermediateDirectories: true)
+    try Data("outside interpreter".utf8).write(to: outside.appendingPathComponent("python3.12"))
+    try fm.createSymbolicLink(atPath: bin.appendingPathComponent("python").path,
+                              withDestinationPath: "../../venv-untrusted/python3.12")
+
+    #expect(throws: RuntimeManifestError.preparedRuntimeMismatch("runtime link escapes its installation")) {
+        try BundledRuntime.validateSymlinks(in: pythonRoot)
+    }
+}

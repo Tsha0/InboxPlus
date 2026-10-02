@@ -38,16 +38,7 @@ public struct BundledRuntime: Sendable {
         defer { try? fm.removeItem(at: stage) }
         let pythonRoot = stage.appendingPathComponent("venv")
         try fm.copyItem(at: pythonDirectory, to: pythonRoot)
-        // Portable Python uses relative links internally; reject links escaping the copied tree.
-        if let enumerator = fm.enumerator(at: pythonRoot, includingPropertiesForKeys: [.isSymbolicLinkKey]) {
-            for case let item as URL in enumerator {
-                if try item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true {
-                    guard item.resolvingSymlinksInPath().path.hasPrefix(pythonRoot.path + "/") else {
-                        throw RuntimeManifestError.preparedRuntimeMismatch("runtime link escapes its installation")
-                    }
-                }
-            }
-        }
+        try Self.validateSymlinks(in: pythonRoot)
         let python = pythonRoot.appendingPathComponent("bin/python3.12")
         let process = Process()
         process.executableURL = python
@@ -86,4 +77,24 @@ public struct BundledRuntime: Sendable {
         try fm.moveItem(at: stage, to: paths.runtime)
         return receipt
     }
+
+    /// Portable Python uses relative links internally; reject links escaping the copied tree.
+    static func validateSymlinks(in pythonRoot: URL) throws {
+        // On macOS Foundation can resolve /private/tmp to /tmp. Canonicalize both sides of
+        // containment so an internal link is accepted regardless of the installation's spelling.
+        let root = pythonRoot.resolvingSymlinksInPath().standardizedFileURL.path
+        if let enumerator = FileManager.default.enumerator(
+            at: pythonRoot, includingPropertiesForKeys: [.isSymbolicLinkKey]
+        ) {
+            for case let item as URL in enumerator {
+                if try item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true {
+                    let resolved = item.resolvingSymlinksInPath().standardizedFileURL.path
+                    guard resolved == root || resolved.hasPrefix(root + "/") else {
+                        throw RuntimeManifestError.preparedRuntimeMismatch("runtime link escapes its installation")
+                    }
+                }
+            }
+        }
+    }
+
 }
