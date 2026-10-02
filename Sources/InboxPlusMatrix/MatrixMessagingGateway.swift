@@ -285,7 +285,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
         discoveryTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
-                try? await Task.sleep(for: await self.roomDiscoveryInterval)
+                try? await Task.sleep(for: self.roomDiscoveryInterval)
                 guard !Task.isCancelled else { return }
                 await self.discoverNewRooms()
             }

@@ -17,14 +17,11 @@ public struct MatrixAccountCredentials: Sendable, Equatable {
 
 public enum MatrixAccountError: Error, Equatable, Sendable, CustomStringConvertible {
     case nonceUnavailable
-    case registrationRejected(status: Int, code: String?)
 
     public var description: String {
         switch self {
         case .nonceUnavailable:
             "the homeserver did not return a registration nonce"
-        case let .registrationRejected(status, code):
-            "registration was rejected with status \(status)\(code.map { " (\($0))" } ?? "")"
         }
     }
 }

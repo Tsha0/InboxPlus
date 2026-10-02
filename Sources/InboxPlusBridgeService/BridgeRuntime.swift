@@ -183,10 +183,6 @@ public struct BridgeRuntime: Sendable {
     }
 
     /// Runs the bridge's own `--generate-registration`, which is authoritative for its namespaces.
-    ///
-    /// Inbox+ has an `AppServiceRegistration` generator, but a bridge knows which users and aliases
-    /// it actually claims; generating that from Inbox+'s assumptions would be a guess that only
-    /// fails once real traffic arrives.
     private func generateRegistration(
         executable: URL,
         configuration: BridgeConfiguration,

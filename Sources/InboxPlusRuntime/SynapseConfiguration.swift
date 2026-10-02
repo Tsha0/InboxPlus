@@ -19,7 +19,7 @@ public struct SynapseConfiguration: Sendable {
     public let mediaPath: URL
     public let signingKeyPath: URL
     public let credentials: SynapseCredentials
-    /// Where `AppServiceRegistration.write(to:)` drops the bridge registrations Synapse must load.
+    /// Where bridge preparation publishes the registrations Synapse must load.
     public let appServiceDirectory: URL
 
     private let profile: RuntimePaths

@@ -44,7 +44,7 @@ let package = Package(
         // InboxPlusUI can drive a login without importing the runtime or a process supervisor.
         .target(name: "InboxPlusBridge", dependencies: ["InboxPlusCore"]),
         // Everything that talks to a real bridge: provisioning client, installer, configuration,
-        // supervision, and the deterministic dummy bridge used as a contract-test fixture.
+        // and supervision.
         .target(name: "InboxPlusBridgeService", dependencies: ["InboxPlusBridge", "InboxPlusCore", "InboxPlusRuntime"]),
         .executableTarget(
             name: "InboxPlusRuntimeCLI",
@@ -61,21 +61,26 @@ let package = Package(
                 .product(name: "MatrixRustSDK", package: "matrix-rust-components-swift"),
             ]
         ),
+        .target(
+            name: "InboxPlusTestSupport",
+            dependencies: ["InboxPlusCore", "InboxPlusGateway", "InboxPlusFeatures", "InboxPlusBridge", "InboxPlusRuntime"],
+            path: "Tests/InboxPlusTestSupport"
+        ),
         .testTarget(name: "InboxPlusAppTests", dependencies: ["InboxPlusApp"]),
         .testTarget(name: "InboxPlusCoreTests", dependencies: ["InboxPlusCore"]),
         .testTarget(name: "InboxPlusGatewayTests", dependencies: ["InboxPlusCore", "InboxPlusGateway"]),
         .testTarget(
             name: "InboxPlusFeaturesTests",
-            dependencies: ["InboxPlusCore", "InboxPlusGateway", "InboxPlusFeatures", "InboxPlusBridge"]
+            dependencies: ["InboxPlusCore", "InboxPlusGateway", "InboxPlusFeatures", "InboxPlusBridge", "InboxPlusTestSupport"]
         ),
         .testTarget(
             name: "InboxPlusUITests",
-            dependencies: ["InboxPlusCore", "InboxPlusFeatures", "InboxPlusUI", "InboxPlusBridge"]
+            dependencies: ["InboxPlusCore", "InboxPlusFeatures", "InboxPlusUI", "InboxPlusBridge", "InboxPlusTestSupport"]
         ),
         .testTarget(name: "InboxPlusRuntimeTests", dependencies: ["InboxPlusRuntime", "InboxPlusRuntimeCLI"]),
         .testTarget(
             name: "InboxPlusBridgeTests",
-            dependencies: ["InboxPlusBridge", "InboxPlusBridgeService", "InboxPlusCore", "InboxPlusRuntime"]
+            dependencies: ["InboxPlusBridge", "InboxPlusBridgeService", "InboxPlusCore", "InboxPlusRuntime", "InboxPlusTestSupport"]
         ),
         .testTarget(
             name: "InboxPlusIMessageTests",

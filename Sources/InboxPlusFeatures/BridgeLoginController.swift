@@ -143,8 +143,6 @@ public final class BridgeLoginController {
     /// The most recent recoverable failure, shown beside the step the user can still fix.
     public private(set) var failureMessage: String?
 
-    public func dismissFailure() { failureMessage = nil }
-
     /// Abandons the login: stops waiting, and tells the bridge to drop what it opened.
     ///
     /// Closing the window is not enough. The bridge keeps the attempt — and the WhatsApp session

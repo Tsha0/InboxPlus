@@ -10,27 +10,22 @@ private func makeCacheDirectory() -> URL {
         .appendingPathComponent(".build/MediaCacheTests-\(UUID().uuidString)")
 }
 
-private func handle(_ source: String, mimeType: String? = nil, bytes: Int? = nil) -> MediaHandle {
-    MediaHandle(source: source, mimeType: mimeType, byteCount: bytes)
+private func handle(_ source: String, mimeType: String? = nil) -> MediaHandle {
+    MediaHandle(source: source, mimeType: mimeType)
 }
 
 private let context = MediaCacheContext(accountID: "instagram", messageID: "$event1")
-
-@Test func mediaIsAbsentUntilItIsDownloaded() async throws {
-    let directory = makeCacheDirectory()
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let cache = try MediaCache(directory: directory)
-
-    #expect(await cache.cachedFile(for: handle("mxc://s/1")) == nil)
-    #expect(await cache.totalBytes == 0)
-}
 
 @Test func aStoredFileIsPrivateAndFindableAgain() async throws {
     let directory = makeCacheDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let cache = try MediaCache(directory: directory)
 
-    let stored = try await cache.store(Data(repeating: 7, count: 128), for: handle("mxc://s/1", mimeType: "image/jpeg"), context: context)
+    let media = handle("mxc://s/../../etc/passwd", mimeType: "image/jpeg")
+    #expect(await cache.cachedFile(for: media) == nil)
+    #expect(await cache.totalBytes == 0)
+    let stored = try await cache.store(Data(repeating: 7, count: 128), for: media, context: context)
+    #expect(stored.deletingLastPathComponent().standardizedFileURL.path == directory.standardizedFileURL.path)
     #expect(try Data(contentsOf: stored).count == 128)
 
     let attributes = try FileManager.default.attributesOfItem(atPath: stored.path)
@@ -38,7 +33,7 @@ private let context = MediaCacheContext(accountID: "instagram", messageID: "$eve
     let directoryAttributes = try FileManager.default.attributesOfItem(atPath: directory.path)
     #expect(directoryAttributes[.posixPermissions] as? Int == 0o700)
 
-    #expect(await cache.cachedFile(for: handle("mxc://s/1", mimeType: "image/jpeg")) == stored)
+    #expect(await cache.cachedFile(for: media) == stored)
     #expect(await cache.totalBytes == 128)
 }
 
@@ -133,17 +128,6 @@ private let context = MediaCacheContext(accountID: "instagram", messageID: "$eve
     #expect(try await cache.purge(accountID: "instagram").count == 1)
     #expect(await cache.cachedFile(for: handle("mxc://s/ig")) == nil)
     #expect(await cache.cachedFile(for: handle("mxc://s/wa")) != nil)
-}
-
-@Test func aFilenameIsDerivedFromTheMediaIdentifierNotFromAnythingRemoteChose() {
-    // A remote filename must never steer a write. Same source, same key; different source,
-    // different key; and the key is safe to use as a path component.
-    let key = MediaCache.key(for: "mxc://inboxplus.localhost/../../etc/passwd")
-    #expect(key == MediaCache.key(for: "mxc://inboxplus.localhost/../../etc/passwd"))
-    #expect(key != MediaCache.key(for: "mxc://inboxplus.localhost/other"))
-    #expect(key.count == 64)
-    #expect(!key.contains("/"))
-    #expect(!key.contains("."))
 }
 
 @Test func theStoredExtensionFollowsTheContentTypeWhenOneIsKnown() {

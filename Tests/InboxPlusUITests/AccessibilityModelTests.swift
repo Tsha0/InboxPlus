@@ -11,20 +11,6 @@ import Testing
     }
 }
 
-@Test func linkedContactCardDescriptorRetainsExactRoute() {
-    let route = ConversationRoute(accountID: "wa", conversationID: "chat")
-    let descriptor = ContactConversationCardDescriptor(
-        route: route,
-        platform: .whatsApp,
-        title: "Latest message",
-        preview: "Hello",
-        timestampDescription: "12 Aug 2026 at 10:15 PM",
-        unreadCount: 0
-    )
-    #expect(descriptor.route == route)
-    #expect(descriptor.accessibilityLabel.contains("WhatsApp"))
-}
-
 @Test func linkedContactCardDescriptorNamesCompleteAccessibleState() {
     let route = ConversationRoute(accountID: "wa", conversationID: "chat")
     let unread = ContactConversationCardDescriptor(

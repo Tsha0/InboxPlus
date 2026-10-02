@@ -30,7 +30,7 @@ final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
             // The default action has to be ignored, or it fires before the source is handled.
             signal(number, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: number, queue: .main)
-            source.setEventHandler { NSApplication.shared.terminate(nil) }
+            source.setEventHandler { MainActor.assumeIsolated { NSApplication.shared.terminate(nil) } }
             source.resume()
             terminationSignals.append(source)
         }

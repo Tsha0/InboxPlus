@@ -1,3 +1,4 @@
+import InboxPlusTestSupport
 import Foundation
 import Testing
 @testable import InboxPlusCore
@@ -171,26 +172,6 @@ private func settle(until condition: @MainActor () -> Bool) async -> Bool {
 
     #expect(mine.isOutgoing)
     #expect(!theirs.isOutgoing)
-}
-
-@Test func demoSnapshotIsRecentEnoughToReadAsRelativeTime() throws {
-    let demo = Fixtures.demoSnapshot
-    let newest = try #require(demo.conversations.map(\.latestActivity).max())
-
-    #expect(newest.timeIntervalSinceNow > -60 * 60)
-    #expect(newest <= Date())
-    #expect(demo.conversations.count == Fixtures.snapshot.conversations.count)
-}
-
-@Test func deterministicSnapshotKeepsItsFixedTimestamps() {
-    let whatsApp = Fixtures.snapshot.conversations.first { $0.route == Fixtures.whatsAppRoute }
-    let instagram = Fixtures.snapshot.conversations.first { $0.route == Fixtures.instagramRoute }
-    let telegram = Fixtures.snapshot.conversations.first { $0.route == Fixtures.telegramRoute }
-
-    #expect(whatsApp?.latestActivity == Date(timeIntervalSince1970: 200))
-    #expect(instagram?.latestActivity == Date(timeIntervalSince1970: 300))
-    #expect(telegram?.latestActivity == Date(timeIntervalSince1970: 100))
-    #expect(Fixtures.snapshot.messagesByRoute[Fixtures.instagramRoute]?.count == 1)
 }
 
 @MainActor

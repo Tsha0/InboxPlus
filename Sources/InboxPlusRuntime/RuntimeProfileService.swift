@@ -154,28 +154,6 @@ public struct RuntimeProfileService: Sendable {
 
     // MARK: - Lifecycle
 
-    /// Launches Synapse and supervises it for as long as this process lives.
-    ///
-    /// The supervisor only ever controls its own direct child, so the owning process must stay
-    /// alive for the whole session. `onReady` fires once the runtime is healthy; the session then
-    /// runs until `interrupt` resolves or supervision reaches a terminal state, and always stops
-    /// the child before returning.
-    public func runForegroundSession(
-        interrupt: @Sendable @escaping () async -> Void,
-        onReady: @Sendable (RuntimeSnapshot) -> Void = { _ in }
-    ) async throws -> RuntimeSnapshot {
-        try await withRunningRuntime(onReady: onReady) { supervisor, _ in
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { await supervisor.supervise() }
-                group.addTask { await interrupt() }
-                await group.next()
-                group.cancelAll()
-                await group.waitForAll()
-            }
-        }
-        return try store.load()?.snapshot ?? .stopped
-    }
-
     /// Starts Synapse, runs `body` against the healthy runtime, then always stops it.
     ///
     /// Every command that needs a live Synapse (benchmark, fixture verification, recovery
@@ -211,7 +189,7 @@ public struct RuntimeProfileService: Sendable {
             try await stopAndPersist(supervisor: supervisor, state: state)
             return value
         } catch {
-            try? await stopAndPersist(supervisor: supervisor, state: state)
+            _ = try? await stopAndPersist(supervisor: supervisor, state: state)
             throw error
         }
     }

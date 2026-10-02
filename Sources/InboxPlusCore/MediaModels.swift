@@ -23,28 +23,6 @@ public enum MessageKind: String, Codable, Hashable, Sendable, CaseIterable {
     case membership
     case state
     case unsupported
-
-    /// True when Inbox+ draws this kind itself rather than describing it in words.
-    public var hasNativeRendering: Bool {
-        switch self {
-        case .text, .notice, .emote, .image, .gallery, .sticker, .audio, .video, .file: true
-        default: false
-        }
-    }
-
-    /// True when the user is shown a stand-in because the real content cannot be rendered here.
-    ///
-    /// A placeholder is never silence: the design forbids dropping an event, so every one of these
-    /// still produces a visible card that says what the bridge reported.
-    public var isPlaceholder: Bool { !hasNativeRendering }
-
-    /// Whether playback controls belong on this kind. Inbox+ never autoplays.
-    public var isPlayable: Bool {
-        switch self {
-        case .audio, .video: true
-        default: false
-        }
-    }
 }
 
 /// A reference to remote bytes that have not been downloaded.

@@ -149,9 +149,6 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
     /// Messages this account sent carry no remote sender identity.
     public var isOutgoing: Bool { senderIdentityID == nil }
 
-    /// True when the transcript shows a card explaining the event instead of the event itself.
-    public var isPlaceholder: Bool { kind.isPlaceholder && attachments.isEmpty }
-
     public init(
         id: String,
         route: ConversationRoute,

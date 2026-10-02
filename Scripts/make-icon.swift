@@ -10,7 +10,7 @@ import AppKit
 import Foundation
 
 let arguments = CommandLine.arguments
-let sourcePath = arguments.count > 1 ? arguments[1] : "docs/assets/inboxplus-logo.png"
+let sourcePath = arguments.count > 1 ? arguments[1] : "Sources/InboxPlusUI/Resources/InboxPlusLogo.png"
 let outputPath = arguments.count > 2 ? arguments[2] : "Resources/AppIcon.icns"
 
 // macOS icon geometry: a 1024 canvas whose artwork occupies the middle 824, leaving the margin
@@ -157,20 +157,10 @@ iconutil.arguments = ["-c", "icns", iconset.path, "-o", outputURL.path]
 try iconutil.run()
 iconutil.waitUntilExit()
 
-// Keep the 1024 master beside the icns: it is what a website or a README needs, and regenerating
-// it by hand later would drift from the icon actually shipped.
-let previewURL = outputURL.deletingLastPathComponent().appendingPathComponent("AppIcon-1024.png")
-if let destination = CGImageDestinationCreateWithURL(
-    previewURL as CFURL, "public.png" as CFString, 1, nil
-) {
-    CGImageDestinationAddImage(destination, master, nil)
-    CGImageDestinationFinalize(destination)
-}
-
 try? fileManager.removeItem(at: workingDirectory)
 
 guard iconutil.terminationStatus == 0 else {
     FileHandle.standardError.write(Data("error: iconutil failed\n".utf8))
     exit(1)
 }
-print("wrote \(outputURL.path) and \(previewURL.path)")
+print("wrote \(outputURL.path)")

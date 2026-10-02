@@ -57,31 +57,18 @@ private func fixtureSession(accessToken: String = "syt_secret") -> PersistedSess
     #expect(try !store.storePassphrase().isEmpty)
 }
 
-@Test func aSessionRoundTripsThroughDisk() throws {
+@Test func aSessionRoundTripsThroughPrivateStorage() throws {
     let (paths, root) = try makeProfile()
     defer { try? FileManager.default.removeItem(at: root) }
     let store = makeStore(paths)
     defer { try? store.destroy() }
 
+    #expect(try store.loadSession() == nil)
     let session = fixtureSession()
     try store.saveSession(session)
     #expect(try store.loadSession() == session)
-}
 
-@Test func anAbsentSessionLoadsAsNil() throws {
-    let (paths, root) = try makeProfile()
-    defer { try? FileManager.default.removeItem(at: root) }
-    #expect(try makeStore(paths).loadSession() == nil)
-}
-
-@Test func theSavedSessionIsUserOnlyReadable() throws {
-    // The session file holds a live access token.
-    let (paths, root) = try makeProfile()
-    defer { try? FileManager.default.removeItem(at: root) }
-    let store = makeStore(paths)
-    defer { try? store.destroy() }
-    try store.saveSession(fixtureSession())
-
+    // The persisted session contains a live access token.
     var metadata = stat()
     #expect(lstat(store.sessionFile.path, &metadata) == 0)
     #expect(Int(metadata.st_mode) & 0o777 == 0o600)

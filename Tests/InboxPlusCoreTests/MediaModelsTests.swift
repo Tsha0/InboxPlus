@@ -2,53 +2,6 @@ import Foundation
 import Testing
 @testable import InboxPlusCore
 
-@Test func kindsInboxPlusDrawsItselfAreNotPlaceholders() {
-    // Phase 5's whole point: an image is rendered, not described.
-    for kind in [MessageKind.text, .notice, .emote, .image, .gallery, .sticker, .audio, .video, .file] {
-        #expect(kind.hasNativeRendering)
-        #expect(!kind.isPlaceholder)
-    }
-    for kind in [MessageKind.location, .poll, .appNative, .encrypted, .unsupported, .redacted] {
-        #expect(kind.isPlaceholder)
-    }
-}
-
-@Test func onlyAudioAndVideoOfferPlayback() {
-    for kind in MessageKind.allCases {
-        #expect(kind.isPlayable == (kind == .audio || kind == .video))
-    }
-}
-
-@Test func aMessageCarryingAnAttachmentIsNeverAPlaceholder() {
-    // An unrecognised event type that still shipped a usable file is real content, not a stand-in.
-    let attachment = MessageAttachment(id: "a", kind: .file, source: MediaHandle(source: "mxc://s/1"))
-    let message = Message(
-        id: "m",
-        route: ConversationRoute(accountID: "ig", conversationID: "c"),
-        senderIdentityID: "them",
-        body: "Unsupported message (com.example)",
-        timestamp: Date(timeIntervalSince1970: 1),
-        deliveryState: .acknowledged,
-        kind: .unsupported,
-        attachments: [attachment]
-    )
-    #expect(!message.isPlaceholder)
-}
-
-@Test func aPlainTextMessageStillCompilesAndDefaultsToText() {
-    let message = Message(
-        id: "m",
-        route: ConversationRoute(accountID: "ig", conversationID: "c"),
-        senderIdentityID: nil,
-        body: "hi",
-        timestamp: Date(timeIntervalSince1970: 1),
-        deliveryState: .pending
-    )
-    #expect(message.kind == .text)
-    #expect(message.attachments.isEmpty)
-    #expect(!message.isPlaceholder)
-}
-
 @Test func anAttachmentPrefersTheSendersCaptionThenTheFilename() {
     let captioned = MessageAttachment(id: "1", kind: .image, filename: "IMG_0042.HEIC", caption: "beach")
     #expect(captioned.displayName == "beach")
@@ -90,5 +43,4 @@ import Testing
         MessageAttachment.self, from: JSONEncoder().encode(attachment)
     )
     #expect(decoded == attachment)
-    #expect(decoded.duration == .milliseconds(12_500))
 }

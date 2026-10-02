@@ -228,13 +228,6 @@ public struct BackupManager: Sendable {
         return RestoreResult(restoredFileCount: manifest.files.count, verifiedChecksums: verified)
     }
 
-    public func listBackups() throws -> [String] {
-        guard FileManager.default.fileExists(atPath: paths.backups.path) else { return [] }
-        return try FileManager.default.contentsOfDirectory(atPath: paths.backups.path)
-            .filter { !$0.hasPrefix(".") }
-            .sorted()
-    }
-
     // MARK: - Helpers
 
     static func validateBackupName(_ name: String) throws {

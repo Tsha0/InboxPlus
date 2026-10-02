@@ -649,6 +649,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     let fixture = try SecureProcessDirectories(prefix: "InboxPlusConcurrentLaunchReservationTests")
     defer { fixture.remove() }
     let gate = ConcurrentSpawnGate()
+    defer { gate.releaseFirst() }
     let process = try FoundationManagedProcessFactory(afterSpawn: { pid in
         gate.recordAndBlockFirst(pid)
     }).make(try managedConfiguration(
@@ -657,7 +658,8 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
         arguments: [childLifetimeSeconds]
     ))
     let firstLaunch = Task { try await process.launch() }
-    try #require(gate.waitForFirstSpawn() != nil)
+    let spawned = await Task.detached { gate.waitForFirstSpawn() }.value
+    try #require(spawned != nil)
     var unexpectedSecond: ManagedProcessIdentity?
 
     do {
