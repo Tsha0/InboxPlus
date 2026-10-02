@@ -6,15 +6,8 @@ import Testing
 @testable import InboxPlusFeatures
 
 private actor AppModelTestGateway: TextOnlyTestGateway {
-    private var snapshot: MessagingSnapshot
+    private let snapshot: MessagingSnapshot
     private var continuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
-    private(set) var stopCount = 0
-
-    func stop() {
-        stopCount += 1
-        continuations.values.forEach { $0.finish() }
-        continuations.removeAll()
-    }
 
     init(snapshot: MessagingSnapshot) {
         self.snapshot = snapshot
@@ -23,8 +16,6 @@ private actor AppModelTestGateway: TextOnlyTestGateway {
     func loadSnapshot() async throws -> MessagingSnapshot {
         snapshot
     }
-
-    func replaceSnapshot(_ replacement: MessagingSnapshot) { snapshot = replacement }
 
     func events() async -> AsyncStream<GatewayEvent> {
         let id = UUID()
@@ -1050,131 +1041,4 @@ private func startAndRecord(
     model.reportStartupFailure(AppModelTestError.gatewayUnavailable)
 
     #expect(model.health == .needsAttention("Inbox+ could not start: Fixture gateway unavailable"))
-}
-
-@MainActor
-@Test func messageBatchesDeduplicateAndUpdateBothTranscriptAndInbox() async throws {
-    let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
-    let model = InboxPlusAppModel(gateway: gateway, directory: Fixtures.directory)
-    try await model.start()
-    let route = Fixtures.telegramRoute
-    let newest = Message(id: "batch-newest", route: route, senderIdentityID: nil, body: "Latest",
-                         timestamp: Date(timeIntervalSince1970: 700), deliveryState: .pending)
-    var acknowledged = newest
-    acknowledged.deliveryState = .acknowledged
-    let older = Message(id: "batch-older", route: route, senderIdentityID: "family-telegram-identity",
-                        body: "Older", timestamp: Date(timeIntervalSince1970: 50),
-                        deliveryState: .acknowledged)
-    await gateway.publish(.messagesUpserted([newest, older, acknowledged]))
-    let applied = await eventually { model.messagesByRoute[route]?.last?.deliveryState == .acknowledged
-        && model.messagesByRoute[route]?.last?.id == newest.id }
-    #expect(applied)
-    #expect(model.messagesByRoute[route]?.map(\.id) == [older.id, "tg-1", newest.id])
-    #expect(model.summary(for: route)?.latestPreview == "Latest")
-    #expect(model.inboxItems.first?.id == .conversation(route))
-    await model.shutdown()
-}
-
-@MainActor
-@Test func accountErasureKeepsIndexesValidAndDropsLateEvents() async throws {
-    let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
-    let model = InboxPlusAppModel(gateway: gateway, directory: Fixtures.directory)
-    try await model.start()
-    model.eraseAccount(accountID: Fixtures.whatsAppRoute.accountID)
-    #expect(model.capabilities(for: Fixtures.instagramRoute) == .mediaCapable)
-    #expect(model.personID(for: Fixtures.instagramRoute) == "maya")
-    let erasedMessage = Message(id: "late-erased", route: Fixtures.whatsAppRoute,
-                                senderIdentityID: nil, body: "Gone", timestamp: .distantFuture,
-                                deliveryState: .acknowledged)
-    let retainedMessage = Message(id: "retained", route: Fixtures.instagramRoute,
-                                  senderIdentityID: nil, body: "Still here", timestamp: .distantFuture,
-                                  deliveryState: .acknowledged)
-    await gateway.publish(.messagesUpserted([erasedMessage, retainedMessage]))
-    let applied = await eventually { model.summary(for: Fixtures.instagramRoute)?.latestPreview == "Still here" }
-    #expect(applied)
-    #expect(model.messagesByRoute[Fixtures.whatsAppRoute] == nil)
-    #expect(model.summary(for: Fixtures.whatsAppRoute) == nil)
-    #expect(model.summaries(for: "maya").map(\.route) == [Fixtures.instagramRoute])
-    await model.shutdown()
-}
-
-@MainActor
-@Test func shutdownStopsTheGatewayOnce() async throws {
-    let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
-    let model = InboxPlusAppModel(gateway: gateway)
-    try await model.start()
-    await model.shutdown()
-    await model.shutdown()
-    #expect(await gateway.stopCount == 1)
-}
-
-@MainActor
-@Test func failedStartupAlsoStopsTheGatewayBeforeRetry() async throws {
-    var snapshot = Fixtures.snapshot
-    snapshot.accounts.append(ConnectedAccount(id: "duplicate-instagram", platform: .instagram, displayName: "Duplicate"))
-    let gateway = AppModelTestGateway(snapshot: snapshot)
-    let model = InboxPlusAppModel(gateway: gateway)
-    await #expect(throws: AccountPolicyError.duplicatePlatform(.instagram)) {
-        try await model.start()
-    }
-    await model.shutdown()
-    #expect(await gateway.stopCount == 1)
-}
-
-@MainActor
-@Test func restartMergesABoundedSnapshotWithHistoryAlreadyDisplayed() async throws {
-    let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
-    let model = InboxPlusAppModel(gateway: gateway, directory: Fixtures.directory)
-    try await model.start()
-    let route = Fixtures.telegramRoute
-    let history = (0..<600).map { index in
-        Message(id: "history-\(index)", route: route, senderIdentityID: nil, body: "Message \(index)",
-                timestamp: Date(timeIntervalSince1970: Double(index)), deliveryState: .pending)
-    }
-    await gateway.publish(.messagesUpserted(history))
-    let historyApplied = await eventually { model.messagesByRoute[route]?.count == 601 }
-    #expect(historyApplied)
-    await model.shutdown()
-
-    var snapshot = Fixtures.snapshot
-    var latest = history[599]
-    latest.body = "Updated on the server"
-    latest.deliveryState = .acknowledged
-    snapshot.messagesByRoute[route] = Array(history.suffix(512).dropLast()) + [latest]
-    snapshot.conversations.removeAll { $0.route == Fixtures.instagramRoute }
-    snapshot.messagesByRoute[Fixtures.instagramRoute] = nil
-    await gateway.replaceSnapshot(snapshot)
-    try await model.start()
-
-    #expect(model.messagesByRoute[route]?.count == 601)
-    #expect(model.messagesByRoute[route]?.first?.id == "history-0")
-    #expect(model.messagesByRoute[route]?.last?.body == latest.body)
-    #expect(model.messagesByRoute[route]?.last?.deliveryState == .acknowledged)
-    #expect(model.messagesByRoute[Fixtures.instagramRoute] == nil)
-    await model.shutdown()
-}
-
-@MainActor
-@Test func erasedAccountsStayExcludedFromSnapshotsUntilExplicitlyAddedAgain() async throws {
-    let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
-    let model = InboxPlusAppModel(gateway: gateway, directory: Fixtures.directory)
-    try await model.start()
-    let accountID = Fixtures.whatsAppRoute.accountID
-    model.eraseAccount(accountID: accountID)
-    await model.shutdown()
-    try await model.start()
-
-    #expect(!model.accounts.contains { $0.id == accountID })
-    #expect(!model.identities.contains { $0.accountID == accountID })
-    #expect(!model.conversations.contains { $0.accountID == accountID })
-    #expect(model.messagesByRoute[Fixtures.whatsAppRoute] == nil)
-    #expect(model.lastActivity(for: accountID) == nil)
-
-    try model.addAccount(ConnectedAccount(id: accountID, platform: .whatsApp, displayName: "Personal"))
-    await model.shutdown()
-    try await model.start()
-    #expect(model.accounts.contains { $0.id == accountID })
-    #expect(model.summary(for: Fixtures.whatsAppRoute) != nil)
-    #expect(model.messagesByRoute[Fixtures.whatsAppRoute]?.count == 1)
-    await model.shutdown()
 }

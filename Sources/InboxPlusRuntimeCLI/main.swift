@@ -93,12 +93,13 @@ func execute(_ command: RuntimeCommand) async throws -> String {
                     print("bridge \(record.bridgeID) \(describe(snapshot))")
                     fflush(stdout)
                 },
-                // Report startup and supervision failures while the other networks keep running.
+                // One bridge failing is reported and stepped over: taking the homeserver and every
+                // other network down with it would be a worse outcome than a single dark network.
                 onBridgeFailed: { record, error in
-                    writeStandardError("bridge \(record.bridgeID) failed: \(error)")
+                    writeStandardError("bridge \(record.bridgeID) failed to start: \(error)")
                 }
-            ) { bridges in
-                print("supervising homeserver and \(bridges.count) bridge(s); press Ctrl-C to stop")
+            ) { _ in
+                print("supervising; press Ctrl-C to stop")
                 fflush(stdout)
                 await withTaskGroup(of: Void.self) { group in
                     group.addTask { await supervisor.supervise() }

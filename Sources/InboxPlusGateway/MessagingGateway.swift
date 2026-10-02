@@ -18,8 +18,6 @@ public struct MessagingSnapshot: Sendable {
 
 public enum GatewayEvent: Sendable {
     case messageUpserted(Message)
-    /// A lossless batch from one sync response or polling page.
-    case messagesUpserted([Message])
     case conversationUpserted(RemoteConversation)
     /// Must be delivered before any conversation that names this identity.
     ///
@@ -48,10 +46,4 @@ public protocol MessagingGateway: Sendable {
     /// Uploads and sends a local file. Like `sendText`, the receipt is only `acknowledged` once
     /// the server has confirmed it.
     func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt
-    /// Cancels background work and finishes event subscriptions. A later load may restart it.
-    func stop() async
-}
-
-public extension MessagingGateway {
-    func stop() async {}
 }

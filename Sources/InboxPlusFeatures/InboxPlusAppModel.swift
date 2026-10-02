@@ -87,11 +87,6 @@ public final class InboxPlusAppModel {
     public private(set) var conversations: [RemoteConversation] = []
     public private(set) var messagesByRoute: [ConversationRoute: [Message]] = [:]
     public private(set) var inboxItems: [InboxItem] = []
-    public private(set) var summariesByPersonID: [String: [ConversationSummary]] = [:]
-    private var summaryByRoute: [ConversationRoute: ConversationSummary] = [:]
-    private var conversationIndexByRoute: [ConversationRoute: Int] = [:]
-    private var identityIndexByID: [String: Int] = [:]
-    private var erasedAccountIDs: Set<String> = []
     public private(set) var detailSelection: DetailSelection = .empty
     public private(set) var health: ServiceHealth = .starting
     public var draft = "" {
@@ -133,9 +128,6 @@ public final class InboxPlusAppModel {
     private var eventTaskID: UUID?
     private var bufferingEventTaskID: UUID?
     private var bufferedStartupEvents: [GatewayEvent] = []
-    private var queuedEvents: [GatewayEvent] = []
-    private var eventFlushTask: Task<Void, Never>?
-    private var gatewayStopTask: Task<Void, Never>?
 
     /// Lazy media loading for the transcript. Without a loader it simply never downloads, which is
     /// what previews and fixture runs want.
@@ -160,7 +152,6 @@ public final class InboxPlusAppModel {
     }
 
     public func stop() {
-        let wasRunning = startupTask != nil || eventTask != nil
         let id = startupID
         startupID = nil
         startupTask?.cancel()
@@ -174,24 +165,6 @@ public final class InboxPlusAppModel {
             eventTask = nil
             eventTaskID = nil
         }
-        eventFlushTask?.cancel()
-        eventFlushTask = nil
-        queuedEvents.removeAll()
-        if wasRunning { scheduleGatewayStop() }
-    }
-
-    private func scheduleGatewayStop() {
-        let previous = gatewayStopTask
-        let gateway = gateway
-        gatewayStopTask = Task {
-            await previous?.value
-            await gateway.stop()
-        }
-    }
-
-    public func shutdown() async {
-        stop()
-        await gatewayStopTask?.value
     }
 
     public func reportStartupFailure(_ error: any Error) {
@@ -201,7 +174,6 @@ public final class InboxPlusAppModel {
     isolated deinit {
         startupTask?.cancel()
         eventTask?.cancel()
-        eventFlushTask?.cancel()
     }
 
     public func selectInboxItem(_ item: InboxItem) {
@@ -224,7 +196,7 @@ public final class InboxPlusAppModel {
 
     public func markConversationRead(_ route: ConversationRoute) {
         guard
-            let index = conversationIndexByRoute[route],
+            let index = conversations.firstIndex(where: { $0.route == route }),
             conversations[index].unreadCount != 0
         else { return }
         conversations[index].unreadCount = 0
@@ -272,8 +244,6 @@ public final class InboxPlusAppModel {
     public func addAccount(_ account: ConnectedAccount) throws {
         try AccountPolicy.validate(accounts + [account])
         accounts.append(account)
-        erasedAccountIDs.remove(account.id)
-        media.allowDownloads(accountID: account.id)
         disconnectedAccountIDs.remove(account.id)
         rebuildInbox()
     }
@@ -298,8 +268,6 @@ public final class InboxPlusAppModel {
     /// Separate from `disconnect` and destructive on purpose — the caller must have confirmed with
     /// the user, because nothing here can be undone.
     public func eraseAccount(accountID: String) {
-        erasedAccountIDs.insert(accountID)
-        media.purge(accountID: accountID)
         accounts.removeAll { $0.id == accountID }
         let removedIdentityIDs = Set(
             identities.filter { $0.accountID == accountID }.map(\.id)
@@ -309,10 +277,6 @@ public final class InboxPlusAppModel {
             messagesByRoute[route] = nil
         }
         conversations.removeAll { $0.accountID == accountID }
-        rebuildModelIndexes()
-        stagedAttachmentsByRoute = stagedAttachmentsByRoute.filter { $0.key.accountID != accountID }
-        sendFailuresByRoute = sendFailuresByRoute.filter { $0.key.accountID != accountID }
-        latestSendGenerationByRoute = latestSendGenerationByRoute.filter { $0.key.accountID != accountID }
         for identityID in removedIdentityIDs {
             guard let personID = directory.personID(linkedTo: identityID) else { continue }
             try? directory.unlink(remoteIdentityID: identityID, from: personID)
@@ -359,8 +323,7 @@ public final class InboxPlusAppModel {
     }
 
     public func capabilities(for route: ConversationRoute) -> ConversationCapabilities {
-        guard let index = conversationIndexByRoute[route] else { return .textOnly }
-        return conversations[index].capabilities
+        conversations.first { $0.route == route }?.capabilities ?? .textOnly
     }
 
     /// Stages a chosen file, rejecting it now rather than failing the send later.
@@ -414,11 +377,7 @@ public final class InboxPlusAppModel {
     }
 
     public func summaries(for personID: String) -> [ConversationSummary] {
-        summariesByPersonID[personID] ?? []
-    }
-
-    public func summary(for route: ConversationRoute) -> ConversationSummary? {
-        summaryByRoute[route]
+        inboxItems.first { $0.id == .person(personID) }?.conversationSummaries ?? []
     }
 
     public var people: [InboxPlusPerson] {
@@ -428,16 +387,16 @@ public final class InboxPlusAppModel {
     }
 
     public func personID(for route: ConversationRoute) -> String? {
-        guard let index = conversationIndexByRoute[route] else { return nil }
-        return directory.personID(linkedTo: conversations[index].identityID)
+        guard let identityID = conversations.first(where: { $0.route == route })?.identityID else { return nil }
+        return directory.personID(linkedTo: identityID)
     }
 
     public func linkOpenConversation(to personID: String) throws {
         guard
             let route = openRoute,
-            let index = conversationIndexByRoute[route]
+            let identityID = conversations.first(where: { $0.route == route })?.identityID
         else { throw InboxPlusAppModelError.missingOpenConversation }
-        try directory.link(remoteIdentityID: conversations[index].identityID, to: personID)
+        try directory.link(remoteIdentityID: identityID, to: personID)
         rebuildInbox()
         detailSelection = .personSummary(personID)
     }
@@ -459,42 +418,18 @@ public final class InboxPlusAppModel {
 
     private func apply(_ snapshot: MessagingSnapshot) {
         Self.reportLoadedAccounts(snapshot)
-        accounts = snapshot.accounts.filter { !erasedAccountIDs.contains($0.id) }
-        identities = snapshot.identities.filter { !erasedAccountIDs.contains($0.accountID) }
-        conversations = snapshot.conversations.filter { !erasedAccountIDs.contains($0.accountID) }
-        rebuildModelIndexes()
-
-        // Gateways bound their snapshot caches. Keep history already displayed for retained routes,
-        // and let the snapshot overwrite matching IDs with newer delivery/content information.
-        let retainedRoutes = Set(conversations.map(\.route))
-        var mergedByRoute: [ConversationRoute: [Message]] = [:]
-        for route in retainedRoutes {
-            var messages = messagesByRoute[route, default: []]
-            var indexByID = Dictionary(messages.enumerated().map { ($0.element.id, $0.offset) },
-                                       uniquingKeysWith: { _, latest in latest })
-            for message in snapshot.messagesByRoute[route, default: []] {
-                if let index = indexByID[message.id] {
-                    messages[index] = message
-                } else {
-                    indexByID[message.id] = messages.count
-                    messages.append(message)
-                }
-            }
-            messages.sort { $0.timestamp < $1.timestamp }
-            mergedByRoute[route] = messages
-        }
-        messagesByRoute = mergedByRoute
+        accounts = snapshot.accounts
+        identities = snapshot.identities
+        conversations = snapshot.conversations
+        messagesByRoute = snapshot.messagesByRoute.mapValues { $0.sorted { $0.timestamp < $1.timestamp } }
         lastActivityByAccount = Dictionary(
-            conversations.map { ($0.accountID, $0.latestActivity) },
+            snapshot.conversations.map { ($0.accountID, $0.latestActivity) },
             uniquingKeysWith: max
         )
         rebuildInbox()
     }
 
     private func performStart(id: UUID) async throws {
-        await gatewayStopTask?.value
-        try Task.checkCancellation()
-        guard startupID == id else { throw CancellationError() }
         let stream = await gateway.events()
         try Task.checkCancellation()
         guard startupID == id else { throw CancellationError() }
@@ -511,14 +446,16 @@ public final class InboxPlusAppModel {
         let snapshot = try await gateway.loadSnapshot()
         try Task.checkCancellation()
         guard startupID == id else { throw CancellationError() }
-        try AccountPolicy.validate(snapshot.accounts.filter { !erasedAccountIDs.contains($0.id) })
+        try AccountPolicy.validate(snapshot.accounts)
         apply(snapshot)
         disconnectedAccountIDs.removeAll()
         health = .healthy
 
         let events = bufferedStartupEvents
         bufferedStartupEvents.removeAll()
-        applyEvents(events)
+        for event in events {
+            apply(event)
+        }
         bufferingEventTaskID = nil
     }
 
@@ -572,7 +509,6 @@ public final class InboxPlusAppModel {
         guard startupID == id else { return }
         if error != nil {
             cancelStartup(id: id)
-            scheduleGatewayStop()
         }
         startupID = nil
         startupTask = nil
@@ -584,16 +520,7 @@ public final class InboxPlusAppModel {
         if bufferingEventTaskID == id {
             bufferedStartupEvents.append(event)
         } else {
-            queuedEvents.append(event)
-            guard eventFlushTask == nil else { return }
-            eventFlushTask = Task { @MainActor [weak self] in
-                await Task.yield()
-                guard !Task.isCancelled, let self, eventTaskID == id else { return }
-                let events = queuedEvents
-                queuedEvents.removeAll()
-                eventFlushTask = nil
-                applyEvents(events)
-            }
+            apply(event)
         }
     }
 
@@ -635,41 +562,42 @@ public final class InboxPlusAppModel {
         }
     }
 
-    private func applyEvents(_ events: [GatewayEvent]) {
-        var needsProjection = false
-        for event in events {
-            if apply(event) { needsProjection = true }
-        }
-        if needsProjection { rebuildInbox() }
-    }
-
-    /// Returns whether this event changed anything displayed in the inbox.
-    private func apply(_ event: GatewayEvent) -> Bool {
+    private func apply(_ event: GatewayEvent) {
         switch event {
         case let .messageUpserted(message):
-            return upsertMessages([message])
-        case let .messagesUpserted(messages):
-            return upsertMessages(messages)
+            var messages = messagesByRoute[message.route, default: []]
+            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                messages[index] = message
+            } else {
+                let insertion = messages.firstIndex { $0.timestamp > message.timestamp }
+                messages.insert(message, at: insertion ?? messages.endIndex)
+            }
+            messagesByRoute[message.route] = messages
+            let accountID = message.route.accountID
+            if message.timestamp > lastActivityByAccount[accountID] ?? .distantPast {
+                lastActivityByAccount[accountID] = message.timestamp
+            }
+            if
+                let conversationIndex = conversations.firstIndex(where: { $0.route == message.route }),
+                message.timestamp > conversations[conversationIndex].latestActivity
+            {
+                conversations[conversationIndex].latestPreview = message.body
+                conversations[conversationIndex].latestActivity = message.timestamp
+                rebuildInbox()
+            }
         case let .identityUpserted(identity):
-            guard !erasedAccountIDs.contains(identity.accountID) else { return false }
-            if let index = identityIndexByID[identity.id] {
+            if let index = identities.firstIndex(where: { $0.id == identity.id }) {
                 identities[index] = identity
             } else {
-                identityIndexByID[identity.id] = identities.count
                 identities.append(identity)
             }
-            return true
+            rebuildInbox()
         case let .conversationUpserted(conversation):
-            guard !erasedAccountIDs.contains(conversation.accountID) else { return false }
-            if let index = conversationIndexByRoute[conversation.route] {
-                conversations[index] = conversation
-            } else {
-                conversationIndexByRoute[conversation.route] = conversations.count
-                conversations.append(conversation)
-            }
-            return true
+            conversations.removeAll { $0.id == conversation.id && $0.accountID == conversation.accountID }
+            conversations.append(conversation)
+            rebuildInbox()
         case let .connectionChanged(accountID, isConnected):
-            guard accounts.contains(where: { $0.id == accountID }) else { return false }
+            guard accounts.contains(where: { $0.id == accountID }) else { return }
             if isConnected {
                 disconnectedAccountIDs.remove(accountID)
             } else {
@@ -678,52 +606,7 @@ public final class InboxPlusAppModel {
             health = disconnectedAccountIDs.isEmpty
                 ? .healthy
                 : .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
-            return false
         }
-    }
-
-    private func upsertMessages(_ updates: [Message]) -> Bool {
-        var needsProjection = false
-        for (route, messages) in Dictionary(grouping: updates, by: \.route) {
-            guard !erasedAccountIDs.contains(route.accountID) else { continue }
-            var stored = messagesByRoute[route, default: []]
-            var indexByID = Dictionary(stored.enumerated().map { ($0.element.id, $0.offset) },
-                                       uniquingKeysWith: { _, latest in latest })
-            var needsSort = false
-            for message in messages {
-                if let index = indexByID[message.id] {
-                    if stored[index].timestamp != message.timestamp { needsSort = true }
-                    stored[index] = message
-                } else {
-                    if let last = stored.last, last.timestamp > message.timestamp { needsSort = true }
-                    indexByID[message.id] = stored.count
-                    stored.append(message)
-                }
-                if message.timestamp > lastActivityByAccount[route.accountID] ?? .distantPast {
-                    lastActivityByAccount[route.accountID] = message.timestamp
-                }
-                if let index = conversationIndexByRoute[route],
-                   message.timestamp > conversations[index].latestActivity {
-                    conversations[index].latestPreview = message.body
-                    conversations[index].latestActivity = message.timestamp
-                    needsProjection = true
-                }
-            }
-            if needsSort { stored.sort { $0.timestamp < $1.timestamp } }
-            messagesByRoute[route] = stored
-        }
-        return needsProjection
-    }
-
-    private func rebuildModelIndexes() {
-        conversationIndexByRoute = Dictionary(
-            conversations.enumerated().map { ($0.element.route, $0.offset) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        identityIndexByID = Dictionary(
-            identities.enumerated().map { ($0.element.id, $0.offset) },
-            uniquingKeysWith: { first, _ in first }
-        )
     }
 
     private func rebuildInbox() {
@@ -733,13 +616,5 @@ public final class InboxPlusAppModel {
             conversations: conversations,
             directory: directory
         )
-        summaryByRoute = Dictionary(
-            inboxItems.flatMap(\.conversationSummaries).map { ($0.route, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        summariesByPersonID = Dictionary(uniqueKeysWithValues: inboxItems.compactMap { item in
-            guard case let .person(personID) = item.id else { return nil }
-            return (personID, item.conversationSummaries)
-        })
     }
 }

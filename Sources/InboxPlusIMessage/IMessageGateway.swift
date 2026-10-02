@@ -20,7 +20,6 @@ public actor IMessageGateway: MessagingGateway {
     private var lastSeenRowID: Int64 = 0
     private var chatsByGUID: [String: IMessageChat] = [:]
     private var knownIdentityIDs: Set<String> = []
-    private var knownChatGUIDs: Set<String> = []
 
     public init(
         store: IMessageStore,
@@ -41,7 +40,6 @@ public actor IMessageGateway: MessagingGateway {
     public func loadSnapshot() async throws -> MessagingSnapshot {
         let chats = try store.chats()
         chatsByGUID = Dictionary(chats.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
-        knownChatGUIDs = Set(chats.map(\.guid))
 
         let rows = try store.recentMessages(limit: historyLimit)
         let highestRowID = try rows.map(\.rowID).max() ?? store.maxMessageRowID()
@@ -60,6 +58,7 @@ public actor IMessageGateway: MessagingGateway {
 
         var conversations: [RemoteConversation] = []
         for chat in chats {
+            let route = ConversationRoute(accountID: Self.accountID, conversationID: chat.guid)
             let latest = latestByChat[chat.guid]
             // A conversation with no readable message still needs an identity, or the inbox drops
             // it and the user simply never sees the chat.
@@ -71,7 +70,21 @@ public actor IMessageGateway: MessagingGateway {
                     displayName: displayName(for: chat)
                 )
             }
-            conversations.append(conversation(for: chat, latest: latest))
+            conversations.append(
+                RemoteConversation(
+                    id: chat.guid,
+                    accountID: Self.accountID,
+                    identityID: identityID,
+                    title: displayName(for: chat),
+                    latestPreview: latest?.body ?? "",
+                    latestActivity: latest?.timestamp ?? Date(timeIntervalSince1970: 0),
+                    unreadCount: 0,
+                    // Messages accepts text through Apple events. Attachments would need a
+                    // different mechanism, so the composer does not offer them here.
+                    capabilities: ConversationCapabilities(canSendText: true, attachmentKinds: [])
+                )
+            )
+            _ = route
         }
 
         knownIdentityIDs = Set(identities.keys)
@@ -115,34 +128,25 @@ public actor IMessageGateway: MessagingGateway {
         )
     }
 
-    public func stop() async {
-        let task = pollTask
-        task?.cancel()
-        pollTask = nil
-        for continuation in streamContinuations.values { continuation.finish() }
-        streamContinuations.removeAll()
-        await task?.value
-    }
-
     // MARK: - Polling
 
     /// The Messages database has no change notification, so new messages are noticed by watching
     /// the row id advance.
     private func startPolling() {
         guard pollTask == nil else { return }
-        let interval = pollInterval
         pollTask = Task { [weak self] in
+            guard let self else { return }
             while !Task.isCancelled {
-                do { try await Task.sleep(for: interval) } catch { return }
+                try? await Task.sleep(for: self.pollInterval)
                 guard !Task.isCancelled else { return }
-                guard let self else { return }
                 await self.pollOnce()
             }
         }
     }
 
     func pollOnce() async {
-        guard let upperBound = try? store.maxMessageRowID(), upperBound > lastSeenRowID else { return }
+        guard let rows = try? store.messages(afterRowID: lastSeenRowID), !rows.isEmpty else { return }
+        lastSeenRowID = max(lastSeenRowID, rows.map(\.rowID).max() ?? lastSeenRowID)
 
         // Refresh the chat map first: a message can arrive in a conversation that did not exist
         // when the snapshot was taken.
@@ -150,32 +154,13 @@ public actor IMessageGateway: MessagingGateway {
             chatsByGUID = Dictionary(chats.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
         }
 
-        while !Task.isCancelled {
-            guard let rows = try? store.messages(afterRowID: lastSeenRowID, upToRowID: upperBound) else { return }
-            guard !rows.isEmpty else {
-                lastSeenRowID = max(lastSeenRowID, upperBound)
-                return
+        for row in rows {
+            guard let message = message(from: row) else { continue }
+            // An identity must reach the inbox before any conversation or message naming it.
+            if let identity = identity(for: row), knownIdentityIDs.insert(identity.id).inserted {
+                publish(.identityUpserted(identity))
             }
-            var messages: [Message] = []
-            for row in rows {
-                guard let message = message(from: row) else { continue }
-                if let identity = identity(for: row), knownIdentityIDs.insert(identity.id).inserted {
-                    publish(.identityUpserted(identity))
-                }
-                if let chat = chatsByGUID[row.chatGUID], knownChatGUIDs.insert(chat.guid).inserted {
-                    let id = identityID(for: chat)
-                    if knownIdentityIDs.insert(id).inserted {
-                        publish(.identityUpserted(RemoteIdentity(
-                            id: id, accountID: Self.accountID, displayName: displayName(for: chat)
-                        )))
-                    }
-                    publish(.conversationUpserted(conversation(for: chat, latest: message)))
-                }
-                messages.append(message)
-            }
-            lastSeenRowID = max(lastSeenRowID, rows.last?.rowID ?? lastSeenRowID)
-            if !messages.isEmpty { publish(.messagesUpserted(messages)) }
-            await Task.yield()
+            publish(.messageUpserted(message))
         }
     }
 
@@ -186,15 +171,6 @@ public actor IMessageGateway: MessagingGateway {
     private func removeContinuation(_ id: UUID) { streamContinuations[id] = nil }
 
     // MARK: - Mapping
-
-    private func conversation(for chat: IMessageChat, latest: Message?) -> RemoteConversation {
-        RemoteConversation(
-            id: chat.guid, accountID: Self.accountID, identityID: identityID(for: chat),
-            title: displayName(for: chat), latestPreview: latest?.body ?? "",
-            latestActivity: latest?.timestamp ?? Date(timeIntervalSince1970: 0), unreadCount: 0,
-            capabilities: ConversationCapabilities(canSendText: true, attachmentKinds: [])
-        )
-    }
 
     private func message(from row: IMessageRow) -> Message? {
         guard let timestamp = row.date else { return nil }

@@ -33,77 +33,30 @@ public enum BridgeInstallError: Error, Equatable, Sendable, CustomStringConverti
     }
 }
 
-/// Downloads artifacts into non-executable staging files. The data method remains a small
-/// fixture seam; production fetchers stream directly to disk.
+/// Fetches bytes for the installer. Split out so tests never reach the network.
 public protocol BridgeArtifactFetching: Sendable {
     func fetch(_ url: URL) async throws -> (status: Int, body: Data)
-    func fetch(_ url: URL, to destination: URL) async throws -> Int
-}
-
-public extension BridgeArtifactFetching {
-    func fetch(_ url: URL, to destination: URL) async throws -> Int {
-        let (status, body) = try await fetch(url)
-        try body.write(to: destination, options: .withoutOverwriting)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
-        return status
-    }
 }
 
 public struct URLSessionBridgeArtifactFetcher: BridgeArtifactFetching {
     private let maximumBytes: Int
-    private let session: URLSession
 
-    public init(maximumBytes: Int = 256 * 1_024 * 1_024, session: URLSession = .shared) {
-        precondition(maximumBytes > 0)
+    public init(maximumBytes: Int = 256 * 1_024 * 1_024) {
         self.maximumBytes = maximumBytes
-        self.session = session
     }
 
     public func fetch(_ url: URL) async throws -> (status: Int, body: Data) {
-        let file = FileManager.default.temporaryDirectory
-            .appendingPathComponent("inboxplus-artifact-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: file) }
-        let status = try await fetch(url, to: file)
-        return (status, try Data(contentsOf: file))
-    }
-
-    public func fetch(_ url: URL, to destination: URL) async throws -> Int {
         var request = URLRequest(url: url)
         request.timeoutInterval = 300
         request.httpMethod = "GET"
-        let (bytes, response) = try await session.bytes(for: request)
-        defer { bytes.task.cancel() }
-        let exceededLimit = BridgeInstallError.transport(
-            bridge: url.lastPathComponent,
-            reason: "response exceeded \(maximumBytes) bytes"
-        )
-        guard response.expectedContentLength <= Int64(maximumBytes) else {
-            throw exceededLimit
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard data.count <= maximumBytes else {
+            throw BridgeInstallError.transport(
+                bridge: url.lastPathComponent,
+                reason: "response exceeded \(maximumBytes) bytes"
+            )
         }
-        try Data().write(to: destination, options: .withoutOverwriting)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
-        let output = try FileHandle(forWritingTo: destination)
-        var completed = false
-        defer {
-            try? output.close()
-            if !completed { try? FileManager.default.removeItem(at: destination) }
-        }
-        var chunk = Data()
-        chunk.reserveCapacity(64 * 1_024)
-        var count = 0
-        for try await byte in bytes {
-            guard count < maximumBytes else { throw exceededLimit }
-            count += 1
-            chunk.append(byte)
-            if chunk.count == 64 * 1_024 {
-                try output.write(contentsOf: chunk)
-                chunk.removeAll(keepingCapacity: true)
-            }
-        }
-        try output.write(contentsOf: chunk)
-        try output.synchronize()
-        completed = true
-        return (response as? HTTPURLResponse)?.statusCode ?? 0
+        return ((response as? HTTPURLResponse)?.statusCode ?? 0, data)
     }
 }
 
@@ -166,8 +119,8 @@ public struct BridgeInstaller: Sendable {
         let destination = executable(for: descriptor)
 
         if FileManager.default.fileExists(atPath: destination.path),
-           let existingHash = try? Self.hash(fileAt: destination),
-           existingHash == artifact.sha256 {
+           let existing = try? Data(contentsOf: destination),
+           Self.hash(existing) == artifact.sha256 {
             try Self.setPermissions(Self.executablePermissions, on: destination)
             return InstalledBridge(
                 descriptor: descriptor,
@@ -176,40 +129,34 @@ public struct BridgeInstaller: Sendable {
             )
         }
 
-        let directory = destination.deletingLastPathComponent()
-        try FileManager.default.createDirectory(
-            at: directory, withIntermediateDirectories: true,
-            attributes: [.posixPermissions: Self.directoryPermissions]
-        )
-        try Self.setPermissions(Self.directoryPermissions, on: directory)
-        let staging = directory.appendingPathComponent(".\(destination.lastPathComponent).\(UUID().uuidString).tmp")
-        defer { try? FileManager.default.removeItem(at: staging) }
-        let status: Int
+        let (status, body): (Int, Data)
         do {
-            status = try await fetcher.fetch(artifact.downloadURL, to: staging)
+            (status, body) = try await fetcher.fetch(artifact.downloadURL)
         } catch let error as BridgeInstallError {
             throw error
         } catch {
-            throw BridgeInstallError.transport(bridge: descriptor.id, reason: error.localizedDescription)
+            throw BridgeInstallError.transport(
+                bridge: descriptor.id,
+                reason: error.localizedDescription
+            )
         }
         guard (200..<300).contains(status) else {
             throw BridgeInstallError.downloadFailed(bridge: descriptor.id, status: status)
         }
-        let size = try FileManager.default.attributesOfItem(atPath: staging.path)[.size] as? NSNumber
-        guard (size?.uint64Value ?? 0) > 0 else {
+        guard !body.isEmpty else {
             throw BridgeInstallError.emptyDownload(descriptor.id)
         }
-        let actual = try Self.hash(fileAt: staging)
+
+        let actual = Self.hash(body)
         guard actual == artifact.sha256 else {
             throw BridgeInstallError.checksumMismatch(
-                bridge: descriptor.id, expected: artifact.sha256, actual: actual
+                bridge: descriptor.id,
+                expected: artifact.sha256,
+                actual: actual
             )
         }
-        try Self.syncFile(at: staging)
-        try Self.setPermissions(Self.executablePermissions, on: staging)
-        guard Darwin.rename(staging.path, destination.path) == 0 else {
-            throw BridgeInstallError.cannotWrite(destination)
-        }
+
+        try publish(body, to: destination)
         guard FileManager.default.isExecutableFile(atPath: destination.path) else {
             throw BridgeInstallError.notExecutable(destination)
         }
@@ -222,9 +169,10 @@ public struct BridgeInstaller: Sendable {
             throw BridgeInstallError.nothingToInstall(descriptor.id)
         }
         let destination = executable(for: descriptor)
-        guard let actual = try? Self.hash(fileAt: destination) else {
+        guard let bytes = try? Data(contentsOf: destination) else {
             throw BridgeInstallError.cannotWrite(destination)
         }
+        let actual = Self.hash(bytes)
         guard actual == artifact.sha256 else {
             throw BridgeInstallError.checksumMismatch(
                 bridge: descriptor.id,
@@ -234,20 +182,46 @@ public struct BridgeInstaller: Sendable {
         }
     }
 
-    public static func hash(_ data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    /// Writes verified bytes to a staging file and renames into place.
+    ///
+    /// Staging is created non-executable and only promoted after the bytes are fully written, so
+    /// no partially written file is ever runnable, even for an instant.
+    private func publish(_ bytes: Data, to destination: URL) throws {
+        let directory = destination.deletingLastPathComponent()
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: Self.directoryPermissions]
+        )
+        try Self.setPermissions(Self.directoryPermissions, on: directory)
+
+        let staging = directory.appendingPathComponent(
+            ".\(destination.lastPathComponent).\(UUID().uuidString).tmp",
+            isDirectory: false
+        )
+        guard FileManager.default.createFile(
+            atPath: staging.path,
+            contents: bytes,
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            throw BridgeInstallError.cannotWrite(destination)
+        }
+        do {
+            try Self.syncFile(at: staging)
+            try Self.setPermissions(Self.executablePermissions, on: staging)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.moveItem(at: staging, to: destination)
+        } catch {
+            try? FileManager.default.removeItem(at: staging)
+            throw error
+        }
+        try Self.setPermissions(Self.executablePermissions, on: destination)
     }
 
-    static func hash(fileAt file: URL) throws -> String {
-        let descriptor = Darwin.open(file.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
-        guard descriptor >= 0 else { throw BridgeInstallError.cannotWrite(file) }
-        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-        defer { try? handle.close() }
-        var digest = SHA256()
-        while let chunk = try handle.read(upToCount: 64 * 1_024), !chunk.isEmpty {
-            digest.update(data: chunk)
-        }
-        return digest.finalize().map { String(format: "%02x", $0) }.joined()
+    public static func hash(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func setPermissions(_ permissions: Int, on url: URL) throws {

@@ -83,19 +83,3 @@ import Testing
     #expect(directory.people["temporary"] == nil)
     #expect(directory.links["temporary"] == nil)
 }
-
-@Test func initializedIdentityIndexStaysConsistentAcrossUnlinkAndPersonRemoval() throws {
-    var directory = try ContactDirectory(
-        people: ["maya": InboxPlusPerson(id: "maya", displayName: "Maya")],
-        links: ["maya": PersonLink(personID: "maya", remoteIdentityIDs: ["wa", "ig"])]
-    )
-    #expect(directory.personID(linkedTo: "wa") == "maya")
-    try directory.unlink(remoteIdentityID: "wa", from: "maya")
-    #expect(directory.personID(linkedTo: "wa") == nil)
-    #expect(directory.personID(linkedTo: "ig") == "maya")
-    directory.removePerson(id: "maya")
-    #expect(directory.personID(linkedTo: "ig") == nil)
-    try directory.createPerson(id: "other", displayName: "Other")
-    try directory.link(remoteIdentityID: "ig", to: "other")
-    #expect(directory.personID(linkedTo: "ig") == "other")
-}

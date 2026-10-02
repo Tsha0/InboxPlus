@@ -9,7 +9,7 @@ import InboxPlusGateway
 /// `mxc://` URI is what it contains. The SDK handles authenticated media and decryption for
 /// encrypted rooms, which is why the bytes are asked of it rather than of a plain HTTP client.
 public struct MatrixMediaFetcher: RemoteMediaFetching {
-    let client: InboxPlusMatrixClient
+    private let client: InboxPlusMatrixClient
 
     public init(client: InboxPlusMatrixClient) {
         self.client = client

@@ -9,11 +9,6 @@ public actor InMemoryMessagingGateway: MessagingGateway {
 
     public func loadSnapshot() async throws -> MessagingSnapshot { snapshot }
 
-    public func stop() async {
-        for continuation in continuations.values { continuation.finish() }
-        continuations.removeAll()
-    }
-
     public func events() async -> AsyncStream<GatewayEvent> {
         let id = UUID()
         let pair = AsyncStream<GatewayEvent>.makeStream()

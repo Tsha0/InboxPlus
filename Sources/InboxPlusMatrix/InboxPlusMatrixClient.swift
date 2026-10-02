@@ -4,11 +4,14 @@ import InboxPlusRuntime
 
 public enum InboxPlusMatrixClientError: Error, Equatable, Sendable, CustomStringConvertible {
     case notConnected
+    case sessionRestoreFailed(String)
 
     public var description: String {
         switch self {
         case .notConnected:
             "the Matrix client is not connected"
+        case let .sessionRestoreFailed(reason):
+            "could not restore the saved Matrix session: \(reason)"
         }
     }
 }
@@ -21,7 +24,6 @@ public actor InboxPlusMatrixClient {
     public let homeserverURL: URL
     private let store: MatrixClientStore
     private let provisioner: MatrixAccountProvisioner
-    private let buildClient: @Sendable () async throws -> Client
 
     private var connectedClient: Client?
     private var syncService: SyncService?
@@ -29,25 +31,26 @@ public actor InboxPlusMatrixClient {
     public init(
         homeserverURL: URL,
         store: MatrixClientStore,
-        provisioner: MatrixAccountProvisioner,
-        buildClient: (@Sendable () async throws -> Client)? = nil
+        provisioner: MatrixAccountProvisioner
     ) {
         self.homeserverURL = homeserverURL
         self.store = store
         self.provisioner = provisioner
-        self.buildClient = buildClient ?? {
-            try await store.makeClientBuilder(homeserverURL: homeserverURL).build()
-        }
     }
+
+    public var isConnected: Bool { connectedClient != nil }
 
     /// Restores a saved session, or registers and logs in when there is none.
     @discardableResult
     public func connect() async throws -> PersistedSession {
-        if connectedClient != nil, let saved = try store.loadSession() {
+        if let client = connectedClient, let saved = try store.loadSession() {
+            _ = client
             return saved
         }
 
-        let client = try await buildClient()
+        let client = try await store
+            .makeClientBuilder(homeserverURL: homeserverURL)
+            .build()
 
         if let saved = try store.loadSession() {
             do {
@@ -91,6 +94,11 @@ public actor InboxPlusMatrixClient {
         guard let syncService else { return }
         await syncService.stop()
         self.syncService = nil
+    }
+
+    public func roomListService() throws -> RoomListService {
+        guard let syncService else { throw InboxPlusMatrixClientError.notConnected }
+        return syncService.roomListService()
     }
 
     public func disconnect() async {

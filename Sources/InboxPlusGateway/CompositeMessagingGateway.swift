@@ -16,8 +16,6 @@ public actor CompositeMessagingGateway: MessagingGateway {
     private var forwardingTasks: [Task<Void, Never>] = []
     private var streamContinuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
     private var startedForwarding = false
-    private var stoppingTask: Task<Void, Never>?
-    private var generation = 0
 
     /// Reported so the app can tell the user a source is unavailable rather than silently showing
     /// a short inbox.
@@ -30,18 +28,12 @@ public actor CompositeMessagingGateway: MessagingGateway {
     deinit { forwardingTasks.forEach { $0.cancel() } }
 
     public func loadSnapshot() async throws -> MessagingSnapshot {
-        if let stoppingTask { await stoppingTask.value }
-        try Task.checkCancellation()
-        let currentGeneration = generation
         var merged = MessagingSnapshot.empty
         failures = []
-        gatewayByAccountID.removeAll()
 
         for gateway in gateways {
             do {
                 let snapshot = try await gateway.loadSnapshot()
-                guard generation == currentGeneration else { throw CancellationError() }
-                try Task.checkCancellation()
                 for account in snapshot.accounts {
                     gatewayByAccountID[account.id] = gateway
                 }
@@ -49,8 +41,6 @@ public actor CompositeMessagingGateway: MessagingGateway {
                 merged.identities.append(contentsOf: snapshot.identities)
                 merged.conversations.append(contentsOf: snapshot.conversations)
                 merged.messagesByRoute.merge(snapshot.messagesByRoute) { existing, _ in existing }
-            } catch is CancellationError {
-                throw CancellationError()
             } catch {
                 // One source failing is not a reason to show nothing.
                 failures.append(String(describing: error))
@@ -63,7 +53,6 @@ public actor CompositeMessagingGateway: MessagingGateway {
     }
 
     public func events() async -> AsyncStream<GatewayEvent> {
-        if let stoppingTask { await stoppingTask.value }
         startForwarding()
         return AsyncStream { continuation in
             let id = UUID()
@@ -80,25 +69,6 @@ public actor CompositeMessagingGateway: MessagingGateway {
 
     public func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt {
         try await gateway(for: route).send(attachment, to: route)
-    }
-
-    public func stop() async {
-        if let stoppingTask { return await stoppingTask.value }
-        generation += 1
-        let forwarding = forwardingTasks
-        forwarding.forEach { $0.cancel() }
-        forwardingTasks.removeAll()
-        startedForwarding = false
-        for continuation in streamContinuations.values { continuation.finish() }
-        streamContinuations.removeAll()
-        gatewayByAccountID.removeAll()
-        let task = Task { [gateways] in
-            for gateway in gateways { await gateway.stop() }
-            for task in forwarding { await task.value }
-        }
-        stoppingTask = task
-        await task.value
-        stoppingTask = nil
     }
 
     // MARK: - Routing
@@ -119,7 +89,6 @@ public actor CompositeMessagingGateway: MessagingGateway {
             forwardingTasks.append(
                 Task { [weak self] in
                     for await event in await gateway.events() {
-                        guard !Task.isCancelled else { return }
                         await self?.publish(event)
                     }
                 }

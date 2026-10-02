@@ -14,15 +14,11 @@ public struct BridgeInvitePolicy: Sendable, Equatable {
     public let serverName: String
     /// The bridges these prefixes came from, kept so a room can be attributed back to one.
     public let bridgeIDs: [String]
-    private let orderedBridgeIDs: [String]
 
     public init(trustedLocalpartPrefixes: [String], serverName: String, bridgeIDs: [String] = []) {
         self.trustedLocalpartPrefixes = trustedLocalpartPrefixes
         self.serverName = serverName
         self.bridgeIDs = bridgeIDs
-        orderedBridgeIDs = bridgeIDs.sorted {
-            $0.count == $1.count ? $0 < $1 : $0.count > $1.count
-        }
     }
 
     /// Trusts nothing. The default, so a profile with no bridges behaves exactly as it did before.
@@ -51,7 +47,8 @@ public struct BridgeInvitePolicy: Sendable, Equatable {
     /// `@whatsappbusiness_1` ghost and the shorter one could win.
     public func bridgeID(owning userID: String) -> String? {
         guard let localpart = Self.localpart(of: userID, on: serverName) else { return nil }
-        return orderedBridgeIDs
+        return bridgeIDs
+            .sorted { $0.count > $1.count }
             .first { localpart.hasPrefix("\($0)_") || localpart == "\($0)bot" }
     }
 

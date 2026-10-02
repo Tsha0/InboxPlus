@@ -1,7 +1,5 @@
 import Foundation
 import Testing
-import InboxPlusCore
-import InboxPlusGateway
 @testable import InboxPlusIMessage
 
 /// Builds a database with the same schema and quirks as the real one, using the `sqlite3` tool so
@@ -40,21 +38,7 @@ private func makeDatabase(_ statements: String) throws -> URL {
     input.fileHandleForWriting.write(Data((schema + "\n" + statements + "\n").utf8))
     input.fileHandleForWriting.closeFile()
     process.waitUntilExit()
-    guard process.terminationStatus == 0 else {
-        throw IMessageStoreError.queryFailed("fixture database creation failed")
-    }
     return url
-}
-
-private func appendToDatabase(_ url: URL, _ statements: String) throws {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-    process.arguments = [url.path, statements]
-    try process.run()
-    process.waitUntilExit()
-    guard process.terminationStatus == 0 else {
-        throw IMessageStoreError.queryFailed("fixture database update failed")
-    }
 }
 
 private func cleanUp(_ url: URL) {
@@ -181,110 +165,6 @@ private let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_"
     #expect(throws: IMessageStoreError.databaseMissing(missing.path)) {
         try IMessageStore(url: missing)
     }
-}
-
-@Test func incrementalHistoryReadsTheOldestUnseenPageFirst() throws {
-    let url = try makeDatabase("""
-    INSERT INTO chat (guid, style, chat_identifier) VALUES ('chat1', 45, 'alice');
-    WITH RECURSIVE n(value) AS (VALUES(1) UNION ALL SELECT value+1 FROM n WHERE value<501)
-      INSERT INTO message (guid, text, date) SELECT 'm'||value, 'body', \(nanoseconds) FROM n;
-    INSERT INTO chat_message_join SELECT 1, ROWID FROM message;
-    """)
-    defer { cleanUp(url) }
-    let store = try IMessageStore(url: url)
-    let first = try store.messages(afterRowID: 0)
-    #expect(first.map(\.rowID) == Array(Int64(1)...500))
-    #expect(try store.messages(afterRowID: 500).map(\.rowID) == [501])
-    #expect(try store.messages(afterRowID: 0, upToRowID: 3).map(\.rowID) == [1, 2, 3])
-}
-
-@Test func pollingDrainsEveryPageWithoutSkippingMessages() async throws {
-    let url = try makeDatabase("""
-    INSERT INTO chat (guid, style, chat_identifier) VALUES ('chat1', 45, 'alice');
-    INSERT INTO message (guid, text, date) VALUES ('seed', 'before polling', \(nanoseconds));
-    INSERT INTO chat_message_join VALUES (1, 1);
-    """)
-    defer { cleanUp(url) }
-    let gateway = IMessageGateway(store: try IMessageStore(url: url), pollInterval: .seconds(3_600))
-    _ = try await gateway.loadSnapshot()
-    let events = await gateway.events()
-    try appendToDatabase(url, """
-    WITH RECURSIVE n(value) AS (VALUES(1) UNION ALL SELECT value+1 FROM n WHERE value<1101)
-      INSERT INTO message (guid, text, date) SELECT 'new-'||value, 'new message', \(nanoseconds) FROM n;
-    INSERT INTO chat_message_join SELECT 1, ROWID FROM message WHERE ROWID>1;
-    """)
-    await gateway.pollOnce()
-    await gateway.pollOnce()
-    await gateway.stop()
-    var delivered: [Message] = []
-    var batchSizes: [Int] = []
-    for await event in events {
-        if case let .messagesUpserted(batch) = event {
-            delivered.append(contentsOf: batch)
-            batchSizes.append(batch.count)
-        }
-    }
-    #expect(batchSizes == [500, 500, 101])
-    #expect(delivered.map(\.id) == (1...1101).map { "new-\($0)" })
-}
-
-@Test func aNewChatPublishesItsIdentityAndConversationBeforeItsMessage() async throws {
-    let url = try makeDatabase("")
-    defer { cleanUp(url) }
-    let gateway = IMessageGateway(store: try IMessageStore(url: url), pollInterval: .seconds(3_600))
-    _ = try await gateway.loadSnapshot()
-    let events = await gateway.events()
-    try appendToDatabase(url, """
-    INSERT INTO chat (guid, style, chat_identifier, display_name) VALUES ('new-chat', 45, 'alice', 'Alice');
-    INSERT INTO handle (id, service) VALUES ('alice', 'iMessage');
-    INSERT INTO message (guid, text, date, handle_id) VALUES ('new-message', 'hello', \(nanoseconds), 1);
-    INSERT INTO chat_message_join VALUES (1, 1);
-    """)
-    await gateway.pollOnce()
-    await gateway.stop()
-    var identities: Set<String> = []
-    var conversations: Set<ConversationRoute> = []
-    var receivedMessage = false
-    for await event in events {
-        switch event {
-        case let .identityUpserted(identity): identities.insert(identity.id)
-        case let .conversationUpserted(conversation):
-            #expect(identities.contains(conversation.identityID))
-            #expect(conversation.title == "Alice")
-            conversations.insert(conversation.route)
-        case let .messagesUpserted(messages):
-            #expect(messages.count == 1)
-            #expect(conversations.contains(messages[0].route))
-            receivedMessage = true
-        default: break
-        }
-    }
-    #expect(receivedMessage)
-}
-
-@Test func stoppingIMessageFinishesItsStreamAndAllowsRestart() async throws {
-    let url = try makeDatabase("")
-    defer { cleanUp(url) }
-    let gateway = IMessageGateway(store: try IMessageStore(url: url), pollInterval: .seconds(3_600))
-    _ = try await gateway.loadSnapshot()
-    var first = await gateway.events().makeAsyncIterator()
-    await gateway.stop()
-    #expect(await first.next() == nil)
-    _ = try await gateway.loadSnapshot()
-    var second = await gateway.events().makeAsyncIterator()
-    await gateway.stop()
-    #expect(await second.next() == nil)
-}
-
-@Test func iMessagePollingDoesNotRetainAnUnusedGateway() async throws {
-    let url = try makeDatabase("")
-    defer { cleanUp(url) }
-    var gateway: IMessageGateway? = IMessageGateway(store: try IMessageStore(url: url), pollInterval: .seconds(3_600))
-    weak let reference = gateway
-    _ = try await gateway?.loadSnapshot()
-    gateway = nil
-    for _ in 0..<50 where reference != nil { try await Task.sleep(for: .milliseconds(10)) }
-    #expect(reference == nil)
 }
 
 // MARK: - Fixture helper

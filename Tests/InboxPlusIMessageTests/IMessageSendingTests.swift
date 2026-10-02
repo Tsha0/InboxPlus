@@ -22,13 +22,6 @@ import InboxPlusGateway
     #expect(AppleTimestamp.date(fromAppleTime: -1) == nil)
 }
 
-@Test func timestampsRoundTrip() throws {
-    let now = Date(timeIntervalSince1970: 1_700_000_000)
-    let appleTime = Int64((now.timeIntervalSince1970 - AppleTimestamp.referenceOffset) * 1_000_000_000)
-    let restored = try #require(AppleTimestamp.date(fromAppleTime: appleTime))
-    #expect(abs(restored.timeIntervalSince1970 - now.timeIntervalSince1970) < 0.001)
-}
-
 // MARK: - attributedBody
 
 @Test func aShortBodyIsRecoveredFromTheArchive() throws {

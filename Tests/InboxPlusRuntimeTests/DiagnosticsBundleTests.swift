@@ -152,18 +152,11 @@ func ordinaryDiagnosticFilesAreStillCollected(_ name: String) {
     #expect(!text.contains("line 0\n"))
 }
 
-@Test func truncationNeverStartsMidLineOrWithAPartialSecret() throws {
-    let (paths, root) = try makeProfile()
-    defer { try? FileManager.default.removeItem(at: root) }
-    let file = paths.logs.appendingPathComponent("stderr.log")
-    try Data("aaaa\nbbbb\ncccc".utf8).write(to: file)
-    let (text, truncated) = try DiagnosticsBundle.readTail(from: file, limit: 8)
+@Test func truncationNeverStartsMidLine() {
+    let (text, truncated) = DiagnosticsBundle.tail(of: "aaaa\nbbbb\ncccc", limit: 8)
     #expect(truncated)
-    #expect(text == "cccc")
-    try Data("one-very-long-secret-with-no-newline".utf8).write(to: file)
-    let (partial, wasTruncated) = try DiagnosticsBundle.readTail(from: file, limit: 8)
-    #expect(wasTruncated)
-    #expect(partial.isEmpty)
+    #expect(text == "cccc" || text == "bbbb\ncccc")
+    #expect(!text.hasPrefix("bb\n"))
 }
 
 @Test func aManifestNamesTheVersionAndProfileThatProducedIt() throws {

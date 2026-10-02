@@ -48,7 +48,7 @@ public struct MediaCacheContext: Hashable, Sendable {
     public let accountID: String
     public let messageID: String
     public var deepLink: VerifiedDeepLink?
-    /// Set false for bytes InboxPlus cannot fetch again — anything composed locally and not yet sent.
+    /// Set false for bytes Inbox+ cannot fetch again — anything composed locally and not yet sent.
     public var isReproducible: Bool
 
     public init(
@@ -66,6 +66,7 @@ public struct MediaCacheContext: Hashable, Sendable {
 
 public enum MediaCacheError: Error, Equatable {
     case directoryNotUsable(String)
+    case notCached(String)
 }
 
 /// A bounded, on-disk cache for media that downloads lazily.
@@ -83,9 +84,6 @@ public actor MediaCache {
     public let budgetBytes: Int
 
     private var records: [String: MediaCacheRecord] = [:]
-    private var downloadGenerations: [String: UInt64] = [:]
-    public private(set) var totalBytes: Int = 0
-    private var pendingIndexWrite: Task<Void, Never>?
 
     public init(
         directory: URL,
@@ -109,10 +107,7 @@ public actor MediaCache {
             throw MediaCacheError.directoryNotUsable(directory.path)
         }
         records = Self.loadIndex(at: indexURL)
-        totalBytes = records.values.reduce(0) { $0 + $1.byteCount }
     }
-
-    deinit { pendingIndexWrite?.cancel() }
 
     // MARK: - Reading
 
@@ -120,45 +115,36 @@ public actor MediaCache {
     ///
     /// Reading marks the entry as recently used, which is what keeps a conversation the user is
     /// actually looking at from being evicted out from under them.
-    public func cachedFile(for handle: MediaHandle, accountID: String, now: Date = Date()) -> URL? {
-        guard let key = recordKey(for: handle.source, accountID: accountID) else { return nil }
+    public func cachedFile(for handle: MediaHandle, now: Date = Date()) -> URL? {
+        let key = Self.key(for: handle.source)
         guard var record = records[key] else { return nil }
         let url = fileURL(key: key, mimeType: record.mimeType)
         guard fileManager.fileExists(atPath: url.path) else {
             // The index outlived the file — a deleted cache directory, say. Forget it so the next
             // read downloads instead of reporting a file that is not there.
             records[key] = nil
-            totalBytes -= record.byteCount
             try? persistIndex()
             return nil
         }
         record.lastAccess = now
         records[key] = record
-        scheduleAccessTimeWrite()
+        try? persistIndex()
         return url
     }
 
-    public func record(for handle: MediaHandle, accountID: String) -> MediaCacheRecord? {
-        guard let key = recordKey(for: handle.source, accountID: accountID) else { return nil }
-        return records[key]
+    public func record(for handle: MediaHandle) -> MediaCacheRecord? {
+        records[Self.key(for: handle.source)]
+    }
+
+    public var totalBytes: Int {
+        records.values.reduce(0) { $0 + $1.byteCount }
+    }
+
+    public func allRecords() -> [MediaCacheRecord] {
+        Array(records.values)
     }
 
     // MARK: - Writing
-
-    func downloadGeneration(accountID: String) -> UInt64 {
-        downloadGenerations[accountID, default: 0]
-    }
-
-    /// Validate queued downloads on the cache actor too, so a purge cannot run before a stale
-    /// store and then have that store recreate the file when actor jobs resume in a different order.
-    func storeDownloaded(
-        _ data: Data, for handle: MediaHandle, context: MediaCacheContext, generation: UInt64
-    ) throws -> URL {
-        guard downloadGenerations[context.accountID, default: 0] == generation else {
-            throw CancellationError()
-        }
-        return try store(data, for: handle, context: context)
-    }
 
     @discardableResult
     public func store(
@@ -167,23 +153,13 @@ public actor MediaCache {
         context: MediaCacheContext,
         now: Date = Date()
     ) throws -> URL {
-        let key = recordKey(for: handle.source, accountID: context.accountID)
-            ?? Self.key(for: handle.source, accountID: context.accountID)
+        let key = Self.key(for: handle.source)
         let mimeType = handle.mimeType
         let url = fileURL(key: key, mimeType: mimeType)
-        let previousURL = records[key].map { fileURL(key: key, mimeType: $0.mimeType) }
         // Written user-only, like every other secret-adjacent file the runtime produces.
         try data.write(to: url, options: [.atomic])
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-        if let previousURL, previousURL != url, fileManager.fileExists(atPath: previousURL.path) {
-            do { try fileManager.removeItem(at: previousURL) }
-            catch {
-                try? fileManager.removeItem(at: url)
-                throw error
-            }
-        }
 
-        totalBytes += data.count - (records[key]?.byteCount ?? 0)
         records[key] = MediaCacheRecord(
             key: key,
             source: handle.source,
@@ -215,12 +191,8 @@ public actor MediaCache {
 
         var evicted: [String] = []
         for record in candidates where total > budgetBytes {
-            let file = fileURL(key: record.key, mimeType: record.mimeType)
-            if fileManager.fileExists(atPath: file.path) {
-                do { try fileManager.removeItem(at: file) } catch { continue }
-            }
+            try? fileManager.removeItem(at: fileURL(key: record.key, mimeType: record.mimeType))
             records[record.key] = nil
-            totalBytes -= record.byteCount
             total -= record.byteCount
             evicted.append(record.key)
         }
@@ -231,44 +203,21 @@ public actor MediaCache {
     /// Removes every cached file for one account, used when an account is erased.
     @discardableResult
     public func purge(accountID: String) throws -> [String] {
-        downloadGenerations[accountID, default: 0] &+= 1
         let doomed = records.values.filter { $0.accountID == accountID }
-        var removed: [String] = []
-        do {
-            for record in doomed {
-                let file = fileURL(key: record.key, mimeType: record.mimeType)
-                if fileManager.fileExists(atPath: file.path) { try fileManager.removeItem(at: file) }
-                records[record.key] = nil
-                totalBytes -= record.byteCount
-                removed.append(record.key)
-            }
-            if !removed.isEmpty { try persistIndex() }
-            return removed
-        } catch {
-            if !removed.isEmpty { try? persistIndex() }
-            throw error
+        for record in doomed {
+            try? fileManager.removeItem(at: fileURL(key: record.key, mimeType: record.mimeType))
+            records[record.key] = nil
         }
+        if !doomed.isEmpty { try persistIndex() }
+        return doomed.map(\.key)
     }
 
     // MARK: - Storage
 
-    /// Scope bytes to their account, including when two accounts reference the same remote URI.
-    /// Length-prefixing the account prevents ambiguous concatenations from sharing a filename.
-    static func key(for source: String, accountID: String) -> String {
-        "v2-" + legacyKey(for: "\(accountID.utf8.count):\(accountID)\(source)")
-    }
-
-    private static func legacyKey(for source: String) -> String {
+    /// A cache filename is derived from the media's own identifier, so the same media is never
+    /// stored twice and a remote name can never steer the write anywhere.
+    static func key(for source: String) -> String {
         SHA256.hash(data: Data(source.utf8)).map { String(format: "%02x", $0) }.joined()
-    }
-
-    private func recordKey(for source: String, accountID: String) -> String? {
-        let scoped = Self.key(for: source, accountID: accountID)
-        if records[scoped]?.accountID == accountID, records[scoped]?.source == source { return scoped }
-        // Existing caches remain usable by their recorded owner, including irreplaceable drafts.
-        // New accounts get separate files without copying or deleting the previous owner's bytes.
-        let legacy = Self.legacyKey(for: source)
-        return records[legacy]?.accountID == accountID && records[legacy]?.source == source ? legacy : nil
     }
 
     /// The extension matters: AVFoundation and NSImage both do a better job when the file name
@@ -286,27 +235,10 @@ public actor MediaCache {
     }
 
     private func persistIndex() throws {
-        pendingIndexWrite?.cancel()
-        pendingIndexWrite = nil
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try encoder.encode(records).write(to: indexURL, options: [.atomic])
         try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: indexURL.path)
-    }
-
-    // Last access is an eviction hint. Batch it separately from durable file/index changes so
-    // scrolling through cached attachments does not rewrite the whole index for every hit.
-    private func scheduleAccessTimeWrite() {
-        guard pendingIndexWrite == nil else { return }
-        pendingIndexWrite = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(2)) } catch { return }
-            try? await self?.flushAccessTimes()
-        }
-    }
-
-    func flushAccessTimes() throws {
-        pendingIndexWrite = nil
-        try persistIndex()
     }
 
     /// A corrupt or unreadable index costs the user a re-download, never a crash on launch.

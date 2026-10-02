@@ -58,11 +58,8 @@ enum GatewaySelection {
             let gateway = DeferredRuntimeGateway(
                 paths: paths,
                 profileName: profileName,
-                build: { state in
-                    let services = try makeMatrixServices(paths: paths, state: state)
-                    await attachMedia(media, paths: paths, fetcher: services.mediaFetcher)
-                    return services.gateway
-                }
+                build: { state in try makeMatrixGateway(paths: paths, state: state) },
+                onReady: { state in await attachMedia(media, paths: paths, state: state) }
             )
 
             return Services(
@@ -86,17 +83,11 @@ enum GatewaySelection {
 }
 
 extension GatewaySelection {
-    struct MatrixServices {
-        let gateway: any MessagingGateway
-        let mediaFetcher: MatrixMediaFetcher
-    }
-
     /// Builds the real gateway, once the homeserver behind it is answering.
-    static func makeMatrixServices(
+    static func makeMatrixGateway(
         paths: RuntimePaths,
-        state: RuntimeProfileState,
-        includeIMessage: Bool = true
-    ) throws -> MatrixServices {
+        state: RuntimeProfileState
+    ) throws -> any MessagingGateway {
         guard let port = state.snapshot.loopbackPort else {
             throw GatewaySelectionError.profileNotRunning(paths.profile.lastPathComponent)
         }
@@ -146,28 +137,37 @@ extension GatewaySelection {
         // behind it. It is only added when the Messages database is actually readable: offering a
         // source that will throw on every read is worse than not offering it.
         var sources: [any MessagingGateway] = [matrix]
-        if includeIMessage, let imessage = makeIMessageGateway() { sources.append(imessage) }
-        return MatrixServices(
-            gateway: sources.count == 1 ? matrix : CompositeMessagingGateway(sources),
-            mediaFetcher: MatrixMediaFetcher(client: client)
-        )
+        if let imessage = makeIMessageGateway() { sources.append(imessage) }
+        return sources.count == 1 ? matrix : CompositeMessagingGateway(sources)
     }
 
     /// Gives the media controller something to download with, now that there is a homeserver.
     static func attachMedia(
         _ media: MediaController,
         paths: RuntimePaths,
-        fetcher: MatrixMediaFetcher
+        state: RuntimeProfileState
     ) async {
+        guard let port = state.snapshot.loopbackPort else { return }
         // Media lives beside the rest of the profile's private data and is bounded, so a long
         // history cannot fill the disk on its own. Per profile, not per runtime root: two profiles
         // are two separate installations and must not share cached message content.
         let cacheDirectory = paths.profile.appendingPathComponent("media")
         guard let cache = try? MediaCache(directory: cacheDirectory) else { return }
 
+        let homeserver = URL(string: "http://127.0.0.1:\(port)")!
+        guard let provisioner = try? MatrixAccountProvisioner(
+            baseURL: homeserver,
+            serverName: state.serverName,
+            registrationSecret: state.registrationSecret
+        ) else { return }
+        let client = InboxPlusMatrixClient(
+            homeserverURL: homeserver,
+            store: MatrixClientStore(profile: paths),
+            provisioner: provisioner
+        )
         let loader = MediaLoader(
             cache: cache,
-            fetcher: fetcher,
+            fetcher: MatrixMediaFetcher(client: client),
             freeSpace: VolumeFreeSpaceReporter(url: cacheDirectory)
         )
         await MainActor.run { media.attach(loader: loader) }

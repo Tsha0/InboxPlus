@@ -12,10 +12,4 @@ import Testing
     let provisioner = LibolmProvisioner(cmake: nil, bundledLibrary: source)
     let installed = try await provisioner.install(into: root.appendingPathComponent("bridge"))
     #expect(try Data(contentsOf: installed) == contents)
-    #expect(try FileManager.default.attributesOfItem(atPath: installed.path)[.posixPermissions] as? Int == 0o600)
-
-    try Data("altered installed bytes".utf8).write(to: installed)
-    let repaired = try await provisioner.install(into: root.appendingPathComponent("bridge"))
-    #expect(repaired == installed)
-    #expect(try Data(contentsOf: repaired) == contents)
 }

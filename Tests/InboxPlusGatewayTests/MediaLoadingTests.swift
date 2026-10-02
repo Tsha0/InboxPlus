@@ -19,7 +19,7 @@ private let gibibyte = 1024 * 1024 * 1024
 
 @Test func aFullDiskStopsDownloadsAndSaysNothingWasDeleted() {
     // The design allows stopping optional downloads; it forbids deleting messages. The warning has
-    // to say so, or a user under disk pressure will assume InboxPlus threw their history away.
+    // to say so, or a user under disk pressure will assume Inbox+ threw their history away.
     let decision = MediaStoragePolicy().decide(freeBytes: 512 * 1024 * 1024)
     #expect(!decision.allowsDownloads)
     #expect(decision.warning?.contains("nothing has been deleted") == true)
@@ -122,58 +122,4 @@ private let context = MediaCacheContext(accountID: "instagram", messageID: "$1")
     await #expect(throws: MediaLoadError.pausedForDiskSpace) {
         try await squeezed.file(for: MediaHandle(source: "mxc://s/new"), context: context)
     }
-}
-
-private actor SuspendedMediaFetcher: RemoteMediaFetching {
-    private var result: CheckedContinuation<Data, any Error>?
-    private var started: [CheckedContinuation<Void, Never>] = []
-
-    func fetch(_ handle: MediaHandle) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
-            result = continuation
-            for waiter in started { waiter.resume() }
-            started.removeAll()
-        }
-    }
-
-    func waitUntilStarted() async {
-        if result != nil { return }
-        await withCheckedContinuation { started.append($0) }
-    }
-
-    func finish() { result?.resume(returning: Data([1, 2, 3])); result = nil }
-}
-
-@Test func erasingAnAccountPreventsAnUncooperativeDownloadFromRecreatingMedia() async throws {
-    let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        .appendingPathComponent(".build/MediaLoaderTests-\(UUID().uuidString)")
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let cache = try MediaCache(directory: directory)
-    let fetcher = SuspendedMediaFetcher()
-    let loader = MediaLoader(cache: cache, fetcher: fetcher, freeSpace: FixedFreeSpace(bytes: 100 * gibibyte))
-    let other = MediaHandle(source: "mxc://s/other")
-    try await cache.store(Data([4]), for: other, context: .init(accountID: "other", messageID: "2"))
-    let erased = MediaHandle(source: "mxc://s/erased")
-    let pending = Task { try await loader.file(for: erased, context: context) }
-    await fetcher.waitUntilStarted()
-    try await loader.purge(accountID: context.accountID)
-    await fetcher.finish()
-    await #expect(throws: CancellationError.self) { try await pending.value }
-    #expect(await cache.cachedFile(for: erased, accountID: context.accountID) == nil)
-    #expect(await cache.cachedFile(for: other, accountID: "other") != nil)
-}
-
-@Test func sharedRemoteMediaIsFetchedAndPurgedSeparatelyForEachAccount() async throws {
-    let (loader, fetcher, directory) = try makeLoader()
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let handle = MediaHandle(source: "mxc://s/shared")
-    let first = try await loader.file(for: handle, context: context)
-    let otherContext = MediaCacheContext(accountID: "whatsapp", messageID: "$2")
-    let second = try await loader.file(for: handle, context: otherContext)
-    #expect(first != second)
-    #expect(await fetcher.count() == 2)
-    try await loader.purge(accountID: otherContext.accountID)
-    #expect(!FileManager.default.fileExists(atPath: second.path))
-    #expect(try await loader.file(for: handle, context: context) == first)
-    #expect(await fetcher.count() == 2)
 }

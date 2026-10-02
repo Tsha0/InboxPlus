@@ -4,8 +4,7 @@ The generated [CycloneDX SBOM](sbom.cdx.json) lists dependency versions, license
 artifact hashes, and source locations. Regenerate it with:
 
 ```bash
-swift Scripts/make-build-versions.swift
-swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json
+swift run MimoRuntimeCLI sbom --output docs/sbom.cdx.json
 ```
 
 Dependency pins are defined in:
@@ -13,15 +12,10 @@ Dependency pins are defined in:
 - [`Package.swift`](../Package.swift)
 - [`Runtime/Synapse/runtime-manifest.json`](../Runtime/Synapse/runtime-manifest.json)
 - [`Runtime/Synapse/requirements.lock`](../Runtime/Synapse/requirements.lock)
-- [`Sources/InboxPlusBridge/BridgeCatalog.swift`](../Sources/InboxPlusBridge/BridgeCatalog.swift)
-- [`Sources/InboxPlusBridgeService/LibolmProvisioner.swift`](../Sources/InboxPlusBridgeService/LibolmProvisioner.swift)
+- [`Sources/MimoBridge/BridgeCatalog.swift`](../Sources/MimoBridge/BridgeCatalog.swift)
+- [`Sources/MimoBridgeService/LibolmProvisioner.swift`](../Sources/MimoBridgeService/LibolmProvisioner.swift)
 
-`InboxPlusBuildVersions.swift` is generated from the Synapse manifest and the resolved Matrix SDK
-version. CI regenerates it before checking the SBOM, so installed bundles report the same pins
-as the build.
-
-CPython 3.12.14 is bundled under the PSF-2.0 license. An explicit developer bootstrap with
-`--python` can use a host-provided Python 3.12 instead.
+CPython is host-provided under the PSF-2.0 license.
 
 Brand-mark SVGs in [`Scripts/brand-icons`](../Scripts/brand-icons) are from
 [Simple Icons](https://simpleicons.org), version 13.20.0, under CC0-1.0.

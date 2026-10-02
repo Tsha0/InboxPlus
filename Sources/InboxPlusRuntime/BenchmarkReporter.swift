@@ -238,8 +238,8 @@ public struct BenchmarkReporter: Sendable {
                 "| Synapse | \(environment.synapseVersion) |",
                 "| Dependency lock SHA-256 | \(environment.requirementsLockSHA256) |",
                 "| Database size | \(environment.databaseBytes) bytes |",
-                "| CLI peak resident memory | \(environment.peakResidentBytes) bytes |",
-                "| CLI CPU time | \(format(environment.cpuSeconds)) s |",
+                "| Peak resident memory | \(environment.peakResidentBytes) bytes |",
+                "| CPU time | \(format(environment.cpuSeconds)) s |",
             ])
         }
 
