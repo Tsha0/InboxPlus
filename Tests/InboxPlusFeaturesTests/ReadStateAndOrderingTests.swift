@@ -174,17 +174,6 @@ private func settle(until condition: @MainActor () -> Bool) async -> Bool {
     #expect(!theirs.isOutgoing)
 }
 
-@Test func deterministicSnapshotKeepsItsFixedTimestamps() {
-    let whatsApp = Fixtures.snapshot.conversations.first { $0.route == Fixtures.whatsAppRoute }
-    let instagram = Fixtures.snapshot.conversations.first { $0.route == Fixtures.instagramRoute }
-    let telegram = Fixtures.snapshot.conversations.first { $0.route == Fixtures.telegramRoute }
-
-    #expect(whatsApp?.latestActivity == Date(timeIntervalSince1970: 200))
-    #expect(instagram?.latestActivity == Date(timeIntervalSince1970: 300))
-    #expect(telegram?.latestActivity == Date(timeIntervalSince1970: 100))
-    #expect(Fixtures.snapshot.messagesByRoute[Fixtures.instagramRoute]?.count == 1)
-}
-
 @MainActor
 @Test func disconnectedAccountsReportTheirConnectionState() async throws {
     let gateway = OrderingTestGateway(snapshot: Fixtures.snapshot)

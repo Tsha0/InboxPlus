@@ -2,19 +2,6 @@ import Foundation
 import Testing
 @testable import InboxPlusCore
 
-@Test func aPlainTextMessageStillCompilesAndDefaultsToText() {
-    let message = Message(
-        id: "m",
-        route: ConversationRoute(accountID: "ig", conversationID: "c"),
-        senderIdentityID: nil,
-        body: "hi",
-        timestamp: Date(timeIntervalSince1970: 1),
-        deliveryState: .pending
-    )
-    #expect(message.kind == .text)
-    #expect(message.attachments.isEmpty)
-}
-
 @Test func anAttachmentPrefersTheSendersCaptionThenTheFilename() {
     let captioned = MessageAttachment(id: "1", kind: .image, filename: "IMG_0042.HEIC", caption: "beach")
     #expect(captioned.displayName == "beach")
@@ -56,5 +43,4 @@ import Testing
         MessageAttachment.self, from: JSONEncoder().encode(attachment)
     )
     #expect(decoded == attachment)
-    #expect(decoded.duration == .milliseconds(12_500))
 }

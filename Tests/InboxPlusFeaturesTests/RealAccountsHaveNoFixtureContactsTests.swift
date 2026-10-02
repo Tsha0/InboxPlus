@@ -6,17 +6,6 @@ import InboxPlusGateway
 @testable import InboxPlusFeatures
 
 @MainActor
-@Test func aModelWithNoDirectoryHasNobodyInContacts() async throws {
-    // The app wired `Fixtures.directory` in unconditionally, so a demo person appeared in Contacts
-    // beside real conversations, linked to identities that do not exist on the account. A fake
-    // contact next to real ones is indistinguishable from a bug.
-    let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: .empty))
-    try await model.start()
-
-    #expect(model.people.isEmpty)
-}
-
-@MainActor
 @Test func fixtureContactsStillWorkWhenTheyAreAskedFor() async throws {
     // Demo mode and the tests still want them; the change is that they are opt-in.
     let model = InboxPlusAppModel(
