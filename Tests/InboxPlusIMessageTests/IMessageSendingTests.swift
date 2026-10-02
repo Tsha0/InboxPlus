@@ -24,7 +24,8 @@ import InboxPlusGateway
 
 @Test func timestampsRoundTrip() throws {
     let now = Date(timeIntervalSince1970: 1_700_000_000)
-    let restored = try #require(AppleTimestamp.date(fromAppleTime: AppleTimestamp.appleTime(from: now)))
+    let appleTime = Int64((now.timeIntervalSince1970 - AppleTimestamp.referenceOffset) * 1_000_000_000)
+    let restored = try #require(AppleTimestamp.date(fromAppleTime: appleTime))
     #expect(abs(restored.timeIntervalSince1970 - now.timeIntervalSince1970) < 0.001)
 }
 

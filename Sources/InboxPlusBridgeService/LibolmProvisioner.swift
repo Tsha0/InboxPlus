@@ -1,7 +1,5 @@
-import CryptoKit
 import Darwin
 import Foundation
-import InboxPlusBridge
 import InboxPlusRuntime
 
 public enum LibolmError: Error, Equatable, Sendable, CustomStringConvertible {
@@ -39,12 +37,10 @@ public enum LibolmError: Error, Equatable, Sendable, CustomStringConvertible {
     }
 }
 
-/// Builds `libolm.3.dylib` from pinned source and installs it beside a bridge binary.
+/// Installs the bundled `libolm.3.dylib` beside a bridge binary, or builds pinned source once.
 ///
-/// Every prebuilt mautrix binary links `@rpath/libolm.3.dylib`, but libolm reached end of life and
-/// Homebrew no longer carries it, so nothing on a current macOS supplies the library. Building it
-/// from a checksum-verified tarball keeps the provenance chain intact rather than committing an
-/// opaque binary — the same discipline Phase 2 applies to the Synapse runtime.
+/// The app ships the library built from a checksum-verified tarball and signs it with the other
+/// runtime resources. Development builds reuse a private cache keyed by source, patch and flags.
 ///
 /// dyld resolves `@rpath` against the loader's own directory first, so installing the dylib next to
 /// the bridge binary needs no `DYLD_*` variables, which macOS strips from hardened processes anyway.
@@ -88,16 +84,37 @@ public struct LibolmProvisioner: Sendable {
     private let fetcher: any BridgeArtifactFetching
     private let cmake: URL?
     private let bundledLibrary: URL?
+    private let cacheRoot: URL?
+    private let buildLibrary: BuildLibrary?
+
+    typealias BuildLibrary = @Sendable (URL) async throws -> URL
 
     public init(
         fetcher: any BridgeArtifactFetching = URLSessionBridgeArtifactFetcher(),
         cmake: URL? = LibolmProvisioner.locateCMake(),
         bundledLibrary: URL? = RuntimeProfileService.resolvedPackageRoot()
-            .appendingPathComponent("Runtime/libolm.3.dylib")
+            .appendingPathComponent("Runtime/libolm.3.dylib"),
+        cacheRoot: URL? = nil
     ) {
         self.fetcher = fetcher
         self.cmake = cmake
         self.bundledLibrary = bundledLibrary
+        self.cacheRoot = cacheRoot
+        buildLibrary = nil
+    }
+
+    init(cacheRoot: URL, buildLibrary: @escaping BuildLibrary) {
+        fetcher = URLSessionBridgeArtifactFetcher()
+        cmake = nil
+        bundledLibrary = nil
+        self.cacheRoot = cacheRoot
+        self.buildLibrary = buildLibrary
+    }
+
+    /// All inputs that can change the built library participate in the cache identity.
+    static var cacheKey: String {
+        BridgeInstaller.hash(Data((sourceSHA256 + "\n" + patchTarget + "\n" + patchReplacement
+            + "\narm64\nRelease\nshared\ntests-off\ncmake-policy-3.5\n").utf8))
     }
 
     public static func locateCMake() -> URL? {
@@ -117,38 +134,113 @@ public struct LibolmProvisioner: Sendable {
         )
     }
 
-    /// Ensures `libolm.3.dylib` sits in `directory`, building it if it is not already there.
+    /// Uses the signed app resource when available, otherwise reuses a verified source build.
     @discardableResult
     public func install(into directory: URL) async throws -> URL {
-        let destination = directory.appendingPathComponent(Self.libraryName, isDirectory: false)
-        if FileManager.default.fileExists(atPath: destination.path) { return destination }
         if let bundledLibrary, FileManager.default.fileExists(atPath: bundledLibrary.path) {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
-                                                    attributes: [.posixPermissions: 0o700])
-            try FileManager.default.copyItem(at: bundledLibrary, to: destination)
+            // Bundle signing changes Mach-O bytes after the source build. Verify the installed
+            // copy against the signed resource shipped by this application, rather than a build
+            // cache receipt written before signing.
+            let checksum = try BridgeInstaller.hash(fileAt: bundledLibrary)
+            return try install(VerifiedLibolmLibrary(file: bundledLibrary, sha256: checksum), into: directory)
+        }
+        // Cache location is independent of the destination depth: the build-time bundler also
+        // installs into shallow temporary directories, unlike a profile's bridges/<id> directory.
+        let root = try cacheRoot ?? RuntimeProfileService.developerRuntimeRoot()
+            .appendingPathComponent(".artifact-cache/libolm", isDirectory: true)
+        let cacheDirectory = try RuntimePaths(root: root, profileName: Self.cacheKey).profile
+        let cached = try await LibolmBuildCache.shared.library(key: cacheDirectory.path) {
+            try await verifiedCachedLibrary(in: cacheDirectory)
+        }
+        return try install(cached, into: directory)
+    }
+
+    private func install(_ library: VerifiedLibolmLibrary, into directory: URL) throws -> URL {
+        let destination = directory.appendingPathComponent(Self.libraryName)
+        if (try? BridgeInstaller.hash(fileAt: destination)) == library.sha256 {
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
             return destination
         }
-        guard let cmake else { throw LibolmError.cmakeMissing }
-
-        let workspace = directory.appendingPathComponent(".libolm-build", isDirectory: true)
-        try? FileManager.default.removeItem(at: workspace)
         try FileManager.default.createDirectory(
-            at: workspace,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
+            at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]
+        )
+        let staging = directory.appendingPathComponent(".libolm-\(UUID().uuidString).tmp")
+        defer { try? FileManager.default.removeItem(at: staging) }
+        try FileManager.default.copyItem(at: library.file, to: staging)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: staging.path)
+        guard try BridgeInstaller.hash(fileAt: staging) == library.sha256,
+              Darwin.rename(staging.path, destination.path) == 0 else {
+            throw LibolmError.cannotWrite(destination)
+        }
+        return destination
+    }
+
+    private struct CacheReceipt: Codable {
+        let key: String
+        let sha256: String
+    }
+
+    private func verifiedCachedLibrary(in cacheDirectory: URL) async throws -> VerifiedLibolmLibrary {
+        try FileManager.default.createDirectory(
+            at: cacheDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]
+        )
+        let lockFile = cacheDirectory.appendingPathComponent("build.lock")
+        let lock: ProfileLock
+        while true {
+            do { lock = try ProfileLock.acquire(at: lockFile); break }
+            catch ProfileLockError.alreadyLocked { try await Task.sleep(for: .milliseconds(100)) }
+        }
+        defer { withExtendedLifetime(lock) {} }
+        let cached = cacheDirectory.appendingPathComponent(Self.libraryName)
+        let receiptFile = cacheDirectory.appendingPathComponent("receipt.json")
+        if Self.isPrivateRegularFile(cached), Self.isPrivateRegularFile(receiptFile),
+           let receiptData = try? Data(contentsOf: receiptFile),
+           let receipt = try? JSONDecoder().decode(CacheReceipt.self, from: receiptData),
+           receipt.key == Self.cacheKey,
+           (try? BridgeInstaller.hash(fileAt: cached)) == receipt.sha256 {
+            return VerifiedLibolmLibrary(file: cached, sha256: receipt.sha256)
+        }
+        try FileManager.default.createDirectory(
+            at: cacheDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]
+        )
+        let workspace = cacheDirectory.appendingPathComponent(".build-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: workspace, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700]
         )
         defer { try? FileManager.default.removeItem(at: workspace) }
+        let built: URL
+        if let buildLibrary { built = try await buildLibrary(workspace) }
+        else { built = try await build(in: workspace) }
+        let resolved = built.resolvingSymlinksInPath()
+        let checksum = try BridgeInstaller.hash(fileAt: resolved)
+        let staging = workspace.appendingPathComponent("verified-libolm")
+        try FileManager.default.copyItem(at: resolved, to: staging)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: staging.path)
+        guard try BridgeInstaller.hash(fileAt: staging) == checksum,
+              Darwin.rename(staging.path, cached.path) == 0 else { throw LibolmError.cannotWrite(cached) }
+        let receipt = try JSONEncoder().encode(CacheReceipt(key: Self.cacheKey, sha256: checksum))
+        try receipt.write(to: receiptFile, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: receiptFile.path)
+        return VerifiedLibolmLibrary(file: cached, sha256: checksum)
+    }
 
+    private static func isPrivateRegularFile(_ file: URL) -> Bool {
+        var metadata = stat()
+        return Darwin.lstat(file.path, &metadata) == 0 && metadata.st_mode & S_IFMT == S_IFREG
+            && metadata.st_uid == getuid() && metadata.st_nlink == 1 && metadata.st_mode & 0o777 == 0o600
+    }
+
+    private func build(in workspace: URL) async throws -> URL {
+        guard let cmake else { throw LibolmError.cmakeMissing }
         let tarball = workspace.appendingPathComponent("olm.tar.gz", isDirectory: false)
-        let (status, body) = try await fetcher.fetch(Self.sourceURL)
+        let status = try await fetcher.fetch(Self.sourceURL, to: tarball)
         guard (200..<300).contains(status) else {
             throw LibolmError.downloadFailed(status: status)
         }
-        let actual = BridgeInstaller.hash(body)
+        let actual = try BridgeInstaller.hash(fileAt: tarball)
         guard actual == Self.sourceSHA256 else {
             throw LibolmError.checksumMismatch(expected: Self.sourceSHA256, actual: actual)
         }
-        try body.write(to: tarball)
 
         try Self.run(
             URL(fileURLWithPath: "/usr/bin/tar"),
@@ -190,18 +282,8 @@ public struct LibolmProvisioner: Sendable {
         guard FileManager.default.fileExists(atPath: built.path) else {
             throw LibolmError.libraryMissingAfterBuild(built)
         }
-        // Resolve first: cmake publishes `libolm.3.dylib` as a symlink to the versioned file, and
-        // copying the link would leave a dangling pointer into a workspace this method deletes.
-        let resolved = built.resolvingSymlinksInPath()
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
-        }
-        try FileManager.default.copyItem(at: resolved, to: destination)
-        try FileManager.default.setAttributes(
-            [.posixPermissions: 0o600],
-            ofItemAtPath: destination.path
-        )
-        return destination
+        // cmake publishes a symlink to the versioned dylib; resolve before deleting the workspace.
+        return built.resolvingSymlinksInPath()
     }
 
     private func applyPinnedPatch(in source: URL) throws {
@@ -236,5 +318,24 @@ public struct LibolmProvisioner: Sendable {
             let text = String(decoding: output.suffix(2_048), as: UTF8.self)
             throw failure(text.isEmpty ? "exit status \(process.terminationStatus)" : text)
         }
+    }
+}
+
+private struct VerifiedLibolmLibrary: Sendable {
+    let file: URL
+    let sha256: String
+}
+
+/// Concurrent bridge preparations share one in-flight build without blocking the executor.
+private actor LibolmBuildCache {
+    static let shared = LibolmBuildCache()
+    private var builds: [String: Task<VerifiedLibolmLibrary, any Error>] = [:]
+
+    func library(key: String, operation: @escaping @Sendable () async throws -> VerifiedLibolmLibrary) async throws -> VerifiedLibolmLibrary {
+        if let existing = builds[key] { return try await existing.value }
+        let task = Task { try await operation() }
+        builds[key] = task
+        defer { builds[key] = nil }
+        return try await task.value
     }
 }

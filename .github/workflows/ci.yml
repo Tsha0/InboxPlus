@@ -53,14 +53,14 @@ jobs:
       # deliberately NOT enabled here: they start a real Synapse and download real bridge binaries,
       # which makes a CI failure a report about the network rather than about the change.
       - name: Test
-        run: swift test --skip-build
+        run: swift test --skip-build --no-parallel
 
       - name: Check for whitespace damage
         run: git diff --check
 
   generated-files:
     name: Generated files are current
-    # Both of these are produced by a script from a pinned source. A stale one is invisible in
+    # These files are produced by a script from a pinned source. A stale one is invisible in
     # review and wrong in the product, so the check is that regenerating changes nothing.
     runs-on: macos-latest
     timeout-minutes: 30
@@ -81,7 +81,10 @@ jobs:
         run: swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/InboxPlusUI/PlatformGlyphPaths.swift
 
       - name: Regenerate the app icon
-        run: swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns
+        run: swift Scripts/make-icon.swift Sources/InboxPlusUI/Resources/InboxPlusLogo.png Resources/AppIcon.icns
+
+      - name: Regenerate dependency versions
+        run: swift Scripts/make-build-versions.swift
 
       - name: Regenerate the bill of materials
         run: swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json
@@ -91,7 +94,8 @@ jobs:
           if ! git diff --quiet; then
             echo "::error::A generated file is out of date. Regenerate and commit:"
             echo "  swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/InboxPlusUI/PlatformGlyphPaths.swift"
-            echo "  swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns"
+            echo "  swift Scripts/make-icon.swift Sources/InboxPlusUI/Resources/InboxPlusLogo.png Resources/AppIcon.icns"
+            echo "  swift Scripts/make-build-versions.swift"
             echo "  swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json"
             git diff --stat
             exit 1
@@ -105,7 +109,7 @@ jobs:
     # release needs an Apple Developer ID and Scripts/package-release.sh.
     runs-on: macos-latest
     timeout-minutes: 45
-    needs: test
+    needs: [test, generated-files]
 
     steps:
       - uses: actions/checkout@v4
@@ -131,6 +135,9 @@ jobs:
       - name: Verify the bundle
         run: |
           codesign --verify --strict build/Inbox+.app
+          test -f build/Inbox+.app/Contents/Resources/AppIcon.icns
+          test -f build/Inbox+.app/Contents/Resources/Runtime/Synapse/runtime-manifest.json
+          test -f build/Inbox+.app/Contents/Resources/Runtime/Synapse/requirements.lock
           # The CLI ships inside the bundle and is how a profile is prepared; if it cannot run,
           # the bundle is useless even though it assembled.
           build/Inbox+.app/Contents/MacOS/InboxPlusRuntimeCLI sbom > /dev/null

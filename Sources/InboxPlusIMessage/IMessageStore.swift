@@ -22,13 +22,11 @@ public enum IMessageStoreError: Error, Equatable, CustomStringConvertible {
 }
 
 public struct IMessageChat: Equatable, Sendable {
-    public let rowID: Int64
     /// `iMessage;-;+15555550123` — what Messages needs to address a reply.
     public let guid: String
     /// The phone number, email, or group identifier.
     public let identifier: String
     public let displayName: String?
-    public let service: String
     /// True for a group conversation, where a reply goes to the room rather than a person.
     public let isGroup: Bool
 }
@@ -95,18 +93,16 @@ public final class IMessageStore {
         // `style` 43 is a group chat and 45 a one-to-one, which is what decides whether a reply is
         // addressed to a room or a person.
         let sql = """
-        SELECT ROWID, guid, chat_identifier, display_name, service_name, style
+        SELECT guid, chat_identifier, display_name, style
         FROM chat
         ORDER BY ROWID
         """
         return try rows(sql) { statement in
             IMessageChat(
-                rowID: sqlite3_column_int64(statement, 0),
-                guid: Self.string(statement, 1) ?? "",
-                identifier: Self.string(statement, 2) ?? "",
-                displayName: Self.string(statement, 3),
-                service: Self.string(statement, 4) ?? "iMessage",
-                isGroup: sqlite3_column_int64(statement, 5) == 43
+                guid: Self.string(statement, 0) ?? "",
+                identifier: Self.string(statement, 1) ?? "",
+                displayName: Self.string(statement, 2),
+                isGroup: sqlite3_column_int64(statement, 3) == 43
             )
         }
     }
@@ -119,9 +115,11 @@ public final class IMessageStore {
         try messages(where: "", limit: limit).reversed()
     }
 
-    /// Everything newer than a row id, which is how new messages are noticed.
-    public func messages(afterRowID rowID: Int64) throws -> [IMessageRow] {
-        try messages(where: "AND message.ROWID > \(rowID)", limit: 500).reversed()
+    /// The next ascending page after a watermark. An upper bound makes draining finite even when
+    /// Messages keeps receiving new rows while a poll is running.
+    public func messages(afterRowID rowID: Int64, upToRowID: Int64? = nil, limit: Int = 500) throws -> [IMessageRow] {
+        let upperBound = upToRowID.map { "AND message.ROWID <= \($0)" } ?? ""
+        return try messages(where: "AND message.ROWID > \(rowID) \(upperBound)", limit: limit, ascending: true)
     }
 
     public func maxMessageRowID() throws -> Int64 {
@@ -129,7 +127,7 @@ public final class IMessageStore {
             .first ?? 0
     }
 
-    private func messages(where clause: String, limit: Int) throws -> [IMessageRow] {
+    private func messages(where clause: String, limit: Int, ascending: Bool = false) throws -> [IMessageRow] {
         let sql = """
         SELECT message.ROWID, message.guid, chat.guid, message.text, message.attributedBody,
                handle.id, message.is_from_me, message.date,
@@ -140,16 +138,18 @@ public final class IMessageStore {
         JOIN chat ON chat.ROWID = chat_message_join.chat_id
         LEFT JOIN handle ON handle.ROWID = message.handle_id
         WHERE message.associated_message_guid IS NULL \(clause)
-        ORDER BY message.ROWID DESC
-        LIMIT \(limit)
+        ORDER BY message.ROWID \(ascending ? "ASC" : "DESC")
+        LIMIT \(max(0, limit))
         """
         return try rows(sql) { statement in
-            IMessageRow(
+            let text = Self.string(statement, 3)
+            let needsArchive = text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+            return IMessageRow(
                 rowID: sqlite3_column_int64(statement, 0),
                 guid: Self.string(statement, 1) ?? "",
                 chatGUID: Self.string(statement, 2) ?? "",
-                text: Self.string(statement, 3),
-                attributedBody: Self.blob(statement, 4),
+                text: text,
+                attributedBody: needsArchive ? Self.blob(statement, 4) : nil,
                 handle: Self.string(statement, 5),
                 isFromMe: sqlite3_column_int64(statement, 6) == 1,
                 date: AppleTimestamp.date(fromAppleTime: sqlite3_column_int64(statement, 7)),

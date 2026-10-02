@@ -86,6 +86,14 @@ public struct RootView: View {
                     .background(Color.secondary.opacity(0.15))
                     .accessibilityIdentifier("health-banner")
             }
+            if let warning = model.media.storageWarning {
+                Label(warning, systemImage: "internaldrive")
+                    .font(.callout)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color.secondary.opacity(0.15))
+                    .accessibilityIdentifier("storage-warning")
+            }
             HStack(spacing: 0) {
                 NavigationRailView(selection: $section)
                     .fixedSize(horizontal: true, vertical: false)
@@ -232,7 +240,7 @@ public struct RootView: View {
         case .contacts:
             ContactsListView(
                 people: model.people,
-                items: model.inboxItems,
+                summariesByPersonID: model.summariesByPersonID,
                 selectedPersonID: selectedPersonID,
                 onSelect: model.selectPerson
             )

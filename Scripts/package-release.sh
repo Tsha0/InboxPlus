@@ -22,8 +22,6 @@ set -euo pipefail
 
 OUTPUT_DIR="${1:-build/release}"
 APP_NAME="Inbox+"
-EXECUTABLE_NAME="InboxPlus"
-BUNDLE_ID="com.inboxplus.app"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 fail() { echo "error: $*" >&2; exit 1; }
@@ -38,49 +36,16 @@ echo "==> Packaging $APP_NAME $VERSION"
 
 # 1. Test before building anything shippable. A release that was never green is not a release.
 echo "==> Running tests"
-(cd "$REPO_ROOT" && swift test)
+(cd "$REPO_ROOT" && swift test --no-parallel)
 
 echo "==> Building release binaries"
 (cd "$REPO_ROOT" && swift build -c release)
 
 BIN_DIR="$(cd "$REPO_ROOT" && swift build -c release --show-bin-path)"
 APP_DIR="$REPO_ROOT/$OUTPUT_DIR/$APP_NAME.app"
-rm -rf "$APP_DIR"
-mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-
-cp "$BIN_DIR/$EXECUTABLE_NAME" "$APP_DIR/Contents/MacOS/$EXECUTABLE_NAME"
-cp "$BIN_DIR/InboxPlusRuntimeCLI" "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI"
-"$REPO_ROOT/Scripts/prepare-bundled-runtime.sh" "$APP_DIR/Contents/Resources/Runtime"
-# SwiftPM resource bundles the executable loads through `Bundle.module` — which traps when the
-# bundle is absent, so a missing copy here is a crash on launch, not a missing image.
-cp -R "$BIN_DIR/InboxPlus_InboxPlusUI.bundle" "$APP_DIR/Contents/Resources/InboxPlus_InboxPlusUI.bundle"
-
-swift "$REPO_ROOT/Scripts/make-icon.swift" "$REPO_ROOT/docs/assets/inboxplus-logo.png" "$REPO_ROOT/Resources/AppIcon.icns"
-cp "$REPO_ROOT/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
-
-# A real bundle, so the app has a stable identity, a menu bar, and somewhere to declare the
-# permission usage strings macOS shows the user.
-cat > "$APP_DIR/Contents/Info.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key><string>$EXECUTABLE_NAME</string>
-  <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
-  <key>CFBundleName</key><string>$APP_NAME</string>
-  <key>CFBundleDisplayName</key><string>$APP_NAME</string>
-  <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleVersion</key><string>$VERSION</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>LSMinimumSystemVersion</key><string>15.0</string>
-  <key>NSAppleEventsUsageDescription</key>
-  <string>Inbox+ uses Automation to send iMessages on your behalf. It is never used for anything else.</string>
-  <key>NSDesktopFolderUsageDescription</key>
-  <string>Inbox+ asks for a folder only when you attach a file to a message.</string>
-</dict>
-</plist>
-PLIST
+RUNTIME_DIR="$REPO_ROOT/build/runtime-bundle"
+"$REPO_ROOT/Scripts/prepare-bundled-runtime.sh" "$RUNTIME_DIR" "$BIN_DIR"
+bash "$REPO_ROOT/Scripts/assemble-app.sh" "$BIN_DIR" "$APP_DIR" "$VERSION" "$RUNTIME_DIR"
 
 # 2. Sign inner binaries before the bundle. Signing outside-in invalidates the outer signature.
 echo "==> Signing"

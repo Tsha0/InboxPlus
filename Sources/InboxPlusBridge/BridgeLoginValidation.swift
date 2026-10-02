@@ -42,8 +42,4 @@ public extension BridgeLoginStep {
         }
     }
 
-    /// Values that must never be echoed on screen or written to a log.
-    var secretFieldIDs: Set<String> {
-        Set((userInput?.fields ?? []).filter(\.type.isSecret).map(\.id))
-    }
 }

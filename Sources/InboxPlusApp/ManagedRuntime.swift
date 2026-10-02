@@ -121,29 +121,6 @@ actor ManagedRuntime {
         kill(process.processIdentifier, SIGINT)
     }
 
-    /// Stops the runtime, but only the one this app started.
-    func stop() async {
-        guard startedByThisApp, let process = child, process.isRunning else {
-            child = nil
-            return
-        }
-        // SIGINT is what the CLI's own interrupt handling expects; it stops the bridges and the
-        // homeserver in order and verifies the listener is gone. SIGKILL would leave a lock file
-        // and orphaned children behind.
-        kill(process.processIdentifier, SIGINT)
-
-        let deadline = ContinuousClock().now.advanced(by: .seconds(45))
-        while process.isRunning, ContinuousClock().now < deadline {
-            try? await Task.sleep(for: .milliseconds(200))
-        }
-        if process.isRunning {
-            // A runtime that will not stop gracefully still must not outlive the app that owns it.
-            process.terminate()
-        }
-        child = nil
-        startedByThisApp = false
-    }
-
     // MARK: - Launching
 
     private func launch(profileName: String, progress: @Sendable (String) -> Void) throws {

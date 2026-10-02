@@ -21,8 +21,4 @@ public enum AppleTimestamp {
         return Date(timeIntervalSince1970: seconds + referenceOffset)
     }
 
-    /// Nanoseconds since 2001, which is what current macOS stores.
-    public static func appleTime(from date: Date) -> Int64 {
-        Int64((date.timeIntervalSince1970 - referenceOffset) * 1_000_000_000)
-    }
 }

@@ -10,8 +10,8 @@ import InboxPlusRuntime
 public enum InboxPlusSBOM {
     public static func components(
         bridges: [BridgeDescriptor] = BridgeCatalog.all,
-        synapseVersion: String = "1.158.0",
-        matrixSDKVersion: String = "26.08.11"
+        synapseVersion: String = InboxPlusBuildVersions.synapse,
+        matrixSDKVersion: String = InboxPlusBuildVersions.matrixSDK
     ) -> [SBOMComponent] {
         var components: [SBOMComponent] = [
             SBOMComponent(

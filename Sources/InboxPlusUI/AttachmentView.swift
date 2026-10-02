@@ -1,5 +1,6 @@
 import AVKit
 import AppKit
+import ImageIO
 import SwiftUI
 import InboxPlusCore
 import InboxPlusFeatures
@@ -13,6 +14,10 @@ public struct AttachmentView: View {
     let attachment: MessageAttachment
     let accountID: String
     let messageID: String
+    @State private var image: NSImage?
+    @State private var imageURL: URL?
+    @State private var player: AVPlayer?
+    @State private var playerURL: URL?
 
     public init(model: InboxPlusAppModel, attachment: MessageAttachment, accountID: String, messageID: String) {
         self.model = model
@@ -22,13 +27,25 @@ public struct AttachmentView: View {
     }
 
     private var state: MediaController.State {
-        model.media.state(for: attachment)
+        model.media.state(for: attachment, accountID: accountID)
+    }
+
+    private var readyURL: URL? {
+        guard case let .ready(url) = state else { return nil }
+        return url
     }
 
     public var body: some View {
         content
             .frame(maxWidth: 320, alignment: .leading)
             .onAppear { model.media.load(attachment, accountID: accountID, messageID: messageID) }
+            .onChange(of: state) { _, state in
+                if case .idle = state {
+                    model.media.load(attachment, accountID: accountID, messageID: messageID)
+                }
+            }
+            .task(id: readyURL) { await prepareMedia() }
+            .onDisappear { player?.pause() }
             .accessibilityElement(children: .contain)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityIdentifier("attachment-\(attachment.id)")
@@ -54,7 +71,9 @@ public struct AttachmentView: View {
     @ViewBuilder private var imageContent: some View {
         switch state {
         case let .ready(url):
-            if let image = NSImage(contentsOf: url) {
+            if imageURL != url {
+                MediaPlaceholder(attachment: attachment)
+            } else if let image {
                 Image(nsImage: image)
                     .resizable()
                     .scaledToFit()
@@ -76,7 +95,9 @@ public struct AttachmentView: View {
                 model.media.retry(attachment, accountID: accountID, messageID: messageID)
             }
         case let .paused(reason):
-            MediaPausedCard(attachment: attachment, reason: reason)
+            MediaPausedCard(attachment: attachment, reason: reason) {
+                model.media.retry(attachment, accountID: accountID, messageID: messageID)
+            }
         }
     }
 
@@ -86,7 +107,7 @@ public struct AttachmentView: View {
         switch state {
         case let .ready(url):
             // Inbox+ never autoplays: `VideoPlayer` presents controls and waits for the user.
-            VideoPlayer(player: AVPlayer(url: url))
+            VideoPlayer(player: playerURL == url ? player : nil)
                 .frame(
                     width: 320,
                     height: attachment.kind == .audio ? 60 : 200
@@ -100,7 +121,9 @@ public struct AttachmentView: View {
                 model.media.retry(attachment, accountID: accountID, messageID: messageID)
             }
         case let .paused(reason):
-            MediaPausedCard(attachment: attachment, reason: reason)
+            MediaPausedCard(attachment: attachment, reason: reason) {
+                model.media.retry(attachment, accountID: accountID, messageID: messageID)
+            }
         }
     }
 
@@ -127,7 +150,41 @@ public struct AttachmentView: View {
                 model.media.retry(attachment, accountID: accountID, messageID: messageID)
             }
         case let .paused(reason):
-            MediaPausedCard(attachment: attachment, reason: reason)
+            MediaPausedCard(attachment: attachment, reason: reason) {
+                model.media.retry(attachment, accountID: accountID, messageID: messageID)
+            }
+        }
+    }
+
+    /// Decode once per URL, off the UI thread, at the maximum size the transcript displays.
+    private func prepareMedia() async {
+        guard let url = readyURL else {
+            image = nil
+            imageURL = nil
+            player?.pause()
+            player = nil
+            playerURL = nil
+            return
+        }
+        switch attachment.kind {
+        case .image, .gallery, .sticker:
+            guard imageURL != url else { return }
+            let decoded = await Task.detached(priority: .utility) {
+                ImageThumbnailDecoder.decode(url: url, maximumPixelSize: 640)
+            }.value
+            guard !Task.isCancelled, readyURL == url else { return }
+            if decoded == nil, model.media.retryOriginal(attachment, accountID: accountID, messageID: messageID) {
+                return
+            }
+            image = decoded.map { NSImage(cgImage: $0, size: .zero) }
+            imageURL = url
+        case .audio, .video:
+            guard playerURL != url else { return }
+            player?.pause()
+            player = AVPlayer(url: url)
+            playerURL = url
+        default:
+            break
         }
     }
 
@@ -198,9 +255,13 @@ struct MediaRetryCard: View {
 struct MediaPausedCard: View {
     let attachment: MessageAttachment
     let reason: String
+    let retry: () -> Void
 
     var body: some View {
-        AttachmentCardLabel(symbol: "internaldrive.fill", title: attachment.displayName, detail: reason)
+        VStack(alignment: .leading, spacing: 6) {
+            AttachmentCardLabel(symbol: "internaldrive", title: attachment.displayName, detail: reason)
+            Button("Check again", action: retry).controlSize(.small)
+        }
             .padding(10)
             .background(.quaternary.opacity(0.6), in: .rect(cornerRadius: 10))
             .accessibilityIdentifier("attachment-paused-\(attachment.id)")
@@ -271,5 +332,19 @@ struct AttachmentCardLabel: View {
                 }
             }
         }
+    }
+}
+
+/// ImageIO downsamples during decoding rather than retaining a full-resolution photo in memory.
+enum ImageThumbnailDecoder {
+    static func decode(url: URL, maximumPixelSize: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 }

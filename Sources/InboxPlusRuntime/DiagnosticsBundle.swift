@@ -16,10 +16,6 @@ public struct DiagnosticsManifest: Codable, Sendable, Equatable {
     public let excluded: [String]
 }
 
-public enum DiagnosticsError: Error, Equatable {
-    case profileUnreadable(String)
-}
-
 /// Collects a redacted diagnostics bundle from a profile.
 ///
 /// Everything written here has passed through `DiagnosticsRedactor`. The rule is that a bundle is
@@ -38,6 +34,7 @@ public struct DiagnosticsBundle {
         maximumBytesPerFile: Int = 2 * 1024 * 1024,
         fileManager: FileManager = .default
     ) {
+        precondition(maximumBytesPerFile > 0)
         self.paths = paths
         self.redactor = redactor
         self.maximumBytesPerFile = maximumBytesPerFile
@@ -65,8 +62,7 @@ public struct DiagnosticsBundle {
 
     public func write(
         to destination: URL,
-        inboxplusVersion: String,
-        now: Date = Date()
+        inboxplusVersion: String
     ) throws -> DiagnosticsManifest {
         try fileManager.createDirectory(
             at: destination,
@@ -83,11 +79,12 @@ public struct DiagnosticsBundle {
                 excluded.append("\(name) — may hold key material or is not text; never collected")
                 continue
             }
-            guard let raw = try? String(contentsOf: source, encoding: .utf8) else {
+            guard let (text, truncated) = try? Self.readTail(
+                from: source, limit: maximumBytesPerFile
+            ) else {
                 excluded.append("\(name) — not readable as text")
                 continue
             }
-            let (text, truncated) = Self.tail(of: raw, limit: maximumBytesPerFile)
             let redacted = redactor.redact(linesOf: text)
             let target = destination.appendingPathComponent(uniqueName(for: source, in: entries))
             try Data(redacted.utf8).write(to: target, options: [.atomic])
@@ -136,13 +133,26 @@ public struct DiagnosticsBundle {
         return "\(source.deletingLastPathComponent().lastPathComponent)-\(name)"
     }
 
-    /// Keeps the end of a file: the interesting part of a log is what happened last.
-    static func tail(of text: String, limit: Int) -> (String, Bool) {
-        let bytes = text.utf8
-        guard bytes.count > limit else { return (text, false) }
-        let kept = String(decoding: bytes.suffix(limit), as: UTF8.self)
-        // Drop a leading partial line so the bundle never opens mid-token.
-        guard let newline = kept.firstIndex(of: "\n") else { return (kept, true) }
-        return (String(kept[kept.index(after: newline)...]), true)
+    /// Reads only the bounded tail, dropping a partial first line before UTF-8 decoding.
+    static func readTail(from file: URL, limit: Int) throws -> (String, Bool) {
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        let size = try handle.seekToEnd()
+        let truncated = size > UInt64(limit)
+        if truncated { try handle.seek(toOffset: size - UInt64(limit)) }
+        else { try handle.seek(toOffset: 0) }
+        var data = try handle.read(upToCount: limit) ?? Data()
+        if truncated {
+            // A token or UTF-8 character can straddle the boundary. Export complete lines only.
+            if let newline = data.firstIndex(of: 10) {
+                data = Data(data.suffix(from: data.index(after: newline)))
+            } else {
+                data.removeAll()
+            }
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
+        return (text, truncated)
     }
 }

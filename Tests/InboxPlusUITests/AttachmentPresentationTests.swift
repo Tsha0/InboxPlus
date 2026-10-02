@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 import InboxPlusCore
@@ -53,4 +54,17 @@ import InboxPlusCore
         deepLink: try DeepLinkVerifier.verify("https://instagram.com/reel/1", for: .instagram)
     )
     #expect(AttachmentFormatting.accessibilityLabel(for: attachment).contains("opens in Instagram"))
+}
+
+@Test func photoDecodingLimitsMemoryToTheTranscriptSize() throws {
+    let bitmap = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 2_048,
+        pixelsHigh: 1_024, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+        isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+    let data = try #require(bitmap.representation(using: .png, properties: [:]))
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("mimo-thumbnail-\(UUID().uuidString).png")
+    defer { try? FileManager.default.removeItem(at: url) }
+    try data.write(to: url)
+    let decoded = try #require(ImageThumbnailDecoder.decode(url: url, maximumPixelSize: 640))
+    #expect(decoded.width == 640)
+    #expect(decoded.height == 320)
 }

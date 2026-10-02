@@ -61,7 +61,7 @@ public struct MediaStoragePolicy: Sendable {
         if freeBytes < pauseBelowFreeBytes {
             return MediaStorageDecision(
                 allowsDownloads: false,
-                warning: "Your Mac is low on disk space, so Inbox+ has paused downloading media. "
+                warning: "Your Mac is low on disk space, so InboxPlus has paused downloading media. "
                     + "Your messages are safe and nothing has been deleted."
             )
         }
@@ -90,8 +90,17 @@ public actor MediaLoader {
     private let freeSpace: any FreeSpaceReporting
     private let policy: MediaStoragePolicy
 
-    /// One in-flight download per handle, so a view appearing twice does not fetch twice.
-    private var inFlight: [String: Task<URL, any Error>] = [:]
+    private struct DownloadKey: Hashable {
+        let source: String
+        let accountID: String
+    }
+    private struct Download {
+        let id: UUID
+        let task: Task<URL, any Error>
+    }
+    /// Deduplicate within an account, so erasing one account cannot cancel another's download.
+    private var inFlight: [DownloadKey: Download] = [:]
+    private var accountGenerations: [String: UInt64] = [:]
 
     public init(
         cache: MediaCache,
@@ -116,21 +125,57 @@ public actor MediaLoader {
     }
 
     public func file(for handle: MediaHandle, context: MediaCacheContext) async throws -> URL {
-        if let cached = await cache.cachedFile(for: handle) { return cached }
-        if let existing = inFlight[handle.source] { return try await existing.value }
+        let generation = accountGenerations[context.accountID, default: 0]
+        let cacheGeneration = await cache.downloadGeneration(accountID: context.accountID)
+        if let cached = await cache.cachedFile(for: handle, accountID: context.accountID) {
+            try checkGeneration(generation, accountID: context.accountID)
+            return cached
+        }
+        try checkGeneration(generation, accountID: context.accountID)
+        let key = DownloadKey(source: handle.source, accountID: context.accountID)
+        if let existing = inFlight[key] { return try await existing.task.value }
 
         // Checked only on the path that would actually write bytes, so cached media keeps working
         // when the disk is full.
         guard storageDecision().allowsDownloads else { throw MediaLoadError.pausedForDiskSpace }
 
-        let task = Task<URL, any Error> { [cache, fetcher] in
+        let id = UUID()
+        let task = Task<URL, any Error> { [fetcher] in
             let data = try await fetcher.fetch(handle)
-            let url = try await cache.store(data, for: handle, context: context)
-            _ = try? await cache.evictToFitBudget()
-            return url
+            try Task.checkCancellation()
+            return try await self.storeFetched(data, for: handle, context: context,
+                generation: generation, cacheGeneration: cacheGeneration)
         }
-        inFlight[handle.source] = task
-        defer { inFlight[handle.source] = nil }
+        inFlight[key] = Download(id: id, task: task)
+        defer {
+            if inFlight[key]?.id == id { inFlight[key] = nil }
+        }
         return try await task.value
+    }
+
+    /// Invalidates pending writes before purging, including fetchers that ignore cancellation.
+    public func purge(accountID: String) async throws {
+        accountGenerations[accountID, default: 0] &+= 1
+        for key in inFlight.keys where key.accountID == accountID {
+            inFlight.removeValue(forKey: key)?.task.cancel()
+        }
+        _ = try await cache.purge(accountID: accountID)
+    }
+
+    private func checkGeneration(_ generation: UInt64, accountID: String) throws {
+        guard accountGenerations[accountID, default: 0] == generation else { throw CancellationError() }
+    }
+
+    private func storeFetched(
+        _ data: Data, for handle: MediaHandle, context: MediaCacheContext,
+        generation: UInt64, cacheGeneration: UInt64
+    ) async throws -> URL {
+        try checkGeneration(generation, accountID: context.accountID)
+        let url = try await cache.storeDownloaded(data, for: handle, context: context,
+            generation: cacheGeneration)
+        try checkGeneration(generation, accountID: context.accountID)
+        _ = try? await cache.evictToFitBudget()
+        try checkGeneration(generation, accountID: context.accountID)
+        return url
     }
 }

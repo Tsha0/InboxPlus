@@ -36,5 +36,8 @@ fi
 "$CACHE/$KEY/python/bin/python3.12" -I "$REPO_ROOT/Scripts/verify-bundled-python.py" "$REPO_ROOT/Runtime/Synapse/requirements.lock" "$CACHE/$KEY/python"
 rm -rf "$DESTINATION/Python"
 cp -R "$CACHE/$KEY/python" "$DESTINATION/Python"
-BIN_DIR="$(cd "$REPO_ROOT" && swift build -c release --show-bin-path)"
+BIN_DIR="${2:-}"
+if [ -z "$BIN_DIR" ]; then
+  BIN_DIR="$(cd "$REPO_ROOT" && swift build -c release --show-bin-path)"
+fi
 "$BIN_DIR/InboxPlusRuntimeBundler" libolm "$DESTINATION"

@@ -14,25 +14,33 @@ import InboxPlusRuntime
 /// Everything downstream is built only once the homeserver answers, because a Matrix client
 /// constructed against a port nothing is listening on fails in ways that read as a bug in Inbox+.
 actor DeferredRuntimeGateway: MessagingGateway {
-    private let paths: RuntimePaths
-    private let profileName: String
-    private let build: @Sendable (RuntimeProfileState) throws -> any MessagingGateway
-    private let onReady: @Sendable (RuntimeProfileState) async -> Void
+    private let ensureRunning: @Sendable () async throws -> RuntimeProfileState
+    private let build: @Sendable (RuntimeProfileState) async throws -> any MessagingGateway
 
     private var resolved: (any MessagingGateway)?
     private var resolving: Task<any MessagingGateway, any Error>?
+    private var stopping: Task<Void, Never>?
+    private var generation = 0
 
     init(
         paths: RuntimePaths,
         profileName: String,
-        build: @escaping @Sendable (RuntimeProfileState) throws -> any MessagingGateway,
-        onReady: @escaping @Sendable (RuntimeProfileState) async -> Void = { _ in }
+        build: @escaping @Sendable (RuntimeProfileState) async throws -> any MessagingGateway,
+        ensureRunning: (@Sendable () async throws -> RuntimeProfileState)? = nil
     ) {
-        self.paths = paths
-        self.profileName = profileName
+        self.ensureRunning = ensureRunning ?? {
+            try await ManagedRuntime.shared.ensureRunning(
+                paths: paths,
+                profileName: profileName,
+                progress: { message in
+                    FileHandle.standardError.write(Data("Inbox+: \(message)\n".utf8))
+                }
+            )
+        }
         self.build = build
-        self.onReady = onReady
     }
+
+    deinit { resolving?.cancel() }
 
     // MARK: - MessagingGateway
 
@@ -56,36 +64,66 @@ actor DeferredRuntimeGateway: MessagingGateway {
         try await gateway().send(attachment, to: route)
     }
 
+    func stop() async {
+        if let stopping { return await stopping.value }
+        generation += 1
+        let pending = resolving
+        pending?.cancel()
+        resolving = nil
+        let gateway = resolved
+        resolved = nil
+        let task = Task {
+            if let pending, case let .success(built) = await pending.result { await built.stop() }
+            await gateway?.stop()
+        }
+        stopping = task
+        await task.value
+        stopping = nil
+    }
+
     // MARK: - Resolution
 
     /// Starts the runtime once, however many callers arrive at the same moment.
     private func gateway() async throws -> any MessagingGateway {
+        try Task.checkCancellation()
+        if let stopping { await stopping.value }
+        try Task.checkCancellation()
         if let resolved { return resolved }
-        if let resolving { return try await resolving.value }
+        if let resolving {
+            let currentGeneration = generation
+            let gateway = try await resolving.value
+            try Task.checkCancellation()
+            guard generation == currentGeneration else { throw CancellationError() }
+            return gateway
+        }
 
-        let task = Task<any MessagingGateway, any Error> { [paths, profileName, build, onReady] in
-            let state = try await ManagedRuntime.shared.ensureRunning(
-                paths: paths,
-                profileName: profileName,
-                progress: { message in
-                    FileHandle.standardError.write(Data("Inbox+: \(message)\n".utf8))
-                }
-            )
-            let gateway = try build(state)
-            await onReady(state)
+        let currentGeneration = generation
+        let task = Task<any MessagingGateway, any Error> { [ensureRunning, build] in
+            let state = try await ensureRunning()
+            try Task.checkCancellation()
+            let gateway = try await build(state)
+            if Task.isCancelled {
+                await gateway.stop()
+                throw CancellationError()
+            }
             return gateway
         }
         resolving = task
 
         do {
             let gateway = try await task.value
+            guard generation == currentGeneration else {
+                await gateway.stop()
+                throw CancellationError()
+            }
             resolved = gateway
-            resolving = nil
+            if generation == currentGeneration { resolving = nil }
+            try Task.checkCancellation()
             return gateway
         } catch {
             // Cleared so a retry — the user pressing reload, or the next send — starts again rather
             // than replaying a stored failure forever.
-            resolving = nil
+            if generation == currentGeneration { resolving = nil }
             throw error
         }
     }

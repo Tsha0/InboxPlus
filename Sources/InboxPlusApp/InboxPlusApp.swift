@@ -8,9 +8,14 @@ import InboxPlusUI
 /// starts unbundled processes as background-only: the window draws but can never become
 /// key, so it takes no clicks, no keyboard focus, and gets no menu bar. Promoting the
 /// process to a regular app at launch is what makes the UI usable.
+@MainActor
 final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
     /// Held for the process lifetime; a cancelled source stops delivering.
     private var terminationSignals: [DispatchSourceSignal] = []
+    var shutdown: (@MainActor () async -> Void)?
+    private var terminationDeadline: Task<Void, Never>?
+    private var hasRepliedToTermination = false
+    private var isTerminating = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -48,23 +53,31 @@ final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    /// Stops the runtime this app started before the app itself goes away.
-    ///
-    /// Quitting has to take the homeserver and every bridge with it, or they keep running headless
-    /// with nothing driving them, holding the profile lock so the next launch cannot start its own.
-    /// A runtime someone started in a terminal is left alone — it was never ours.
-    ///
-    /// `.terminateLater` is what buys the time: macOS otherwise tears the process down immediately
-    /// and the children are orphaned rather than stopped.
+    /// Disconnect clients before exit, with a bounded wait so quitting always completes.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        // Deliberately not `.terminateLater`. Deferring means replying later from the main thread,
-        // and getting that wrong leaves the app alive forever with its runtime already stopped —
-        // which is exactly what happened the first time this was written. Signalling and quitting
-        // has no such failure mode: the child shuts down in order on SIGINT, and its own
-        // parent-death watch finishes the job whatever happens to this process.
+        guard !isTerminating else { return .terminateLater }
         ManagedRuntime.shared.requestStop()
-        return .terminateNow
+        guard let shutdown else { return .terminateNow }
+        isTerminating = true
+        terminationDeadline = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            self?.finishTermination(sender)
+        }
+        Task { [weak self] in
+            await shutdown()
+            self?.finishTermination(sender)
+        }
+        return .terminateLater
     }
+
+    private func finishTermination(_ sender: NSApplication) {
+        guard !hasRepliedToTermination else { return }
+        hasRepliedToTermination = true
+        terminationDeadline?.cancel()
+        sender.reply(toApplicationShouldTerminate: true)
+    }
+
 }
 
 @main
@@ -84,6 +97,7 @@ struct InboxPlusApp: App {
         WindowGroup("Inbox+", id: "main") {
             RootView(model: model, makeLoginSession: BridgeSelection.makeProvider())
                 .task {
+                    appDelegate.shutdown = { await model.shutdown() }
                     do { try await model.start() }
                     catch is CancellationError {}
                     catch { model.reportStartupFailure(error) }

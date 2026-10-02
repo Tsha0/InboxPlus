@@ -47,7 +47,7 @@ func realInstagramBridgeInstallsConfiguresRegistersAndServesItsLoginFlow() async
         paths: paths,
         packageRoot: RuntimeProfileService.resolvedPackageRoot()
     )
-    try await service.bootstrap(python: python)
+    _ = try await service.bootstrap(python: python)
 
     let state = try #require(try service.loadState())
     let ownerUserID = "@inboxplus:\(state.serverName)"
@@ -133,7 +133,7 @@ func aBridgeWithoutItsProvisioningSecretIsReportedDegradedRatherThanHealthy() as
         paths: paths,
         packageRoot: RuntimeProfileService.resolvedPackageRoot()
     )
-    try await service.bootstrap(python: python)
+    _ = try await service.bootstrap(python: python)
 
     let state = try #require(try service.loadState())
     let runtime = BridgeRuntime(paths: paths)

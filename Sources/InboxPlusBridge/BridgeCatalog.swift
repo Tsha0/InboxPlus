@@ -49,7 +49,7 @@ public struct BridgeArtifact: Codable, Sendable, Equatable {
 /// Everything Inbox+ needs to know about one network's bridge before it runs.
 public struct BridgeDescriptor: Codable, Sendable, Equatable, Identifiable {
     /// Matches the appservice registration id and the on-disk directory name, so it must stay
-    /// within the safe-identifier set `AppServiceRegistration` enforces.
+    /// within the safe-identifier set the catalog validates.
     public let id: String
     public let platform: Platform
     public let displayName: String

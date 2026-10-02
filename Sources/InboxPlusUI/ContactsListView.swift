@@ -4,12 +4,12 @@ import InboxPlusFeatures
 
 struct ContactsListView: View {
     let people: [InboxPlusPerson]
-    let items: [InboxItem]
+    let summariesByPersonID: [String: [ConversationSummary]]
     let selectedPersonID: String?
     let onSelect: (String) -> Void
 
     private func summaries(for personID: String) -> [ConversationSummary] {
-        items.first { $0.id == .person(personID) }?.conversationSummaries ?? []
+        summariesByPersonID[personID] ?? []
     }
 
     var body: some View {

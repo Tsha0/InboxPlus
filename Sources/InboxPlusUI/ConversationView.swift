@@ -68,9 +68,7 @@ public struct ConversationView: View {
     }
 
     private var summary: ConversationSummary? {
-        model.inboxItems
-            .flatMap(\.conversationSummaries)
-            .first { $0.route == route }
+        model.summary(for: route)
     }
 
     private var messages: [Message] {

@@ -3,6 +3,7 @@ import Testing
 @testable import InboxPlusBridge
 @testable import InboxPlusBridgeService
 @testable import InboxPlusRuntime
+import InboxPlusTestSupport
 
 private func makeClient(_ script: DummyBridge.Script) throws -> (BridgeProvisioningClient, DummyBridge) {
     let bridge = DummyBridge(script: script)

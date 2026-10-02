@@ -173,7 +173,6 @@ private let instagramAccount = ConnectedAccount(
 
 @MainActor
 @Test func lastActivityTracksTheNewestMessagePerAccount() async throws {
-    let route = ConversationRoute(accountID: instagramAccount.id, conversationID: "!room")
     let old = Date(timeIntervalSince1970: 1_000)
     let model = try await startedModel(seed: snapshot(
         accounts: [instagramAccount],

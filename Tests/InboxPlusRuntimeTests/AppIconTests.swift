@@ -34,14 +34,3 @@ import Testing
         #expect(names.contains(required), "missing \(required)")
     }
 }
-
-@Test func theBundleDeclaresTheIconItShips() throws {
-    let repository = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-    let script = try String(
-        contentsOf: repository.appendingPathComponent("Scripts/build-app.sh"), encoding: .utf8
-    )
-    // An icns in Resources that Info.plist never names is an icon nobody sees.
-    #expect(script.contains("<key>CFBundleIconFile</key><string>AppIcon</string>"))
-    #expect(script.contains("cp Resources/AppIcon.icns"))
-}

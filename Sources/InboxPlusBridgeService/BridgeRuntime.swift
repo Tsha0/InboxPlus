@@ -9,6 +9,7 @@ public enum BridgeRuntimeError: Error, Equatable, Sendable, CustomStringConverti
     case registrationGenerationFailed(bridge: String, output: String)
     case registrationMissing(URL)
     case notPrepared(String)
+    case supervisionFailed(bridge: String, reason: String)
     case flowDrift(bridge: String, expected: [String], actual: [String])
 
     public var description: String {
@@ -21,6 +22,8 @@ public enum BridgeRuntimeError: Error, Equatable, Sendable, CustomStringConverti
             "the bridge did not write a registration at \(url.path)"
         case let .notPrepared(id):
             "bridge '\(id)' has not been prepared for this profile"
+        case let .supervisionFailed(bridge, reason):
+            "bridge '\(bridge)' failed during supervision: \(reason)"
         case let .flowDrift(bridge, expected, actual):
             """
             '\(bridge)' advertises login flows \(actual.sorted()) but the pinned version was \
@@ -91,13 +94,22 @@ public struct BridgeRuntime: Sendable {
     private let libolm: LibolmProvisioner
     private let portAllocator: LoopbackPortAllocator
     private let store: PreparedBridgeStore
+    private let maximumConcurrentOperations: Int
+    private let supervisorFactory: SupervisorFactory?
+
+    public typealias SupervisorFactory = @Sendable (PreparedBridge) throws -> SynapseSupervisor
 
     public init(
         paths: RuntimePaths,
         fetcher: any BridgeArtifactFetching = URLSessionBridgeArtifactFetcher(),
-        libolm: LibolmProvisioner = LibolmProvisioner()
+        libolm: LibolmProvisioner = LibolmProvisioner(),
+        maximumConcurrentOperations: Int = 3,
+        supervisorFactory: SupervisorFactory? = nil
     ) {
+        precondition(maximumConcurrentOperations > 0)
         self.paths = paths
+        self.maximumConcurrentOperations = maximumConcurrentOperations
+        self.supervisorFactory = supervisorFactory
         installer = BridgeInstaller(paths: paths, fetcher: fetcher)
         self.libolm = libolm
         portAllocator = LoopbackPortAllocator()
@@ -184,9 +196,8 @@ public struct BridgeRuntime: Sendable {
 
     /// Runs the bridge's own `--generate-registration`, which is authoritative for its namespaces.
     ///
-    /// Inbox+ has an `AppServiceRegistration` generator, but a bridge knows which users and aliases
-    /// it actually claims; generating that from Inbox+'s assumptions would be a guess that only
-    /// fails once real traffic arrives.
+    /// A bridge knows which users and aliases it actually claims; its own generator is the
+    /// authority for the namespaces Synapse loads.
     private func generateRegistration(
         executable: URL,
         configuration: BridgeConfiguration,
@@ -274,6 +285,7 @@ public struct BridgeRuntime: Sendable {
 
     /// Builds a supervisor for a prepared bridge, reusing the Phase 2 state machine unchanged.
     public func makeSupervisor(for record: PreparedBridge) throws -> SynapseSupervisor {
+        if let supervisorFactory { return try supervisorFactory(record) }
         let directory = URL(fileURLWithPath: record.executable).deletingLastPathComponent()
         // The supervisor's captured streams go to the profile's own logs directory, which it
         // requires be a direct child of the profile root; the bridge's structured JSON log stays
@@ -324,34 +336,86 @@ public struct BridgeRuntime: Sendable {
     @discardableResult
     public func withRunningBridges<T>(
         onBridgeReady: @Sendable (PreparedBridge, RuntimeSnapshot) -> Void = { _, _ in },
-        onBridgeFailed: @Sendable (PreparedBridge, any Error) -> Void = { _, _ in },
+        onBridgeFailed: @Sendable @escaping (PreparedBridge, any Error) -> Void = { _, _ in },
         _ body: @Sendable ([PreparedBridge: SynapseSupervisor]) async throws -> T
     ) async throws -> T {
-        var running: [PreparedBridge: SynapseSupervisor] = [:]
-        for record in try store.load() {
-            do {
-                let supervisor = try makeSupervisor(for: record)
-                let snapshot = try await supervisor.start()
-                running[record] = supervisor
-                onBridgeReady(record, snapshot)
-            } catch {
-                onBridgeFailed(record, error)
+        try Task.checkCancellation()
+        let records = try store.load()
+        let running = await withTaskGroup(of: BridgeLaunchResult.self) { group in
+            var iterator = records.makeIterator()
+            func enqueue(_ record: PreparedBridge) {
+                group.addTask {
+                    do {
+                        try Task.checkCancellation()
+                        let supervisor = try makeSupervisor(for: record)
+                        let snapshot = try await supervisor.start()
+                        return .ready(record, supervisor, snapshot)
+                    } catch {
+                        return .failed(record, error)
+                    }
+                }
             }
-        }
-        defer {
-            let supervisors = running.values
-            Task { for supervisor in supervisors { _ = try? await supervisor.stop() } }
+            for _ in 0..<maximumConcurrentOperations {
+                if let record = iterator.next() { enqueue(record) }
+            }
+            var started: [PreparedBridge: SynapseSupervisor] = [:]
+            for await result in group {
+                switch result {
+                case let .ready(record, supervisor, snapshot):
+                    started[record] = supervisor
+                    onBridgeReady(record, snapshot)
+                case let .failed(record, error):
+                    if !(error is CancellationError) { onBridgeFailed(record, error) }
+                }
+                if !Task.isCancelled, let next = iterator.next() { enqueue(next) }
+            }
+            return started
         }
         do {
-            let value = try await body(running)
-            for supervisor in running.values { _ = try? await supervisor.stop() }
-            running.removeAll()
+            try Task.checkCancellation()
+            let value = try await withThrowingTaskGroup(of: Void.self) { group in
+                // Supervision completing for one failed bridge leaves the other networks running.
+                for (record, supervisor) in running {
+                    group.addTask {
+                        await supervisor.supervise()
+                        let snapshot = await supervisor.status()
+                        if !Task.isCancelled, snapshot.phase == .failed {
+                            onBridgeFailed(record, BridgeRuntimeError.supervisionFailed(
+                                bridge: record.bridgeID,
+                                reason: snapshot.lastError ?? "unknown lifecycle failure"
+                            ))
+                        }
+                    }
+                }
+                defer { group.cancelAll() }
+                return try await body(running)
+            }
+            await stopBridges(Array(running.values))
             return value
         } catch {
-            for supervisor in running.values { _ = try? await supervisor.stop() }
-            running.removeAll()
+            await stopBridges(Array(running.values))
             throw error
         }
+    }
+
+    private func stopBridges(_ supervisors: [SynapseSupervisor]) async {
+        await withTaskGroup(of: Void.self) { group in
+            var iterator = supervisors.makeIterator()
+            func enqueue(_ supervisor: SynapseSupervisor) {
+                group.addTask { _ = try? await supervisor.stop() }
+            }
+            for _ in 0..<maximumConcurrentOperations {
+                if let supervisor = iterator.next() { enqueue(supervisor) }
+            }
+            for await _ in group {
+                if let next = iterator.next() { enqueue(next) }
+            }
+        }
+    }
+
+    private enum BridgeLaunchResult: Sendable {
+        case ready(PreparedBridge, SynapseSupervisor, RuntimeSnapshot)
+        case failed(PreparedBridge, any Error)
     }
 
     /// Compares what a running bridge advertises against what the pinned version was recorded as
@@ -411,12 +475,6 @@ struct PreparedBridgeStore: Sendable {
         var records = try load()
         records.removeAll { $0.bridgeID == record.bridgeID }
         records.append(record)
-        try save(records)
-    }
-
-    func remove(bridgeID: String) throws {
-        var records = try load()
-        records.removeAll { $0.bridgeID == bridgeID }
         try save(records)
     }
 
