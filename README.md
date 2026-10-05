@@ -13,34 +13,31 @@ It is conversation-focused. There are no feeds, posts, stories or calls.
 
 ## Status
 
-**A working development build, not a release.** On a Mac with a prepared profile it connects a real
-account, loads real conversations, sends and receives, renders media, and supervises the prepared network
-bridges alongside the homeserver.
+**Current version: 0.5.0 — a working development build, not a release.** On a Mac with a
+prepared profile it connects a real account, loads real conversations, sends and receives, renders
+media, and supervises prepared network bridges alongside the homeserver. Opening Inbox+ starts the
+local runtime automatically; quitting stops the runtime it started. A runtime started separately
+in a terminal remains under your control.
 
-It is not something to hand to anyone else yet. Nothing is code-signed or notarized, no network has
-been certified against a live account except Instagram, and a recorded benchmark verdict from Phase
-2 — `Require PostgreSQL` — has not been revisited even though the storage load has since grown. See
-[`docs/testing/phase-8-release-certification.md`](docs/testing/phase-8-release-certification.md)
-for the full gap list.
+Conversation settings and avatar updates are kept out of chat history, so syncing metadata does
+not appear as messages.
+
+Local builds are ad-hoc signed but not notarized. Only Instagram has been exercised with a live
+account; broader live-network certification and updated performance validation remain outstanding.
 
 ## Development profile compatibility
 
-The project uses **Inbox+** for the app and runtime directory, `InboxPlus` for Swift modules
-and executables, and the `INBOXPLUS_` prefix for environment variables.
-
-Current development builds use the app identity `com.inboxplus.app`, the runtime root
-`~/Library/Application Support/Inbox+/DeveloperRuntime`, and the local homeserver name
-`inboxplus.localhost`. Existing profiles from earlier builds are not automatically migrated; prepare
-a fresh Inbox+ profile using the commands below. Keep earlier profile data backed up and do not
-reuse its homeserver database under the new server name. Grant macOS permissions to the installed app again
-and update development environment variables to the `INBOXPLUS_` prefix.
+Inbox+ uses the app identity `com.inboxplus.app`, the runtime root
+`~/Library/Application Support/Inbox+/DeveloperRuntime`, and `INBOXPLUS_` environment variables.
+Profiles from earlier app builds are not automatically migrated. Keep earlier profile data backed
+up and grant macOS permissions to Inbox+ again.
 
 ## Requirements
 
 - Apple silicon Mac, macOS 15 or later
 - Swift 6.2 toolchain or newer (developed against Swift 6.3 / Xcode 26.5)
-- Homebrew CPython 3.12 — for the local Synapse runtime
-- `cmake` (`brew install cmake`) — needed once per profile to build libolm
+- Homebrew CPython 3.12 — for manual development profiles; the installed app bundles Python
+- `cmake` (`brew install cmake`) and Rust/Cargo — for building the bundled runtime
 
 ## Install
 
@@ -50,21 +47,16 @@ Build a real, double-clickable `Inbox+.app` and put it in `/Applications`:
 Scripts/build-app.sh --install
 ```
 
-Then prepare a profile and start the runtime, which must stay running while you use Inbox+:
+Open `/Applications/Inbox+.app` from Finder. The app bundles Python, Synapse, libolm, and the
+supported bridge binaries. On first launch it prepares a `default` profile automatically and
+starts the local runtime; no separate runtime terminal or Homebrew Python installation is needed
+to use the installed app. Quit Inbox+ to stop the runtime it started.
 
-```bash
-/Applications/Inbox+.app/Contents/MacOS/InboxPlusRuntimeCLI bootstrap --profile demo \
-  --python /opt/homebrew/opt/python@3.12/bin/python3.12
-/Applications/Inbox+.app/Contents/MacOS/InboxPlusRuntimeCLI start --profile demo
-```
+With exactly one prepared profile, Inbox+ selects it automatically. With several, set
+`INBOXPLUS_PROFILE` to select one.
 
-Open the installed `Inbox+.app` from Finder. With exactly one prepared profile it attaches automatically; with several,
-set `INBOXPLUS_PROFILE` to name one, because guessing would silently attach to the wrong account.
-
-This build is **ad-hoc signed and runs on this Mac only**. Gatekeeper on anyone else's Mac will
-refuse it — distributing to other people needs an Apple Developer ID and
-`Scripts/package-release.sh`, which has never been run. See
-[Phase 7](docs/testing/phase-7-lifecycle-and-security.md).
+The default build is **ad-hoc signed**. Distribution requires an Apple Developer ID and
+`Scripts/package-release.sh` for signing and notarization.
 
 > Set `INBOXPLUS_SIGNING_IDENTITY` before building to sign with a real or self-signed certificate.
 > Worth doing: macOS ties Full Disk Access and Automation grants to a code identity, and an ad-hoc
@@ -90,7 +82,8 @@ swift test
 swift run InboxPlus
 ```
 
-With no profile configured the app starts with an empty inbox and contacts list.
+When running from source without a bundled runtime or prepared profile, the app starts with an
+empty inbox and contacts list.
 Nothing connects and no network is contacted.
 
 To run against a real local homeserver:
@@ -101,15 +94,17 @@ swift run InboxPlusRuntimeCLI bootstrap --profile demo --python /opt/homebrew/op
 swift run InboxPlusRuntimeCLI bridge --profile demo --action install --network instagram
 swift run InboxPlusRuntimeCLI bridge --profile demo --action prepare --network instagram
 
-# shell 1 — Synapse and every prepared bridge
-swift run -c release InboxPlusRuntimeCLI start --profile demo
-
-# shell 2 — the app, attached to that profile
+# launch the app; it starts Synapse and every prepared bridge
 INBOXPLUS_PROFILE=demo swift run -c release InboxPlus
 ```
 
-Then **Settings → Add** and pick a network. Sign in on the network's own page; Inbox+ captures only
-the credentials the bridge declared it needs.
+Then **Settings → Add** and pick a network. Follow the bridge's login flow; web sign-ins use the
+network's own page, and Inbox+ captures only the credentials the bridge declared it needs. If adding
+a bridge asks for a runtime restart, quit and reopen Inbox+ when the app manages the runtime.
+
+For manual runtime control, run `swift run -c release InboxPlusRuntimeCLI start --profile demo` in a
+separate terminal before launching the app. Inbox+ attaches to that runtime and leaves it running
+when you quit.
 
 `swift run` produces a bare executable rather than an `.app` bundle, and macOS starts unbundled
 processes as background-only — the window draws but never becomes key, so it takes no clicks and no
@@ -151,6 +146,8 @@ a profile that already runs one keeps attributing its conversations correctly.
 
 > Several of these networks ban accounts for connecting with unofficial clients, and those bans are
 > permanent. Use a throwaway account.
+
+Bluesky and Signal support has been removed.
 
 ## How it fits together
 
@@ -208,19 +205,6 @@ remove       stop and remove exactly one profile, after confirmation
 - **Deep links are verified.** An **Open in app** action only ever follows an `https` link on a
   domain the named platform demonstrably owns.
 
-## Documentation
-
-Per-phase acceptance notes, including what each phase deliberately did *not* deliver:
-
-- [Phase 2 — local Synapse runtime](docs/testing/phase-2-runtime-acceptance.md)
-- [Phase 3 — Matrix client and bridge contract](docs/testing/phase-3-matrix-acceptance.md)
-- [Phase 4 — network bridges](docs/testing/phase-4-bridge-acceptance.md)
-- [Phase 5 — message and media](docs/testing/phase-5-media-acceptance.md)
-- [Phase 6 — extended adapters](docs/testing/phase-6-extended-adapters.md)
-- [Phase 7 — lifecycle and security](docs/testing/phase-7-lifecycle-and-security.md)
-- [Phase 8 — release certification](docs/testing/phase-8-release-certification.md)
-- [Dependency inventory](docs/dependencies.md) and [SBOM](docs/sbom.cdx.json)
-
 ## Contributing
 
 `main` is protected: it takes no direct pushes, and a change reaches it through a pull request whose
@@ -228,7 +212,7 @@ checks are green. Approvals are not required — this is a solo repository and G
 you approve your own pull request — but CI is.
 
 ```bash
-git switch -c my-change
+git switch -c codex/my-change
 # ...
 gh pr create --fill
 ```
@@ -257,7 +241,7 @@ one into a false failure.
 ## Tests
 
 ```bash
-swift test                    # 583 tests, no network, no homeserver
+swift test                    # default suite; no live accounts or homeserver
 ```
 
 Tests that need a real Synapse are opt-in, because they are slow and download things:
