@@ -4,7 +4,7 @@ The generated [CycloneDX SBOM](sbom.cdx.json) lists dependency versions, license
 artifact hashes, and source locations. Regenerate it with:
 
 ```bash
-swift run MimoRuntimeCLI sbom --output docs/sbom.cdx.json
+swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json
 ```
 
 Dependency pins are defined in:
@@ -12,8 +12,8 @@ Dependency pins are defined in:
 - [`Package.swift`](../Package.swift)
 - [`Runtime/Synapse/runtime-manifest.json`](../Runtime/Synapse/runtime-manifest.json)
 - [`Runtime/Synapse/requirements.lock`](../Runtime/Synapse/requirements.lock)
-- [`Sources/MimoBridge/BridgeCatalog.swift`](../Sources/MimoBridge/BridgeCatalog.swift)
-- [`Sources/MimoBridgeService/LibolmProvisioner.swift`](../Sources/MimoBridgeService/LibolmProvisioner.swift)
+- [`Sources/InboxPlusBridge/BridgeCatalog.swift`](../Sources/InboxPlusBridge/BridgeCatalog.swift)
+- [`Sources/InboxPlusBridgeService/LibolmProvisioner.swift`](../Sources/InboxPlusBridgeService/LibolmProvisioner.swift)
 
 CPython is host-provided under the PSF-2.0 license.
 

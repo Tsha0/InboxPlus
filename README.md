@@ -29,7 +29,7 @@ account; broader live-network certification and updated performance validation r
 
 Inbox+ uses the app identity `com.inboxplus.app`, the runtime root
 `~/Library/Application Support/Inbox+/DeveloperRuntime`, and `INBOXPLUS_` environment variables.
-Profiles from earlier Mimo builds are not automatically migrated. Keep earlier profile data backed
+Profiles from earlier app builds are not automatically migrated. Keep earlier profile data backed
 up and grant macOS permissions to Inbox+ again.
 
 ## Requirements
