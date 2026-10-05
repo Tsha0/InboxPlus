@@ -13,11 +13,16 @@ It is conversation-focused. There are no feeds, posts, stories or calls.
 
 ## Status
 
-**A working development build, not a release.** On a Mac with a prepared profile it connects a real
-account, loads real conversations, sends and receives, renders media, and supervises eight network
-bridges alongside the homeserver.
+**Current version: 0.5.0 — a working development build, not a release.** On a Mac with a
+prepared profile it connects a real account, loads real conversations, sends and receives, renders
+media, and supervises prepared network bridges alongside the homeserver. Opening Mimo starts the
+local runtime automatically; quitting stops the runtime it started. A runtime started separately
+in a terminal remains under your control.
 
-It is not something to hand to anyone else yet. Nothing is code-signed or notarized, no network has
+Conversation settings and avatar updates are kept out of chat history, so syncing metadata does
+not appear as messages.
+
+It is not something to hand to anyone else yet. Local builds are ad-hoc signed but not notarized, no network has
 been certified against a live account except Instagram, and a recorded benchmark verdict from Phase
 2 — `Require PostgreSQL` — has not been revisited even though the storage load has since grown. See
 [`docs/testing/phase-8-release-certification.md`](docs/testing/phase-8-release-certification.md)
@@ -47,15 +52,15 @@ Build a real, double-clickable `Mimo.app` and put it in `/Applications`:
 Scripts/build-app.sh --install
 ```
 
-Then prepare a profile and start the runtime, which must stay running while you use Mimo:
+Then prepare a profile once:
 
 ```bash
 /Applications/Mimo.app/Contents/MacOS/MimoRuntimeCLI bootstrap --profile demo \
   --python /opt/homebrew/opt/python@3.12/bin/python3.12
-/Applications/Mimo.app/Contents/MacOS/MimoRuntimeCLI start --profile demo
 ```
 
-Open Mimo from Finder. With exactly one prepared profile it attaches automatically; with several,
+Open Mimo from Finder to start the homeserver and prepared bridges. With exactly one prepared
+profile it attaches automatically; with several,
 set `MIMO_PROFILE` to name one, because guessing would silently attach to the wrong account.
 
 This build is **ad-hoc signed and runs on this Mac only**. Gatekeeper on anyone else's Mac will
@@ -98,15 +103,17 @@ swift run MimoRuntimeCLI bootstrap --profile demo --python /opt/homebrew/opt/pyt
 swift run MimoRuntimeCLI bridge --profile demo --action install --network instagram
 swift run MimoRuntimeCLI bridge --profile demo --action prepare --network instagram
 
-# shell 1 — Synapse and every prepared bridge
-swift run -c release MimoRuntimeCLI start --profile demo
-
-# shell 2 — the app, attached to that profile
+# launch the app; it starts Synapse and every prepared bridge
 MIMO_PROFILE=demo swift run -c release Mimo
 ```
 
-Then **Settings → Add** and pick a network. Sign in on the network's own page; Mimo captures only
-the credentials the bridge declared it needs.
+Then **Settings → Add** and pick a network. Follow the bridge's login flow; web sign-ins use the
+network's own page, and Mimo captures only the credentials the bridge declared it needs. If adding
+a bridge asks for a runtime restart, quit and reopen Mimo when the app manages the runtime.
+
+For manual runtime control, run `swift run -c release MimoRuntimeCLI start --profile demo` in a
+separate terminal before launching the app. Mimo attaches to that runtime and leaves it running
+when you quit.
 
 `swift run` produces a bare executable rather than an `.app` bundle, and macOS starts unbundled
 processes as background-only — the window draws but never becomes key, so it takes no clicks and no
@@ -116,11 +123,11 @@ to a code identity, and an ad-hoc signature's identity changes every time you bu
 
 ## Networks
 
-Ten networks can be connected. Two more — Google Messages and Google Voice — remain in the
+Eight networks can be added. Two more — Google Messages and Google Voice — remain in the
 catalog so an existing profile keeps working, but are no longer offered.
 
-Twelve networks are in the catalog in total. Eleven download a bridge binary pinned to an exact version and
-SHA-256, verified before it is ever made executable; iMessage has nothing to download, because it
+Ten networks are in the catalog in total. Nine download a bridge binary pinned to an exact version
+and SHA-256, verified before it is ever made executable; iMessage has nothing to download, because it
 is reached through macOS itself. A bridge's own login flow is what gets rendered — Mimo never
 guesses what a network will ask for.
 
@@ -150,6 +157,8 @@ a profile that already runs one keeps attributing its conversations correctly.
 
 > Several of these networks ban accounts for connecting with unofficial clients, and those bans are
 > permanent. Use a throwaway account.
+
+Bluesky and Signal support has been removed.
 
 ## How it fits together
 
@@ -207,19 +216,6 @@ remove       stop and remove exactly one profile, after confirmation
 - **Deep links are verified.** An **Open in app** action only ever follows an `https` link on a
   domain the named platform demonstrably owns.
 
-## Documentation
-
-Per-phase acceptance notes, including what each phase deliberately did *not* deliver:
-
-- [Phase 2 — local Synapse runtime](docs/testing/phase-2-runtime-acceptance.md)
-- [Phase 3 — Matrix client and bridge contract](docs/testing/phase-3-matrix-acceptance.md)
-- [Phase 4 — network bridges](docs/testing/phase-4-bridge-acceptance.md)
-- [Phase 5 — message and media](docs/testing/phase-5-media-acceptance.md)
-- [Phase 6 — extended adapters](docs/testing/phase-6-extended-adapters.md)
-- [Phase 7 — lifecycle and security](docs/testing/phase-7-lifecycle-and-security.md)
-- [Phase 8 — release certification](docs/testing/phase-8-release-certification.md)
-- [Dependency inventory](docs/dependencies.md) and [SBOM](docs/sbom.cdx.json)
-
 ## Contributing
 
 `main` is protected: it takes no direct pushes, and a change reaches it through a pull request whose
@@ -227,7 +223,7 @@ checks are green. Approvals are not required — this is a solo repository and G
 you approve your own pull request — but CI is.
 
 ```bash
-git switch -c my-change
+git switch -c codex/my-change
 # ...
 gh pr create --fill
 ```
@@ -256,7 +252,7 @@ one into a false failure.
 ## Tests
 
 ```bash
-swift test                    # 583 tests, no network, no homeserver
+swift test                    # default suite; no live accounts or homeserver
 ```
 
 Tests that need a real Synapse are opt-in, because they are slow and download things:
