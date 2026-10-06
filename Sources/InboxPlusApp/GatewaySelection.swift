@@ -29,6 +29,7 @@ enum GatewaySelection {
         /// person sitting in Contacts beside real conversations, linked to identities that do not
         /// exist, is indistinguishable from a bug.
         let directory: ContactDirectory
+        var favouriteStore: InboxFavouriteStore? = nil
     }
 
     @MainActor
@@ -66,7 +67,8 @@ enum GatewaySelection {
                 gateway: gateway,
                 media: media,
                 // Real accounts start with no linked people. Linking is something the user does.
-                directory: ContactDirectory()
+                directory: ContactDirectory(),
+                favouriteStore: InboxFavouriteStore(fileURL: paths.profile.appendingPathComponent("inbox-favourites.json"))
             )
         } catch {
             // Surface the reason instead of silently substituting fake conversations.

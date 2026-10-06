@@ -227,6 +227,8 @@ public struct RootView: View {
             InboxView(
                 items: model.inboxItems,
                 selectedID: selectedInboxID,
+                favouriteError: model.favouriteError,
+                onToggleFavourite: model.toggleFavourite,
                 onSelect: model.selectInboxItem
             )
         case .contacts:

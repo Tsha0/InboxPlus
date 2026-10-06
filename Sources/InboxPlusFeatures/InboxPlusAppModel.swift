@@ -116,6 +116,9 @@ public final class InboxPlusAppModel {
     }
 
     private let gateway: any MessagingGateway
+    public private(set) var favouriteError: String?
+    private let favouriteStore: InboxFavouriteStore?
+    private var favouriteRoutes: Set<ConversationRoute> = []
     private var directory: ContactDirectory
     private var draftRevision: UInt64 = 0
     private var disconnectedAccountIDs: Set<String> = []
@@ -136,11 +139,15 @@ public final class InboxPlusAppModel {
     public init(
         gateway: any MessagingGateway,
         directory: ContactDirectory = .init(),
-        media: MediaController = MediaController()
+        media: MediaController = MediaController(),
+        favouriteStore: InboxFavouriteStore? = nil
     ) {
         self.gateway = gateway
         self.directory = directory
         self.media = media
+        self.favouriteStore = favouriteStore
+        do { favouriteRoutes = try favouriteStore?.load() ?? [] }
+        catch { favouriteError = "Could not load favourites: \(error.localizedDescription)" }
     }
 
     public func start() async throws {
@@ -174,6 +181,23 @@ public final class InboxPlusAppModel {
     isolated deinit {
         startupTask?.cancel()
         eventTask?.cancel()
+    }
+
+    /// A person is favourite when any route is saved; toggling applies to the whole current group.
+    public func toggleFavourite(_ item: InboxItem) {
+        guard let current = inboxItems.first(where: { $0.id == item.id }) else { return }
+        var updated = favouriteRoutes
+        let routes = current.conversationSummaries.map(\.route)
+        if current.isFavourite { updated.subtract(routes) }
+        else { updated.formUnion(routes) }
+        do {
+            try favouriteStore?.save(updated)
+            favouriteRoutes = updated
+            favouriteError = nil
+            rebuildInbox()
+        } catch {
+            favouriteError = "Could not save favourites: \(error.localizedDescription)"
+        }
     }
 
     public func selectInboxItem(_ item: InboxItem) {
@@ -614,7 +638,8 @@ public final class InboxPlusAppModel {
             accounts: accounts,
             identities: identities,
             conversations: conversations,
-            directory: directory
+            directory: directory,
+            favouriteRoutes: favouriteRoutes
         )
     }
 }
