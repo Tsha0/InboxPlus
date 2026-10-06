@@ -338,7 +338,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
                     unreadCount: Int(info?.numUnreadMessages ?? 0)
                 )
             ))
-            for message in messages { publish(.messageUpserted(message)) }
+            for message in messages { publish(.historicalMessageUpserted(message)) }
         }
     }
 
@@ -467,20 +467,22 @@ public actor MatrixMessagingGateway: MessagingGateway {
     }
 
     private func publishTimelineEvent(_ event: GatewayEvent, roomID: String) async {
+        let message: Message
+        let historical: Bool
+        switch event {
+        case let .messageUpserted(value): message = value; historical = false
+        case let .historicalMessageUpserted(value): message = value; historical = true
+        default: publish(event); return
+        }
         // Some bridges use event-specific attribution. Look up newly persisted native sends
         // before exposing an incoming-looking event, rather than waiting for room discovery.
-        if case let .messageUpserted(message) = event, !message.isOutgoing,
-           outgoingIdentifiersByAccount[message.route.accountID] != nil {
+        if !message.isOutgoing, outgoingIdentifiersByAccount[message.route.accountID] != nil {
             await refreshOutgoingIdentifiers()
         }
         // Listener callbacks hop into this actor asynchronously. If ownership changed during
         // that hop, publish the observer's current value so a stale incoming event cannot undo it.
-        if case let .messageUpserted(message) = event,
-           let current = observers[roomID]?.message(id: message.id) {
-            publish(.messageUpserted(current))
-        } else {
-            publish(event)
-        }
+        let current = observers[roomID]?.message(id: message.id) ?? message
+        publish(historical ? .historicalMessageUpserted(current) : .messageUpserted(current))
     }
 
     private func publish(_ event: GatewayEvent) {
@@ -542,38 +544,39 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
     }
 
     func onUpdate(diff: [TimelineDiff]) {
-        var incoming: [EventTimelineItem] = []
-        for change in diff {
-            let items: [TimelineItem]
-            switch change {
-            case let .append(values), let .reset(values): items = values
-            case let .pushBack(value), let .pushFront(value), let .insert(_, value), let .set(_, value):
-                items = [value]
-            case .clear, .popFront, .popBack, .remove, .truncate:
-                // A redaction arrives as an event; removal diffs do not delete displayed history.
-                continue
+        // Only tail additions after the initial batch can represent new traffic. Backward
+        // pagination, resets, edits, and decryption replacements still update the transcript.
+        let updates: [GatewayEvent] = lock.withLock {
+            var updates: [GatewayEvent] = []
+            for change in diff {
+                let items: [TimelineItem]
+                let live: Bool
+                switch change {
+                case let .append(values): items = values; live = receivedFirstBatch
+                case let .pushBack(value): items = [value]; live = receivedFirstBatch
+                case let .reset(values): items = values; live = false
+                case let .pushFront(value), let .insert(_, value), let .set(_, value):
+                    items = [value]; live = false
+                case .clear, .popFront, .popBack, .remove, .truncate: continue
+                }
+                for item in items {
+                    guard let event = item.asEvent() else { continue }
+                    let id = normalizer.identifier(for: event.eventOrTransactionId)
+                    guard let message = normalizer.normalize(
+                        event, roomID: roomID, accountID: accountID, outgoingIdentifiers: outgoingIdentifiers
+                    ) else { continue }
+                    events[id] = event
+                    guard known[id] != message else { continue }
+                    let isNew = known[id] == nil
+                    known[id] = message
+                    updates.append(live && isNew && event.origin == .sync
+                        ? .messageUpserted(message) : .historicalMessageUpserted(message))
+                }
             }
-            incoming += items.compactMap { $0.asEvent() }
-        }
-        ingest(incoming)
-    }
-
-    /// History batches and live diffs share this path, including the attribution cache.
-    private func ingest(_ incoming: [EventTimelineItem]) {
-        let fresh: [Message] = lock.withLock {
             receivedFirstBatch = true
-            return incoming.compactMap { event in
-                let id = normalizer.identifier(for: event.eventOrTransactionId)
-                guard let message = normalizer.normalize(
-                    event, roomID: roomID, accountID: accountID, outgoingIdentifiers: outgoingIdentifiers
-                ) else { return nil }
-                events[id] = event
-                guard known[id] != message else { return nil }
-                known[id] = message
-                return message
-            }
+            return updates
         }
-        for message in fresh { onEvent(.messageUpserted(message)) }
+        for update in updates { onEvent(update) }
     }
 
     func updateOutgoingIdentifiers(_ identifiers: Set<String>) {
@@ -588,7 +591,7 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
                 return message
             }
         }
-        for message in updated { onEvent(.messageUpserted(message)) }
+        for message in updated { onEvent(.historicalMessageUpserted(message)) }
     }
 
     func message(id: String) -> Message? {

@@ -45,8 +45,10 @@ private final class MessagesReceived: @unchecked Sendable {
     private let lock = NSLock()
     private var messages: [Message] = []
     func receive(_ event: GatewayEvent) {
-        if case let .messageUpserted(message) = event {
+        switch event {
+        case let .messageUpserted(message), let .historicalMessageUpserted(message):
             lock.withLock { messages.append(message) }
+        default: break
         }
     }
     var all: [Message] { lock.withLock { messages } }

@@ -121,7 +121,9 @@ func diskPressurePausesAndExplainsRatherThanLookingBroken() async throws {
 
 @MainActor
 private func waitForFile(_ controller: MediaController, _ attachment: MessageAttachment) async throws -> URL {
-    let deadline = ContinuousClock().now.advanced(by: .seconds(10))
+    // The full CI suite starts hundreds of tests together. Give the main actor room to
+    // schedule the loader task within this test's one-minute limit.
+    let deadline = ContinuousClock().now.advanced(by: .seconds(50))
     while ContinuousClock().now < deadline {
         if case let .ready(url) = controller.state(for: attachment) { return url }
         try await Task.sleep(for: .milliseconds(10))
@@ -131,7 +133,7 @@ private func waitForFile(_ controller: MediaController, _ attachment: MessageAtt
 
 @MainActor
 private func waitForFailure(_ controller: MediaController, _ attachment: MessageAttachment) async throws -> String {
-    let deadline = ContinuousClock().now.advanced(by: .seconds(10))
+    let deadline = ContinuousClock().now.advanced(by: .seconds(50))
     while ContinuousClock().now < deadline {
         if case let .failed(reason) = controller.state(for: attachment) { return reason }
         try await Task.sleep(for: .milliseconds(10))

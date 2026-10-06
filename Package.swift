@@ -27,7 +27,7 @@ let package = Package(
         .executableTarget(
             name: "InboxPlusApp",
             dependencies: [
-                "InboxPlusGateway", "InboxPlusFeatures", "InboxPlusUI", "InboxPlusMatrix", "InboxPlusRuntime",
+                "InboxPlusCore", "InboxPlusGateway", "InboxPlusFeatures", "InboxPlusUI", "InboxPlusMatrix", "InboxPlusRuntime",
                 "InboxPlusBridge", "InboxPlusBridgeService", "InboxPlusIMessage",
             ]
         ),
@@ -93,7 +93,10 @@ let package = Package(
         ),
         .testTarget(
             name: "InboxPlusMatrixTests",
-            dependencies: ["InboxPlusMatrix", "InboxPlusCore", "InboxPlusGateway", "InboxPlusRuntime"]
+            dependencies: [
+                "InboxPlusMatrix", "InboxPlusCore", "InboxPlusGateway", "InboxPlusRuntime",
+                .product(name: "MatrixRustSDK", package: "matrix-rust-components-swift"),
+            ]
         ),
     ]
 )
