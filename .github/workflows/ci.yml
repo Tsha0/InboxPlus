@@ -27,13 +27,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Record the toolchain
+        id: toolchain
         run: |
           swift --version
           xcodebuild -version
           sw_vers
+          key=$({ swift --version; xcodebuild -version; sw_vers -productVersion; } | shasum -a 256 | cut -d' ' -f1)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
 
-      # The Matrix SDK is a 279 MB checksum-verified binary artifact. Re-downloading it on every
-      # run is the single slowest thing in this build, and it only changes when the pin does.
+      # Keep the checksum-verified Matrix SDK download across runs.
       - name: Cache Swift package artifacts
         uses: actions/cache@v4
         with:
@@ -43,10 +45,20 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
+      # Exact content keys allow reuse despite fresh checkout timestamps. Changes to sources,
+      # package pins, workflow build flags or the toolchain always build again; tests always run.
+      - name: Cache test build
+        id: test-build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swift-test-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', '.github/workflows/ci.yml', 'Sources/**', 'Tests/**') }}
+
       - name: Resolve dependencies
         run: swift package resolve
 
       - name: Build
+        if: steps.test-build.outputs.cache-hit != 'true'
         run: swift build --build-tests
 
       # The live-runtime and live-bridge tests are opt-in behind INBOXPLUS_RUNTIME_PYTHON and are
@@ -125,13 +137,43 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
+      - name: Record the toolchain
+        id: toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+          sw_vers
+          key=$({ swift --version; xcodebuild -version; sw_vers -productVersion; } | shasum -a 256 | cut -d' ' -f1)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
       - name: Record runtime build tools
+        id: runtime-tools
         run: |
           cmake --version
           rustc --version
           cargo --version
+          key=$({ cmake --version; rustc --version; cargo --version; } | shasum -a 256 | cut -d' ' -f1)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Cache release build
+        id: release-build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swift-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', '.github/workflows/ci.yml', 'Scripts/build-app.sh', 'Sources/**') }}
+
+      # Reuse the pinned Python/Synapse environment, including the expensive Rust extension.
+      # No fallback: changes to pins, preparation, verification or native tools require a rebuild.
+      # prepare-bundled-runtime.sh rechecks the inventory and portability on every cache hit.
+      - name: Cache bundled Python runtime
+        uses: actions/cache@v4
+        with:
+          path: build/runtime-cache
+          key: bundled-python-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ steps.runtime-tools.outputs.key }}-${{ hashFiles('Runtime/Synapse/**', 'Scripts/prepare-bundled-runtime.sh', 'Scripts/verify-bundled-python.py') }}
 
       - name: Build the app bundle
+        env:
+          INBOXPLUS_SKIP_SWIFT_BUILD: ${{ steps.release-build.outputs.cache-hit == 'true' && '1' || '0' }}
         run: Scripts/build-app.sh
 
       - name: Verify the bundle
