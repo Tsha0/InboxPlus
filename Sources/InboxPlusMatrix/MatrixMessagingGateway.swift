@@ -21,6 +21,10 @@ public actor MatrixMessagingGateway: MessagingGateway {
     private let roomDiscoveryInterval: Duration
     private let backfillEventCount: UInt16
 
+    private let outgoingIdentifiersProvider: @Sendable () async -> [String: Set<String>]
+    private var outgoingIdentifiersByAccount: [String: Set<String>] = [:]
+    private var identityRefreshTask: Task<[String: Set<String>], Never>?
+
     private var streamContinuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
     private var timelineHandles: [String: TaskHandle] = [:]
     private var observers: [String: RoomTimelineObserver] = [:]
@@ -39,8 +43,10 @@ public actor MatrixMessagingGateway: MessagingGateway {
         invitePolicy: BridgeInvitePolicy = .trustingNobody,
         bridgeAccounts: [BridgeAccountDescriptor] = [],
         roomDiscoveryInterval: Duration = .seconds(3),
-        backfillEventCount: UInt16 = 50
+        backfillEventCount: UInt16 = 50,
+        outgoingIdentifiersProvider: @escaping @Sendable () async -> [String: Set<String>] = { [:] }
     ) {
+        self.outgoingIdentifiersProvider = outgoingIdentifiersProvider
         self.client = client
         self.accountID = accountID
         self.platform = platform
@@ -225,6 +231,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
         _ = try await client.connect()
         try await client.startSync()
         started = true
+        await refreshOutgoingIdentifiers()
         await awaitInitialRooms()
         await acceptTrustedInvites()
         startRoomDiscovery()
@@ -293,6 +300,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
     }
 
     private func discoverNewRooms() async {
+        await refreshOutgoingIdentifiers()
         await acceptTrustedInvites()
         guard let rooms = try? await client.requireClient().rooms() else { return }
 
@@ -335,6 +343,24 @@ public actor MatrixMessagingGateway: MessagingGateway {
     }
 
     // MARK: - Attribution
+
+    /// Keep confirmed identities for this gateway's lifetime on lookup failure or logout:
+    /// historical messages are still ours. Recovery repairs events loaded before the lookup worked.
+    private func refreshOutgoingIdentifiers() async {
+        // A history batch can deliver many callbacks at once. Share one lookup between them.
+        let ownsTask = identityRefreshTask == nil
+        let task = identityRefreshTask ?? Task { await outgoingIdentifiersProvider() }
+        identityRefreshTask = task
+        let resolved = await task.value
+        if ownsTask { identityRefreshTask = nil }
+        for (account, identifiers) in resolved {
+            outgoingIdentifiersByAccount[account, default: []].formUnion(identifiers)
+        }
+        for (roomID, observer) in observers {
+            let account = accountIDByRoomID[roomID] ?? accountID
+            observer.updateOutgoingIdentifiers(outgoingIdentifiersByAccount[account] ?? [])
+        }
+    }
 
     /// Which account a room belongs to, resolved from who is in it.
     ///
@@ -417,23 +443,44 @@ public actor MatrixMessagingGateway: MessagingGateway {
         // Resolved here rather than passed in, so a timeline attached from a send path is stamped
         // with the same account as one attached from a snapshot.
         let roomAccountID = await resolvedAccountID(for: room)
+        guard let timeline = try? await room.timeline(),
+              timelineHandles[roomID] == nil, observers[roomID] == nil else { return }
         let observer = RoomTimelineObserver(
             roomID: roomID,
             normalizer: normalizer,
-            accountID: roomAccountID
+            accountID: roomAccountID,
+            outgoingIdentifiers: outgoingIdentifiersByAccount[roomAccountID] ?? []
         ) { [weak self] event in
-            Task { await self?.publish(event) }
+            Task { await self?.publishTimelineEvent(event, roomID: roomID) }
         }
-        guard let timeline = try? await room.timeline() else { return }
+        // A listener may emit its initial batch before addListener returns. Register the
+        // observer first so those callbacks can refresh and read the current attribution.
+        observers[roomID] = observer
         let handle = await timeline.addListener(listener: observer)
         timelineHandles[roomID] = handle
-        observers[roomID] = observer
 
         // A live timeline begins where this account's view of the room begins. In a room Inbox+ has
         // only just joined — every bridged portal — that is the join event, so the conversation the
         // bridge backfilled sits entirely behind it and would never be shown. Paginating once pulls
         // that history in.
         _ = try? await timeline.paginateBackwards(numEvents: backfillEventCount)
+    }
+
+    private func publishTimelineEvent(_ event: GatewayEvent, roomID: String) async {
+        // Some bridges use event-specific attribution. Look up newly persisted native sends
+        // before exposing an incoming-looking event, rather than waiting for room discovery.
+        if case let .messageUpserted(message) = event, !message.isOutgoing,
+           outgoingIdentifiersByAccount[message.route.accountID] != nil {
+            await refreshOutgoingIdentifiers()
+        }
+        // Listener callbacks hop into this actor asynchronously. If ownership changed during
+        // that hop, publish the observer's current value so a stale incoming event cannot undo it.
+        if case let .messageUpserted(message) = event,
+           let current = observers[roomID]?.message(id: message.id) {
+            publish(.messageUpserted(current))
+        } else {
+            publish(event)
+        }
     }
 
     private func publish(_ event: GatewayEvent) {
@@ -475,6 +522,8 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
     private let onEvent: @Sendable (GatewayEvent) -> Void
 
     private let lock = NSLock()
+    private var outgoingIdentifiers: Set<String>
+    private var events: [String: EventTimelineItem] = [:]
     private var known: [String: Message] = [:]
     private var receivedFirstBatch = false
 
@@ -482,48 +531,68 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
         roomID: String,
         normalizer: MatrixEventNormalizer,
         accountID: String,
+        outgoingIdentifiers: Set<String> = [],
         onEvent: @escaping @Sendable (GatewayEvent) -> Void
     ) {
         self.roomID = roomID
         self.normalizer = normalizer
         self.accountID = accountID
         self.onEvent = onEvent
+        self.outgoingIdentifiers = outgoingIdentifiers
     }
 
     func onUpdate(diff: [TimelineDiff]) {
-        var produced: [Message] = []
+        var incoming: [EventTimelineItem] = []
         for change in diff {
+            let items: [TimelineItem]
             switch change {
-            case let .append(values): produced += messages(from: values)
-            case let .reset(values): produced += messages(from: values)
-            case let .pushBack(value): produced += messages(from: [value])
-            case let .pushFront(value): produced += messages(from: [value])
-            case let .insert(_, value): produced += messages(from: [value])
-            case let .set(_, value): produced += messages(from: [value])
+            case let .append(values), let .reset(values): items = values
+            case let .pushBack(value), let .pushFront(value), let .insert(_, value), let .set(_, value):
+                items = [value]
             case .clear, .popFront, .popBack, .remove, .truncate:
-                // Removals do not delete Inbox+'s record: a redaction arrives as its own event, and
-                // the design forbids silently dropping a message that was already shown.
+                // A redaction arrives as an event; removal diffs do not delete displayed history.
                 continue
             }
+            incoming += items.compactMap { $0.asEvent() }
         }
+        ingest(incoming)
+    }
 
+    /// History batches and live diffs share this path, including the attribution cache.
+    private func ingest(_ incoming: [EventTimelineItem]) {
         let fresh: [Message] = lock.withLock {
             receivedFirstBatch = true
-            return produced.filter { message in
-                // Idempotent by event ID, so duplicate or replayed diffs cannot double-post.
-                guard known[message.id] != message else { return false }
-                known[message.id] = message
-                return true
+            return incoming.compactMap { event in
+                let id = normalizer.identifier(for: event.eventOrTransactionId)
+                guard let message = normalizer.normalize(
+                    event, roomID: roomID, accountID: accountID, outgoingIdentifiers: outgoingIdentifiers
+                ) else { return nil }
+                events[id] = event
+                guard known[id] != message else { return nil }
+                known[id] = message
+                return message
             }
         }
         for message in fresh { onEvent(.messageUpserted(message)) }
     }
 
-    private func messages(from items: [TimelineItem]) -> [Message] {
-        items.compactMap { item in
-            guard let event = item.asEvent() else { return nil }
-            return normalizer.normalize(event, roomID: roomID, accountID: accountID)
+    func updateOutgoingIdentifiers(_ identifiers: Set<String>) {
+        let updated: [Message] = lock.withLock {
+            guard identifiers != outgoingIdentifiers else { return [] }
+            outgoingIdentifiers = identifiers
+            return events.values.compactMap { event in
+                guard let message = normalizer.normalize(
+                    event, roomID: roomID, accountID: accountID, outgoingIdentifiers: identifiers
+                ), known[message.id] != message else { return nil }
+                known[message.id] = message
+                return message
+            }
         }
+        for message in updated { onEvent(.messageUpserted(message)) }
+    }
+
+    func message(id: String) -> Message? {
+        lock.withLock { known[id] }
     }
 
     /// Current messages, waiting briefly for the timeline's first batch to arrive.

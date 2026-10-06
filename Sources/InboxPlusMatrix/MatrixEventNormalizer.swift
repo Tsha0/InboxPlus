@@ -22,7 +22,8 @@ public struct MatrixEventNormalizer: Sendable {
     public func normalize(
         _ item: EventTimelineItem,
         roomID: String,
-        accountID: String? = nil
+        accountID: String? = nil,
+        outgoingIdentifiers: Set<String> = []
     ) -> Message? {
         let identifier = identifier(for: item.eventOrTransactionId)
         guard var described = describe(item.content, identifier: identifier) else { return nil }
@@ -38,8 +39,11 @@ public struct MatrixEventNormalizer: Sendable {
         return Message(
             id: identifier,
             route: route(forRoom: roomID, accountID: accountID),
-            // An outgoing message carries no remote sender identity, matching `Message.isOutgoing`.
-            senderIdentityID: item.isOwn ? nil : item.sender,
+            // Native-app sends may use the owner's ghost instead of the Matrix login. The
+            // supplied identifiers belong only to this room's bridge account. A bridge that
+            // uses its bot for native sends must confirm each outgoing event individually.
+            senderIdentityID: item.isOwn || outgoingIdentifiers.contains(item.sender)
+                || outgoingIdentifiers.contains(identifier) ? nil : item.sender,
             body: described.body,
             timestamp: Self.date(from: item.timestamp),
             deliveryState: Self.deliveryState(for: item.localSendState),
