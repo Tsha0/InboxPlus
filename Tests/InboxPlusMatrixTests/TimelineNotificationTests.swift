@@ -47,4 +47,10 @@ private final class NotificationEvents: @unchecked Sendable {
     observer.onUpdate(diff: [.pushBack(value: live)])
     #expect(events.liveIDs == ["live"])
     #expect(events.count == 6)
+
+    // Discovering that the sender belongs to this account updates every message, but
+    // the corrected attribution is history, not a second live arrival.
+    observer.updateOutgoingIdentifiers(["@sender:server"])
+    #expect(events.liveIDs == ["live"])
+    #expect(events.count == 12)
 }

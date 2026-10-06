@@ -21,6 +21,10 @@ public actor MatrixMessagingGateway: MessagingGateway {
     private let roomDiscoveryInterval: Duration
     private let backfillEventCount: UInt16
 
+    private let outgoingIdentifiersProvider: @Sendable () async -> [String: Set<String>]
+    private var outgoingIdentifiersByAccount: [String: Set<String>] = [:]
+    private var identityRefreshTask: Task<[String: Set<String>], Never>?
+
     private var streamContinuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
     private var timelineHandles: [String: TaskHandle] = [:]
     private var observers: [String: RoomTimelineObserver] = [:]
@@ -39,8 +43,10 @@ public actor MatrixMessagingGateway: MessagingGateway {
         invitePolicy: BridgeInvitePolicy = .trustingNobody,
         bridgeAccounts: [BridgeAccountDescriptor] = [],
         roomDiscoveryInterval: Duration = .seconds(3),
-        backfillEventCount: UInt16 = 50
+        backfillEventCount: UInt16 = 50,
+        outgoingIdentifiersProvider: @escaping @Sendable () async -> [String: Set<String>] = { [:] }
     ) {
+        self.outgoingIdentifiersProvider = outgoingIdentifiersProvider
         self.client = client
         self.accountID = accountID
         self.platform = platform
@@ -225,6 +231,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
         _ = try await client.connect()
         try await client.startSync()
         started = true
+        await refreshOutgoingIdentifiers()
         await awaitInitialRooms()
         await acceptTrustedInvites()
         startRoomDiscovery()
@@ -293,6 +300,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
     }
 
     private func discoverNewRooms() async {
+        await refreshOutgoingIdentifiers()
         await acceptTrustedInvites()
         guard let rooms = try? await client.requireClient().rooms() else { return }
 
@@ -335,6 +343,24 @@ public actor MatrixMessagingGateway: MessagingGateway {
     }
 
     // MARK: - Attribution
+
+    /// Keep confirmed identities for this gateway's lifetime on lookup failure or logout:
+    /// historical messages are still ours. Recovery repairs events loaded before the lookup worked.
+    private func refreshOutgoingIdentifiers() async {
+        // A history batch can deliver many callbacks at once. Share one lookup between them.
+        let ownsTask = identityRefreshTask == nil
+        let task = identityRefreshTask ?? Task { await outgoingIdentifiersProvider() }
+        identityRefreshTask = task
+        let resolved = await task.value
+        if ownsTask { identityRefreshTask = nil }
+        for (account, identifiers) in resolved {
+            outgoingIdentifiersByAccount[account, default: []].formUnion(identifiers)
+        }
+        for (roomID, observer) in observers {
+            let account = accountIDByRoomID[roomID] ?? accountID
+            observer.updateOutgoingIdentifiers(outgoingIdentifiersByAccount[account] ?? [])
+        }
+    }
 
     /// Which account a room belongs to, resolved from who is in it.
     ///
@@ -417,23 +443,46 @@ public actor MatrixMessagingGateway: MessagingGateway {
         // Resolved here rather than passed in, so a timeline attached from a send path is stamped
         // with the same account as one attached from a snapshot.
         let roomAccountID = await resolvedAccountID(for: room)
+        guard let timeline = try? await room.timeline(),
+              timelineHandles[roomID] == nil, observers[roomID] == nil else { return }
         let observer = RoomTimelineObserver(
             roomID: roomID,
             normalizer: normalizer,
-            accountID: roomAccountID
+            accountID: roomAccountID,
+            outgoingIdentifiers: outgoingIdentifiersByAccount[roomAccountID] ?? []
         ) { [weak self] event in
-            Task { await self?.publish(event) }
+            Task { await self?.publishTimelineEvent(event, roomID: roomID) }
         }
-        guard let timeline = try? await room.timeline() else { return }
+        // A listener may emit its initial batch before addListener returns. Register the
+        // observer first so those callbacks can refresh and read the current attribution.
+        observers[roomID] = observer
         let handle = await timeline.addListener(listener: observer)
         timelineHandles[roomID] = handle
-        observers[roomID] = observer
 
         // A live timeline begins where this account's view of the room begins. In a room Inbox+ has
         // only just joined — every bridged portal — that is the join event, so the conversation the
         // bridge backfilled sits entirely behind it and would never be shown. Paginating once pulls
         // that history in.
         _ = try? await timeline.paginateBackwards(numEvents: backfillEventCount)
+    }
+
+    private func publishTimelineEvent(_ event: GatewayEvent, roomID: String) async {
+        let message: Message
+        let historical: Bool
+        switch event {
+        case let .messageUpserted(value): message = value; historical = false
+        case let .historicalMessageUpserted(value): message = value; historical = true
+        default: publish(event); return
+        }
+        // Some bridges use event-specific attribution. Look up newly persisted native sends
+        // before exposing an incoming-looking event, rather than waiting for room discovery.
+        if !message.isOutgoing, outgoingIdentifiersByAccount[message.route.accountID] != nil {
+            await refreshOutgoingIdentifiers()
+        }
+        // Listener callbacks hop into this actor asynchronously. If ownership changed during
+        // that hop, publish the observer's current value so a stale incoming event cannot undo it.
+        let current = observers[roomID]?.message(id: message.id) ?? message
+        publish(historical ? .historicalMessageUpserted(current) : .messageUpserted(current))
     }
 
     private func publish(_ event: GatewayEvent) {
@@ -475,6 +524,8 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
     private let onEvent: @Sendable (GatewayEvent) -> Void
 
     private let lock = NSLock()
+    private var outgoingIdentifiers: Set<String>
+    private var events: [String: EventTimelineItem] = [:]
     private var known: [String: Message] = [:]
     private var receivedFirstBatch = false
 
@@ -482,19 +533,21 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
         roomID: String,
         normalizer: MatrixEventNormalizer,
         accountID: String,
+        outgoingIdentifiers: Set<String> = [],
         onEvent: @escaping @Sendable (GatewayEvent) -> Void
     ) {
         self.roomID = roomID
         self.normalizer = normalizer
         self.accountID = accountID
         self.onEvent = onEvent
+        self.outgoingIdentifiers = outgoingIdentifiers
     }
 
     func onUpdate(diff: [TimelineDiff]) {
         // Only tail additions after the initial batch can represent new traffic. Backward
         // pagination, resets, edits, and decryption replacements still update the transcript.
-        let events: [GatewayEvent] = lock.withLock {
-            var events: [GatewayEvent] = []
+        let updates: [GatewayEvent] = lock.withLock {
+            var updates: [GatewayEvent] = []
             for change in diff {
                 let items: [TimelineItem]
                 let live: Bool
@@ -507,27 +560,42 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
                 case .clear, .popFront, .popBack, .remove, .truncate: continue
                 }
                 for item in items {
-                    guard let event = item.asEvent(),
-                          let message = normalizer.normalize(event, roomID: roomID, accountID: accountID)
-                    else { continue }
-                    guard known[message.id] != message else { continue }
-                    let isNew = known[message.id] == nil
-                    known[message.id] = message
-                    events.append(live && isNew && event.origin == .sync
+                    guard let event = item.asEvent() else { continue }
+                    let id = normalizer.identifier(for: event.eventOrTransactionId)
+                    guard let message = normalizer.normalize(
+                        event, roomID: roomID, accountID: accountID, outgoingIdentifiers: outgoingIdentifiers
+                    ) else { continue }
+                    events[id] = event
+                    guard known[id] != message else { continue }
+                    let isNew = known[id] == nil
+                    known[id] = message
+                    updates.append(live && isNew && event.origin == .sync
                         ? .messageUpserted(message) : .historicalMessageUpserted(message))
                 }
             }
             receivedFirstBatch = true
-            return events
+            return updates
         }
-        for event in events { onEvent(event) }
+        for update in updates { onEvent(update) }
     }
 
-    private func messages(from items: [TimelineItem]) -> [Message] {
-        items.compactMap { item in
-            guard let event = item.asEvent() else { return nil }
-            return normalizer.normalize(event, roomID: roomID, accountID: accountID)
+    func updateOutgoingIdentifiers(_ identifiers: Set<String>) {
+        let updated: [Message] = lock.withLock {
+            guard identifiers != outgoingIdentifiers else { return [] }
+            outgoingIdentifiers = identifiers
+            return events.values.compactMap { event in
+                guard let message = normalizer.normalize(
+                    event, roomID: roomID, accountID: accountID, outgoingIdentifiers: identifiers
+                ), known[message.id] != message else { return nil }
+                known[message.id] = message
+                return message
+            }
         }
+        for message in updated { onEvent(.historicalMessageUpserted(message)) }
+    }
+
+    func message(id: String) -> Message? {
+        lock.withLock { known[id] }
     }
 
     /// Current messages, waiting briefly for the timeline's first batch to arrive.

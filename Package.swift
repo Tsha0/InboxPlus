@@ -45,7 +45,11 @@ let package = Package(
         .target(name: "InboxPlusBridge", dependencies: ["InboxPlusCore"]),
         // Everything that talks to a real bridge: provisioning client, installer, configuration,
         // and supervision.
-        .target(name: "InboxPlusBridgeService", dependencies: ["InboxPlusBridge", "InboxPlusCore", "InboxPlusRuntime"]),
+        .target(
+            name: "InboxPlusBridgeService",
+            dependencies: ["InboxPlusBridge", "InboxPlusCore", "InboxPlusRuntime"],
+            linkerSettings: [.linkedLibrary("sqlite3")]
+        ),
         .executableTarget(
             name: "InboxPlusRuntimeCLI",
             dependencies: ["InboxPlusRuntime", "InboxPlusBridge", "InboxPlusBridgeService", "InboxPlusCore"]

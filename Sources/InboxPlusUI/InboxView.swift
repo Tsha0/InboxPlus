@@ -4,6 +4,8 @@ import InboxPlusFeatures
 public struct InboxView: View {
     let items: [InboxItem]
     let selectedID: InboxItem.ID?
+    let onToggleFavourite: (InboxItem) -> Void
+    let favouriteError: String?
     let onSelect: (InboxItem) -> Void
     @State private var showsUnreadOnly = false
     @State private var query = ""
@@ -11,8 +13,12 @@ public struct InboxView: View {
     public init(
         items: [InboxItem],
         selectedID: InboxItem.ID? = nil,
+        favouriteError: String? = nil,
+        onToggleFavourite: @escaping (InboxItem) -> Void = { _ in },
         onSelect: @escaping (InboxItem) -> Void
     ) {
+        self.favouriteError = favouriteError
+        self.onToggleFavourite = onToggleFavourite
         self.items = items
         self.selectedID = selectedID
         self.onSelect = onSelect
@@ -85,6 +91,13 @@ public struct InboxView: View {
             }
             .padding(.horizontal)
 
+            if let favouriteError {
+                Text(favouriteError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal)
+            }
+
             if visibleItems.isEmpty {
                 ContentUnavailableView(
                     emptyTitle,
@@ -93,15 +106,26 @@ public struct InboxView: View {
                 .frame(maxHeight: .infinity)
             } else {
                 List(visibleItems) { item in
-                    Button {
-                        onSelect(item)
-                    } label: {
-                        row(for: item)
+                    HStack {
+                        Button {
+                            onSelect(item)
+                        } label: {
+                            row(for: item)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selectedID == item.id ? .isSelected : [])
+                        .accessibilityIdentifier("inbox-item-\(item.id.accessibilityIdentifier)")
+                        Button {
+                            onToggleFavourite(item)
+                        } label: {
+                            Image(systemName: item.isFavourite ? "star.fill" : "star")
+                        }
+                        .buttonStyle(.plain)
+                        .help(item.isFavourite ? "Remove from favourites" : "Add to favourites")
+                        .accessibilityLabel("\(item.isFavourite ? "Unfavourite" : "Favourite") \(item.title)")
+                        .accessibilityIdentifier("inbox-favourite-\(item.id.accessibilityIdentifier)")
                     }
-                    .buttonStyle(.plain)
                     .selectedRowBackground(selectedID == item.id)
-                    .accessibilityAddTraits(selectedID == item.id ? .isSelected : [])
-                    .accessibilityIdentifier("inbox-item-\(item.id.accessibilityIdentifier)")
                 }
                 .listStyle(.sidebar)
                 .scrollContentBackground(.hidden)
