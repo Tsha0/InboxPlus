@@ -13,6 +13,7 @@ let package = Package(
         // Pinned exactly: the SDK ships a checksum-verified binary xcframework, and bridge/SDK
         // protocol drift must never arrive silently through a version range.
         .package(url: "https://github.com/matrix-org/matrix-rust-components-swift", exact: "26.08.11"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
     ],
     targets: [
         .executableTarget(name: "InboxPlusRuntimeBundler", dependencies: ["InboxPlusRuntime", "InboxPlusBridgeService"]),
@@ -29,7 +30,9 @@ let package = Package(
             dependencies: [
                 "InboxPlusCore", "InboxPlusGateway", "InboxPlusFeatures", "InboxPlusUI", "InboxPlusMatrix", "InboxPlusRuntime",
                 "InboxPlusBridge", "InboxPlusBridgeService", "InboxPlusIMessage",
-            ]
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         // iMessage does not go through Matrix: it is read from the local Messages database and
         // sent by asking Messages itself. It therefore implements the gateway seam directly.

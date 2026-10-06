@@ -17,6 +17,9 @@ Dependency pins are defined in:
 
 CPython is host-provided under the PSF-2.0 license.
 
+Sparkle 2.10.0 and its installer helpers are distributed under MIT and the upstream component
+licenses. The full upstream license file is included in the app's `ThirdPartyNotices` directory.
+
 Brand-mark SVGs in [`Scripts/brand-icons`](../Scripts/brand-icons) are from
 [Simple Icons](https://simpleicons.org), version 13.20.0, under CC0-1.0.
 The depicted marks remain trademarks of their respective owners; no affiliation

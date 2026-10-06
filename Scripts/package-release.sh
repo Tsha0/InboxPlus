@@ -28,7 +28,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 fail() { echo "error: $*" >&2; exit 1; }
 
-for var in INBOXPLUS_SIGNING_IDENTITY INBOXPLUS_TEAM_ID INBOXPLUS_NOTARY_PROFILE; do
+for var in INBOXPLUS_SIGNING_IDENTITY INBOXPLUS_TEAM_ID INBOXPLUS_NOTARY_PROFILE INBOXPLUS_UPDATE_PUBLIC_KEY INBOXPLUS_BUILD_NUMBER; do
   [ -n "${!var:-}" ] || fail "$var is not set; see the header of this script"
 done
 
@@ -82,10 +82,13 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+python3 "$REPO_ROOT/Scripts/configure-updates.py" "$APP_DIR" --release
+
 # 2. Sign inner binaries before the bundle. Signing outside-in invalidates the outer signature.
 echo "==> Signing"
 ENTITLEMENTS="$REPO_ROOT/Scripts/inboxplus.entitlements"
 "$REPO_ROOT/Scripts/sign-bundled-runtime.sh" "$APP_DIR/Contents/Resources/Runtime" "$INBOXPLUS_SIGNING_IDENTITY"
+bash "$REPO_ROOT/Scripts/embed-sparkle.sh" "$APP_DIR" "$INBOXPLUS_SIGNING_IDENTITY"
 codesign --force --timestamp --options runtime \
   --sign "$INBOXPLUS_SIGNING_IDENTITY" \
   "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI"
@@ -98,7 +101,7 @@ codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 
 # 3. Notarize. Apple must see the bundle before Gatekeeper will run it on someone else's Mac.
 echo "==> Notarizing"
-ZIP="$REPO_ROOT/$OUTPUT_DIR/$APP_NAME-$VERSION.zip"
+ZIP="$REPO_ROOT/$OUTPUT_DIR/InboxPlus-$VERSION-$INBOXPLUS_BUILD_NUMBER.zip"
 ditto -c -k --keepParent "$APP_DIR" "$ZIP"
 xcrun notarytool submit "$ZIP" --keychain-profile "$INBOXPLUS_NOTARY_PROFILE" --wait
 
@@ -115,7 +118,10 @@ echo "==> Generating release artifacts"
 "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI" sbom \
   --output "$REPO_ROOT/$OUTPUT_DIR/inboxplus-$VERSION.cdx.json"
 
-(cd "$REPO_ROOT/$OUTPUT_DIR" && shasum -a 256 ./*.zip ./*.cdx.json > "SHA256SUMS.txt")
+INBOXPLUS_RELEASE_VERSION="$VERSION" bash "$REPO_ROOT/Scripts/generate-update-feed.sh" \
+  "$REPO_ROOT/$OUTPUT_DIR" "${INBOXPLUS_RELEASE_TAG:-v$VERSION}"
+
+(cd "$REPO_ROOT/$OUTPUT_DIR" && shasum -a 256 ./*.zip ./*.cdx.json ./appcast.xml > "SHA256SUMS.txt")
 
 echo
 echo "==> Done. Artifacts in $OUTPUT_DIR:"

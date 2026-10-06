@@ -19,6 +19,8 @@ public struct RootView: View {
     @State private var connectNotice: ConnectNotice?
 
     private let makeLoginSession: BridgeLoginSessionProvider?
+    private let update: AppUpdatePresentation?
+    private let onUpdate: () -> Void
 
     enum AccountFlow: Identifiable {
         case picker
@@ -47,9 +49,16 @@ public struct RootView: View {
         var id: String { title }
     }
 
-    public init(model: InboxPlusAppModel, makeLoginSession: BridgeLoginSessionProvider? = nil) {
+    public init(
+        model: InboxPlusAppModel,
+        makeLoginSession: BridgeLoginSessionProvider? = nil,
+        update: AppUpdatePresentation? = nil,
+        onUpdate: @escaping () -> Void = {}
+    ) {
         self.model = model
         self.makeLoginSession = makeLoginSession
+        self.update = update
+        self.onUpdate = onUpdate
     }
 
     private var selectedInboxID: InboxItem.ID? {
@@ -87,7 +96,7 @@ public struct RootView: View {
                     .accessibilityIdentifier("health-banner")
             }
             HStack(spacing: 0) {
-                NavigationRailView(selection: $section)
+                NavigationRailView(selection: $section, update: update, onUpdate: onUpdate)
                     .fixedSize(horizontal: true, vertical: false)
                 Divider()
                 sidebar
@@ -98,6 +107,7 @@ public struct RootView: View {
             }
         }
         .frame(minWidth: 900, minHeight: 600)
+        .disabled(model.isPreparingForUpdate)
         .tint(InboxPlusTheme.ink)
         .accentColor(InboxPlusTheme.ink)
         // The menu bar panel owns the connections overview; a Connect there lands here as a

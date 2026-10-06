@@ -98,6 +98,15 @@ public final class InboxPlusAppModel {
         return route
     }
 
+    /// Prevent update restarts from discarding an unsent composer or interrupting a pending send.
+    public var hasUnfinishedMessagingWork: Bool {
+        sendsInFlight > 0 || !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || stagedAttachmentsByRoute.values.contains { !$0.isEmpty }
+            || messagesByRoute.values.contains { $0.contains { $0.deliveryState == .pending } }
+    }
+
+    public var isPreparingForUpdate = false
+
     public var healthBannerMessage: String? {
         guard case let .needsAttention(message) = health else { return nil }
         return message
@@ -124,6 +133,7 @@ public final class InboxPlusAppModel {
     private var favouriteRoutes: Set<ConversationRoute> = []
     private var directory: ContactDirectory
     private var draftRevision: UInt64 = 0
+    private var sendsInFlight = 0
     private var disconnectedAccountIDs: Set<String> = []
     private var sendFailuresByRoute: [ConversationRoute: String] = [:]
     private var latestSendGenerationByRoute: [ConversationRoute: UInt64] = [:]
@@ -331,6 +341,8 @@ public final class InboxPlusAppModel {
     public func sendDraft(_ submission: DraftSubmission) async throws {
         let body = submission.body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
+        sendsInFlight += 1
+        defer { sendsInFlight -= 1 }
         _ = try await gateway.sendText(body, to: submission.route)
         guard isLatest(submission) else { return }
         sendFailuresByRoute[submission.route] = nil
@@ -384,6 +396,8 @@ public final class InboxPlusAppModel {
     /// A file that fails to send stays staged: dropping it would lose the user's choice with
     /// nothing to show for it.
     public func sendStagedAttachments(to route: ConversationRoute) async throws {
+        sendsInFlight += 1
+        defer { sendsInFlight -= 1 }
         for attachment in stagedAttachments(for: route) {
             _ = try await gateway.send(attachment, to: route)
             removeStagedAttachment(attachment, for: route)

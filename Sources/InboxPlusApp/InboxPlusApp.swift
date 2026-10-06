@@ -8,9 +8,11 @@ import InboxPlusUI
 /// starts unbundled processes as background-only: the window draws but can never become
 /// key, so it takes no clicks, no keyboard focus, and gets no menu bar. Promoting the
 /// process to a regular app at launch is what makes the UI usable.
+@MainActor
 final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
     /// Held for the process lifetime; a cancelled source stops delivering.
     private var terminationSignals: [DispatchSourceSignal] = []
+    private var updateTerminationInProgress = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
@@ -43,6 +45,7 @@ final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
         // in front rather than behind the window the user launched it from.
         NSApplication.shared.activate(ignoringOtherApps: true)
         NSApplication.shared.windows.first { $0.canBecomeKey }?.makeKeyAndOrderFront(nil)
+        AppUpdateController.shared.start()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -58,6 +61,28 @@ final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
     /// `.terminateLater` is what buys the time: macOS otherwise tears the process down immediately
     /// and the children are orphaned rather than stopped.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if AppUpdateController.shared.installationScheduled {
+            guard !updateTerminationInProgress else { return .terminateLater }
+            do { try AppUpdateController.shared.validateInstallation() }
+            catch {
+                showUpdateFailure(error)
+                return .terminateCancel
+            }
+            updateTerminationInProgress = true
+            Task { @MainActor in
+                do {
+                    try await ManagedRuntime.shared.stopForUpdate()
+                    updateTerminationInProgress = false
+                    sender.reply(toApplicationShouldTerminate: true)
+                } catch {
+                    updateTerminationInProgress = false
+                    AppUpdateController.shared.installationCancelled?()
+                    sender.reply(toApplicationShouldTerminate: false)
+                    showUpdateFailure(error)
+                }
+            }
+            return .terminateLater
+        }
         // Deliberately not `.terminateLater`. Deferring means replying later from the main thread,
         // and getting that wrong leaves the app alive forever with its runtime already stopped —
         // which is exactly what happened the first time this was written. Signalling and quitting
@@ -66,12 +91,21 @@ final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
         ManagedRuntime.shared.requestStop()
         return .terminateNow
     }
+
+    private func showUpdateFailure(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "Update postponed"
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
 }
 
 @main
 struct InboxPlusApp: App {
     @NSApplicationDelegateAdaptor(InboxPlusAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
+    @State private var updates = AppUpdateController.shared
     @State private var model = {
         let services = GatewaySelection.makeServices()
         return InboxPlusAppModel(
@@ -84,8 +118,20 @@ struct InboxPlusApp: App {
 
     var body: some Scene {
         WindowGroup("Inbox+", id: "main") {
-            RootView(model: model, makeLoginSession: BridgeSelection.makeProvider())
+            RootView(
+                model: model, makeLoginSession: BridgeSelection.makeProvider(),
+                update: updates.presentation, onUpdate: updates.checkForUpdates
+            )
                 .task {
+                    updates.installationPreflight = {
+                        guard model.health != .starting, !model.hasUnfinishedMessagingWork else {
+                            throw NSError(domain: "InboxPlus.Update", code: 2, userInfo: [
+                                NSLocalizedDescriptionKey: "Wait for setup and pending messages to finish, and send or clear your draft and attachments before restarting to update."
+                            ])
+                        }
+                        model.isPreparingForUpdate = true
+                    }
+                    updates.installationCancelled = { model.isPreparingForUpdate = false }
                     let notifications = MessageNotificationController.shared
                     notifications.onOpen = { route in
                         model.openConversation(route)
@@ -103,6 +149,10 @@ struct InboxPlusApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…", action: updates.checkForUpdates)
+                    .disabled(!updates.canCheckForUpdates)
+            }
         }
 
         MenuBarExtra {
@@ -118,6 +168,7 @@ struct InboxPlusApp: App {
                     showMainWindow()
                 }
             )
+            .disabled(model.isPreparingForUpdate)
         } label: {
             Image(systemName: model.health.symbolName)
                 .accessibilityLabel(model.health.menuBarTitle)

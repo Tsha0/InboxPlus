@@ -72,6 +72,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+python3 "$REPO_ROOT/Scripts/configure-updates.py" "$APP_DIR"
+
 # The bundle is a directory, and Finder caches icons aggressively; touching it makes the new icon
 # appear without a relaunch of Finder.
 touch "$APP_DIR"
@@ -87,6 +89,7 @@ fi
 
 # Inner binaries before the outer bundle: signing outside-in invalidates the outer signature.
 "$REPO_ROOT/Scripts/sign-bundled-runtime.sh" "$APP_DIR/Contents/Resources/Runtime" "$IDENTITY"
+bash "$REPO_ROOT/Scripts/embed-sparkle.sh" "$APP_DIR" "$IDENTITY"
 codesign --force --sign "$IDENTITY" "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI"
 codesign --force --sign "$IDENTITY" \
   --entitlements "$REPO_ROOT/Scripts/inboxplus.entitlements" \
