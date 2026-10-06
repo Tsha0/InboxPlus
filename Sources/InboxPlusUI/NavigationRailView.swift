@@ -24,6 +24,8 @@ public enum SidebarSection: String, CaseIterable, Identifiable, Hashable, Sendab
 
 struct NavigationRailView: View {
     @Binding var selection: SidebarSection
+    var update: AppUpdatePresentation? = nil
+    var onUpdate: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 14) {
@@ -34,6 +36,18 @@ struct NavigationRailView: View {
                 railButton(section)
             }
             Spacer()
+            if let update {
+                Button(action: onUpdate) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundStyle(InboxPlusTheme.ink)
+                        .frame(width: 30, height: 30)
+                        .background(InboxPlusTheme.ink.opacity(0.15), in: .rect(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(update.help)
+                .accessibilityIdentifier("rail-update")
+                .help(update.help)
+            }
             railButton(.settings)
         }
         .padding(.vertical, 14)

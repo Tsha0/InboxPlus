@@ -121,6 +121,16 @@ actor ManagedRuntime {
         kill(process.processIdentifier, SIGINT)
     }
 
+    /// Update installation must wait for the owning CLI to finish shutting down its children.
+    /// A timed-out stop cancels termination; it never force-kills a database writer.
+    func stopForUpdate(timeout: Duration = .seconds(30)) async throws {
+        guard let process = stoppableChild() else { return }
+        requestStop()
+        try await RuntimeExitWaiter.wait(timeout: timeout) { process.isRunning }
+        child = nil
+        startedByThisApp = false
+    }
+
     // MARK: - Launching
 
     private func launch(profileName: String, progress: @Sendable (String) -> Void) throws {
@@ -242,6 +252,24 @@ actor ManagedRuntime {
     static func runtimeCommandURL() -> URL {
         let executable = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
         return executable.deletingLastPathComponent().appendingPathComponent("InboxPlusRuntimeCLI")
+    }
+}
+
+enum RuntimeExitWaiter {
+    static func wait(
+        timeout: Duration,
+        isRunning: () -> Bool
+    ) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while isRunning() {
+            guard clock.now < deadline else {
+                throw NSError(domain: "InboxPlus.Update", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "The messaging runtime is still stopping. Try the update again in a moment."
+                ])
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        }
     }
 }
 

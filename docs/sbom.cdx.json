@@ -2,6 +2,36 @@
   "bomFormat" : "CycloneDX",
   "components" : [
     {
+      "description" : "Checksum-verified update framework and installer helpers; pinned through SwiftPM.",
+      "externalReferences" : [
+        {
+          "type" : "vcs",
+          "url" : "https:\/\/github.com\/sparkle-project\/Sparkle"
+        },
+        {
+          "type" : "distribution",
+          "url" : "https:\/\/github.com\/sparkle-project\/Sparkle\/releases\/download\/2.10.0\/Sparkle-for-Swift-Package-Manager.zip"
+        }
+      ],
+      "hashes" : [
+        {
+          "alg" : "SHA-256",
+          "content" : "17e28312b8e18ab7cdbbe09a6fb28cc55a5479ec6c371dbc07cdecd2a14fd959"
+        }
+      ],
+      "licenses" : [
+        {
+          "license" : {
+            "id" : "MIT"
+          }
+        }
+      ],
+      "name" : "Sparkle",
+      "purl" : "pkg:github\/sparkle-project\/Sparkle@2.10.0",
+      "type" : "framework",
+      "version" : "2.10.0"
+    },
+    {
       "description" : "Portable Apple Silicon interpreter shipped inside the app; upstream distribution 20260929.",
       "externalReferences" : [
         {
@@ -296,7 +326,7 @@
     },
     "timestamp" : "1970-01-01T00:00:00Z"
   },
-  "serialNumber" : "urn:uuid:1AF35FA5-3DD8-48BB-89A6-92E0B441FA1F",
+  "serialNumber" : "urn:uuid:A8D0C1ED-ECD8-406A-AEC1-C99796C26E53",
   "specVersion" : "1.5",
   "version" : 1
 }

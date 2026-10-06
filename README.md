@@ -58,6 +58,15 @@ With exactly one prepared profile, Inbox+ selects it automatically. With several
 The default build is **ad-hoc signed**. Distribution requires an Apple Developer ID and
 `Scripts/package-release.sh` for signing and notarization.
 
+Signed releases use Sparkle for app updates. When an update is available, a small update button
+appears directly above Settings in the left sidebar. Click it to open the update installer, or use
+**Inbox+ → Check for Updates…**. Scheduled checks and downloads run in the background; a downloaded
+update can install on quit. Update restarts wait for the app-owned messaging runtime to stop and
+are postponed while a draft, staged attachment, or pending send needs attention.
+
+Development builds do not check for updates by default. See [release and signing setup](docs/updates.md)
+for the one-time Sparkle key setup, GitHub Releases, and GitHub Pages feed publishing.
+
 > Set `INBOXPLUS_SIGNING_IDENTITY` before building to sign with a real or self-signed certificate.
 > Worth doing: macOS ties Full Disk Access and Automation grants to a code identity, and an ad-hoc
 > signature's identity changes on every build — which is why permissions are re-requested after

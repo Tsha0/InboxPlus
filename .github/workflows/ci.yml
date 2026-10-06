@@ -55,6 +55,12 @@ jobs:
       - name: Test
         run: swift test --skip-build
 
+      - name: Verify update packaging and feed validation
+        run: |
+          python3 -m unittest discover -s Tests/Packaging -v
+          bash Tests/Packaging/verify-signed-feed.sh
+          bash -n Scripts/embed-sparkle.sh Scripts/generate-update-feed.sh Scripts/package-release.sh Scripts/build-app.sh
+
       - name: Check for whitespace damage
         run: git diff --check
 
