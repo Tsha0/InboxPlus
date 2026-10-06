@@ -76,7 +76,8 @@ struct InboxPlusApp: App {
         return InboxPlusAppModel(
             gateway: services.gateway,
             directory: services.directory,
-            media: services.media
+            media: services.media,
+            favouriteStore: services.favouriteStore
         )
     }()
 

@@ -41,6 +41,7 @@ public struct InboxItem: Identifiable, Hashable, Sendable {
     public let title: String
     public let latestActivity: Date
     public let unreadCount: Int
+    public let isFavourite: Bool
     public let conversationSummaries: [ConversationSummary]
 
     public init(
@@ -48,9 +49,11 @@ public struct InboxItem: Identifiable, Hashable, Sendable {
         title: String,
         latestActivity: Date,
         unreadCount: Int,
-        conversationSummaries: [ConversationSummary]
+        conversationSummaries: [ConversationSummary],
+        isFavourite: Bool = false
     ) {
         self.id = id
+        self.isFavourite = isFavourite
         self.title = title
         self.latestActivity = latestActivity
         self.unreadCount = unreadCount
@@ -72,7 +75,8 @@ public enum InboxProjector {
         accounts: [ConnectedAccount],
         identities: [RemoteIdentity],
         conversations: [RemoteConversation],
-        directory: ContactDirectory
+        directory: ContactDirectory,
+        favouriteRoutes: Set<ConversationRoute> = []
     ) -> [InboxItem] {
         let accountByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
         let identityByID = Dictionary(uniqueKeysWithValues: identities.map { ($0.id, $0) })
@@ -127,10 +131,12 @@ public enum InboxProjector {
                 title: title,
                 latestActivity: sorted[0].latestActivity,
                 unreadCount: sorted.reduce(0) { $0 + $1.unreadCount },
-                conversationSummaries: sorted
+                conversationSummaries: sorted,
+                isFavourite: sorted.contains { favouriteRoutes.contains($0.route) }
             )
         }
         .sorted {
+            if $0.isFavourite != $1.isFavourite { return $0.isFavourite }
             if $0.latestActivity == $1.latestActivity {
                 return String(describing: $0.id) < String(describing: $1.id)
             }
