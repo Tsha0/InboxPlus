@@ -14,6 +14,7 @@ final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
+        MessageNotificationController.shared.install()
         watchForTerminationSignals()
     }
 
@@ -84,6 +85,15 @@ struct InboxPlusApp: App {
         WindowGroup("Inbox+", id: "main") {
             RootView(model: model, makeLoginSession: BridgeSelection.makeProvider())
                 .task {
+                    let notifications = MessageNotificationController.shared
+                    notifications.onOpen = { route in
+                        model.openConversation(route)
+                        showMainWindow()
+                    }
+                    model.onIncomingMessage = { message, title in
+                        notifications.deliver(message, title: title)
+                    }
+                    notifications.requestAuthorization()
                     do { try await model.start() }
                     catch is CancellationError {}
                     catch { model.reportStartupFailure(error) }

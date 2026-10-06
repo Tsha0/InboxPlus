@@ -18,6 +18,8 @@ public struct MessagingSnapshot: Sendable {
 
 public enum GatewayEvent: Sendable {
     case messageUpserted(Message)
+    /// Initial timeline contents, pagination, and replacement events; never alert the user.
+    case historicalMessageUpserted(Message)
     case conversationUpserted(RemoteConversation)
     /// Must be delivered before any conversation that names this identity.
     ///

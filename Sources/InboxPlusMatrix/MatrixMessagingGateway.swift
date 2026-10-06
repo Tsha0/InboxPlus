@@ -330,7 +330,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
                     unreadCount: Int(info?.numUnreadMessages ?? 0)
                 )
             ))
-            for message in messages { publish(.messageUpserted(message)) }
+            for message in messages { publish(.historicalMessageUpserted(message)) }
         }
     }
 
@@ -491,32 +491,36 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
     }
 
     func onUpdate(diff: [TimelineDiff]) {
-        var produced: [Message] = []
-        for change in diff {
-            switch change {
-            case let .append(values): produced += messages(from: values)
-            case let .reset(values): produced += messages(from: values)
-            case let .pushBack(value): produced += messages(from: [value])
-            case let .pushFront(value): produced += messages(from: [value])
-            case let .insert(_, value): produced += messages(from: [value])
-            case let .set(_, value): produced += messages(from: [value])
-            case .clear, .popFront, .popBack, .remove, .truncate:
-                // Removals do not delete Inbox+'s record: a redaction arrives as its own event, and
-                // the design forbids silently dropping a message that was already shown.
-                continue
+        // Only tail additions after the initial batch can represent new traffic. Backward
+        // pagination, resets, edits, and decryption replacements still update the transcript.
+        let events: [GatewayEvent] = lock.withLock {
+            var events: [GatewayEvent] = []
+            for change in diff {
+                let items: [TimelineItem]
+                let live: Bool
+                switch change {
+                case let .append(values): items = values; live = receivedFirstBatch
+                case let .pushBack(value): items = [value]; live = receivedFirstBatch
+                case let .reset(values): items = values; live = false
+                case let .pushFront(value), let .insert(_, value), let .set(_, value):
+                    items = [value]; live = false
+                case .clear, .popFront, .popBack, .remove, .truncate: continue
+                }
+                for item in items {
+                    guard let event = item.asEvent(),
+                          let message = normalizer.normalize(event, roomID: roomID, accountID: accountID)
+                    else { continue }
+                    guard known[message.id] != message else { continue }
+                    let isNew = known[message.id] == nil
+                    known[message.id] = message
+                    events.append(live && isNew && event.origin == .sync
+                        ? .messageUpserted(message) : .historicalMessageUpserted(message))
+                }
             }
-        }
-
-        let fresh: [Message] = lock.withLock {
             receivedFirstBatch = true
-            return produced.filter { message in
-                // Idempotent by event ID, so duplicate or replayed diffs cannot double-post.
-                guard known[message.id] != message else { return false }
-                known[message.id] = message
-                return true
-            }
+            return events
         }
-        for message in fresh { onEvent(.messageUpserted(message)) }
+        for event in events { onEvent(event) }
     }
 
     private func messages(from items: [TimelineItem]) -> [Message] {

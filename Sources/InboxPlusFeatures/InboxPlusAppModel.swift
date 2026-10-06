@@ -115,6 +115,9 @@ public final class InboxPlusAppModel {
         pendingConnectionRequest = nil
     }
 
+    public var onIncomingMessage: ((Message, String) -> Void)?
+    private var notificationsStartedAt = Date.distantFuture
+
     private let gateway: any MessagingGateway
     private var directory: ContactDirectory
     private var draftRevision: UInt64 = 0
@@ -462,6 +465,7 @@ public final class InboxPlusAppModel {
     private func beginStartup() -> UUID {
         let id = UUID()
         startupID = id
+        notificationsStartedAt = Date()
         bufferingEventTaskID = id
         bufferedStartupEvents.removeAll()
         startupTask = Task { @MainActor [weak self] in
@@ -564,7 +568,17 @@ public final class InboxPlusAppModel {
 
     private func apply(_ event: GatewayEvent) {
         switch event {
-        case let .messageUpserted(message):
+        case let .messageUpserted(message), let .historicalMessageUpserted(message):
+            let isLive: Bool
+            if case .messageUpserted = event { isLive = true } else { isLive = false }
+            let isNew = !(messagesByRoute[message.route] ?? []).contains { $0.id == message.id }
+            if isLive, isNew, !message.isOutgoing, message.kind != .membership,
+               message.timestamp >= notificationsStartedAt {
+                let title = conversations.first { $0.route == message.route }?.title
+                    ?? identities.first { $0.id == message.senderIdentityID }?.displayName
+                    ?? "New message"
+                onIncomingMessage?(message, title)
+            }
             var messages = messagesByRoute[message.route, default: []]
             if let index = messages.firstIndex(where: { $0.id == message.id }) {
                 messages[index] = message
