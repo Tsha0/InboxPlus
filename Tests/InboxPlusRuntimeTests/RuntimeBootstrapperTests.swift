@@ -557,6 +557,7 @@ import Testing
     let sourceText = #"""
     import Darwin
     import Foundation
+    @testable import InboxPlusRuntime
 
     @main
     struct AlternateCWDHarness {
@@ -653,20 +654,27 @@ import Testing
     """#
     try Data(sourceText.utf8).write(to: harnessSource)
 
-    let runtimeSources = try FileManager.default.contentsOfDirectory(
-        at: packageRoot.appendingPathComponent("Sources/InboxPlusRuntime", isDirectory: true),
+    // Reuse the runtime already built for this test bundle. Compiling all of its sources here
+    // duplicated the package build and dominated the test run. The helper still executes in its
+    // own process so changing CWD cannot race the other tests. Locate the bundle rather than
+    // assuming .build/debug, so custom scratch paths and release tests work too.
+    let buildDirectory = Bundle(for: RuntimeBootstrapperTestBundle.self).bundleURL
+        .deletingLastPathComponent()
+    let runtimeObjects = try FileManager.default.contentsOfDirectory(
+        at: buildDirectory.appendingPathComponent("InboxPlusRuntime.build", isDirectory: true),
         includingPropertiesForKeys: nil
     )
-        .filter { $0.pathExtension == "swift" }
+        .filter { $0.pathExtension == "o" }
         .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    #expect(!runtimeObjects.isEmpty)
     let compile = try runIsolatedTestProcess(
         executable: URL(fileURLWithPath: "/usr/bin/swiftc"),
         arguments: [
             "-parse-as-library",
             "-swift-version", "6",
-            "-module-name", "InboxPlusRuntimeAlternateCWDHarness",
-        ] + runtimeSources.map(\.path) + [
+            "-I", buildDirectory.appendingPathComponent("Modules").path,
             harnessSource.path,
+        ] + runtimeObjects.map(\.path) + [
             "-o", harnessExecutable.path,
         ],
         currentDirectory: packageRoot,
@@ -693,6 +701,8 @@ import Testing
 
     #expect(run.status == 0, "Alternate-CWD harness output:\n\(run.output)")
 }
+
+private final class RuntimeBootstrapperTestBundle: NSObject {}
 
 private func runIsolatedTestProcess(
     executable: URL,

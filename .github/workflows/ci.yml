@@ -27,13 +27,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Record the toolchain
+        id: toolchain
         run: |
           swift --version
           xcodebuild -version
           sw_vers
+          key=$({ swift --version; xcodebuild -version; sw_vers -productVersion; } | shasum -a 256 | cut -d' ' -f1)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
 
-      # The Matrix SDK is a 279 MB checksum-verified binary artifact. Re-downloading it on every
-      # run is the single slowest thing in this build, and it only changes when the pin does.
+      # Keep the checksum-verified Matrix SDK download across runs.
       - name: Cache Swift package artifacts
         uses: actions/cache@v4
         with:
@@ -42,6 +44,15 @@ jobs:
             ~/.swiftpm
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
+
+      # SwiftPM still checks inputs after restore. Separate debug/release caches and toolchain
+      # keys keep compiler outputs from different jobs or Xcode versions apart.
+      - name: Cache test build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swift-test-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-${{ hashFiles('Sources/**', 'Tests/**') }}
+          restore-keys: swift-test-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-
 
       - name: Resolve dependencies
         run: swift package resolve
@@ -119,11 +130,39 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
+      - name: Record the toolchain
+        id: toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+          sw_vers
+          key=$({ swift --version; xcodebuild -version; sw_vers -productVersion; } | shasum -a 256 | cut -d' ' -f1)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
       - name: Record runtime build tools
+        id: runtime-tools
         run: |
           cmake --version
           rustc --version
           cargo --version
+          key=$({ cmake --version; rustc --version; cargo --version; } | shasum -a 256 | cut -d' ' -f1)
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+
+      - name: Cache release build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swift-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-${{ hashFiles('Sources/**') }}
+          restore-keys: swift-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-
+
+      # Reuse the pinned Python/Synapse environment, including the expensive Rust extension.
+      # No fallback: changes to pins, preparation, verification or native tools require a rebuild.
+      # prepare-bundled-runtime.sh rechecks the inventory and portability on every cache hit.
+      - name: Cache bundled Python runtime
+        uses: actions/cache@v4
+        with:
+          path: build/runtime-cache
+          key: bundled-python-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ steps.runtime-tools.outputs.key }}-${{ hashFiles('Runtime/Synapse/**', 'Scripts/prepare-bundled-runtime.sh', 'Scripts/verify-bundled-python.py') }}
 
       - name: Build the app bundle
         run: Scripts/build-app.sh
