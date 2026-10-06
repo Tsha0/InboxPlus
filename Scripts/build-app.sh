@@ -28,8 +28,14 @@ cd "$REPO_ROOT"
 VERSION="$(grep -o 'current = "[^"]*"' Sources/InboxPlusCore/InboxPlusVersion.swift | cut -d'"' -f2)"
 [ -n "$VERSION" ] || { echo "error: could not read the version" >&2; exit 1; }
 
-echo "==> Building Inbox+ $VERSION (release)"
-swift build -c release
+# CI sets this only after restoring a build keyed by every compile input and the toolchain.
+# Bundle assembly, runtime verification and signing still run when the binaries are reused.
+if [ "${INBOXPLUS_SKIP_SWIFT_BUILD:-0}" = "1" ]; then
+  echo "==> Reusing cached Inbox+ $VERSION release binaries"
+else
+  echo "==> Building Inbox+ $VERSION (release)"
+  swift build -c release
+fi
 BIN_DIR="$(swift build -c release --show-bin-path)"
 
 echo "==> Generating the app icon"

@@ -45,19 +45,20 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
           restore-keys: spm-${{ runner.os }}-
 
-      # SwiftPM still checks inputs after restore. Separate debug/release caches and toolchain
-      # keys keep compiler outputs from different jobs or Xcode versions apart.
+      # Exact content keys allow reuse despite fresh checkout timestamps. Changes to sources,
+      # package pins, workflow build flags or the toolchain always build again; tests always run.
       - name: Cache test build
+        id: test-build
         uses: actions/cache@v4
         with:
           path: .build
-          key: swift-test-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-${{ hashFiles('Sources/**', 'Tests/**') }}
-          restore-keys: swift-test-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-
+          key: swift-test-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', '.github/workflows/ci.yml', 'Sources/**', 'Tests/**') }}
 
       - name: Resolve dependencies
         run: swift package resolve
 
       - name: Build
+        if: steps.test-build.outputs.cache-hit != 'true'
         run: swift build --build-tests
 
       # The live-runtime and live-bridge tests are opt-in behind INBOXPLUS_RUNTIME_PYTHON and are
@@ -149,11 +150,11 @@ jobs:
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Cache release build
+        id: release-build
         uses: actions/cache@v4
         with:
           path: .build
-          key: swift-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-${{ hashFiles('Sources/**') }}
-          restore-keys: swift-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved') }}-
+          key: swift-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', '.github/workflows/ci.yml', 'Scripts/build-app.sh', 'Sources/**') }}
 
       # Reuse the pinned Python/Synapse environment, including the expensive Rust extension.
       # No fallback: changes to pins, preparation, verification or native tools require a rebuild.
@@ -165,6 +166,8 @@ jobs:
           key: bundled-python-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ steps.runtime-tools.outputs.key }}-${{ hashFiles('Runtime/Synapse/**', 'Scripts/prepare-bundled-runtime.sh', 'Scripts/verify-bundled-python.py') }}
 
       - name: Build the app bundle
+        env:
+          INBOXPLUS_SKIP_SWIFT_BUILD: ${{ steps.release-build.outputs.cache-hit == 'true' && '1' || '0' }}
         run: Scripts/build-app.sh
 
       - name: Verify the bundle
