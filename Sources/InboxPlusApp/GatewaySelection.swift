@@ -130,7 +130,22 @@ extension GatewaySelection {
         let matrix = MatrixMessagingGateway(
             client: client,
             invitePolicy: .forBridges(ids: bridgeIDs, serverName: state.serverName),
-            bridgeAccounts: bridgeAccounts
+            bridgeAccounts: bridgeAccounts,
+            outgoingIdentifiersProvider: {
+                var identities: [String: Set<String>] = [:]
+                let runtime = BridgeRuntime(paths: paths)
+                for record in (try? runtime.prepared()) ?? [] {
+                    let database = URL(fileURLWithPath: record.configurationFile)
+                        .deletingLastPathComponent().appendingPathComponent("bridge.db")
+                    if let senders = try? BridgeOwnIdentityStore.outgoingIdentifiers(
+                        database: database, bridgeID: record.bridgeID,
+                        ownerUserID: record.ownerUserID, serverName: record.serverName
+                    ) {
+                        identities[record.bridgeID] = senders
+                    }
+                }
+                return identities
+            }
         )
 
         // iMessage never reaches the homeserver, so it sits beside the Matrix gateway rather than
