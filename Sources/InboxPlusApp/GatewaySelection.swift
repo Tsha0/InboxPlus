@@ -10,7 +10,9 @@ import InboxPlusRuntime
 /// Chooses which gateway the app runs on at launch.
 ///
 /// A prepared profile is selected by name, or discovered when there is exactly one. A packaged app
-/// creates its default profile on first launch; a bare developer executable starts empty. Demo conversations belong only in previews and tests.
+/// creates its default profile on first launch; a bare developer executable starts empty. Demo
+/// conversations appear only when asked for with `INBOXPLUS_DEMO=1` (see `DemoInbox`), and in
+/// previews and tests.
 ///
 /// Nothing here waits for the runtime. Selecting a profile only decides *what* to attach to; the
 /// homeserver and the bridges are started behind the first use of the gateway, because a cold
@@ -36,6 +38,19 @@ enum GatewaySelection {
     static func makeServices(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Services {
+        // Checked first so that asking for the demo never attaches to a real profile on this Mac.
+        if DemoInbox.isRequested(environment: environment) {
+            FileHandle.standardError.write(Data(
+                ("Inbox+: \(DemoInbox.environmentKey)=1 — showing made-up demo conversations; "
+                    + "no profile, account or network is used.\n").utf8
+            ))
+            return Services(
+                gateway: InMemoryMessagingGateway(seed: DemoInbox.makeSnapshot()),
+                media: MediaController(),
+                directory: DemoInbox.makeDirectory()
+            )
+        }
+
         guard let profileName = resolveProfileName(environment: environment) else {
             FileHandle.standardError.write(Data(
                 ("Inbox+: no \(profileEnvironmentKey) set and no prepared profile found — "

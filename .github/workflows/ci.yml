@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, claude/peaceful-rubin-1vjg4v]   # TEMPORARY: the branch name is removed before merging
   workflow_dispatch:
 
 # A newer push to the same branch makes the previous run's answer irrelevant, so it is cancelled
@@ -72,6 +72,11 @@ jobs:
           python3 -m unittest discover -s Tests/Packaging -v
           bash Tests/Packaging/verify-signed-feed.sh
           bash -n Scripts/embed-sparkle.sh Scripts/generate-update-feed.sh Scripts/package-release.sh Scripts/build-app.sh
+
+      - name: Verify explorer tooling
+        run: |
+          python3 -m unittest discover -s Tests/Explore -v
+          swiftc -typecheck -target "$(uname -m)-apple-macos15" Scripts/explore/ui.swift
 
       - name: Check for whitespace damage
         run: git diff --check

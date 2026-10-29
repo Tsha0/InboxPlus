@@ -117,7 +117,8 @@ struct InboxPlusApp: App {
     }()
 
     var body: some Scene {
-        WindowGroup("Inbox+", id: "main") {
+        // The title is the visible sign that nothing in a demo window is real.
+        WindowGroup(DemoInbox.isActive ? "Inbox+ Demo" : "Inbox+", id: "main") {
             RootView(
                 model: model, makeLoginSession: BridgeSelection.makeProvider(),
                 update: updates.presentation, onUpdate: updates.checkForUpdates

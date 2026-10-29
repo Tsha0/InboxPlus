@@ -1,0 +1,190 @@
+name: Explore
+
+# An agent uses the app the way a person would. On a fresh macOS runner it clicks through the
+# demo inbox (made-up conversations, no accounts, no network), looks at every screen, and reports
+# what is broken or could be better. Findings become issues labelled `explorer`, which the scout
+# triages like any other report. See .claude/skills/explore/SKILL.md.
+#
+# Needs one repository secret: ANTHROPIC_API_KEY, or CLAUDE_CODE_OAUTH_TOKEN (from
+# `claude setup-token`). Without it, only the launch check runs. Optional repository variable:
+# EXPLORER_MODEL.
+
+on:
+  schedule:
+    - cron: '23 20 * * *'   # 04:23 in Singapore, before the scout
+  workflow_dispatch:
+    inputs:
+      focus:
+        description: Area to start with, for example "conversation composer" (optional)
+        required: false
+        type: string
+      minutes:
+        description: Minutes the agent has to explore
+        required: false
+        default: '35'
+        type: string
+  push:
+    branches: [claude/peaceful-rubin-1vjg4v]   # TEMPORARY: proves the runner setup; remove before merging
+
+permissions:
+  contents: read
+
+concurrency:
+  group: explore
+  cancel-in-progress: false
+
+jobs:
+  explore:
+    name: Explore the demo app
+    runs-on: macos-latest
+    timeout-minutes: 80
+    permissions:
+      contents: read
+      issues: read
+    env:
+      INBOXPLUS_EXPLORE_DIR: ${{ github.workspace }}/build/explore
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Cache Swift package artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build the app and the UI driver
+        run: |
+          swift build --product InboxPlus
+          mkdir -p build/explore/shots
+          swiftc -O -target "$(uname -m)-apple-macos15" Scripts/explore/ui.swift -o build/explore/ui
+          echo "INBOXPLUS_EXPLORE_APP=$(swift build --show-bin-path)/InboxPlus" >> "$GITHUB_ENV"
+          echo "$PWD/build/explore" >> "$GITHUB_PATH"
+
+      # If this fails, the agent could not see or drive the app, so there is no point continuing.
+      - name: Launch the demo inbox
+        run: |
+          ui check
+          ui launch
+          ui resize 1280 800
+          ui pause 2
+          ui shot build/explore/shots/00-launch.png
+          ui tree | head -n 120
+
+      - name: List what the explorer already reported
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue list --repo "$GITHUB_REPOSITORY" --label explorer --state all --limit 200 \
+            --json number,title,state,body \
+            --jq '.[] | "- #\(.number) [\(.state)] \(.title) — fingerprint: \(((.body // "") | capture("explorer:fingerprint=(?<f>[a-z0-9-]+)").f) // "none")"' \
+            > build/explore/existing-issues.md || echo "(could not list issues)" > build/explore/existing-issues.md
+          echo "$(wc -l < build/explore/existing-issues.md) earlier explorer issues"
+
+      - name: Check for Claude credentials
+        env:
+          API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -n "$API_KEY$OAUTH_TOKEN" ]; then
+            echo "HAS_CLAUDE_AUTH=true" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Add the ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN secret to let the agent explore. Only the launch check ran."
+          fi
+
+      # The agent can only run `ui`, read files, and write in the workspace. It holds no GitHub
+      # token: a separate job files the issues.
+      - name: Explore
+        if: env.HAS_CLAUDE_AUTH == 'true'
+        continue-on-error: true
+        timeout-minutes: 50
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          FOCUS: ${{ inputs.focus }}
+          MINUTES: ${{ inputs.minutes || '35' }}
+          MODEL: ${{ vars.EXPLORER_MODEL }}
+        run: |
+          [ -n "$ANTHROPIC_API_KEY" ] || unset ANTHROPIC_API_KEY
+          [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || unset CLAUDE_CODE_OAUTH_TOKEN
+          npm install --global @anthropic-ai/claude-code@2.1.300
+          prompt="Read .claude/skills/explore/SKILL.md and follow it. The app is already running on the demo inbox. You have about ${MINUTES} minutes: write each finding as soon as it is confirmed."
+          if [ -n "$FOCUS" ]; then prompt="$prompt Start with this area: $FOCUS"; fi
+          args=(-p "$prompt" --permission-mode dontAsk
+                --allowedTools "Bash(ui:*)" Read Write Edit Glob
+                --output-format stream-json --verbose)
+          if [ -n "$MODEL" ]; then args+=(--model "$MODEL"); fi
+          claude "${args[@]}" > build/explore/transcript.jsonl
+
+      - name: Collect results
+        if: always()
+        run: |
+          ui shot build/explore/shots/99-end.png || true
+          ui quit || true
+          cp ~/Library/Logs/DiagnosticReports/InboxPlus* build/explore/ 2>/dev/null || true
+          # Smaller copies for issues: JPEG, at most 1600 px on the long side.
+          for shot in build/explore/shots/*.png; do
+            [ -e "$shot" ] || continue
+            sips -s format jpeg -s formatOptions 70 -Z 1600 "$shot" --out "${shot%.png}.jpg" > /dev/null
+          done
+          touch build/explore/findings.jsonl
+          {
+            echo "### Explorer"
+            echo "$(grep -c . build/explore/findings.jsonl || true) findings."
+            cat build/explore/summary.md 2>/dev/null || echo "No summary was written."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # TEMPORARY: lets a cloud session see the first screenshot without downloading the artifact.
+      - name: Print a thumbnail
+        if: always() && github.ref != 'refs/heads/main'
+        run: |
+          sips -s format jpeg -s formatOptions 45 -Z 720 build/explore/shots/00-launch.png --out /tmp/thumb.jpg > /dev/null
+          echo "THUMBNAIL-BEGIN"; base64 -i /tmp/thumb.jpg | tr -d '\n'; echo; echo "THUMBNAIL-END"
+
+      - name: Save the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: explorer-${{ github.run_id }}
+          path: build/explore
+          retention-days: 14
+          if-no-files-found: warn
+
+  report:
+    name: File findings as issues
+    needs: explore
+    if: always() && needs.explore.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write   # screenshots go to the explorer-shots branch
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: explorer-${{ github.run_id }}
+          path: build/explore
+
+      # Runs from any other branch only print what they would file.
+      - name: Open or update issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.ref != 'refs/heads/main' && '--dry-run' || '' }}
+        run: |
+          python3 Scripts/explore/report.py \
+            --findings build/explore/findings.jsonl \
+            --shots-dir build/explore/shots \
+            --repo "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            $DRY_RUN

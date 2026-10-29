@@ -16,6 +16,10 @@ enum BridgeSelection {
     static func makeProvider(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> BridgeLoginSessionProvider? {
+        // The demo inbox has no runtime to install a bridge into, and must never attach to a real
+        // profile, so it offers no login: RootView explains why instead.
+        if DemoInbox.isRequested(environment: environment) { return nil }
+
         // Resolved the same way the gateway resolves it, including the single-prepared-profile
         // fallback: an app launched from Finder inherits no environment, and offering no login
         // while the very same launch is attached to a real account is indistinguishable from a bug.
