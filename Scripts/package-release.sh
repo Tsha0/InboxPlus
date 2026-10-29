@@ -150,11 +150,20 @@ echo "==> Generating release artifacts"
 INBOXPLUS_RELEASE_VERSION="$VERSION" bash "$REPO_ROOT/Scripts/generate-update-feed.sh" \
   "$REPO_ROOT/$OUTPUT_DIR" "${INBOXPLUS_RELEASE_TAG:-v$VERSION}"
 
-(cd "$REPO_ROOT/$OUTPUT_DIR" && shasum -a 256 ./*.zip ./*.cdx.json ./appcast.xml > "SHA256SUMS.txt")
+# Earlier releases' ZIPs stay in the directory as delta sources; they are not part of this release.
+cd "$REPO_ROOT/$OUTPUT_DIR"
+ASSETS=("$(basename "$ZIP")")
+for DELTA in InboxPlus-"$INBOXPLUS_BUILD_NUMBER"-*.delta; do
+  [ ! -e "$DELTA" ] || ASSETS+=("$DELTA")
+done
+ASSETS+=("inboxplus-$VERSION.cdx.json" appcast.xml)
+shasum -a 256 "${ASSETS[@]}" > SHA256SUMS.txt
+ASSETS+=(SHA256SUMS.txt)
 
 echo
-echo "==> Done. Artifacts in $OUTPUT_DIR:"
-ls -1 "$REPO_ROOT/$OUTPUT_DIR"
+echo "==> Done. Upload these from $OUTPUT_DIR to the ${INBOXPLUS_RELEASE_TAG:-v$VERSION} release:"
+printf '  %s\n' "${ASSETS[@]}"
+echo "Keep $(basename "$ZIP") here: the next release builds its delta update from it."
 if [ "$INBOXPLUS_RELEASE_SIGNING" = developer-id ]; then
   echo
   echo "Verify the way a user's Mac will:"
