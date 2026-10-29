@@ -1,20 +1,30 @@
 #!/bin/bash
 #
-# Builds, signs, notarizes and staples an Inbox+ release.
+# Builds and signs an Inbox+ release, and notarizes it when signed with an Apple Developer ID.
 #
-# Nothing here can run without an Apple Developer ID. That is not a limitation of the script — it
-# is the point: macOS binds permission grants (Full Disk Access, Automation, Screen Recording) to
-# a code identity, and an ad-hoc signature has no stable identity. Its CDHash changes on every
-# build, so every rebuild looks like a different application and every grant has to be given again.
-# That is why development builds re-prompt for permission constantly.
+# Every release must be signed with the same certificate. macOS binds permission grants (Full Disk
+# Access, Automation) to a code identity, and Sparkle hands each update to the same Mac. An ad-hoc
+# signature has no stable identity: its CDHash changes on every build, so each update would look
+# like a different application and every grant would have to be given again.
 #
 # Required environment:
-#   INBOXPLUS_SIGNING_IDENTITY   "Developer ID Application: Your Name (TEAMID)"
+#   INBOXPLUS_RELEASE_SIGNING    self-signed or developer-id
+#   INBOXPLUS_SIGNING_IDENTITY   The certificate's name, e.g. "Inbox+ Release Signing" from
+#                                Scripts/create-signing-certificate.sh, or
+#                                "Developer ID Application: Your Name (TEAMID)"
+#   INBOXPLUS_UPDATE_PUBLIC_KEY  Sparkle's public key; see docs/updates.md
+#   INBOXPLUS_BUILD_NUMBER       Greater than every shipped build
+#
+# developer-id also requires:
 #   INBOXPLUS_TEAM_ID            Your 10-character Apple team identifier
 #   INBOXPLUS_NOTARY_PROFILE     A notarytool keychain profile name, created once with:
 #                              xcrun notarytool store-credentials <name> \
 #                                --apple-id <you@example.com> --team-id <TEAMID> \
 #                                --password <app-specific-password>
+#
+# self-signed releases are not notarized. Gatekeeper blocks the first launch of a downloaded copy
+# until the user chooses Open Anyway in System Settings → Privacy & Security. Sparkle updates
+# after that are not blocked.
 #
 # Usage: Scripts/package-release.sh [output-directory]
 
@@ -28,9 +38,16 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 fail() { echo "error: $*" >&2; exit 1; }
 
-for var in INBOXPLUS_SIGNING_IDENTITY INBOXPLUS_TEAM_ID INBOXPLUS_NOTARY_PROFILE INBOXPLUS_UPDATE_PUBLIC_KEY INBOXPLUS_BUILD_NUMBER; do
+REQUIRED=(INBOXPLUS_RELEASE_SIGNING INBOXPLUS_SIGNING_IDENTITY INBOXPLUS_UPDATE_PUBLIC_KEY INBOXPLUS_BUILD_NUMBER)
+case "${INBOXPLUS_RELEASE_SIGNING:-}" in
+  developer-id) REQUIRED+=(INBOXPLUS_TEAM_ID INBOXPLUS_NOTARY_PROFILE) ;;
+  self-signed) ;;
+  *) fail "INBOXPLUS_RELEASE_SIGNING must be self-signed or developer-id" ;;
+esac
+for var in "${REQUIRED[@]}"; do
   [ -n "${!var:-}" ] || fail "$var is not set; see the header of this script"
 done
+[ "$INBOXPLUS_SIGNING_IDENTITY" != - ] || fail "an ad-hoc signature changes identity on every release"
 
 VERSION="$(grep -o 'current = "[^"]*"' "$REPO_ROOT/Sources/InboxPlusCore/InboxPlusVersion.swift" | cut -d'"' -f2)"
 [ -n "$VERSION" ] || fail "could not read the version from Sources/InboxPlusCore/InboxPlusVersion.swift"
@@ -85,32 +102,44 @@ PLIST
 python3 "$REPO_ROOT/Scripts/configure-updates.py" "$APP_DIR" --release
 
 # 2. Sign inner binaries before the bundle. Signing outside-in invalidates the outer signature.
-echo "==> Signing"
+echo "==> Signing ($INBOXPLUS_RELEASE_SIGNING)"
 ENTITLEMENTS="$REPO_ROOT/Scripts/inboxplus.entitlements"
-"$REPO_ROOT/Scripts/sign-bundled-runtime.sh" "$APP_DIR/Contents/Resources/Runtime" "$INBOXPLUS_SIGNING_IDENTITY"
-bash "$REPO_ROOT/Scripts/embed-sparkle.sh" "$APP_DIR" "$INBOXPLUS_SIGNING_IDENTITY"
-codesign --force --timestamp --options runtime \
-  --sign "$INBOXPLUS_SIGNING_IDENTITY" \
-  "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI"
-codesign --force --timestamp --options runtime \
-  --entitlements "$ENTITLEMENTS" \
-  --sign "$INBOXPLUS_SIGNING_IDENTITY" \
-  "$APP_DIR"
+HARDENED=""
+[ "$INBOXPLUS_RELEASE_SIGNING" = self-signed ] || HARDENED=--hardened
+sign_code() {
+  if [ -n "$HARDENED" ]; then
+    codesign --force --timestamp --options runtime --sign "$INBOXPLUS_SIGNING_IDENTITY" "$@"
+  else
+    codesign --force --sign "$INBOXPLUS_SIGNING_IDENTITY" "$@"
+  fi
+}
+"$REPO_ROOT/Scripts/sign-bundled-runtime.sh" "$APP_DIR/Contents/Resources/Runtime" "$INBOXPLUS_SIGNING_IDENTITY" $HARDENED
+bash "$REPO_ROOT/Scripts/embed-sparkle.sh" "$APP_DIR" "$INBOXPLUS_SIGNING_IDENTITY" $HARDENED
+sign_code "$APP_DIR/Contents/MacOS/InboxPlusRuntimeCLI"
+sign_code --entitlements "$ENTITLEMENTS" "$APP_DIR"
 
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+REQUIREMENT="$(codesign -d -r- "$APP_DIR" 2>&1 | sed -n 's/^designated => //p')"
+case "$REQUIREMENT" in
+  *certificate*) echo "    identity: $REQUIREMENT" ;;
+  *) fail "the app's identity is not tied to a certificate: $REQUIREMENT" ;;
+esac
 
-# 3. Notarize. Apple must see the bundle before Gatekeeper will run it on someone else's Mac.
-echo "==> Notarizing"
 ZIP="$REPO_ROOT/$OUTPUT_DIR/InboxPlus-$VERSION-$INBOXPLUS_BUILD_NUMBER.zip"
-ditto -c -k --keepParent "$APP_DIR" "$ZIP"
-xcrun notarytool submit "$ZIP" --keychain-profile "$INBOXPLUS_NOTARY_PROFILE" --wait
-
-# Stapling attaches the ticket, so the app launches on a Mac that is offline.
-xcrun stapler staple "$APP_DIR"
-xcrun stapler validate "$APP_DIR"
-
-# 4. Re-zip after stapling: the ticket is in the bundle, not in the archive made before it.
 rm -f "$ZIP"
+if [ "$INBOXPLUS_RELEASE_SIGNING" = developer-id ]; then
+  # 3. Notarize. Apple must see the bundle before Gatekeeper will run it on someone else's Mac.
+  echo "==> Notarizing"
+  ditto -c -k --keepParent "$APP_DIR" "$ZIP"
+  xcrun notarytool submit "$ZIP" --keychain-profile "$INBOXPLUS_NOTARY_PROFILE" --wait
+
+  # Stapling attaches the ticket, so the app launches on a Mac that is offline.
+  xcrun stapler staple "$APP_DIR"
+  xcrun stapler validate "$APP_DIR"
+
+  # 4. Re-zip after stapling: the ticket is in the bundle, not in the archive made before it.
+  rm -f "$ZIP"
+fi
 ditto -c -k --keepParent "$APP_DIR" "$ZIP"
 
 # 5. The bill of materials and checksums ship with the release, not after it.
@@ -126,6 +155,8 @@ INBOXPLUS_RELEASE_VERSION="$VERSION" bash "$REPO_ROOT/Scripts/generate-update-fe
 echo
 echo "==> Done. Artifacts in $OUTPUT_DIR:"
 ls -1 "$REPO_ROOT/$OUTPUT_DIR"
-echo
-echo "Verify the way a user's Mac will:"
-echo "  spctl --assess --type execute --verbose \"$APP_DIR\""
+if [ "$INBOXPLUS_RELEASE_SIGNING" = developer-id ]; then
+  echo
+  echo "Verify the way a user's Mac will:"
+  echo "  spctl --assess --type execute --verbose \"$APP_DIR\""
+fi
