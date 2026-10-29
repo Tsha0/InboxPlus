@@ -13,7 +13,7 @@ It is conversation-focused. There are no feeds, posts, stories or calls.
 
 ## Status
 
-**Current version: 0.5.11 — an early release.** On a Mac with a
+**Current version: 0.5.2 — an early release.** On a Mac with a
 prepared profile it connects a real account, loads real conversations, sends and receives, renders
 media, and supervises prepared network bridges alongside the homeserver. Opening Inbox+ starts the
 local runtime automatically; quitting stops the runtime it started. A runtime started separately
