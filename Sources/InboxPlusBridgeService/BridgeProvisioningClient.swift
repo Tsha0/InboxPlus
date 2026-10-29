@@ -48,6 +48,21 @@ public struct BridgeProvisioningClient: BridgeLoginSession, Sendable {
         return response.flows
     }
 
+    /// Whether a bridge process is answering on the provisioning port at all.
+    ///
+    /// A bridge that answers with an error is still running; that error belongs to the login,
+    /// which reports it. Only failing to reach the port means there is no bridge to sign in to.
+    public func isRunning() async -> Bool {
+        do {
+            _ = try await loginFlows()
+            return true
+        } catch MatrixHTTPError.transport {
+            return false
+        } catch {
+            return true
+        }
+    }
+
     public func startLogin(flowID: String) async throws -> BridgeLoginStep {
         try await client.send(
             .post,

@@ -73,7 +73,7 @@ let package = Package(
             dependencies: ["InboxPlusCore", "InboxPlusGateway", "InboxPlusFeatures", "InboxPlusBridge", "InboxPlusRuntime"],
             path: "Tests/InboxPlusTestSupport"
         ),
-        .testTarget(name: "InboxPlusAppTests", dependencies: ["InboxPlusApp"]),
+        .testTarget(name: "InboxPlusAppTests", dependencies: ["InboxPlusApp", "InboxPlusTestSupport"]),
         .testTarget(name: "InboxPlusCoreTests", dependencies: ["InboxPlusCore"]),
         .testTarget(name: "InboxPlusGatewayTests", dependencies: ["InboxPlusCore", "InboxPlusGateway"]),
         .testTarget(

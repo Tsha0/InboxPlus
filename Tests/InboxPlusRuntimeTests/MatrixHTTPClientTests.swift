@@ -127,7 +127,62 @@ func clientRejectsNonLoopbackBaseURL(_ raw: String) {
         Issue.record("expected the request to fail")
     } catch {
         #expect(!String(describing: error).contains("secret-token"))
+        #expect(!error.localizedDescription.contains("secret-token"))
     }
+}
+
+@Test func aRefusedConnectionSaysTheServiceIsNotRunning() async throws {
+    // Break caught: a bridge that was installed but never started surfaced in the login sheet as
+    // "The operation couldn't be completed. (InboxPlusRuntime.MatrixHTTPError error 0.)".
+    let port = try LoopbackPortAllocator().allocate()
+    let client = try MatrixHTTPClient(
+        baseURL: URL(string: "http://127.0.0.1:\(port)")!,
+        accessToken: "secret-token",
+        retryDelay: { _ in }
+    )
+
+    do {
+        let _: EmptyResponse = try await client.send(
+            .get,
+            path: ["_matrix", "provision", "v3", "login", "flows"],
+            idempotent: true
+        )
+        Issue.record("expected nothing to be listening on port \(port)")
+    } catch {
+        #expect(error as? MatrixHTTPError == .transport(
+            .requestFailed(code: URLError.Code.cannotConnectToHost.rawValue)
+        ))
+        #expect(error.localizedDescription
+            == "could not connect to the local service because it is not running")
+    }
+}
+
+@Test(arguments: [
+    MatrixHTTPError.nonLoopbackBaseURL,
+    .invalidRequestURL,
+    .transport(.invalidRequest),
+    .transport(.invalidResponse),
+    .transport(.redirectRejected),
+    .transport(.responseTooLarge(limit: 65_536)),
+    .transport(.timedOut),
+    .transport(.requestFailed(code: URLError.Code.networkConnectionLost.rawValue)),
+    .matrix(MatrixErrorBody(statusCode: 401, errorCode: "M_UNKNOWN_TOKEN", message: "Unknown token")),
+    .matrix(MatrixErrorBody(statusCode: 502, errorCode: nil, message: nil)),
+    .retriesExhausted(statusCode: 503, attempts: 4),
+    .decoding("BridgeLoginStep"),
+])
+func everyFailureReadsAsPlainWords(_ error: MatrixHTTPError) {
+    #expect(!error.localizedDescription.contains("MatrixHTTPError"))
+    #expect(!error.localizedDescription.contains("couldn’t be completed"))
+    #expect(error.localizedDescription == String(describing: error))
+}
+
+@Test func aRefusalCarriesTheStatusAndTheServersOwnWords() {
+    let error = MatrixHTTPError.matrix(
+        MatrixErrorBody(statusCode: 401, errorCode: "M_UNKNOWN_TOKEN", message: "Unknown token")
+    )
+    #expect(error.localizedDescription
+        == "the local service refused the request (status 401 M_UNKNOWN_TOKEN): Unknown token")
 }
 
 @Test func transientStatusesAreRetriedWithAnIdenticalRequest() async throws {

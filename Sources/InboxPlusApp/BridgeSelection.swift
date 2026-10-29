@@ -60,7 +60,30 @@ enum BridgeSelection {
             // The homeserver takes a new port each session, so the config on disk may name the
             // previous one.
             try runtime.rebindToHomeserver(port: port)
-            return .ready(try runtime.provisioningClient(for: record))
+            return await loginPreparation(
+                for: platform,
+                profileName: profileName,
+                session: try runtime.provisioningClient(for: record)
+            )
         }
+    }
+
+    /// A prepared record proves the bridge was installed, not that it is running.
+    ///
+    /// Bridges are launched, and their registrations loaded by Synapse, only when the runtime
+    /// starts. Choosing the network again before then reaches a port nothing listens on, so every
+    /// login request would be refused; what is actually owed is the restart the install asked for.
+    @MainActor
+    static func loginPreparation(
+        for platform: Platform,
+        profileName: String,
+        session: BridgeProvisioningClient
+    ) async -> BridgeLoginPreparation {
+        guard await session.isRunning() else {
+            return .installedPendingRuntimeRestart(
+                BridgeInstallOutcome(platform: platform, profile: profileName)
+            )
+        }
+        return .ready(session)
     }
 }

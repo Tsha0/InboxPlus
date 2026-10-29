@@ -19,13 +19,37 @@ public struct MatrixErrorBody: Error, Equatable, Sendable {
     }
 }
 
-public enum MatrixHTTPError: Error, Equatable, Sendable {
+public enum MatrixHTTPError: Error, Equatable, Sendable, CustomStringConvertible, LocalizedError {
     case nonLoopbackBaseURL
     case invalidRequestURL
     case transport(HealthTransportError)
     case matrix(MatrixErrorBody)
     case retriesExhausted(statusCode: Int, attempts: Int)
     case decoding(String)
+
+    public var description: String {
+        switch self {
+        case .nonLoopbackBaseURL:
+            "the service address is not on this Mac, and Inbox+ only connects to 127.0.0.1"
+        case .invalidRequestURL:
+            "the request address could not be built"
+        case let .transport(failure):
+            failure.plainDescription
+        case let .matrix(body):
+            """
+            the local service refused the request (status \(body.statusCode)\
+            \(body.errorCode.map { " \($0)" } ?? ""))\(body.message.map { ": \($0)" } ?? "")
+            """
+        case let .retriesExhausted(statusCode, attempts):
+            "the local service was still unavailable after \(attempts) attempts (status \(statusCode))"
+        case let .decoding(type):
+            "the local service sent a reply Inbox+ could not read as \(type)"
+        }
+    }
+
+    // `localizedDescription` ignores `description`; without this a login sheet shows only
+    // "The operation couldn't be completed. (InboxPlusRuntime.MatrixHTTPError error 0.)".
+    public var errorDescription: String? { description }
 }
 
 /// A narrow authenticated Matrix client used only by this developer spike.
@@ -206,6 +230,27 @@ public struct EmptyMatrixResponse: Decodable, Sendable, Equatable {
 private struct MatrixErrorPayload: Decodable {
     let errcode: String?
     let error: String?
+}
+
+private extension HealthTransportError {
+    var plainDescription: String {
+        switch self {
+        case .invalidRequest:
+            "the request was not sent because it was not addressed to this Mac"
+        case .invalidResponse:
+            "the local service sent a reply that could not be read"
+        case .redirectRejected:
+            "the local service tried to redirect the request elsewhere"
+        case let .responseTooLarge(limit):
+            "the local service sent a reply larger than \(limit) bytes"
+        case .timedOut:
+            "the local service did not answer in time"
+        case .requestFailed(code: URLError.Code.cannotConnectToHost.rawValue):
+            "could not connect to the local service because it is not running"
+        case let .requestFailed(code):
+            "the connection to the local service failed (network error \(code))"
+        }
+    }
 }
 
 private extension MatrixMethod {
