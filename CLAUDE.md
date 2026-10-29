@@ -29,6 +29,9 @@ bash Tests/Packaging/verify-signed-feed.sh
 Scripts/build-app.sh                                # builds build/Inbox+.app, ad-hoc signed
 ```
 
+`INBOXPLUS_DEMO=1 swift run InboxPlus` opens the app on made-up demo conversations, with no
+profile, account or network.
+
 CI fails if a generated file is stale. README → Contributing has the three regenerate commands.
 
 Tests use Swift Testing (`import Testing`, `@Test`, `#expect`), one folder per module under
@@ -52,5 +55,5 @@ the diff for compile and Swift 6 concurrency errors before pushing.
 ## Improvement loop
 
 Agents improve this repo on a schedule. The map is `docs/agents/loop.md`. The procedures are in
-`.claude/skills/` (`scout`, `work`, `steward`, `release`, `retro`). Read `docs/agents/learnings.md`
-before starting work.
+`.claude/skills/` (`explore`, `scout`, `work`, `steward`, `release`, `retro`). Read
+`docs/agents/learnings.md` before starting work.

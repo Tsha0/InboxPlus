@@ -8,7 +8,9 @@ The loop covers this repository, `Tsha0/InboxPlus`, only. The iOS app (`Tsha0/In
 out of scope for now: agents do not file issues, open PRs, or release there.
 
 ```
-            ┌──────────────────────── scout (daily) ────────────────────────┐
+   explore (nightly) ── clicks through the demo app, files what it sees ─┐
+                                                                            │
+            ┌──────────────────────── scout (daily) ────────────────────────┤
             │  CI failures · flaky tests · module review · triage           │
             ▼                                                               │
    issues labelled agent:ready  ◄──── you: file issues, approve proposals   │
@@ -27,7 +29,8 @@ out of scope for now: agents do not file issues, open PRs, or release there.
 
 | Skill | Runs | Does | Leaves behind |
 | --- | --- | --- | --- |
-| [scout](../../.claude/skills/scout/SKILL.md) | daily | Reads CI, triages new issues, reviews one module | De-duplicated issues with acceptance criteria |
+| [explore](../../.claude/skills/explore/SKILL.md) | nightly, on a macOS runner (`explore.yml`) | Uses the app on the demo inbox: clicks through every screen, screenshots it, tries what a person would | Issues labelled `explorer`, with screenshots: confirmed bugs, and up to 3 improvement ideas |
+| [scout](../../.claude/skills/scout/SKILL.md) | daily | Reads CI, triages new issues (including the explorer's), reviews one module | De-duplicated issues with acceptance criteria |
 | [work](../../.claude/skills/work/SKILL.md) | 3× daily | Finishes open agent PRs first; otherwise takes one `agent:ready` issue to a green PR | One small PR per issue |
 | [steward](../../.claude/skills/steward/SKILL.md) | inside work, and whenever a PR needs driving | Repo rules for fixing red CI, answering review, resolving conflicts | A green, mergeable PR |
 | [release](../../.claude/skills/release/SKILL.md) | weekly | Decides whether there is something worth shipping and whether it is safe to | A release issue with notes and evidence, and a version-bump PR |
@@ -44,6 +47,7 @@ Agents create these on first use. Use exactly these names.
 | `needs-human` | Blocked on the owner: a decision, a secret, a Mac-only step, or a real account. |
 | `proposal` | An idea waiting for the owner. Add `agent:ready` to approve it, or close it. |
 | `bug` `flake` `ci-infra` `dependency` `improvement` | What kind of work it is. |
+| `explorer` | Found by the explorer agent using the demo app. Its improvement ideas arrive as `proposal`. |
 | `P1` `P2` `P3` | P1: broken for users, or `main` is red. P2: wrong with a workaround, or flaky. P3: polish. |
 | `agent` | On a PR: opened by an agent. |
 | `risk:low` `risk:high` | On a PR: see [autonomy](autonomy.md). |
@@ -60,6 +64,20 @@ Agents create these on first use. Use exactly these names.
 - **Change how much agents may do** in [autonomy.md](autonomy.md). Agents never change that file.
 - **Pause everything** by disabling the scheduled tasks. Nothing else runs on its own.
 - **Watch** the weekly "Agent loop log" issue: each run posts a short summary there.
+
+## How the explorer sees the app
+
+`INBOXPLUS_DEMO=1` starts the app on made-up conversations held in memory: no profile, account,
+runtime or network, and the window is titled "Inbox+ Demo". `Scripts/explore/ui.swift` lets an
+agent read the window's accessibility tree, press, type, scroll and take screenshots, which it
+reads as images. The Explore workflow builds both on a fresh macOS runner, gives the agent about
+35 minutes, and a separate job turns its findings into issues. Screenshots in those issues live on
+the `explorer-shots` branch, which keeps only the latest 60 runs.
+
+Run it by hand from Actions → Explore → Run workflow, optionally with a focus such as
+"contacts" or "check that #12 is fixed". On a branch other than `main` it files nothing and only
+prints its findings, which is how a worker checks a UI fix before merging. To try it on your own
+Mac: `INBOXPLUS_DEMO=1 swift run InboxPlus`.
 
 ## Where agents run
 
@@ -82,8 +100,13 @@ issues marked Mac-only: regenerating generated files, checking UI by eye, and si
 
 ## Turning it on
 
-The loop is a set of Claude Code scheduled tasks, each starting a fresh cloud session on this
-repo. Suggested schedule (Singapore time) and prompts:
+The explorer runs in GitHub Actions. Give it Claude access by adding one repository secret
+(Settings → Secrets and variables → Actions): `CLAUDE_CODE_OAUTH_TOKEN`, from running
+`claude setup-token` (uses your Claude subscription), or `ANTHROPIC_API_KEY` (billed to the API).
+Optionally set the variable `EXPLORER_MODEL` to choose the model.
+
+The rest of the loop is a set of Claude Code scheduled tasks, each starting a fresh cloud session
+on this repo. Suggested schedule (Singapore time) and prompts:
 
 | Task | When | Prompt |
 | --- | --- | --- |

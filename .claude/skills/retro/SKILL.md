@@ -18,7 +18,9 @@ data shows a pattern.
 - **CI health**: the pass rate of `ci.yml` push runs on `main`, and the `flake` issues opened or
   updated.
 - **Queue**: how many issues are `agent:ready`, and how many are `needs-human` with their ages.
-- **Scout accuracy**: scout issues closed as not planned or duplicate.
+- **Scout and explorer accuracy**: issues each filed that were closed as not planned or
+  duplicate, and explorer bugs that turned out to be real. If the explorer keeps reporting the same
+  kind of non-bug, add it to the "Expected in the demo" list in `.claude/skills/explore/SKILL.md`.
 
 ## 2. Find patterns
 

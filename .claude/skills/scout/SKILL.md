@@ -46,6 +46,11 @@ Take open issues that carry none of `agent:ready`, `agent:in-progress`, `needs-h
   and ask one specific question.
 - **Feature, UX change, or anything that changes what the product does**: label `proposal` and
   `needs-human`. Agents build these only after the owner adds `agent:ready`.
+- **Explorer bugs** (labelled `explorer` and `bug`) come from an agent clicking through the demo
+  app, with steps and screenshots. Find the code that causes it before adding `agent:ready`. If it
+  is only a limit of the demo (no login, no media download, no notifications), close it as not
+  planned with a one-line reason: the explorer will not report it again. Its improvement ideas
+  already arrive as `proposal` and need nothing from you.
 
 ## 3. Review one module (every run)
 

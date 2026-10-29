@@ -44,6 +44,10 @@ issue. If someone else commented a claim in the last hour, remove your label and
 - Run the checks that work in a Linux container (`CLAUDE.md` → "In a cloud container").
 - Changed a source of a generated file (brand icons, the logo, dependencies)? It can only be
   regenerated on macOS. Say so in the PR with the command, and label it `needs-human`.
+- A UI bug from the explorer: once CI is green, run the Explore workflow on your branch
+  (workflow dispatch, `ref` = your branch) with `focus` set to "Check that #N is fixed:" and the
+  issue's steps. On a branch it files nothing; its "File findings as issues" job log lists what it
+  found. Say in the PR what it showed.
 - Compile errors cost a 15-minute CI round. Before pushing, re-read the diff for Swift 6 strict
   concurrency (`Sendable`, actor isolation, `@MainActor`), access control, and missing imports.
 

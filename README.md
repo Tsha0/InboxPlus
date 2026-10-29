@@ -95,6 +95,10 @@ When running from source without a bundled runtime or prepared profile, the app 
 empty inbox and contacts list.
 Nothing connects and no network is contacted.
 
+To look around with something to see, `INBOXPLUS_DEMO=1 swift run InboxPlus` opens a demo inbox
+of made-up conversations. It never attaches to a profile, even when one exists, and its window
+is titled "Inbox+ Demo".
+
 To run against a real local homeserver:
 
 ```bash

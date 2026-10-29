@@ -36,6 +36,7 @@ A change to any of these waits for the owner, at every level.
 
 - Agent rules: `docs/agents/autonomy.md`, `docs/agents/learnings.md`, `AGENTS.md`, `CLAUDE.md`,
   `.claude/**`.
+- The explorer's tools: `Scripts/explore/**`, `Sources/InboxPlusApp/DemoInbox.swift`.
 - CI and release: `.github/workflows/**`, `Scripts/package-release.sh`,
   `Scripts/sign-bundled-runtime.sh`, `Scripts/embed-sparkle.sh`, `Scripts/generate-update-feed.sh`,
   `Scripts/validate-update-feed.py`, `Scripts/inboxplus.entitlements`.
