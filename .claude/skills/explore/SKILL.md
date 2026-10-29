@@ -20,9 +20,9 @@ next one.
 | Command | What it does |
 | --- | --- |
 | `ui tree` | Lists windows, sheets, menus and their elements as `[ref] role "title" id=… value=… (x,y w×h)`. |
-| `ui press <ref or text>` | Presses an element by its `[ref]` from the latest `tree`, or by label or identifier (`ui press rail-settings`). Refs change when the screen changes: run `tree` again after anything that changes the screen. |
+| `ui press <ref or text>` | Presses an element by its `[ref]` from the latest `tree`, or by label or identifier (`ui press rail-settings`, `ui press "Send message"`). Refs change when the screen changes: run `tree` again after anything that changes the screen. Some identifiers are shared by every control in a view, so prefer refs or labels. |
 | `ui click <x> <y>` · `doubleclick` · `rightclick` | Mouse at screen points, the same coordinates `tree` prints. |
-| `ui type "text"` | Types into the focused field. Click or press the field first. |
+| `ui type "text"` | Types into the focused field, as a keyboard would. Opening a conversation focuses its message field; otherwise press or click the field first. |
 | `ui key <combo>` | `return`, `escape`, `tab`, `down`, `cmd+f`, `cmd+w`, `cmd+shift+…` |
 | `ui scroll <x> <y> <lines>` | Positive scrolls up, negative scrolls down. |
 | `ui resize <w> <h>` | Resizes the window, to check small and large layouts. |

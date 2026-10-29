@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, claude/peaceful-rubin-1vjg4v]   # TEMPORARY: the branch name is removed before merging
+    branches: [main]
   workflow_dispatch:
 
 # A newer push to the same branch makes the previous run's answer irrelevant, so it is cancelled

@@ -15,6 +15,16 @@ apply, and moves lasting ones into a skill, `CLAUDE.md`, or a check.
   test shows up as the same failure on unrelated PRs, so compare across PRs before calling one a
   regression.
 
+## Explorer
+
+- 2026-10-29 — GitHub's macOS runner grants Accessibility, Screen Recording and event posting to
+  the job, so `ui` can read, drive and screenshot the app. Its screen is 1024×768.
+- 2026-10-29 — In SwiftUI, an `accessibilityIdentifier` on a container replaces the identifiers of
+  every control inside it: the message field reports `conversation-…` instead of
+  `message-composer`. Find controls by `[ref]` or label, not by those identifiers.
+- 2026-10-29 — A run's artifacts cannot be downloaded from a cloud session (the storage host is
+  blocked). Read what a run did from its job log, or from the screenshots in explorer issues.
+
 ## Code
 
 - 2026-10-28 — Generated files (`PlatformGlyphPaths.swift`, `AppIcon.icns`, `docs/sbom.cdx.json`)
