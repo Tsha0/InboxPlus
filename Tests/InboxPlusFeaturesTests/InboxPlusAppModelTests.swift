@@ -748,6 +748,37 @@ private func startAndRecord(
 }
 
 @MainActor
+@Test func aNetworkConnectedAfterLaunchShowsItsConversationsWithoutARelaunch() async throws {
+    let local = ConnectedAccount(id: "matrix-local", platform: .matrix, displayName: "Local Matrix")
+    let gateway = AppModelTestGateway(snapshot: MessagingSnapshot(
+        accounts: [local], identities: [], conversations: [], messagesByRoute: [:]
+    ))
+    let model = InboxPlusAppModel(gateway: gateway)
+    try await model.start()
+    let instagram = ConnectedAccount(id: "instagram", platform: .instagram, displayName: "Instagram")
+    let portal = RemoteConversation(
+        id: "!portal:inboxplus.local",
+        accountID: instagram.id,
+        identityID: "@instagram_maya:inboxplus.local",
+        title: "Maya",
+        latestActivity: Date(timeIntervalSince1970: 100),
+        unreadCount: 1
+    )
+
+    await gateway.publish(.accountUpserted(instagram))
+    await gateway.publish(.identityUpserted(
+        RemoteIdentity(id: portal.identityID, accountID: instagram.id, displayName: "instagram_maya")
+    ))
+    await gateway.publish(.conversationUpserted(portal))
+
+    let shown = await eventually {
+        model.inboxItems.contains { $0.id == .conversation(portal.route) }
+    }
+    #expect(shown)
+    #expect(model.platformsWithAccounts == [.matrix, .instagram])
+}
+
+@MainActor
 @Test func repeatedStartLeavesExactlyOneActiveEventSubscription() async throws {
     let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
     let model = InboxPlusAppModel(gateway: gateway, directory: Fixtures.directory)

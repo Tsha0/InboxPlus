@@ -130,9 +130,7 @@ public struct RootView: View {
             case let .login(platform, controller):
                 LoginStepView(
                     controller: controller,
-                    onFinished: { userLoginID in
-                        finishConnecting(platform: platform, userLoginID: userLoginID)
-                    },
+                    onFinished: { _ in finishConnecting(platform: platform) },
                     onCancel: { accountFlow = nil }
                 )
             case .iMessagePermissions:
@@ -216,14 +214,13 @@ public struct RootView: View {
         }
     }
 
-    private func finishConnecting(platform: Platform, userLoginID: String) {
+    private func finishConnecting(platform: Platform) {
         do {
+            // The gateway files this network's conversations under its bridge, so the account
+            // recorded here has to be that same one or they are dropped from the inbox.
+            let bridge = try BridgeCatalog.require(platform)
             try model.addAccount(
-                ConnectedAccount(
-                    id: "\(platform.rawValue):\(userLoginID)",
-                    platform: platform,
-                    displayName: userLoginID.isEmpty ? platform.accessibilityLabel : userLoginID
-                )
+                ConnectedAccount(id: bridge.id, platform: bridge.platform, displayName: bridge.displayName)
             )
         } catch {
             connectFailure = String(describing: error)

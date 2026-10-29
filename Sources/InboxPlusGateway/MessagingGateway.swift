@@ -26,6 +26,11 @@ public enum GatewayEvent: Sendable {
     /// The inbox can only project a conversation whose identity it knows, so a conversation that
     /// arrives without one is dropped and the user simply never sees it.
     case identityUpserted(RemoteIdentity)
+    /// Must be delivered before any conversation filed under an account the snapshot did not list.
+    ///
+    /// The inbox drops a conversation whose account it does not know, so a network connected after
+    /// launch would otherwise stay invisible until the next snapshot.
+    case accountUpserted(ConnectedAccount)
     case connectionChanged(accountID: String, isConnected: Bool)
 }
 
