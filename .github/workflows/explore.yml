@@ -131,10 +131,10 @@ jobs:
           [ -n "$ANTHROPIC_API_KEY" ] || unset ANTHROPIC_API_KEY
           [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || unset CLAUDE_CODE_OAUTH_TOKEN
           npm install --global @anthropic-ai/claude-code@2.1.300
-          prompt="Read .claude/skills/explore/SKILL.md and follow it. The app is already running on the demo inbox. You have about ${MINUTES} minutes: write each finding as soon as it is confirmed."
+          prompt="Read .claude/skills/explore/SKILL.md and follow it. The app is already running on the demo inbox. You have about ${MINUTES} minutes: write each finding as soon as it is confirmed. If the ui command is not found, call it as build/explore/ui."
           if [ -n "$FOCUS" ]; then prompt="$prompt Start with this area: $FOCUS"; fi
           args=(-p "$prompt" --permission-mode dontAsk
-                --allowedTools "Bash(ui:*)" Read Write Edit Glob
+                --allowedTools "Bash(ui:*)" "Bash(build/explore/ui:*)" Read Write Edit Glob
                 --output-format stream-json --verbose)
           if [ -n "$MODEL" ]; then args+=(--model "$MODEL"); fi
           claude "${args[@]}" > build/explore/transcript.jsonl
