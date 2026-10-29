@@ -44,6 +44,15 @@ private let instagramAccount = ConnectedAccount(
 }
 
 @MainActor
+@Test func finishingALoginForAnAccountTheGatewayAlreadyReportedKeepsOneAccount() async throws {
+    let model = try await startedModel(seed: snapshot(accounts: [instagramAccount]))
+
+    try model.addAccount(instagramAccount)
+
+    #expect(model.accounts == [instagramAccount])
+}
+
+@MainActor
 @Test func adifferentPlatformIsAccepted() async throws {
     let model = try await startedModel(seed: snapshot(accounts: [instagramAccount]))
 

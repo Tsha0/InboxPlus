@@ -89,11 +89,20 @@ public actor CompositeMessagingGateway: MessagingGateway {
             forwardingTasks.append(
                 Task { [weak self] in
                     for await event in await gateway.events() {
-                        await self?.publish(event)
+                        await self?.forward(event, from: gateway)
                     }
                 }
             )
         }
+    }
+
+    private func forward(_ event: GatewayEvent, from gateway: any MessagingGateway) {
+        // An account that appears after the snapshot must be routable too, or replying in its
+        // first conversation fails until the next launch.
+        if case let .accountUpserted(account) = event {
+            gatewayByAccountID[account.id] = gateway
+        }
+        publish(event)
     }
 
     private func publish(_ event: GatewayEvent) {
