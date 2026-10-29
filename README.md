@@ -5,7 +5,7 @@
 </p>
 
 Inbox+ is a local-first universal messaging inbox for macOS. It brings conversations from several
-networks into one native SwiftUI app, and it does it without an operated cloud: the application, a
+networks into one native app, and it does it without an operated cloud: the application, a
 local Matrix homeserver, the bridge processes, your credentials, the message database and the media
 cache all live on your Mac.
 
