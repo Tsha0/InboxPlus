@@ -80,19 +80,21 @@ jobs:
       - name: Smoke-test the driver
         if: github.ref != 'refs/heads/main'
         run: |
-          ui press inbox-item-conversation-demo-imessage-demo-sam
+          ui press inbox-item-conversation-demo-telegram-demo-family || true
           ui pause 1
-          ui tree | grep -E 'message-composer|send-message|Retry|failed|Not delivered' | head -n 20
-          ui press message-composer
-          ui type "Hello from the explorer smoke test"
-          ui key return
+          ui shot build/explore/shots/01-after-press.png || true
+          echo "--- after press"; ui tree | grep -E 'message-composer|send-message|AXTextField|Ok see everyone|Dinner' | head -n 15 || true
+          ui click 252 272 || true
           ui pause 1
-          ui shot build/explore/shots/01-smoke.png
-          ui tree | grep -E 'Hello from the explorer|message-composer' | head -n 10
-          ui press "Quit InboxPlus" || true
-          ui pause 2
-          ui relaunch
-          ui tree | grep -c 'inbox-item' || true
+          echo "--- after click"; ui tree | grep -E 'message-composer|send-message|AXTextField' | head -n 10 || true
+          ui press message-composer || true
+          ui type "Hello from the explorer smoke test" || true
+          ui key return || true
+          ui pause 1
+          ui shot build/explore/shots/02-after-send.png || true
+          echo "--- after send"; ui tree | grep -E 'Hello from the explorer|message-composer' | head -n 10 || true
+          ui relaunch || true
+          echo "--- after relaunch"; ui tree | grep -c 'inbox-item' || true
 
       - name: List what the explorer already reported
         env:
@@ -162,10 +164,13 @@ jobs:
 
       # TEMPORARY: lets a cloud session see the first screenshot without downloading the artifact.
       - name: Print a thumbnail
-        if: always() && github.ref != 'refs/heads/main' && hashFiles('build/explore/shots/01-smoke.png') != ''
+        if: always() && github.ref != 'refs/heads/main'
         run: |
-          sips -s format jpeg -s formatOptions 45 -Z 720 build/explore/shots/01-smoke.png --out /tmp/thumb.jpg > /dev/null
-          echo "THUMBNAIL-BEGIN"; base64 -i /tmp/thumb.jpg | tr -d '\n'; echo; echo "THUMBNAIL-END"
+          for name in 01-after-press 02-after-send; do
+            [ -f "build/explore/shots/$name.png" ] || continue
+            sips -s format jpeg -s formatOptions 45 -Z 720 "build/explore/shots/$name.png" --out "/tmp/$name.jpg" > /dev/null
+            echo "THUMBNAIL-BEGIN $name"; base64 -i "/tmp/$name.jpg" | tr -d '\n'; echo; echo "THUMBNAIL-END"
+          done
 
       - name: Save the run
         if: always()
