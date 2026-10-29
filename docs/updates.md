@@ -81,10 +81,15 @@ in the app must match the signing key. The archive URL includes the release tag 
 name; do not replace a published ZIP with different bytes.
 
 Reuse the release directory's existing `appcast.xml` on subsequent releases to preserve compatible
-older items. On another build machine, first download the currently served feed into that directory.
-Full ZIPs are used initially; delta generation is disabled. Release notes are embedded in the feed.
+older items, and keep earlier release ZIPs there. Each new release gets a delta update from up to
+three earlier builds whose ZIPs are present: a small patch, so an app on 0.5.1 downloads tens of KB
+for a version-only change instead of the full 125 MB ZIP. Sparkle falls back to the full ZIP if a
+patch cannot be applied. On another build machine, first download the currently served feed and
+the most recent release ZIPs into that directory. Earlier feed entries are kept exactly as
+published (`Scripts/finalize-update-feed.py`). Release notes are embedded in the feed.
 
-Upload the ZIP, `appcast.xml`, SBOM and checksums to a draft GitHub Release with the matching tag.
+Upload the files the script lists — the ZIP, its `InboxPlus-<build>-<earlier>.delta` patches,
+`appcast.xml`, SBOM and checksums — to a draft GitHub Release with the matching tag.
 Review its artifacts and publish it. The **Publish update feed** workflow downloads the appcast
 asset, validates its versioned GitHub download URLs, signature metadata and build numbers, and
 deploys it to Pages. Prereleases do not automatically deploy to the stable feed. The workflow can

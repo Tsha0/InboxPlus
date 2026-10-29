@@ -89,6 +89,31 @@ class UpdatePackagingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             feed_validation.validate(path, "Tsha0/InboxPlus", "v0.6.0")
 
+    def test_delta_updates_ship_signed_with_their_release_under_safe_names(self):
+        root, _, path = self.feed()
+        deltas = ET.SubElement(root.find("./channel/item"), f"{{{feed_validation.SPARKLE}}}deltas")
+        delta = ET.SubElement(deltas, "enclosure", {
+            "url": "https://github.com/Tsha0/InboxPlus/releases/download/v0.6.0/InboxPlus-106-105.delta",
+            "length": "678",
+            f"{{{feed_validation.SPARKLE}}}deltaFrom": "105",
+            f"{{{feed_validation.SPARKLE}}}edSignature": base64.b64encode(bytes(64)).decode(),
+        })
+        ET.ElementTree(root).write(path)
+        feed_validation.validate(path, "Tsha0/InboxPlus", "v0.6.0", "106")
+        valid = dict(delta.attrib)
+        for name, value in [
+            ("url", "https://github.com/Tsha0/InboxPlus/releases/download/v0.6.0/Inbox+106-105.delta"),
+            ("url", "https://github.com/Tsha0/InboxPlus/releases/download/v0.5.0/InboxPlus-106-105.delta"),
+            ("url", "https://github.com/Tsha0/InboxPlus/releases/download/v0.6.0/InboxPlus-106-105.zip"),
+            (f"{{{feed_validation.SPARKLE}}}deltaFrom", "106"),
+            (f"{{{feed_validation.SPARKLE}}}edSignature", ""),
+            ("length", "0"),
+        ]:
+            delta.attrib = {**valid, name: value}
+            ET.ElementTree(root).write(path)
+            with self.subTest(**{name.rsplit("}", 1)[-1]: value}), self.assertRaises(ValueError):
+                feed_validation.validate(path, "Tsha0/InboxPlus", "v0.6.0", "106")
+
 
 if __name__ == "__main__":
     unittest.main()
