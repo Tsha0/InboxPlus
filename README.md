@@ -13,7 +13,7 @@ It is conversation-focused. There are no feeds, posts, stories or calls.
 
 ## Status
 
-**Current version: 0.5.0 — a working development build, not a release.** On a Mac with a
+**Current version: 0.5.1 — an early release.** On a Mac with a
 prepared profile it connects a real account, loads real conversations, sends and receives, renders
 media, and supervises prepared network bridges alongside the homeserver. Opening Inbox+ starts the
 local runtime automatically; quitting stops the runtime it started. A runtime started separately
@@ -55,8 +55,9 @@ to use the installed app. Quit Inbox+ to stop the runtime it started.
 With exactly one prepared profile, Inbox+ selects it automatically. With several, set
 `INBOXPLUS_PROFILE` to select one.
 
-The default build is **ad-hoc signed**. Distribution requires an Apple Developer ID and
-`Scripts/package-release.sh` for signing and notarization.
+The default build is **ad-hoc signed**. Releases are built with `Scripts/package-release.sh`, signed
+with one long-lived certificate — self-signed, or an Apple Developer ID for notarization. See
+[release and signing setup](docs/updates.md).
 
 Signed releases use Sparkle for app updates. When an update is available, a small update button
 appears directly above Settings in the left sidebar. Click it to open the update installer, or use

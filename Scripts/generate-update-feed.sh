@@ -21,7 +21,7 @@ if [ -n "${INBOXPLUS_SPARKLE_PRIVATE_KEY_FILE:-}" ]; then
   KEY_ARGS=(--ed-key-file "$INBOXPLUS_SPARKLE_PRIVATE_KEY_FILE")
 fi
 ENCODED_TAG="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$TAG")"
-"$TOOLS/generate_appcast" "${KEY_ARGS[@]}" \
+"$TOOLS/generate_appcast" ${KEY_ARGS[@]+"${KEY_ARGS[@]}"} \
   --download-url-prefix "https://github.com/Tsha0/InboxPlus/releases/download/$ENCODED_TAG/" \
   --maximum-deltas 0 --versions "$INBOXPLUS_BUILD_NUMBER" --embed-release-notes "$STAGE"
 test -s "$STAGE/appcast.xml"

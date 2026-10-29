@@ -5,9 +5,8 @@
 #   Scripts/build-app.sh            # ad-hoc signed, for this Mac only
 #   Scripts/build-app.sh --install  # ...and copy it into /Applications
 #
-# This is the local-install path. It does NOT notarize, so the result runs on this Mac and would be
-# refused by Gatekeeper on anyone else's. Distributing to other people needs an Apple Developer ID
-# and Scripts/package-release.sh.
+# This is the local-install path. Releases for other people are built with
+# Scripts/package-release.sh.
 #
 # Set INBOXPLUS_SIGNING_IDENTITY to sign with a real or self-signed certificate instead of ad-hoc.
 # Worth doing: macOS ties Full Disk Access and Automation grants to a code identity, and an ad-hoc

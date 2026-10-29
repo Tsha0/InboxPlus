@@ -8,3 +8,7 @@ docs/superpowers/
 
 # Local app bundle produced by Scripts/build-app.sh
 build/
+
+# Release signing certificate backup from Scripts/create-signing-certificate.sh. Never commit it.
+.signing/
+*.p12
