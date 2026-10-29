@@ -219,7 +219,13 @@ func walk(pid: pid_t, maxDepth: Int) -> [Node] {
         guard nodes.count < 5000 else { return }
         nodes.append(Node(element: element, depth: depth))
         guard depth < maxDepth else { return }
-        for child in children(element) { visit(child, depth + 1) }
+        let role = text(element, kAXRoleAttribute)
+        // The system's own menus are not the app under test, and the Apple menu can restart, shut
+        // down or log out the machine. Left out, they can be neither listed nor pressed.
+        if role == kAXMenuItemRole, text(element, kAXTitleAttribute) == "Services" { return }
+        var next = children(element)
+        if role == kAXMenuBarRole { next = Array(next.dropFirst()) }
+        for child in next { visit(child, depth + 1) }
     }
     for root in ordered { visit(root, 0) }
     return nodes
@@ -249,7 +255,8 @@ func line(for node: Node, ref: Int) -> String? {
     let extra = actions(element).filter { $0 != kAXPressAction && $0 != "AXScrollToVisible" && $0 != kAXShowMenuAction }
     if pressable { parts.append("pressable") }
     if !extra.isEmpty { parts.append("actions=" + extra.joined(separator: ",")) }
-    if role == "AXButton" || role == "AXCheckBox" || role == "AXMenuButton", words.isEmpty {
+    // Window controls (close, minimise, zoom) carry a subrole that VoiceOver reads instead.
+    if role == "AXButton" || role == "AXCheckBox" || role == "AXMenuButton", words.isEmpty, subrole == nil {
         parts.append("NO-LABEL")
     }
     return String(repeating: "  ", count: min(node.depth, 14)) + parts.joined(separator: " ")

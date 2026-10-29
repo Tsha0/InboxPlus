@@ -75,10 +75,11 @@ wrong. If the workflow gave you a focus area, start there.
    that would leave the app for a browser.
 4. **Contacts.** Maya's linked identities; link and unlink a person; empty and invalid names.
 5. **Settings and accounts.** Every control does something, or clearly says why it cannot.
-6. **Layout.** `ui resize 900 600`, then `1600 1000`, and the smallest the app allows. Look for
+6. **Layout.** The runner's screen is 1024×768. Try `ui resize 1000 690`, `ui resize 700 500`
+   and the smallest size the app allows (`ui resize 300 200`; it stops at its minimum). Look for
    clipping, overlap and controls that disappear.
 7. **Keyboard.** Tab through a screen, Escape out of sheets, ⌘W, ⌘F.
-8. **Accessibility.** In `tree`, any button marked `NO-LABEL` is invisible to VoiceOver.
+8. **Accessibility.** In `tree`, a button marked `NO-LABEL` has nothing for VoiceOver to read.
 
 ## What counts
 
