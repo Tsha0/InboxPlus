@@ -76,8 +76,22 @@ the `explorer-shots` branch, which keeps only the latest 60 runs.
 
 Run it by hand from Actions → Explore → Run workflow, optionally with a focus such as
 "contacts" or "check that #12 is fixed". On a branch other than `main` it files nothing and only
-prints its findings, which is how a worker checks a UI fix before merging. To try it on your own
-Mac: `INBOXPLUS_DEMO=1 swift run InboxPlus`.
+prints its findings, which is how a worker checks a UI fix before merging.
+
+To have Claude explore on your own Mac instead, from this checkout:
+
+```bash
+swift build --product InboxPlus
+mkdir -p build/explore/shots
+swiftc -O -target "$(uname -m)-apple-macos15" Scripts/explore/ui.swift -o build/explore/ui
+export PATH="$PWD/build/explore:$PATH" INBOXPLUS_EXPLORE_APP="$(swift build --show-bin-path)/InboxPlus"
+ui check    # if anything is missing, allow your terminal under Privacy & Security
+ui launch
+claude "Use the explore skill. The app is already running."
+```
+
+Findings land in `build/explore/findings.jsonl`; nothing is filed from your Mac. Just to look
+around yourself: `INBOXPLUS_DEMO=1 swift run InboxPlus`.
 
 ## Where agents run
 
