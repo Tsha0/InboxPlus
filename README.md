@@ -25,6 +25,24 @@ not appear as messages.
 Local builds are ad-hoc signed but not notarized. Only Instagram has been exercised with a live
 account; broader live-network certification and updated performance validation remain outstanding.
 
+## Download
+
+Requires an Apple silicon Mac with macOS 15 or later.
+
+1. Download the `InboxPlus-<version>-<build>.zip` file from the
+   [latest release](https://github.com/Tsha0/InboxPlus/releases/latest). The other files are for
+   the app's updater and for verification.
+2. Unzip it and drag **Inbox+.app** into **Applications**.
+3. Open Inbox+. The first time, macOS says it could not verify the app, because Inbox+ is not
+   notarized by Apple. Click **Done**, open **System Settings → Privacy & Security**, and click
+   **Open Anyway** next to Inbox+.
+4. For iMessage, add Inbox+ to **System Settings → Privacy & Security → Full Disk Access**.
+
+On first launch Inbox+ prepares its local runtime by itself. After that it updates itself: when a
+new version is out, an update button appears above Settings, or choose
+**Inbox+ → Check for Updates…**. Updates download only what changed, and steps 3 and 4 are not
+needed again.
+
 ## Development profile compatibility
 
 Inbox+ uses the app identity `com.inboxplus.app`, the runtime root
@@ -39,7 +57,7 @@ up and grant macOS permissions to Inbox+ again.
 - Homebrew CPython 3.12 — for manual development profiles; the installed app bundles Python
 - `cmake` (`brew install cmake`) and Rust/Cargo — for building the bundled runtime
 
-## Install
+## Build from source
 
 Build a real, double-clickable `Inbox+.app` and put it in `/Applications`:
 
