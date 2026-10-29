@@ -60,8 +60,8 @@ jobs:
 
       - name: Build the app and the UI driver
         run: |
-          swift build --product InboxPlus
           mkdir -p build/explore/shots
+          swift build --product InboxPlus
           swiftc -O -target "$(uname -m)-apple-macos15" Scripts/explore/ui.swift -o build/explore/ui
           echo "INBOXPLUS_EXPLORE_APP=$(swift build --show-bin-path)/InboxPlus" >> "$GITHUB_ENV"
           echo "$PWD/build/explore" >> "$GITHUB_PATH"
@@ -124,8 +124,11 @@ jobs:
       - name: Collect results
         if: always()
         run: |
-          ui shot build/explore/shots/99-end.png || true
-          ui quit || true
+          mkdir -p build/explore/shots
+          if command -v ui > /dev/null; then
+            ui shot build/explore/shots/99-end.png || true
+            ui quit || true
+          fi
           cp ~/Library/Logs/DiagnosticReports/InboxPlus* build/explore/ 2>/dev/null || true
           # Smaller copies for issues: JPEG, at most 1600 px on the long side.
           for shot in build/explore/shots/*.png; do
@@ -141,7 +144,7 @@ jobs:
 
       # TEMPORARY: lets a cloud session see the first screenshot without downloading the artifact.
       - name: Print a thumbnail
-        if: always() && github.ref != 'refs/heads/main'
+        if: always() && github.ref != 'refs/heads/main' && hashFiles('build/explore/shots/00-launch.png') != ''
         run: |
           sips -s format jpeg -s formatOptions 45 -Z 720 build/explore/shots/00-launch.png --out /tmp/thumb.jpg > /dev/null
           echo "THUMBNAIL-BEGIN"; base64 -i /tmp/thumb.jpg | tr -d '\n'; echo; echo "THUMBNAIL-END"

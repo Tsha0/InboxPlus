@@ -1,6 +1,7 @@
 import Foundation
 import InboxPlusCore
 import InboxPlusFeatures
+import InboxPlusGateway
 
 /// A demo inbox that someone asked for explicitly, for exploring the app without any account.
 ///
