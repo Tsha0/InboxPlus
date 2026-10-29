@@ -1,6 +1,6 @@
 ---
 name: retro
-description: Weekly review of how the Inbox+ agent loop performed — what shipped, what broke, what CI and review caught — turned into better rules for next week and a report for the owner. Run weekly by the improvement loop.
+description: Weekly review of how the Inbox+ agent loop performed in Tsha0/InboxPlus — what shipped, what broke, what CI and review caught — turned into better rules for next week and a report for the owner. Run weekly by the improvement loop.
 ---
 
 # Retro
@@ -8,14 +8,15 @@ description: Weekly review of how the Inbox+ agent loop performed — what shipp
 This is where the loop improves itself. Gather data first, then change rules only where the
 data shows a pattern.
 
-## 1. Gather (last 7 days, both repos)
+## 1. Gather (last 7 days)
 
 - **Agent PRs** (label `agent`): merged, closed without merging, still open. For each, count the
   failed CI runs before it went green, the review comments it received, and its `Lesson:`
   comments, and note how many days it stayed open.
 - **Escapes**: reverts on `main`, issues labelled `bug` whose cause was an agent PR, reopened
   issues.
-- **Nightly health**: pass rate of `ios-regression.yml` and the scheduled `companion-ci.yml`.
+- **CI health**: the pass rate of `ci.yml` push runs on `main`, and the `flake` issues opened or
+  updated.
 - **Queue**: how many issues are `agent:ready`, and how many are `needs-human` with their ages.
 - **Scout accuracy**: scout issues closed as not planned or duplicate.
 
@@ -38,11 +39,10 @@ merge it.
 
 ## 4. Report
 
-Close last week's "Agent loop log" issue in `Tsha0/InboxPlus`. Open this week's, labelled
-`report`, starting with:
+Close last week's "Agent loop log" issue. Open this week's, labelled `report`, starting with:
 
 - **Shipped**: merged PRs (links) and releases.
-- **Health**: nightly pass rate; median failed CI runs per agent PR; escapes.
+- **Health**: `main` CI pass rate; median failed CI runs per agent PR; escapes.
 - **Waiting on you**: `needs-human` issues, oldest first, each with the one decision needed.
 - **Playbook changes**: the PR link and a sentence on each change.
 

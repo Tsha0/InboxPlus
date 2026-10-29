@@ -7,21 +7,19 @@ apply, and moves lasting ones into a skill, `CLAUDE.md`, or a check.
 ## CI
 
 - 2026-10-28 — CI runners are much slower than a developer Mac. A test that waits on a real
-  process (Synapse, a bridge, the fixture companion, a simulator) needs a deadline sized for that.
-  Both repos have already had to raise such timeouts (InboxPlus #47, InboxPlus-IOS #2).
+  process or on concurrent work needs a deadline sized for that; #47 already had to raise the
+  media tests' deadlines for concurrent CI load.
 - 2026-10-28 — A newer push cancels the previous CI run on the same branch. A `cancelled` run is
   not a failure.
-- 2026-10-28 — The nightly iOS regression and companion runs have failed on an unchanged commit
-  (2026-10-21, 2026-10-24) and passed the next night. Before calling a nightly failure a
-  regression, compare the neighbouring runs on the same commit.
-- 2026-10-28 — InboxPlus-IOS writes test and build output to files under `build/`, uploaded as
-  artifacts. Read the "Show failure summary" step in the job log first. Cloud sessions cannot
-  download artifacts unless the environment allows `*.blob.core.windows.net`.
+- 2026-10-28 — CI runs only on pull requests and pushes to `main`; there is no nightly run. A flaky
+  test shows up as the same failure on unrelated PRs, so compare across PRs before calling one a
+  regression.
 
 ## Code
 
-- 2026-10-28 — The shared modules exist twice, once in each repo, and have already diverged. A
-  fix to one copy usually needs the other: check, and file a `drift` issue if so.
 - 2026-10-28 — Generated files (`PlatformGlyphPaths.swift`, `AppIcon.icns`, `docs/sbom.cdx.json`)
   can only be regenerated on macOS. A cloud agent that changes their sources must hand the PR to
   the owner with the exact command.
+- 2026-10-28 — `Tsha0/InboxPlus-IOS` keeps its own copy of the shared modules. It is outside the
+  loop for now: do not file issues or PRs there, but say in the PR when a fix touches a shared
+  module, so it can be ported later.

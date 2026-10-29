@@ -6,8 +6,9 @@ architecture and the module map.
 
 Sibling repo: `Tsha0/InboxPlus-IOS`, the iOS app and its Mac companion. It has its own copy of the
 shared modules (Core, Features, Gateway, Bridge, BridgeService, UI, Matrix, Runtime, IMessage,
-RuntimeCLI, App). That copy was imported from this repo at `2b819ad` and both have changed since,
-so a fix to a shared module here usually needs porting there.
+RuntimeCLI, App), imported from this repo at `2b819ad`. The improvement loop covers only this
+repo for now, so do not open issues or PRs there. When a fix touches a shared module, say so in
+the PR so it can be ported later.
 
 ## Rules
 
@@ -50,6 +51,6 @@ the diff for compile and Swift 6 concurrency errors before pushing.
 
 ## Improvement loop
 
-Agents improve both repos on a schedule. The map is `docs/agents/loop.md`. The procedures are in
+Agents improve this repo on a schedule. The map is `docs/agents/loop.md`. The procedures are in
 `.claude/skills/` (`scout`, `work`, `steward`, `release`, `retro`). Read `docs/agents/learnings.md`
 before starting work.

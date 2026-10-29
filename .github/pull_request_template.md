@@ -1,6 +1,6 @@
 ## What and why
 
-<!-- The problem and how this change solves it. Link the issue: "Fixes #123", or the full URL for an issue in the other repo. -->
+<!-- The problem and how this change solves it. Link the issue: "Fixes #123". -->
 
 ## How it was checked
 
@@ -8,4 +8,4 @@
 
 ## Risk
 
-<!-- risk:low or risk:high, and why (see docs/agents/autonomy.md). Protected paths touched? Does Tsha0/InboxPlus-IOS need the same change? -->
+<!-- risk:low or risk:high, and why (see docs/agents/autonomy.md). Protected paths touched? Shared module touched (Tsha0/InboxPlus-IOS keeps a copy)? -->

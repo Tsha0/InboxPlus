@@ -34,7 +34,8 @@ A PR is mergeable only when all three are green on its head commit.
 - Squash merge. The PR title becomes the commit message.
 - Resolve conflicts by merging `main` into the branch. Never force-push.
 - Never turn on live tests (`INBOXPLUS_RUNTIME_PYTHON` or similar) in CI or in a PR.
-- If the change touches a shared module, the PR says whether InboxPlus-IOS needs it too.
+- If the change touches a shared module, the PR says so: `Tsha0/InboxPlus-IOS` keeps a copy that
+  may need the fix later. The loop does not work in that repo for now.
 
 ## When to stop
 
