@@ -112,7 +112,8 @@ struct InboxPlusApp: App {
             gateway: services.gateway,
             directory: services.directory,
             media: services.media,
-            favouriteStore: services.favouriteStore
+            favouriteStore: services.favouriteStore,
+            accountLifecycle: services.accountLifecycle
         )
     }()
 

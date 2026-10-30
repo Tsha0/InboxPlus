@@ -409,6 +409,35 @@ public actor MatrixMessagingGateway: MessagingGateway {
         return nil
     }
 
+    /// Leaves and forgets every room filed under one account — its conversations, its pending
+    /// invitations and the bridge's own rooms — so none of it loads again.
+    ///
+    /// Only once the account's bridge has stopped: a running bridge can take leaving a portal as
+    /// leaving that conversation on the network itself.
+    public func forgetRooms(ofAccount removedAccountID: String) async throws {
+        for room in try await client.requireClient().rooms() {
+            let membership = room.membership()
+            let owner: String?
+            switch membership {
+            case .invited:
+                owner = (try? await room.inviter()).flatMap { invitePolicy.bridgeID(owning: $0.userId) }
+            case .joined, .left, .banned:
+                owner = await resolvedAccountID(for: room)
+            case .knocked:
+                owner = nil
+            }
+            guard owner == removedAccountID else { continue }
+
+            let roomID = room.id()
+            timelineHandles.removeValue(forKey: roomID)?.cancel()
+            observers[roomID] = nil
+            knownRoomIDs.remove(roomID)
+            if membership == .joined || membership == .invited { try await room.leave() }
+            try await room.forget()
+            accountIDByRoomID[roomID] = nil
+        }
+    }
+
     /// One line naming what each conversation was attributed to.
     ///
     /// Attribution is invisible when it goes wrong — a bridged chat simply reads "Matrix" — so it

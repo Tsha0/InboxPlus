@@ -88,6 +88,11 @@ public final class MediaController {
         load(attachment, accountID: accountID, messageID: messageID)
     }
 
+    /// Deletes what was downloaded for an account that is being removed.
+    public func purge(accountID: String) async throws {
+        try await loader?.purge(accountID: accountID)
+    }
+
     public func refreshStorageWarning() {
         guard let loader else { return }
         Task { [weak self] in

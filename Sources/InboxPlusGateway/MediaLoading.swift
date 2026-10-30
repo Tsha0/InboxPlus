@@ -109,6 +109,11 @@ public actor MediaLoader {
         policy.decide(freeBytes: freeSpace.freeBytes())
     }
 
+    /// Deletes every downloaded file one account brought in.
+    public func purge(accountID: String) async throws {
+        try await cache.purge(accountID: accountID)
+    }
+
     /// The local file for an attachment, downloading it if this is the first time it is needed.
     public func file(for attachment: MessageAttachment, context: MediaCacheContext) async throws -> URL {
         guard let handle = attachment.source else { throw MediaLoadError.nothingToDownload }

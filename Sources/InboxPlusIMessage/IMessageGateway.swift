@@ -144,6 +144,17 @@ public actor IMessageGateway: MessagingGateway {
         }
     }
 
+    /// Stops reading the Messages database. What was already read stays on screen.
+    public func pausePolling() {
+        pollTask?.cancel()
+        pollTask = nil
+    }
+
+    /// Reads again from where `pausePolling()` stopped, so nothing that arrived meanwhile is missed.
+    public func resumePolling() {
+        startPolling()
+    }
+
     func pollOnce() async {
         guard let rows = try? store.messages(afterRowID: lastSeenRowID), !rows.isEmpty else { return }
         lastSeenRowID = max(lastSeenRowID, rows.map(\.rowID).max() ?? lastSeenRowID)

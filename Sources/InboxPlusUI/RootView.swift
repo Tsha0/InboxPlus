@@ -17,6 +17,7 @@ public struct RootView: View {
     @State private var connectFailure: String?
     /// Informational, not a failure — reusing the failure alert would title good news as an error.
     @State private var connectNotice: ConnectNotice?
+    @State private var accountFailure: AccountFailure?
 
     private let makeLoginSession: BridgeLoginSessionProvider?
     private let update: AppUpdatePresentation?
@@ -47,6 +48,12 @@ public struct RootView: View {
         let title: String
         let message: String
         var id: String { title }
+    }
+
+    /// An account change that did not happen, titled with what was attempted.
+    struct AccountFailure {
+        let title: String
+        let message: String
     }
 
     public init(
@@ -174,6 +181,17 @@ public struct RootView: View {
         } message: {
             Text(connectNotice?.message ?? "")
         }
+        .alert(
+            accountFailure?.title ?? "",
+            isPresented: Binding(
+                get: { accountFailure != nil },
+                set: { if !$0 { accountFailure = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { accountFailure = nil }
+        } message: {
+            Text(accountFailure?.message ?? "")
+        }
     }
 
     private func startConnecting(_ platform: Platform) {
@@ -228,6 +246,53 @@ public struct RootView: View {
         accountFlow = nil
     }
 
+    private func disconnect(_ account: ConnectedAccount) {
+        Task { @MainActor in
+            do { try await model.disconnect(accountID: account.id) }
+            catch {
+                accountFailure = AccountFailure(
+                    title: "\(account.displayName) is still connected",
+                    message: String(describing: error)
+                )
+            }
+        }
+    }
+
+    private func reconnect(_ account: ConnectedAccount) {
+        Task { @MainActor in
+            do {
+                guard try await model.reconnect(accountID: account.id) == .onNextLaunch else { return }
+                connectNotice = ConnectNotice(
+                    title: "\(account.displayName) is reconnected",
+                    message: "Quit and reopen Inbox+ to load your \(account.displayName) conversations."
+                )
+            } catch {
+                accountFailure = AccountFailure(
+                    title: "\(account.displayName) is still disconnected",
+                    message: String(describing: error)
+                )
+            }
+        }
+    }
+
+    private func erase(_ account: ConnectedAccount) {
+        Task { @MainActor in
+            do {
+                let removal = try await model.eraseAccount(accountID: account.id)
+                guard !removal.unfinished.isEmpty else { return }
+                connectNotice = ConnectNotice(
+                    title: "\(account.displayName) was removed",
+                    message: removal.unfinished.joined(separator: "\n\n")
+                )
+            } catch {
+                accountFailure = AccountFailure(
+                    title: "\(account.displayName) was not removed",
+                    message: String(describing: error)
+                )
+            }
+        }
+    }
+
     @ViewBuilder private var sidebar: some View {
         switch section {
         case .inbox:
@@ -250,11 +315,12 @@ public struct RootView: View {
                 accounts: model.accounts,
                 health: model.health,
                 isConnected: model.isConnected,
+                isChanging: { model.accountIDsChanging.contains($0) },
                 lastActivity: { model.lastActivity(for: $0) },
                 onAddAccount: { accountFlow = .picker },
-                onDisconnect: { model.disconnect(accountID: $0.id) },
-                onReconnect: { model.reconnect(accountID: $0.id) },
-                onErase: { model.eraseAccount(accountID: $0.id) }
+                onDisconnect: disconnect,
+                onReconnect: reconnect,
+                onErase: erase
             )
         }
     }

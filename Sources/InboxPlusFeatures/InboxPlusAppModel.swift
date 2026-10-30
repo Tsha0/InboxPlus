@@ -135,6 +135,7 @@ public final class InboxPlusAppModel {
     private var draftRevision: UInt64 = 0
     private var sendsInFlight = 0
     private var disconnectedAccountIDs: Set<String> = []
+    private let accountLifecycle: (any AccountLifecycle)?
     private var sendFailuresByRoute: [ConversationRoute: String] = [:]
     private var latestSendGenerationByRoute: [ConversationRoute: UInt64] = [:]
     private var startupID: UUID?
@@ -153,12 +154,14 @@ public final class InboxPlusAppModel {
         gateway: any MessagingGateway,
         directory: ContactDirectory = .init(),
         media: MediaController = MediaController(),
-        favouriteStore: InboxFavouriteStore? = nil
+        favouriteStore: InboxFavouriteStore? = nil,
+        accountLifecycle: (any AccountLifecycle)? = nil
     ) {
         self.gateway = gateway
         self.directory = directory
         self.media = media
         self.favouriteStore = favouriteStore
+        self.accountLifecycle = accountLifecycle
         do { favouriteRoutes = try favouriteStore?.load() ?? [] }
         catch { favouriteError = "Could not load favourites: \(error.localizedDescription)" }
     }
@@ -296,26 +299,43 @@ public final class InboxPlusAppModel {
         }
     }
 
-    /// Marks an account disconnected without touching anything it delivered.
+    /// Accounts with a disconnect, reconnect or removal still under way.
+    public private(set) var accountIDsChanging: Set<String> = []
+
+    /// Stops an account delivering anything, without touching anything it already delivered.
     ///
     /// History stays: a disconnected account is a connection problem, and deleting someone's
-    /// messages is never the right response to one.
-    public func disconnect(accountID: String) {
-        guard accounts.contains(where: { $0.id == accountID }) else { return }
+    /// messages is never the right response to one. The account only shows as disconnected once
+    /// its bridge has actually stopped.
+    public func disconnect(accountID: String) async throws {
+        guard let account = beginChange(accountID, allowedFor: \.canDisconnect) else { return }
+        defer { accountIDsChanging.remove(accountID) }
+        try await accountLifecycle?.disconnect(account)
         disconnectedAccountIDs.insert(accountID)
-        health = .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
+        reportDisconnections()
     }
 
-    public func reconnect(accountID: String) {
+    @discardableResult
+    public func reconnect(accountID: String) async throws -> AccountReconnection {
+        guard let account = beginChange(accountID, allowedFor: \.canDisconnect) else { return .reconnected }
+        defer { accountIDsChanging.remove(accountID) }
+        let reconnection = try await accountLifecycle?.reconnect(account) ?? .reconnected
         disconnectedAccountIDs.remove(accountID)
-        if disconnectedAccountIDs.isEmpty { health = .healthy }
+        reportDisconnections()
+        return reconnection
     }
 
     /// Removes an account and everything it brought with it.
     ///
     /// Separate from `disconnect` and destructive on purpose — the caller must have confirmed with
-    /// the user, because nothing here can be undone.
-    public func eraseAccount(accountID: String) {
+    /// the user, because nothing here can be undone. Nothing leaves the screen until the lifecycle
+    /// has signed out and deleted it, so an account never looks removed while it is still there.
+    @discardableResult
+    public func eraseAccount(accountID: String) async throws -> AccountRemoval {
+        guard let account = beginChange(accountID, allowedFor: \.canRemove) else { return AccountRemoval() }
+        defer { accountIDsChanging.remove(accountID) }
+        var removal = try await accountLifecycle?.remove(account) ?? AccountRemoval()
+
         accounts.removeAll { $0.id == accountID }
         let removedIdentityIDs = Set(
             identities.filter { $0.accountID == accountID }.map(\.id)
@@ -331,9 +351,45 @@ public final class InboxPlusAppModel {
         }
         disconnectedAccountIDs.remove(accountID)
         lastActivityByAccount[accountID] = nil
+        stagedAttachmentsByRoute = stagedAttachmentsByRoute.filter { $0.key.accountID != accountID }
         if openRoute?.accountID == accountID { detailSelection = .empty }
-        if disconnectedAccountIDs.isEmpty, case .needsAttention = health { health = .healthy }
+        reportDisconnections()
+        let remainingFavourites = favouriteRoutes.filter { $0.accountID != accountID }
+        if remainingFavourites != favouriteRoutes {
+            do {
+                try favouriteStore?.save(remainingFavourites)
+                favouriteRoutes = remainingFavourites
+            } catch {
+                favouriteError = "Could not save favourites: \(error.localizedDescription)"
+            }
+        }
         rebuildInbox()
+
+        do { try await media.purge(accountID: accountID) }
+        catch {
+            removal.unfinished.append(
+                "Its downloaded photos and files could not be deleted: \(error.localizedDescription)"
+            )
+        }
+        return removal
+    }
+
+    /// One change per account at a time: a second click must not race the first one's bridge.
+    private func beginChange(
+        _ accountID: String,
+        allowedFor isAllowed: (ConnectedAccount) -> Bool
+    ) -> ConnectedAccount? {
+        guard let account = accounts.first(where: { $0.id == accountID }), isAllowed(account),
+              accountIDsChanging.insert(accountID).inserted
+        else { return nil }
+        return account
+    }
+
+    /// The banner counts disconnected accounts, so it follows every change to them.
+    private func reportDisconnections() {
+        health = disconnectedAccountIDs.isEmpty
+            ? .healthy
+            : .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
     }
 
     public func captureDraft(to route: ConversationRoute) -> DraftSubmission {
@@ -496,12 +552,14 @@ public final class InboxPlusAppModel {
         eventTaskID = id
 
         let snapshot = try await gateway.loadSnapshot()
+        // A disconnect outlives the session: its bridge stays stopped, so it has to read as stopped.
+        let disconnected = try await accountLifecycle?.disconnectedAccountIDs() ?? []
         try Task.checkCancellation()
         guard startupID == id else { throw CancellationError() }
         try AccountPolicy.validate(snapshot.accounts)
         apply(snapshot)
-        disconnectedAccountIDs.removeAll()
-        health = .healthy
+        disconnectedAccountIDs = disconnected.intersection(snapshot.accounts.map(\.id))
+        reportDisconnections()
 
         let events = bufferedStartupEvents
         bufferedStartupEvents.removeAll()
