@@ -120,6 +120,7 @@ public struct RootView: View {
             model.clearConnectionRequest()
             startConnecting(platform)
         }
+        .focusedSceneValue(\.newConversationAction, canStartNewConversation ? { showsNewConversation = true } : nil)
         .sheet(isPresented: $showsNewConversation) { NewConversationView(model: model) }
         .sheet(item: $accountFlow) { flow in
             switch flow {
@@ -230,6 +231,11 @@ public struct RootView: View {
             connectFailure = String(describing: error)
         }
         accountFlow = nil
+    }
+
+    private var canStartNewConversation: Bool {
+        !model.hasUnfinishedMessagingWork && !model.isPreparingForUpdate
+            && accountFlow == nil && !showsNewConversation
     }
 
     @ViewBuilder private var sidebar: some View {

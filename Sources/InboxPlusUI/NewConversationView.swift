@@ -71,3 +71,14 @@ struct NewConversationView: View {
         }
     }
 }
+
+private struct NewConversationActionKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
+extension FocusedValues {
+    public var newConversationAction: (() -> Void)? {
+        get { self[NewConversationActionKey.self] }
+        set { self[NewConversationActionKey.self] = newValue }
+    }
+}
