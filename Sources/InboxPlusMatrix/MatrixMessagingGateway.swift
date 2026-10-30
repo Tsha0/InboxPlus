@@ -118,7 +118,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
                     latestPreview: ordered.last?.body ?? "",
                     latestActivity: ordered.last?.timestamp ?? Date(timeIntervalSince1970: 0),
                     unreadCount: Int(info.numUnreadMessages),
-                    isGroup: !info.isDirect && !info.isDm
+                    isGroup: isGroup(info, accountID: roomAccountID)
                 )
             )
         }
@@ -341,7 +341,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
                     latestPreview: messages.last?.body ?? "",
                     latestActivity: messages.last?.timestamp ?? Date(),
                     unreadCount: Int(info?.numUnreadMessages ?? 0),
-                    isGroup: !(info?.isDirect ?? false) && !(info?.isDm ?? false)
+                    isGroup: info.map { isGroup($0, accountID: roomAccountID) } ?? false
                 )
             ))
             for message in messages { publish(.historicalMessageUpserted(message)) }
@@ -366,6 +366,30 @@ public actor MatrixMessagingGateway: MessagingGateway {
             let account = accountIDByRoomID[roomID] ?? accountID
             observer.updateOutgoingIdentifiers(outgoingIdentifiersByAccount[account] ?? [])
         }
+    }
+
+    private func isGroup(_ info: RoomInfo, accountID: String) -> Bool {
+        Self.isGroup(
+            isDirect: info.isDirect || info.isDm,
+            joinedMembers: info.joinedMembersCount,
+            serviceMembers: Set(info.serviceMembers),
+            ownIdentities: outgoingIdentifiersByAccount[accountID] ?? []
+        )
+    }
+
+    /// Bridges rarely mark a portal as a direct chat, so the flag alone would make nearly every
+    /// bridged conversation a group. What decides it is how many people are left once this
+    /// account, the bridge's service members and this account's own network identity are set aside.
+    static func isGroup(
+        isDirect: Bool,
+        joinedMembers: UInt64,
+        serviceMembers: Set<String>,
+        ownIdentities: Set<String>
+    ) -> Bool {
+        if isDirect { return false }
+        let ownGhost = ownIdentities.contains { $0.hasPrefix("@") && !serviceMembers.contains($0) } ? 1 : 0
+        let others = Int(joinedMembers) - serviceMembers.count - 1 - ownGhost
+        return others > 1
     }
 
     /// Which account a room belongs to, resolved from who is in it.
