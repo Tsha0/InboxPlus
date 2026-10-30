@@ -32,3 +32,10 @@ private func transcriptMessage(_ id: String, sender: String? = "alice", time: Ti
     #expect(TranscriptPresentation.dayLabel(now, now: now, calendar: calendar) == "Today")
     #expect(TranscriptPresentation.dayLabel(now.addingTimeInterval(-86400), now: now, calendar: calendar) == "Yesterday")
 }
+
+@Test func transcriptNamesSendersOnlyWhenMoreThanOneOtherPersonSpeaks() {
+    let direct = [transcriptMessage("a"), transcriptMessage("mine", sender: nil), transcriptMessage("b")]
+    #expect(!TranscriptPresentation.namesSenders(in: direct))
+    #expect(!TranscriptPresentation.namesSenders(in: []))
+    #expect(TranscriptPresentation.namesSenders(in: direct + [transcriptMessage("c", sender: "bob")]))
+}

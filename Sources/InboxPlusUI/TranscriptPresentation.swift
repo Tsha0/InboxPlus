@@ -15,6 +15,17 @@ public enum TranscriptPresentation {
         return fallback
     }
 
+    /// A chat with one other person is already titled with their name, so labelling every run of
+    /// their messages would only repeat it.
+    public static func namesSenders(in messages: [Message]) -> Bool {
+        var senders = Set<String>()
+        for message in messages where !message.isOutgoing {
+            if let sender = message.senderIdentityID { senders.insert(sender) }
+            if senders.count > 1 { return true }
+        }
+        return false
+    }
+
     public static func startsDay(_ message: Message, after previous: Message?, calendar: Calendar = .current) -> Bool {
         guard let previous else { return true }
         return !calendar.isDate(message.timestamp, inSameDayAs: previous.timestamp)

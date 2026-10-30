@@ -145,6 +145,7 @@ public struct ConversationView: View {
 
     private var transcript: some View {
         ScrollViewReader { proxy in
+            let namesSenders = TranscriptPresentation.namesSenders(in: messages)
             // Use the native list's bounded row layout. A LazyVStack combined with
             // scrollTo(bottom) can repeatedly invalidate its estimated heights on
             // macOS when switching chats, trapping the main thread in layout.
@@ -163,14 +164,15 @@ public struct ConversationView: View {
                         MessageBubble(
                             model: model, message: message,
                             senderName: TranscriptPresentation.senderName(message, identities: model.identities),
-                            showsSender: !message.isOutgoing && !TranscriptPresentation.sameRun(previous, message),
+                            showsSender: namesSenders && !message.isOutgoing
+                                && !TranscriptPresentation.sameRun(previous, message),
                             showsTimestamp: !TranscriptPresentation.sameRun(message, next)
                         )
                     }
-                        .id(message.id)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
+                    .id(message.id)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
             }
             .listStyle(.plain)
