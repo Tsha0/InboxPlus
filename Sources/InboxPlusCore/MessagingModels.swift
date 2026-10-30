@@ -140,6 +140,7 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
     public let id: String
     public let route: ConversationRoute
     public let senderIdentityID: String?
+    public var senderDisplayName: String?
     public var body: String
     public let timestamp: Date
     public var deliveryState: MessageDeliveryState
@@ -157,11 +158,13 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
         timestamp: Date,
         deliveryState: MessageDeliveryState,
         kind: MessageKind = .text,
-        attachments: [MessageAttachment] = []
+        attachments: [MessageAttachment] = [],
+        senderDisplayName: String? = nil
     ) {
         self.id = id
         self.route = route
         self.senderIdentityID = senderIdentityID
+        self.senderDisplayName = senderDisplayName
         self.body = body
         self.timestamp = timestamp
         self.deliveryState = deliveryState
