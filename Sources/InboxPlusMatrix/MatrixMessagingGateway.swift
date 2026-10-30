@@ -61,6 +61,10 @@ public actor MatrixMessagingGateway: MessagingGateway {
         normalizer = MatrixEventNormalizer(accountID: accountID)
     }
 
+    /// Downloads media through this gateway's own client. Only `start()` connects a client, so a
+    /// fetcher built on any other one fails every download with `.notConnected`.
+    public nonisolated var mediaFetcher: MatrixMediaFetcher { MatrixMediaFetcher(client: client) }
+
     // MARK: - MessagingGateway
 
     public func loadSnapshot() async throws -> MessagingSnapshot {
