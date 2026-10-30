@@ -36,8 +36,9 @@ public struct InboxCommands: Commands {
             Button("Search Inbox") { actions?.focusSearch() }
                 .keyboardShortcut("f")
                 .disabled(actions == nil)
+            // No Escape shortcut here: a menu key equivalent would fire wherever focus is, clearing
+            // the search while someone presses Escape in the composer. The search field handles it.
             Button("Clear Inbox Search") { actions?.clearSearch?() }
-                .keyboardShortcut(.escape, modifiers: [])
                 .disabled(actions?.clearSearch == nil)
         }
         CommandMenu("Navigate") {
