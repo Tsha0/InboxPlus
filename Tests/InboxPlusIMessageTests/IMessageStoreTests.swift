@@ -4,7 +4,7 @@ import Testing
 
 /// Builds a database with the same schema and quirks as the real one, using the `sqlite3` tool so
 /// the fixture is defined by SQL rather than by the code under test.
-private func makeDatabase(_ statements: String) throws -> URL {
+func makeDatabase(_ statements: String) throws -> URL {
     let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         .appendingPathComponent(".build/IMessageStoreTests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -13,6 +13,7 @@ private func makeDatabase(_ statements: String) throws -> URL {
     let schema = """
     CREATE TABLE handle (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL,
         country TEXT, service TEXT NOT NULL, uncanonicalized_id TEXT);
+    CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER, UNIQUE (chat_id, handle_id));
     CREATE TABLE chat (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,
         style INTEGER, state INTEGER, chat_identifier TEXT, service_name TEXT,
         room_name TEXT, display_name TEXT);
@@ -41,12 +42,12 @@ private func makeDatabase(_ statements: String) throws -> URL {
     return url
 }
 
-private func cleanUp(_ url: URL) {
+func cleanUp(_ url: URL) {
     try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
 }
 
 /// 2024-03-01T12:00:00Z as nanoseconds since 2001, which is what current macOS writes.
-private let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_", with: "")
+let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_", with: "")
 
 @Test func chatsAreReadWithTheirAddressingIdentity() throws {
     let url = try makeDatabase("""

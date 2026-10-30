@@ -12,6 +12,7 @@ public actor IMessageGateway: MessagingGateway {
 
     private let store: IMessageStore
     private let sender: IMessageSender
+    private let contacts: any IMessageContactSource
     private let historyLimit: Int
     private let pollInterval: Duration
 
@@ -20,15 +21,18 @@ public actor IMessageGateway: MessagingGateway {
     private var lastSeenRowID: Int64 = 0
     private var chatsByGUID: [String: IMessageChat] = [:]
     private var knownIdentityIDs: Set<String> = []
+    private var contactBook = IMessageContactBook()
 
     public init(
         store: IMessageStore,
         sender: IMessageSender = IMessageSender(),
+        contacts: any IMessageContactSource = IMessageContactBook(),
         historyLimit: Int = 300,
         pollInterval: Duration = .seconds(3)
     ) {
         self.store = store
         self.sender = sender
+        self.contacts = contacts
         self.historyLimit = historyLimit
         self.pollInterval = pollInterval
     }
@@ -38,6 +42,8 @@ public actor IMessageGateway: MessagingGateway {
     // MARK: - MessagingGateway
 
     public func loadSnapshot() async throws -> MessagingSnapshot {
+        // Read before anything is titled. The first time, this waits for the Contacts prompt.
+        contactBook = await contacts.contactBook()
         let chats = try store.chats()
         chatsByGUID = Dictionary(chats.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
 
@@ -202,7 +208,8 @@ public actor IMessageGateway: MessagingGateway {
         return RemoteIdentity(
             id: id,
             accountID: Self.accountID,
-            displayName: row.handle ?? chatsByGUID[row.chatGUID].map(displayName(for:)) ?? id
+            displayName: row.handle.map(contactBook.name(forHandle:))
+                ?? chatsByGUID[row.chatGUID].map(displayName(for:)) ?? id
         )
     }
 
@@ -221,6 +228,12 @@ public actor IMessageGateway: MessagingGateway {
         if let name = chat.displayName, !name.trimmingCharacters(in: .whitespaces).isEmpty {
             return name
         }
-        return chat.identifier.isEmpty ? "iMessage conversation" : chat.identifier
+        // An unnamed group's identifier is an internal id such as `chat123456789`, so it is titled
+        // after the people in it, as Messages does.
+        if chat.isGroup {
+            let participants = (try? store.participants(inChat: chat.rowID)) ?? []
+            return contactBook.groupTitle(forHandles: participants) ?? "Group conversation"
+        }
+        return chat.identifier.isEmpty ? "iMessage conversation" : contactBook.name(forHandle: chat.identifier)
     }
 }
