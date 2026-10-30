@@ -24,6 +24,7 @@ public struct RootView: View {
 
     enum AccountFlow: Identifiable {
         case picker
+        case connectionWarning(Platform)
         /// Downloading and registering a bridge this profile has never installed, which takes long
         /// enough that a picker sitting there unchanged would read as a dead click.
         case installing(Platform)
@@ -35,6 +36,7 @@ public struct RootView: View {
         var id: String {
             switch self {
             case .picker: "picker"
+            case let .connectionWarning(platform): "warning-\(platform.rawValue)"
             case let .installing(platform): "installing-\(platform.rawValue)"
             case let .login(platform, _): "login-\(platform.rawValue)"
             case .iMessagePermissions: "imessage"
@@ -125,6 +127,23 @@ public struct RootView: View {
                     onSelect: startConnecting,
                     onCancel: { accountFlow = nil }
                 )
+            case let .connectionWarning(platform):
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Connect \(platform.accessibilityLabel)")
+                        .font(.title2.bold())
+                    Text("Using an unofficial client may permanently ban your account.")
+                        .fixedSize(horizontal: false, vertical: true)
+                    Link("Learn about connection risks", destination: URL(string: "https://github.com/Tsha0/InboxPlus#networks")!)
+                    HStack {
+                        Button("Cancel") { accountFlow = nil }
+                            .keyboardShortcut(.cancelAction)
+                        Spacer()
+                        Button("Continue to sign in") { connectAfterWarning(platform) }
+                    }
+                }
+                .padding(24)
+                .frame(width: 440)
+                .accessibilityIdentifier("connection-warning-\(platform.rawValue)")
             case let .installing(platform):
                 BridgeInstallProgressView(platform: platform)
             case let .login(platform, controller):
@@ -177,6 +196,14 @@ public struct RootView: View {
     }
 
     private func startConnecting(_ platform: Platform) {
+        if [.instagram, .facebookMessenger, .whatsApp, .telegram].contains(platform) {
+            accountFlow = .connectionWarning(platform)
+        } else {
+            connectAfterWarning(platform)
+        }
+    }
+
+    private func connectAfterWarning(_ platform: Platform) {
         // iMessage authenticates through macOS rather than a bridge process, so it takes the
         // permissions route instead of a login flow.
         guard platform != .iMessage else {
