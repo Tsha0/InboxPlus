@@ -4,7 +4,7 @@ import Testing
 
 /// Builds a database with the same schema and quirks as the real one, using the `sqlite3` tool so
 /// the fixture is defined by SQL rather than by the code under test.
-private func makeDatabase(_ statements: String) throws -> URL {
+func makeDatabase(_ statements: String) throws -> URL {
     let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         .appendingPathComponent(".build/IMessageStoreTests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -18,7 +18,8 @@ private func makeDatabase(_ statements: String) throws -> URL {
         room_name TEXT, display_name TEXT);
     CREATE TABLE message (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,
         text TEXT, handle_id INTEGER DEFAULT 0, service TEXT, date INTEGER,
-        is_from_me INTEGER DEFAULT 0, attributedBody BLOB, associated_message_guid TEXT);
+        is_from_me INTEGER DEFAULT 0, attributedBody BLOB, associated_message_guid TEXT,
+        is_read INTEGER DEFAULT 0);
     CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER,
         PRIMARY KEY (chat_id, message_id));
     CREATE TABLE attachment (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,
@@ -41,7 +42,7 @@ private func makeDatabase(_ statements: String) throws -> URL {
     return url
 }
 
-private func cleanUp(_ url: URL) {
+func cleanUp(_ url: URL) {
     try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
 }
 

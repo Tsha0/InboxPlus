@@ -158,6 +158,28 @@ public final class IMessageStore {
         }
     }
 
+    // MARK: - Read state
+
+    /// Incoming messages Messages still has unread, per chat GUID, counting only those after the
+    /// chat's read marker. A tapback is not a message of its own, so it never counts.
+    public func unreadCounts(after readMarkers: [String: Int64]) throws -> [String: Int] {
+        let sql = """
+        SELECT chat.guid, message.ROWID
+        FROM message
+        JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
+        JOIN chat ON chat.ROWID = chat_message_join.chat_id
+        WHERE message.is_read = 0 AND message.is_from_me = 0
+          AND message.associated_message_guid IS NULL
+        """
+        let unread = try rows(sql) { statement in
+            (chatGUID: Self.string(statement, 0) ?? "", rowID: sqlite3_column_int64(statement, 1))
+        }
+        return unread.reduce(into: [:]) { counts, message in
+            guard message.rowID > readMarkers[message.chatGUID] ?? 0 else { return }
+            counts[message.chatGUID, default: 0] += 1
+        }
+    }
+
     // MARK: - Plumbing
 
     private func rows<T>(_ sql: String, _ decode: (OpaquePointer) -> T) throws -> [T] {

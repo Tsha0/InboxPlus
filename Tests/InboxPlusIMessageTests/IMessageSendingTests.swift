@@ -136,6 +136,8 @@ private actor StubGateway: MessagingGateway {
         SendReceipt(messageID: "1", route: route, deliveryState: .pending)
     }
 
+    func markRead(_ route: ConversationRoute) async throws {}
+
     func bodies() -> [String] { sentBodies }
 }
 
@@ -145,6 +147,7 @@ private struct BrokenGateway: MessagingGateway {
     func events() async -> AsyncStream<GatewayEvent> { AsyncStream { $0.finish() } }
     func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt { throw Failure() }
     func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt { throw Failure() }
+    func markRead(_ route: ConversationRoute) async throws { throw Failure() }
 }
 
 @Test func aSendGoesToTheSourceThatOwnsTheAccount() async throws {

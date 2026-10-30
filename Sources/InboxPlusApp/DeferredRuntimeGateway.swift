@@ -56,6 +56,10 @@ actor DeferredRuntimeGateway: MessagingGateway {
         try await gateway().send(attachment, to: route)
     }
 
+    func markRead(_ route: ConversationRoute) async throws {
+        try await gateway().markRead(route)
+    }
+
     // MARK: - Resolution
 
     /// Starts the runtime once, however many callers arrive at the same moment.

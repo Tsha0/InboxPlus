@@ -14,23 +14,27 @@ public actor IMessageGateway: MessagingGateway {
     private let sender: IMessageSender
     private let historyLimit: Int
     private let pollInterval: Duration
+    private let readMarkerStore: IMessageReadMarkerStore?
 
     private var streamContinuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
     private var pollTask: Task<Void, Never>?
     private var lastSeenRowID: Int64 = 0
     private var chatsByGUID: [String: IMessageChat] = [:]
     private var knownIdentityIDs: Set<String> = []
+    private var readMarkers: [String: Int64] = [:]
 
     public init(
         store: IMessageStore,
         sender: IMessageSender = IMessageSender(),
         historyLimit: Int = 300,
-        pollInterval: Duration = .seconds(3)
+        pollInterval: Duration = .seconds(3),
+        readMarkerStore: IMessageReadMarkerStore? = nil
     ) {
         self.store = store
         self.sender = sender
         self.historyLimit = historyLimit
         self.pollInterval = pollInterval
+        self.readMarkerStore = readMarkerStore
     }
 
     deinit { pollTask?.cancel() }
@@ -56,6 +60,7 @@ public actor IMessageGateway: MessagingGateway {
             if let identity = identity(for: row) { identities[identity.id] = identity }
         }
 
+        let unreadByChat = try unreadCounts()
         var conversations: [RemoteConversation] = []
         for chat in chats {
             let route = ConversationRoute(accountID: Self.accountID, conversationID: chat.guid)
@@ -78,7 +83,7 @@ public actor IMessageGateway: MessagingGateway {
                     title: displayName(for: chat),
                     latestPreview: latest?.body ?? "",
                     latestActivity: latest?.timestamp ?? Date(timeIntervalSince1970: 0),
-                    unreadCount: 0,
+                    unreadCount: unreadByChat[chat.guid] ?? 0,
                     // Messages accepts text through Apple events. Attachments would need a
                     // different mechanism, so the composer does not offer them here.
                     capabilities: ConversationCapabilities(canSendText: true, attachmentKinds: [])
@@ -126,6 +131,22 @@ public actor IMessageGateway: MessagingGateway {
         throw IMessageSendError.messagesReportedFailure(
             "Inbox+ cannot send attachments to iMessage yet."
         )
+    }
+
+    /// Everything Inbox+ has shown in the chat is now read. A message written to the database since
+    /// the last poll has not been shown yet, so it stays unread.
+    public func markRead(_ route: ConversationRoute) async throws {
+        let chatGUID = route.conversationID
+        guard lastSeenRowID > readMarkers[chatGUID] ?? 0 else { return }
+        var updated = readMarkers
+        updated[chatGUID] = lastSeenRowID
+        try readMarkerStore?.save(updated)
+        readMarkers = updated
+    }
+
+    private func unreadCounts() throws -> [String: Int] {
+        if let readMarkerStore { readMarkers = try readMarkerStore.load() }
+        return try store.unreadCounts(after: readMarkers)
     }
 
     // MARK: - Polling

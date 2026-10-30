@@ -154,7 +154,7 @@ extension GatewaySelection {
         // behind it. It is only added when the Messages database is actually readable: offering a
         // source that will throw on every read is worse than not offering it.
         var sources: [any MessagingGateway] = [matrix]
-        if let imessage = makeIMessageGateway() { sources.append(imessage) }
+        if let imessage = makeIMessageGateway(paths: paths) { sources.append(imessage) }
         return sources.count == 1 ? matrix : CompositeMessagingGateway(sources)
     }
 
@@ -231,9 +231,14 @@ extension GatewaySelection {
     /// Full Disk Access is the usual reason and it cannot be requested programmatically, so the
     /// failure is written to stderr rather than swallowed — a silently missing iMessage looks like
     /// a bug in Inbox+ rather than a permission the user has not granted.
-    static func makeIMessageGateway() -> IMessageGateway? {
+    static func makeIMessageGateway(paths: RuntimePaths) -> IMessageGateway? {
         do {
-            return IMessageGateway(store: try IMessageStore())
+            return IMessageGateway(
+                store: try IMessageStore(),
+                readMarkerStore: IMessageReadMarkerStore(
+                    fileURL: paths.profile.appendingPathComponent("imessage-read-markers.json")
+                )
+            )
         } catch {
             FileHandle.standardError.write(Data(
                 "Inbox+: iMessage is not available: \(error)\n".utf8

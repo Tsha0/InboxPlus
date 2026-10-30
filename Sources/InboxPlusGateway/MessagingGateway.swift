@@ -53,4 +53,9 @@ public protocol MessagingGateway: Sendable {
     /// Uploads and sends a local file. Like `sendText`, the receipt is only `acknowledged` once
     /// the server has confirmed it.
     func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt
+    /// Records that the user has read a conversation up to its latest message, wherever the next
+    /// snapshot reads unread counts from, so a badge cleared now stays cleared after a relaunch.
+    ///
+    /// Must never tell the other person their message was seen.
+    func markRead(_ route: ConversationRoute) async throws
 }
