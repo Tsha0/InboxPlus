@@ -60,8 +60,17 @@ struct NewConversationView: View {
             }
         }
         .padding(24).frame(width: 440)
-        .onAppear { accountID = model.accounts.first { model.isConnected($0.id) }?.id ?? "" }
+        .task {
+            for account in model.accounts where model.isConnected(account.id) {
+                if await model.canStartConversation(accountID: account.id) {
+                    accountID = account.id
+                    return
+                }
+            }
+            accountID = model.accounts.first { model.isConnected($0.id) }?.id ?? ""
+        }
         .task(id: accountID) {
+            guard !accountID.isEmpty else { return }
             checking = true
             failure = nil
             let available = await model.canStartConversation(accountID: accountID)

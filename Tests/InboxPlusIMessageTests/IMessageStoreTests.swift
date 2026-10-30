@@ -252,3 +252,22 @@ func typedStream(containing text: String) -> [UInt8] {
     _ = try await gateway.sendText("again", to: started.conversation.route)
     #expect(scripts.withLock { $0.last?.contains("chat id \"assigned-guid\"") } == true)
 }
+
+@Test func startingConversationReusesAnExistingChatWhateverItsServiceName() async throws {
+    let url = try makeDatabase("""
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('any;-;+15555550199', 45, '+15555550199', 'SMS');
+    """)
+    defer { cleanUp(url) }
+    let scripts = Mutex<[String]>([])
+    let gateway = IMessageGateway(store: try IMessageStore(url: url), sender: IMessageSender { script in
+        scripts.withLock { $0.append(script) }
+        return ""
+    })
+    _ = try await gateway.loadSnapshot()
+    let started = try await gateway.startConversation(accountID: IMessageGateway.accountID, recipient: "+1 555 555 0199")
+    #expect(started.conversation.id == "any;-;+15555550199")
+    _ = try await gateway.sendText("hello", to: started.conversation.route)
+    #expect(scripts.withLock { $0.count } == 1)
+    #expect(scripts.withLock { !$0[0].contains("buddy") })
+}

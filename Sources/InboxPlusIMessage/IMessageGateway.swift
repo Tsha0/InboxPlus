@@ -29,9 +29,7 @@ public actor IMessageGateway: ConversationStartingGateway {
     public func startConversation(accountID: String, recipient: String) async throws -> StartedConversation {
         guard accountID == Self.accountID else { throw ConversationStartError.unavailable }
         let address = try Self.normalizeRecipient(recipient)
-        let existing = try store.chats().first {
-            !$0.isGroup && $0.service == "iMessage" && (try? Self.normalizeRecipient($0.identifier)) == address
-        }
+        let existing = try existingChat(with: address)
         let guid = newRecipientsByRoute.first { $0.value == address }?.key
             ?? existing?.guid ?? "iMessage;-;\(address)"
         if existing == nil { newRecipientsByRoute[guid] = address }
@@ -151,9 +149,7 @@ public actor IMessageGateway: ConversationStartingGateway {
     public func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
         guard route.accountID == Self.accountID else { throw ConversationStartError.unavailable }
         if let recipient = newRecipientsByRoute[route.conversationID] {
-            if let chat = try store.chats().first(where: {
-                !$0.isGroup && $0.service == "iMessage" && (try? Self.normalizeRecipient($0.identifier)) == recipient
-            }) {
+            if let chat = try existingChat(with: recipient) {
                 try sender.send(body, toChatGUID: chat.guid)
             } else {
                 try sender.send(body, toNewRecipient: recipient)
@@ -219,9 +215,17 @@ public actor IMessageGateway: ConversationStartingGateway {
 
     // Keep an open compose route stable if Messages assigns a different GUID on first send.
     private func routeID(for chat: IMessageChat) -> String {
-        guard !chat.isGroup, chat.service == "iMessage",
-              let address = try? Self.normalizeRecipient(chat.identifier) else { return chat.guid }
+        guard !chat.isGroup, let address = try? Self.normalizeRecipient(chat.identifier) else { return chat.guid }
         return newRecipientsByRoute.first { $0.value == address }?.key ?? chat.guid
+    }
+
+    /// Recent macOS files one-to-one chats under an `any;-;` GUID whatever service carries them, so
+    /// the service name cannot decide whether a chat with this person already exists.
+    private func existingChat(with address: String) throws -> IMessageChat? {
+        let matches = try store.chats().filter {
+            !$0.isGroup && (try? Self.normalizeRecipient($0.identifier)) == address
+        }
+        return matches.first { $0.service == "iMessage" } ?? matches.first
     }
 
     private func message(from row: IMessageRow) -> Message? {
