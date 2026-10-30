@@ -93,6 +93,7 @@ public struct ConversationView: View {
         .sheet(isPresented: $showsLinkSheet) {
             LinkPersonSheet(
                 people: model.people,
+                suggestedName: summary?.title ?? "",
                 onSelect: { personID in
                     attemptLink { try model.linkOpenConversation(to: personID) }
                 },
@@ -126,7 +127,7 @@ public struct ConversationView: View {
                         .font(.headline)
                 }
                 Spacer()
-                if model.personID(for: route) == nil {
+                if model.canLinkConversation(route), model.personID(for: route) == nil {
                     Button("Link to person…") {
                         linkError = nil
                         showsLinkSheet = true

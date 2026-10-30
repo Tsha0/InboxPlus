@@ -117,7 +117,8 @@ public actor MatrixMessagingGateway: MessagingGateway {
                     title: title,
                     latestPreview: ordered.last?.body ?? "",
                     latestActivity: ordered.last?.timestamp ?? Date(timeIntervalSince1970: 0),
-                    unreadCount: Int(info.numUnreadMessages)
+                    unreadCount: Int(info.numUnreadMessages),
+                    isGroup: !info.isDirect && !info.isDm
                 )
             )
         }
@@ -339,7 +340,8 @@ public actor MatrixMessagingGateway: MessagingGateway {
                     title: title,
                     latestPreview: messages.last?.body ?? "",
                     latestActivity: messages.last?.timestamp ?? Date(),
-                    unreadCount: Int(info?.numUnreadMessages ?? 0)
+                    unreadCount: Int(info?.numUnreadMessages ?? 0),
+                    isGroup: !(info?.isDirect ?? false) && !(info?.isDm ?? false)
                 )
             ))
             for message in messages { publish(.historicalMessageUpserted(message)) }
