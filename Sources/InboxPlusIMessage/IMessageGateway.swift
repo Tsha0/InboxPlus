@@ -41,8 +41,8 @@ public actor IMessageGateway: MessagingGateway {
         let chats = try store.chats()
         chatsByGUID = Dictionary(chats.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
 
+        let highestRowID = try store.maxMessageRowID()
         let rows = try store.recentMessages(limit: historyLimit)
-        let highestRowID = try rows.map(\.rowID).max() ?? store.maxMessageRowID()
         lastSeenRowID = max(lastSeenRowID, highestRowID)
 
         var messagesByRoute: [ConversationRoute: [Message]] = [:]
@@ -145,8 +145,10 @@ public actor IMessageGateway: MessagingGateway {
     }
 
     func pollOnce() async {
-        guard let rows = try? store.messages(afterRowID: lastSeenRowID), !rows.isEmpty else { return }
-        lastSeenRowID = max(lastSeenRowID, rows.map(\.rowID).max() ?? lastSeenRowID)
+        guard let watermark = try? store.maxMessageRowID(),
+              let rows = try? store.messages(afterRowID: lastSeenRowID) else { return }
+        lastSeenRowID = max(lastSeenRowID, watermark)
+        guard !rows.isEmpty else { return }
 
         // Refresh the chat map first: a message can arrive in a conversation that did not exist
         // when the snapshot was taken.
@@ -174,7 +176,11 @@ public actor IMessageGateway: MessagingGateway {
 
     private func message(from row: IMessageRow) -> Message? {
         guard let timestamp = row.date else { return nil }
-        let body = row.body ?? placeholder(for: row)
+        let text = row.attachmentCount > 0
+            ? row.body?.replacingOccurrences(of: "\u{FFFC}", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            : row.body
+        let body = text.flatMap { $0.isEmpty ? nil : $0 } ?? placeholder(for: row)
         guard let body else { return nil }
         return Message(
             id: row.guid.isEmpty ? "imessage-\(row.rowID)" : row.guid,
@@ -183,17 +189,15 @@ public actor IMessageGateway: MessagingGateway {
             body: body,
             timestamp: timestamp,
             deliveryState: .acknowledged,
-            kind: row.attachmentCount > 0 ? .file : .text
+            kind: row.attachments.first?.kind ?? .text,
+            attachments: row.attachments,
+            reactions: row.reactions
         )
     }
 
-    /// An attachment-only message has no text at all. Dropping it would leave a visible gap in a
-    /// conversation, so it becomes a visible note about what was sent.
     private func placeholder(for row: IMessageRow) -> String? {
         guard row.attachmentCount > 0 else { return nil }
-        return row.attachmentCount == 1
-            ? "Sent an attachment"
-            : "Sent \(row.attachmentCount) attachments"
+        return row.attachments.map(\.displayName).joined(separator: ", ")
     }
 
     private func identity(for row: IMessageRow) -> RemoteIdentity? {

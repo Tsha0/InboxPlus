@@ -322,6 +322,14 @@ private struct MessageBubble: View {
                         )
                         .textSelection(.enabled)
                 }
+                if !message.reactions.isEmpty {
+                    Text(message.reactions.joined(separator: " "))
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.quaternary, in: .capsule)
+                        .accessibilityLabel("Reactions: " + message.reactions.joined(separator: ", "))
+                }
                 HStack(spacing: 4) {
                     if let failureReason {
                         Image(systemName: "exclamationmark.circle.fill")
@@ -349,10 +357,11 @@ private struct MessageBubble: View {
 
     static func accessibilityLabel(for message: Message) -> String {
         let speaker = message.isOutgoing ? "You" : "Them"
-        guard !message.attachments.isEmpty else { return "\(speaker): \(message.body)" }
+        let reactions = message.reactions.isEmpty ? "" : ", reactions: " + message.reactions.joined(separator: ", ")
+        guard !message.attachments.isEmpty else { return "\(speaker): \(message.body)\(reactions)" }
         let described = message.attachments
             .map(AttachmentFormatting.accessibilityLabel(for:))
             .joined(separator: ", ")
-        return "\(speaker): \(described)"
+        return "\(speaker): \(described)\(reactions)"
     }
 }
