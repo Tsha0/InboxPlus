@@ -14,6 +14,7 @@ public struct RootView: View {
     @Bindable var model: InboxPlusAppModel
     @State private var section: SidebarSection = .inbox
     @State private var accountFlow: AccountFlow?
+    @State private var showsNewConversation = false
     @State private var connectFailure: String?
     /// Informational, not a failure — reusing the failure alert would title good news as an error.
     @State private var connectNotice: ConnectNotice?
@@ -96,7 +97,9 @@ public struct RootView: View {
                     .accessibilityIdentifier("health-banner")
             }
             HStack(spacing: 0) {
-                NavigationRailView(selection: $section, update: update, onUpdate: onUpdate)
+                NavigationRailView(selection: $section, update: update, onUpdate: onUpdate,
+                                   canCompose: !model.hasUnfinishedMessagingWork,
+                                   onCompose: { showsNewConversation = true })
                     .fixedSize(horizontal: true, vertical: false)
                 Divider()
                 sidebar
@@ -117,6 +120,7 @@ public struct RootView: View {
             model.clearConnectionRequest()
             startConnecting(platform)
         }
+        .sheet(isPresented: $showsNewConversation) { NewConversationView(model: model) }
         .sheet(item: $accountFlow) { flow in
             switch flow {
             case .picker:

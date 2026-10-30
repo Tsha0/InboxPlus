@@ -7,7 +7,7 @@ import InboxPlusGateway
 /// iMessage never touches Matrix: there is no bridge process, no homeserver room, and no
 /// credential. Reads come from the local database and sends go to Messages itself, so this
 /// implements the same seam the Matrix gateway does and the app layer cannot tell the difference.
-public actor IMessageGateway: MessagingGateway {
+public actor IMessageGateway: ConversationStartingGateway {
     public static let accountID = "imessage-local"
 
     private let store: IMessageStore
@@ -20,6 +20,40 @@ public actor IMessageGateway: MessagingGateway {
     private var lastSeenRowID: Int64 = 0
     private var chatsByGUID: [String: IMessageChat] = [:]
     private var knownIdentityIDs: Set<String> = []
+    private var newRecipientsByRoute: [String: String] = [:]
+
+    public func canStartConversation(accountID: String) async -> Bool {
+        accountID == Self.accountID
+    }
+
+    public func startConversation(accountID: String, recipient: String) async throws -> StartedConversation {
+        guard accountID == Self.accountID else { throw ConversationStartError.unavailable }
+        let address = try Self.normalizeRecipient(recipient)
+        let existing = try store.chats().first {
+            !$0.isGroup && $0.service == "iMessage" && (try? Self.normalizeRecipient($0.identifier)) == address
+        }
+        let guid = newRecipientsByRoute.first { $0.value == address }?.key
+            ?? existing?.guid ?? "iMessage;-;\(address)"
+        if existing == nil { newRecipientsByRoute[guid] = address }
+        let identity = RemoteIdentity(id: existing.map(identityID(for:)) ?? address,
+                                      accountID: accountID, displayName: existing.map(displayName(for:)) ?? address)
+        return StartedConversation(identity: identity, conversation: RemoteConversation(
+            id: guid, accountID: accountID, identityID: identity.id,
+            title: identity.displayName, latestActivity: .now, unreadCount: 0, capabilities: .textOnly
+        ))
+    }
+
+    static func normalizeRecipient(_ value: String) throws -> String {
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.range(of: #"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$"#, options: .regularExpression) != nil {
+            return value.lowercased()
+        }
+        let phone = value.filter { !" ()-.".contains($0) }
+        guard phone.range(of: #"^\+[1-9][0-9]{6,14}$"#, options: .regularExpression) != nil else {
+            throw ConversationStartError.invalidRecipient
+        }
+        return phone
+    }
 
     public init(
         store: IMessageStore,
@@ -72,7 +106,7 @@ public actor IMessageGateway: MessagingGateway {
             }
             conversations.append(
                 RemoteConversation(
-                    id: chat.guid,
+                    id: routeID(for: chat),
                     accountID: Self.accountID,
                     identityID: identityID,
                     title: displayName(for: chat),
@@ -115,7 +149,18 @@ public actor IMessageGateway: MessagingGateway {
     }
 
     public func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
-        try sender.send(body, toChatGUID: route.conversationID)
+        guard route.accountID == Self.accountID else { throw ConversationStartError.unavailable }
+        if let recipient = newRecipientsByRoute[route.conversationID] {
+            if let chat = try store.chats().first(where: {
+                !$0.isGroup && $0.service == "iMessage" && (try? Self.normalizeRecipient($0.identifier)) == recipient
+            }) {
+                try sender.send(body, toChatGUID: chat.guid)
+            } else {
+                try sender.send(body, toNewRecipient: recipient)
+            }
+        } else {
+            try sender.send(body, toChatGUID: route.conversationID)
+        }
         // Deliberately pending. Messages has accepted the request; the sent message appears in the
         // database once it is really sent, and the poll promotes it then. Reporting success here
         // would claim delivery Inbox+ has not observed.
@@ -172,13 +217,20 @@ public actor IMessageGateway: MessagingGateway {
 
     // MARK: - Mapping
 
+    // Keep an open compose route stable if Messages assigns a different GUID on first send.
+    private func routeID(for chat: IMessageChat) -> String {
+        guard !chat.isGroup, chat.service == "iMessage",
+              let address = try? Self.normalizeRecipient(chat.identifier) else { return chat.guid }
+        return newRecipientsByRoute.first { $0.value == address }?.key ?? chat.guid
+    }
+
     private func message(from row: IMessageRow) -> Message? {
         guard let timestamp = row.date else { return nil }
         let body = row.body ?? placeholder(for: row)
         guard let body else { return nil }
         return Message(
             id: row.guid.isEmpty ? "imessage-\(row.rowID)" : row.guid,
-            route: ConversationRoute(accountID: Self.accountID, conversationID: row.chatGUID),
+            route: ConversationRoute(accountID: Self.accountID, conversationID: chatsByGUID[row.chatGUID].map(routeID(for:)) ?? row.chatGUID),
             senderIdentityID: row.isFromMe ? nil : identityID(for: row),
             body: body,
             timestamp: timestamp,

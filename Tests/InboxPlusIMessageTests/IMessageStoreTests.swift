@@ -1,5 +1,8 @@
 import Foundation
 import Testing
+import Synchronization
+import InboxPlusCore
+import InboxPlusGateway
 @testable import InboxPlusIMessage
 
 /// Builds a database with the same schema and quirks as the real one, using the `sqlite3` tool so
@@ -184,4 +187,68 @@ func typedStream(containing text: String) -> [UInt8] {
     }
     bytes += payload
     return bytes
+}
+
+@Test func startingConversationNormalizesDeduplicatesAndNeverSends() async throws {
+    let url = try makeDatabase("""
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('existing', 45, 'Person@Example.com', 'iMessage');
+    """)
+    defer { cleanUp(url) }
+    let scripts = Mutex<[String]>([])
+    let gateway = IMessageGateway(store: try IMessageStore(url: url), sender: IMessageSender { script in
+        scripts.withLock { $0.append(script) }
+        return ""
+    })
+    let composite = CompositeMessagingGateway([gateway])
+    _ = try await composite.loadSnapshot()
+    #expect(await composite.canStartConversation(accountID: IMessageGateway.accountID))
+    #expect(await !composite.canStartConversation(accountID: "other"))
+    let existing = try await composite.startConversation(accountID: IMessageGateway.accountID, recipient: " PERSON@example.com ")
+    #expect(existing.conversation.id == "existing")
+    let first = try await gateway.startConversation(accountID: IMessageGateway.accountID, recipient: "+1 (555) 555-0123")
+    let again = try await gateway.startConversation(accountID: IMessageGateway.accountID, recipient: "+15555550123")
+    #expect(first.conversation.route == again.conversation.route)
+    #expect(first.identity.displayName == "+15555550123")
+    #expect(scripts.withLock { $0.isEmpty })
+    await #expect(throws: ConversationStartError.self) {
+        try await gateway.startConversation(accountID: IMessageGateway.accountID, recipient: "5551234")
+    }
+    await #expect(throws: ConversationStartError.self) {
+        try await gateway.startConversation(accountID: "other", recipient: "+15555550123")
+    }
+    _ = try await gateway.sendText("hello", to: first.conversation.route)
+    #expect(scripts.withLock { $0.count } == 1)
+    #expect(scripts.withLock { $0[0].contains("service type is iMessage") })
+    #expect(scripts.withLock { $0[0].contains("buddy \"+15555550123\"") })
+}
+
+@Test func firstSendReconcilesADifferentMessagesGUID() async throws {
+    let url = try makeDatabase("")
+    defer { cleanUp(url) }
+    let scripts = Mutex<[String]>([])
+    let gateway = IMessageGateway(store: try IMessageStore(url: url), sender: IMessageSender { script in
+        scripts.withLock { $0.append(script) }
+        return ""
+    })
+    let started = try await gateway.startConversation(accountID: IMessageGateway.accountID, recipient: "person@example.com")
+    _ = try await gateway.sendText("hello", to: started.conversation.route)
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+    process.arguments = [url.path, """
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('assigned-guid', 45, 'person@example.com', 'iMessage');
+    INSERT INTO message (guid, text, date, is_from_me) VALUES ('sent', 'hello', \(nanoseconds), 1);
+    INSERT INTO chat_message_join VALUES (1, 1);
+    """]
+    try process.run()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0)
+    let snapshot = try await gateway.loadSnapshot()
+    #expect(snapshot.conversations.map(\.route) == [started.conversation.route])
+    #expect(snapshot.messagesByRoute[started.conversation.route]?.first?.body == "hello")
+    let again = try await gateway.startConversation(accountID: IMessageGateway.accountID, recipient: "PERSON@example.com")
+    #expect(again.conversation.route == started.conversation.route)
+    _ = try await gateway.sendText("again", to: started.conversation.route)
+    #expect(scripts.withLock { $0.last?.contains("chat id \"assigned-guid\"") } == true)
 }

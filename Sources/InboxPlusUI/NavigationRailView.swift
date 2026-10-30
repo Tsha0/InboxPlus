@@ -26,6 +26,8 @@ struct NavigationRailView: View {
     @Binding var selection: SidebarSection
     var update: AppUpdatePresentation? = nil
     var onUpdate: () -> Void = {}
+    var canCompose = true
+    var onCompose: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 14) {
@@ -35,6 +37,13 @@ struct NavigationRailView: View {
             ForEach([SidebarSection.inbox, .contacts]) { section in
                 railButton(section)
             }
+            Button(action: onCompose) {
+                Image(systemName: "square.and.pencil").frame(width: 30, height: 30)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New message")
+            .help(canCompose ? "New message" : "Send or clear your current draft and attachments first")
+            .disabled(!canCompose)
             Spacer()
             if let update {
                 Button(action: onUpdate) {
