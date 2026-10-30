@@ -148,6 +148,7 @@ struct InboxPlusApp: App {
         }
         .windowResizability(.contentMinSize)
         .commands {
+            InboxCommands()
             CommandGroup(replacing: .newItem) {}
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…", action: updates.checkForUpdates)

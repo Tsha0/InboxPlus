@@ -240,6 +240,30 @@ public final class InboxPlusAppModel {
         rebuildInbox()
     }
 
+    public func toggleConversationUnread(_ route: ConversationRoute) {
+        guard let index = conversations.firstIndex(where: { $0.route == route }) else { return }
+        if conversations[index].unreadCount > 0 {
+            markConversationRead(route)
+        } else {
+            conversations[index].unreadCount = 1
+            rebuildInbox()
+        }
+    }
+
+    public func navigateConversation(forward: Bool, query: String, unreadOnly: Bool) {
+        guard !hasUnfinishedMessagingWork else { return }
+        let routes = InboxProjector.filtered(inboxItems, query: query, unreadOnly: unreadOnly)
+            .flatMap { $0.conversationSummaries.map(\.route) }
+        guard !routes.isEmpty else { return }
+        let index: Int
+        if let route = openRoute, let current = routes.firstIndex(of: route) {
+            index = (current + (forward ? 1 : routes.count - 1)) % routes.count
+        } else {
+            index = forward ? 0 : routes.count - 1
+        }
+        openConversation(routes[index])
+    }
+
     /// Names each loaded account and how many conversations it owns.
     ///
     /// A conversation attributed to the wrong network is invisible as a bug — a bridged Instagram
