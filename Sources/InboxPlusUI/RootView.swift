@@ -14,7 +14,6 @@ public struct RootView: View {
     @Bindable var model: InboxPlusAppModel
     @State private var section: SidebarSection = .inbox
     @State private var accountFlow: AccountFlow?
-    @State private var showsNewConversation = false
     @State private var connectFailure: String?
     /// Informational, not a failure — reusing the failure alert would title good news as an error.
     @State private var connectNotice: ConnectNotice?
@@ -25,6 +24,7 @@ public struct RootView: View {
 
     enum AccountFlow: Identifiable {
         case picker
+        case newConversation
         /// Downloading and registering a bridge this profile has never installed, which takes long
         /// enough that a picker sitting there unchanged would read as a dead click.
         case installing(Platform)
@@ -36,6 +36,7 @@ public struct RootView: View {
         var id: String {
             switch self {
             case .picker: "picker"
+            case .newConversation: "new-conversation"
             case let .installing(platform): "installing-\(platform.rawValue)"
             case let .login(platform, _): "login-\(platform.rawValue)"
             case .iMessagePermissions: "imessage"
@@ -98,8 +99,8 @@ public struct RootView: View {
             }
             HStack(spacing: 0) {
                 NavigationRailView(selection: $section, update: update, onUpdate: onUpdate,
-                                   canCompose: !model.hasUnfinishedMessagingWork,
-                                   onCompose: { showsNewConversation = true })
+                                   canCompose: canStartNewConversation,
+                                   onCompose: { accountFlow = .newConversation })
                     .fixedSize(horizontal: true, vertical: false)
                 Divider()
                 sidebar
@@ -120,10 +121,11 @@ public struct RootView: View {
             model.clearConnectionRequest()
             startConnecting(platform)
         }
-        .focusedSceneValue(\.newConversationAction, canStartNewConversation ? { showsNewConversation = true } : nil)
-        .sheet(isPresented: $showsNewConversation) { NewConversationView(model: model) }
+        .focusedSceneValue(\.newConversationAction, canStartNewConversation ? { accountFlow = .newConversation } : nil)
         .sheet(item: $accountFlow) { flow in
             switch flow {
+            case .newConversation:
+                NewConversationView(model: model)
             case .picker:
                 AccountPickerView(
                     connectedPlatforms: model.platformsWithAccounts,
@@ -235,7 +237,7 @@ public struct RootView: View {
 
     private var canStartNewConversation: Bool {
         !model.hasUnfinishedMessagingWork && !model.isPreparingForUpdate
-            && accountFlow == nil && !showsNewConversation
+            && accountFlow == nil && connectFailure == nil && connectNotice == nil
     }
 
     @ViewBuilder private var sidebar: some View {
