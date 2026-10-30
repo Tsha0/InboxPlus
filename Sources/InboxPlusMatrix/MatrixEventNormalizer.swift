@@ -91,11 +91,7 @@ public struct MatrixEventNormalizer: Sendable {
         switch content {
         case let .msgLike(msgLike):
             describe(msgLike.kind, identifier: identifier)
-        case let .roomMembership(_, displayName, change, _):
-            Described(body: "\(displayName ?? "Someone") \(Self.describe(change))", kind: .membership)
-        case .profileChange:
-            Described(body: "Updated their profile", kind: .membership)
-        case .state:
+        case .roomMembership, .profileChange, .state:
             // Bridges replay settings and avatars while syncing. These are metadata, not chat
             // messages; omit them before either historical or live events reach the inbox.
             nil
@@ -331,18 +327,6 @@ public struct MatrixEventNormalizer: Sendable {
     private static func caption(_ body: String, fallback: String) -> String {
         body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallback : body
     }
-
-    private static func describe(_ change: MembershipChange?) -> String {
-        switch change {
-        case .some(.joined): "joined"
-        case .some(.left): "left"
-        case .some(.invited): "was invited"
-        case .some(.banned): "was banned"
-        case .some(.kicked): "was removed"
-        default: "membership changed"
-        }
-    }
-
 }
 
 /// Orders a conversation deterministically.
