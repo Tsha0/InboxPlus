@@ -278,11 +278,22 @@ public final class InboxPlusAppModel {
     ///
     /// The one-account-per-platform rule is enforced here as well as in the picker: the picker
     /// disables an already-connected network, but a view is a convenience, not the rule.
+    ///
+    /// The gateway may already have reported this same account, as soon as the bridge delivered its
+    /// first conversation and before the login sheet was dismissed; that is not a second account.
     public func addAccount(_ account: ConnectedAccount) throws {
-        try AccountPolicy.validate(accounts + [account])
-        accounts.append(account)
+        try AccountPolicy.validate(accounts.filter { $0.id != account.id } + [account])
+        upsert(account)
         disconnectedAccountIDs.remove(account.id)
         rebuildInbox()
+    }
+
+    private func upsert(_ account: ConnectedAccount) {
+        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[index] = account
+        } else {
+            accounts.append(account)
+        }
     }
 
     /// Marks an account disconnected without touching anything it delivered.
@@ -647,6 +658,9 @@ public final class InboxPlusAppModel {
         case let .conversationUpserted(conversation):
             conversations.removeAll { $0.id == conversation.id && $0.accountID == conversation.accountID }
             conversations.append(conversation)
+            rebuildInbox()
+        case let .accountUpserted(account):
+            upsert(account)
             rebuildInbox()
         case let .connectionChanged(accountID, isConnected):
             guard accounts.contains(where: { $0.id == accountID }) else { return }

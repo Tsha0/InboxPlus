@@ -71,7 +71,8 @@ jobs:
         run: |
           python3 -m unittest discover -s Tests/Packaging -v
           bash Tests/Packaging/verify-signed-feed.sh
-          bash -n Scripts/embed-sparkle.sh Scripts/generate-update-feed.sh Scripts/package-release.sh Scripts/build-app.sh
+          bash Tests/Packaging/verify-self-signed-identity.sh
+          bash -n Scripts/embed-sparkle.sh Scripts/generate-update-feed.sh Scripts/package-release.sh Scripts/build-app.sh Scripts/create-signing-certificate.sh
 
       - name: Check for whitespace damage
         run: git diff --check
@@ -119,8 +120,7 @@ jobs:
   package:
     name: Package the app
     # Proves the bundle still assembles and launches its own CLI. This is NOT a release: the build
-    # is ad-hoc signed, so Gatekeeper refuses it anywhere but the machine that produced it. A real
-    # release needs an Apple Developer ID and Scripts/package-release.sh.
+    # is ad-hoc signed, so its identity changes every build. Releases use Scripts/package-release.sh.
     runs-on: macos-latest
     timeout-minutes: 45
     needs: test

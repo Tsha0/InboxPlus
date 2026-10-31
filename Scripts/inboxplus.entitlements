@@ -4,8 +4,9 @@
 <dict>
   <!--
     InboxPlus is not sandboxed. It supervises Synapse and bridge processes it downloads into a profile
-    directory, which the App Sandbox does not permit. Distribution is Developer ID, not the App
-    Store, so the hardened runtime plus notarization is the applicable protection.
+    directory, which the App Sandbox does not permit. Distribution is direct, not the App Store:
+    Developer ID releases rely on the hardened runtime plus notarization; self-signed releases
+    cannot use the hardened runtime, which needs an Apple Team ID.
   -->
 
   <!-- The bridges are Go binaries produced elsewhere; the runtime is a Python interpreter. Neither

@@ -318,8 +318,12 @@ public actor MatrixMessagingGateway: MessagingGateway {
             let title = info?.displayName ?? info?.rawName ?? roomID
             let identityID = messages.compactMap(\.senderIdentityID).first ?? roomID
 
-            // Order matters: the inbox drops a conversation whose identity it has not seen, so the
-            // identity has to arrive first or the room never appears.
+            // Order matters: the inbox drops a conversation whose account or identity it has not
+            // seen, so both have to arrive first or the room never appears. The account is new
+            // whenever this is the first conversation of a network connected since launch.
+            if let account = bridgeAccount(roomAccountID) {
+                publish(.accountUpserted(account))
+            }
             publish(.identityUpserted(
                 RemoteIdentity(
                     id: identityID,
@@ -418,20 +422,23 @@ public actor MatrixMessagingGateway: MessagingGateway {
     private func accounts(owning roomAccountIDs: some Collection<String>) -> [ConnectedAccount] {
         var accounts: [ConnectedAccount] = []
         for bridgeID in Set(roomAccountIDs).sorted() {
-            guard let descriptor = bridgeAccounts[bridgeID] else { continue }
-            accounts.append(
-                ConnectedAccount(
-                    id: descriptor.bridgeID,
-                    platform: descriptor.platform,
-                    displayName: descriptor.displayName
-                )
-            )
+            guard let account = bridgeAccount(bridgeID) else { continue }
+            accounts.append(account)
         }
         // Always present, because a room that belongs to no bridge is filed against it.
         accounts.append(
             ConnectedAccount(id: accountID, platform: platform, displayName: "Local Matrix")
         )
         return accounts
+    }
+
+    private func bridgeAccount(_ bridgeID: String) -> ConnectedAccount? {
+        guard let descriptor = bridgeAccounts[bridgeID] else { return nil }
+        return ConnectedAccount(
+            id: descriptor.bridgeID,
+            platform: descriptor.platform,
+            displayName: descriptor.displayName
+        )
     }
 
     // MARK: - Internals
