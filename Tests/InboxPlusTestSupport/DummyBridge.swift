@@ -48,6 +48,10 @@ public actor DummyBridge: SynapseHTTPTransport {
         if segments.suffix(2) == ["login", "flows"] {
             return try encode(["flows": script.flows])
         }
+        // /_matrix/provision/v3/logout/all
+        if segments.suffix(2) == ["logout", "all"], request.method == .post {
+            return try encode([String: String]())
+        }
         // /_matrix/provision/v3/login/start/{flowID}
         if segments.count >= 2, segments[segments.count - 2] == "start" {
             let flowID = segments[segments.count - 1]

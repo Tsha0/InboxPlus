@@ -1,4 +1,5 @@
 import Foundation
+import InboxPlusCore
 import InboxPlusFeatures
 import InboxPlusGateway
 import InboxPlusBridge
@@ -30,6 +31,7 @@ enum GatewaySelection {
         /// exist, is indistinguishable from a bug.
         let directory: ContactDirectory
         var favouriteStore: InboxFavouriteStore? = nil
+        var accountLifecycle: (any AccountLifecycle)? = nil
     }
 
     @MainActor
@@ -55,12 +57,13 @@ enum GatewaySelection {
             // The media controller exists before the runtime does, so the transcript can render
             // immediately and attach its loader once there is a homeserver to fetch from.
             let media = MediaController()
+            let sources = LiveSources()
 
             let gateway = DeferredRuntimeGateway(
                 paths: paths,
                 profileName: profileName,
                 build: { state in
-                    let built = try makeMatrixGateway(paths: paths, state: state)
+                    let built = try makeMatrixGateway(paths: paths, state: state, sources: sources)
                     await attachMedia(media, fetcher: built.media, paths: paths)
                     return built.gateway
                 }
@@ -71,7 +74,8 @@ enum GatewaySelection {
                 media: media,
                 // Real accounts start with no linked people. Linking is something the user does.
                 directory: ContactDirectory(),
-                favouriteStore: InboxFavouriteStore(fileURL: paths.profile.appendingPathComponent("inbox-favourites.json"))
+                favouriteStore: InboxFavouriteStore(fileURL: paths.profile.appendingPathComponent("inbox-favourites.json")),
+                accountLifecycle: ProfileAccountLifecycle(paths: paths, sources: sources)
             )
         } catch {
             // Surface the reason instead of silently substituting fake conversations.
@@ -96,7 +100,8 @@ extension GatewaySelection {
     static func makeMatrixGateway(
         paths: RuntimePaths,
         state: RuntimeProfileState,
-        makeIMessage: (RuntimePaths) -> (any MessagingGateway)? = { GatewaySelection.makeIMessageGateway(paths: $0) }
+        sources: LiveSources = LiveSources(),
+        makeIMessage: (RuntimePaths) -> IMessageGateway? = { GatewaySelection.makeIMessageGateway(paths: $0) }
     ) throws -> (gateway: any MessagingGateway, media: MatrixMediaFetcher) {
         guard let port = state.snapshot.loopbackPort else {
             throw GatewaySelectionError.profileNotRunning(paths.profile.lastPathComponent)
@@ -158,14 +163,31 @@ extension GatewaySelection {
             }
         )
 
+        sources.matrix = matrix
+
         // iMessage never reaches the homeserver, so it sits beside the Matrix gateway rather than
         // behind it. It is only added when the Messages database is actually readable: offering a
         // source that will throw on every read is worse than not offering it.
-        var sources: [any MessagingGateway] = [matrix]
-        if let imessage = makeIMessage(paths) { sources.append(imessage) }
+        var gateways: [any MessagingGateway] = [matrix]
+        if try DisconnectedAccountStore(paths: paths).load().contains(IMessageGateway.accountID) {
+            gateways.append(disconnectedIMessage())
+        } else if let imessage = makeIMessage(paths) {
+            sources.iMessage = imessage
+            gateways.append(imessage)
+        }
         let gateway: any MessagingGateway =
-            sources.count == 1 ? matrix : CompositeMessagingGateway(sources)
+            gateways.count == 1 ? matrix : CompositeMessagingGateway(gateways)
         return (gateway, matrix.mediaFetcher)
+    }
+
+    /// A disconnected iMessage is not read at all, but stays listed so it can be reconnected.
+    static func disconnectedIMessage() -> any MessagingGateway {
+        InMemoryMessagingGateway(seed: MessagingSnapshot(
+            accounts: [ConnectedAccount(id: IMessageGateway.accountID, platform: .iMessage, displayName: "iMessage")],
+            identities: [],
+            conversations: [],
+            messagesByRoute: [:]
+        ))
     }
 
     /// Gives the media controller something to download with, now that there is a homeserver.

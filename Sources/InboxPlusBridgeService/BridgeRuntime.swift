@@ -10,6 +10,7 @@ public enum BridgeRuntimeError: Error, Equatable, Sendable, CustomStringConverti
     case registrationMissing(URL)
     case notPrepared(String)
     case flowDrift(bridge: String, expected: [String], actual: [String])
+    case residueRemains([String])
 
     public var description: String {
         switch self {
@@ -26,6 +27,8 @@ public enum BridgeRuntimeError: Error, Equatable, Sendable, CustomStringConverti
             '\(bridge)' advertises login flows \(actual.sorted()) but the pinned version was \
             recorded as offering \(expected.sorted()); the pin must be reviewed
             """
+        case let .residueRemains(paths):
+            "these files could not be deleted: \(paths.joined(separator: ", "))"
         }
     }
 }
@@ -91,6 +94,7 @@ public struct BridgeRuntime: Sendable {
     private let libolm: LibolmProvisioner
     private let portAllocator: LoopbackPortAllocator
     private let store: PreparedBridgeStore
+    private let disconnected: DisconnectedAccountStore
 
     public init(
         paths: RuntimePaths,
@@ -102,12 +106,39 @@ public struct BridgeRuntime: Sendable {
         self.libolm = libolm
         portAllocator = LoopbackPortAllocator()
         store = PreparedBridgeStore(paths: paths)
+        disconnected = DisconnectedAccountStore(paths: paths)
     }
 
     public func prepared() throws -> [PreparedBridge] { try store.load() }
 
     public func prepared(for platform: Platform) throws -> PreparedBridge? {
         try store.load().first { $0.platform == platform }
+    }
+
+    /// Prepared bridges the user has not disconnected — the ones a session should be running.
+    public func bridgesToRun() throws -> [PreparedBridge] {
+        let disconnectedIDs = try disconnected.load()
+        return try store.load().filter { !disconnectedIDs.contains($0.bridgeID) }
+    }
+
+    /// Deletes everything one bridge keeps in the profile: its binary, configuration, database —
+    /// which holds the network login — registration and logs. The bridge must already be stopped.
+    public func remove(_ descriptor: BridgeDescriptor) throws {
+        let fileManager = FileManager.default
+        let logNames = ["\(descriptor.id).out.log", "\(descriptor.id).err.log"]
+        let logs = ((try? fileManager.contentsOfDirectory(atPath: paths.logs.path)) ?? [])
+            .filter { name in logNames.contains { name == $0 || name.hasPrefix("\($0).") } }
+            .map { paths.logs.appendingPathComponent($0, isDirectory: false) }
+        let targets = [
+            installer.directory(for: descriptor),
+            appServiceDirectory.appendingPathComponent("\(descriptor.id).yaml", isDirectory: false),
+        ] + logs
+        for target in targets where fileManager.fileExists(atPath: target.path) {
+            try fileManager.removeItem(at: target)
+        }
+        let residue = targets.filter { fileManager.fileExists(atPath: $0.path) }
+        guard residue.isEmpty else { throw BridgeRuntimeError.residueRemains(residue.map(\.path)) }
+        try store.remove(bridgeID: descriptor.id)
     }
 
     /// Where Synapse looks for appservice registrations.
@@ -312,40 +343,46 @@ public struct BridgeRuntime: Sendable {
         )
     }
 
-    /// Starts every prepared bridge, runs `body`, then always stops them.
+    /// Starts every bridge the profile asks for, runs `body`, then always stops them.
     ///
     /// Each bridge is started and stopped independently: one that fails to come up is reported and
     /// skipped rather than aborting the session, because a broken Instagram bridge is no reason to
-    /// take WhatsApp down with it.
+    /// take WhatsApp down with it. While `body` runs, a bridge the user disconnects or removes is
+    /// stopped, and one they reconnect is started again.
     @discardableResult
     public func withRunningBridges<T>(
-        onBridgeReady: @Sendable (PreparedBridge, RuntimeSnapshot) -> Void = { _, _ in },
-        onBridgeFailed: @Sendable (PreparedBridge, any Error) -> Void = { _, _ in },
-        _ body: @Sendable ([PreparedBridge: SynapseSupervisor]) async throws -> T
+        reconcileInterval: Duration = .seconds(1),
+        onBridgeReady: @escaping @Sendable (PreparedBridge, RuntimeSnapshot) -> Void = { _, _ in },
+        onBridgeStopped: @escaping @Sendable (PreparedBridge) -> Void = { _ in },
+        onBridgeFailed: @escaping @Sendable (PreparedBridge, any Error) -> Void = { _, _ in },
+        _ body: @Sendable () async throws -> T
     ) async throws -> T {
-        var running: [PreparedBridge: SynapseSupervisor] = [:]
-        for record in try store.load() {
-            do {
-                let supervisor = try makeSupervisor(for: record)
-                let snapshot = try await supervisor.start()
-                running[record] = supervisor
-                onBridgeReady(record, snapshot)
-            } catch {
-                onBridgeFailed(record, error)
+        let fleet = BridgeFleet(
+            eligible: try store.load(),
+            wanted: { try bridgesToRun() },
+            launch: { try makeSupervisor(for: $0) },
+            onReady: onBridgeReady,
+            onStopped: onBridgeStopped,
+            onFailed: onBridgeFailed
+        )
+        await fleet.reconcile()
+        let reconciler = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: reconcileInterval)
+                guard !Task.isCancelled else { return }
+                await fleet.reconcile()
             }
         }
-        defer {
-            let supervisors = running.values
-            Task { for supervisor in supervisors { _ = try? await supervisor.stop() } }
-        }
         do {
-            let value = try await body(running)
-            for supervisor in running.values { _ = try? await supervisor.stop() }
-            running.removeAll()
+            let value = try await body()
+            reconciler.cancel()
+            await reconciler.value
+            await fleet.stopAll()
             return value
         } catch {
-            for supervisor in running.values { _ = try? await supervisor.stop() }
-            running.removeAll()
+            reconciler.cancel()
+            await reconciler.value
+            await fleet.stopAll()
             throw error
         }
     }
@@ -417,32 +454,73 @@ struct PreparedBridgeStore: Sendable {
     }
 
     func save(_ records: [PreparedBridge]) throws {
-        try FileManager.default.createDirectory(
-            at: paths.state,
-            withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700]
-        )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let data = try encoder.encode(records)
-        let staging = paths.state.appendingPathComponent(
-            ".bridges.json.\(UUID().uuidString).tmp",
-            isDirectory: false
-        )
-        guard FileManager.default.createFile(
-            atPath: staging.path,
-            contents: data,
-            attributes: [.posixPermissions: Self.filePermissions]
-        ) else { throw BridgeInstallError.cannotWrite(file) }
-        do {
-            _ = try FileManager.default.replaceItemAt(file, withItemAt: staging)
-        } catch {
-            try? FileManager.default.removeItem(at: staging)
-            throw error
-        }
-        try FileManager.default.setAttributes(
-            [.posixPermissions: Self.filePermissions],
-            ofItemAtPath: file.path
-        )
+        try publishStateFile(encoder.encode(records), to: file, in: paths)
     }
+}
+
+/// `<profile>/state/disconnected-accounts.json`: the accounts the user disconnected.
+///
+/// Read by the runtime session, which keeps a disconnected network's bridge stopped — including
+/// the next time Inbox+ opens — and by the app, which shows the account as disconnected.
+public struct DisconnectedAccountStore: Sendable {
+    public let paths: RuntimePaths
+
+    public init(paths: RuntimePaths) {
+        self.paths = paths
+    }
+
+    var file: URL {
+        paths.state.appendingPathComponent("disconnected-accounts.json", isDirectory: false)
+    }
+
+    public func load() throws -> Set<String> {
+        guard FileManager.default.fileExists(atPath: file.path) else { return [] }
+        return Set(try JSONDecoder().decode([String].self, from: Data(contentsOf: file)))
+    }
+
+    public func insert(_ accountID: String) throws {
+        var accountIDs = try load()
+        guard accountIDs.insert(accountID).inserted else { return }
+        try save(accountIDs)
+    }
+
+    public func remove(_ accountID: String) throws {
+        var accountIDs = try load()
+        guard accountIDs.remove(accountID) != nil else { return }
+        try save(accountIDs)
+    }
+
+    private func save(_ accountIDs: Set<String>) throws {
+        try publishStateFile(JSONEncoder().encode(accountIDs.sorted()), to: file, in: paths)
+    }
+}
+
+/// Writes a `0600` state file atomically, so a session reading it never sees half of one.
+private func publishStateFile(_ data: Data, to file: URL, in paths: RuntimePaths) throws {
+    try FileManager.default.createDirectory(
+        at: paths.state,
+        withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700]
+    )
+    let staging = paths.state.appendingPathComponent(
+        ".\(file.lastPathComponent).\(UUID().uuidString).tmp",
+        isDirectory: false
+    )
+    guard FileManager.default.createFile(
+        atPath: staging.path,
+        contents: data,
+        attributes: [.posixPermissions: PreparedBridgeStore.filePermissions]
+    ) else { throw BridgeInstallError.cannotWrite(file) }
+    do {
+        _ = try FileManager.default.replaceItemAt(file, withItemAt: staging)
+    } catch {
+        try? FileManager.default.removeItem(at: staging)
+        throw error
+    }
+    try FileManager.default.setAttributes(
+        [.posixPermissions: PreparedBridgeStore.filePermissions],
+        ofItemAtPath: file.path
+    )
 }
