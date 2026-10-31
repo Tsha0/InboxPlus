@@ -145,16 +145,34 @@ public struct ConversationView: View {
 
     private var transcript: some View {
         ScrollViewReader { proxy in
+            let namesSenders = TranscriptPresentation.namesSenders(in: messages)
             // Use the native list's bounded row layout. A LazyVStack combined with
             // scrollTo(bottom) can repeatedly invalidate its estimated heights on
             // macOS when switching chats, trapping the main thread in layout.
             List {
-                ForEach(messages) { message in
-                    MessageBubble(model: model, message: message)
-                        .id(message.id)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18))
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
+                ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                    let previous = index > 0 ? messages[index - 1] : nil
+                    let next = index + 1 < messages.count ? messages[index + 1] : nil
+                    VStack(spacing: 8) {
+                        if TranscriptPresentation.startsDay(message, after: previous) {
+                            Text(TranscriptPresentation.dayLabel(message.timestamp))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity)
+                                .accessibilityAddTraits(.isHeader)
+                        }
+                        MessageBubble(
+                            model: model, message: message,
+                            senderName: TranscriptPresentation.senderName(message, identities: model.identities),
+                            showsSender: namesSenders && !message.isOutgoing
+                                && !TranscriptPresentation.sameRun(previous, message),
+                            showsTimestamp: !TranscriptPresentation.sameRun(message, next)
+                        )
+                    }
+                    .id(message.id)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
             }
             .listStyle(.plain)
@@ -285,6 +303,9 @@ public struct ConversationView: View {
 private struct MessageBubble: View {
     @Bindable var model: InboxPlusAppModel
     let message: Message
+    let senderName: String
+    let showsSender: Bool
+    let showsTimestamp: Bool
 
     private var failureReason: String? {
         guard case let .failed(reason) = message.deliveryState else { return nil }
@@ -318,6 +339,11 @@ private struct MessageBubble: View {
         HStack {
             if message.isOutgoing { Spacer(minLength: 60) }
             VStack(alignment: message.isOutgoing ? .trailing : .leading, spacing: 3) {
+                if showsSender {
+                    Text(senderName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
                 ForEach(message.attachments) { attachment in
                     AttachmentView(
                         model: model,
@@ -344,7 +370,7 @@ private struct MessageBubble: View {
                             .foregroundStyle(InboxPlusTheme.ink)
                         Text(failureReason)
                             .foregroundStyle(InboxPlusTheme.ink)
-                    } else {
+                    } else if showsTimestamp || message.deliveryState == .pending {
                         if message.deliveryState == .pending {
                             Image(systemName: "clock")
                         }
@@ -360,11 +386,11 @@ private struct MessageBubble: View {
         // Combining would swallow the attachment's own controls — its play button and its
         // "Open in app" action have to stay reachable.
         .accessibilityElement(children: message.attachments.isEmpty ? .combine : .contain)
-        .accessibilityLabel(MessageBubble.accessibilityLabel(for: message))
+        .accessibilityLabel(MessageBubble.accessibilityLabel(for: message, senderName: senderName))
     }
 
-    static func accessibilityLabel(for message: Message) -> String {
-        let speaker = message.isOutgoing ? "You" : "Them"
+    static func accessibilityLabel(for message: Message, senderName: String) -> String {
+        let speaker = message.isOutgoing ? "You" : senderName
         guard !message.attachments.isEmpty else { return "\(speaker): \(message.body)" }
         let described = message.attachments
             .map(AttachmentFormatting.accessibilityLabel(for:))

@@ -36,6 +36,12 @@ public struct MatrixEventNormalizer: Sendable {
             described.attachments = [card]
         }
 
+        let senderName: String?
+        if case let .ready(displayName, _, _, _, _) = item.senderProfile {
+            senderName = displayName
+        } else {
+            senderName = nil
+        }
         return Message(
             id: identifier,
             route: route(forRoom: roomID, accountID: accountID),
@@ -49,7 +55,8 @@ public struct MatrixEventNormalizer: Sendable {
             deliveryState: Self.deliveryState(for: item.localSendState),
             kind: described.kind,
             attachments: described.attachments,
-            markdownBody: described.markdownBody
+            markdownBody: described.markdownBody,
+            senderDisplayName: senderName
         )
     }
 
