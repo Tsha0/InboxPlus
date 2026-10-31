@@ -72,9 +72,11 @@ public struct AccountPickerView: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     PlatformBadge(platform: platform)
-                    Text(platform.accessibilityLabel)
+                    Text(platform == .facebookMessenger ? "Messenger" : platform.accessibilityLabel)
                         .fontWeight(.semibold)
-                        .lineLimit(1)
+                        .foregroundStyle(isEnabled || isConnected ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     if isConnected {
                         Image(systemName: "checkmark.circle.fill")
@@ -92,13 +94,15 @@ public struct AccountPickerView: View {
             .background(.quaternary.opacity(isEnabled ? 0.3 : 0.12), in: .rect(cornerRadius: 10))
             .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(AccountTileButtonStyle())
         .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.55)
-        .help(subtitle(platform: platform, descriptor: descriptor, isConnected: isConnected))
+        .foregroundStyle(.primary)
+        .help(BridgeCatalog.unavailabilityReason(for: platform)
+              ?? subtitle(platform: platform, descriptor: descriptor, isConnected: isConnected))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(platform.accessibilityLabel)
-        .accessibilityHint(subtitle(platform: platform, descriptor: descriptor, isConnected: isConnected))
+        .accessibilityHint(BridgeCatalog.unavailabilityReason(for: platform)
+                           ?? subtitle(platform: platform, descriptor: descriptor, isConnected: isConnected))
         .accessibilityIdentifier("picker-\(platform.rawValue)")
     }
 
@@ -107,8 +111,14 @@ public struct AccountPickerView: View {
         if BridgeCatalog.comingSoon.contains(platform) { return "It's coming soon" }
         if isConnected { return "Already connected" }
         guard let descriptor else {
-            return BridgeCatalog.unavailabilityReason(for: platform) ?? "Not yet available in Inbox+"
+            return "Not supported yet"
         }
         return descriptor.credentialStyle.summary
+    }
+}
+
+private struct AccountTileButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.8 : 1)
     }
 }
