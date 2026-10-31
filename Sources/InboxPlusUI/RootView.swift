@@ -25,6 +25,7 @@ public struct RootView: View {
 
     enum AccountFlow: Identifiable {
         case picker
+        case newConversation
         /// Downloading and registering a bridge this profile has never installed, which takes long
         /// enough that a picker sitting there unchanged would read as a dead click.
         case installing(Platform)
@@ -36,6 +37,7 @@ public struct RootView: View {
         var id: String {
             switch self {
             case .picker: "picker"
+            case .newConversation: "new-conversation"
             case let .installing(platform): "installing-\(platform.rawValue)"
             case let .login(platform, _): "login-\(platform.rawValue)"
             case .iMessagePermissions: "imessage"
@@ -103,7 +105,9 @@ public struct RootView: View {
                     .accessibilityIdentifier("health-banner")
             }
             HStack(spacing: 0) {
-                NavigationRailView(selection: $section, update: update, onUpdate: onUpdate)
+                NavigationRailView(selection: $section, update: update, onUpdate: onUpdate,
+                                   canCompose: canStartNewConversation,
+                                   onCompose: { accountFlow = .newConversation })
                     .fixedSize(horizontal: true, vertical: false)
                 Divider()
                 sidebar
@@ -124,8 +128,11 @@ public struct RootView: View {
             model.clearConnectionRequest()
             startConnecting(platform)
         }
+        .focusedSceneValue(\.newConversationAction, canStartNewConversation ? { accountFlow = .newConversation } : nil)
         .sheet(item: $accountFlow) { flow in
             switch flow {
+            case .newConversation:
+                NewConversationView(model: model)
             case .picker:
                 AccountPickerView(
                     connectedPlatforms: model.platformsWithAccounts,
@@ -244,6 +251,11 @@ public struct RootView: View {
             connectFailure = String(describing: error)
         }
         accountFlow = nil
+    }
+
+    private var canStartNewConversation: Bool {
+        !model.hasUnfinishedMessagingWork && !model.isPreparingForUpdate
+            && accountFlow == nil && connectFailure == nil && connectNotice == nil && accountFailure == nil
     }
 
     private func disconnect(_ account: ConnectedAccount) {

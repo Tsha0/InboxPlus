@@ -9,7 +9,7 @@ import InboxPlusCore
 ///
 /// A gateway that fails is stepped over rather than allowed to empty the inbox: one broken source
 /// must not take the working ones down with it, which is the same rule bridge supervision follows.
-public actor CompositeMessagingGateway: MessagingGateway {
+public actor CompositeMessagingGateway: ConversationStartingGateway {
     private let gateways: [any MessagingGateway]
     /// Which gateway owns each account, so a send goes to the one that can actually perform it.
     private var gatewayByAccountID: [String: any MessagingGateway] = [:]
@@ -73,6 +73,18 @@ public actor CompositeMessagingGateway: MessagingGateway {
 
     public func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt {
         try await gateway(for: route).send(attachment, to: route)
+    }
+
+    public func canStartConversation(accountID: String) async -> Bool {
+        guard let gateway = gatewayByAccountID[accountID] as? any ConversationStartingGateway else { return false }
+        return await gateway.canStartConversation(accountID: accountID)
+    }
+
+    public func startConversation(accountID: String, recipient: String) async throws -> StartedConversation {
+        guard let gateway = gatewayByAccountID[accountID] as? any ConversationStartingGateway else {
+            throw ConversationStartError.unsupported
+        }
+        return try await gateway.startConversation(accountID: accountID, recipient: recipient)
     }
 
     public func markRead(_ route: ConversationRoute) async throws {

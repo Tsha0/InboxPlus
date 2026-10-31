@@ -235,6 +235,30 @@ public final class InboxPlusAppModel {
         markConversationRead(route)
     }
 
+    public func canStartConversation(accountID: String) async -> Bool {
+        guard isConnected(accountID), let source = gateway as? any ConversationStartingGateway else { return false }
+        return await source.canStartConversation(accountID: accountID)
+    }
+
+    public func startConversation(accountID: String, recipient: String) async throws {
+        guard accounts.contains(where: { $0.id == accountID }), isConnected(accountID) else {
+            throw ConversationStartError.unavailable
+        }
+        guard let source = gateway as? any ConversationStartingGateway else { throw ConversationStartError.unsupported }
+        let started = try await source.startConversation(accountID: accountID, recipient: recipient)
+        guard isConnected(accountID), accounts.contains(where: { $0.id == accountID }) else {
+            throw ConversationStartError.unavailable
+        }
+        if !identities.contains(where: { $0.id == started.identity.id && $0.accountID == accountID }) {
+            identities.append(started.identity)
+        }
+        if !conversations.contains(where: { $0.route == started.conversation.route }) {
+            conversations.append(started.conversation)
+        }
+        rebuildInbox()
+        openConversation(started.conversation.route)
+    }
+
     /// A source may leave history out of its snapshot, so opening a conversation is what asks for
     /// it. The messages arrive as ordinary gateway events.
     private func loadRecentMessages(in route: ConversationRoute) {
