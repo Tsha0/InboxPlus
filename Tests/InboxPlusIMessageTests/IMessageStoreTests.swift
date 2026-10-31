@@ -19,7 +19,8 @@ func makeDatabase(_ statements: String) throws -> URL {
         room_name TEXT, display_name TEXT);
     CREATE TABLE message (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,
         text TEXT, handle_id INTEGER DEFAULT 0, service TEXT, date INTEGER,
-        is_from_me INTEGER DEFAULT 0, attributedBody BLOB, associated_message_guid TEXT);
+        is_from_me INTEGER DEFAULT 0, attributedBody BLOB, associated_message_guid TEXT,
+        is_read INTEGER DEFAULT 0);
     CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER,
         PRIMARY KEY (chat_id, message_id));
     CREATE TABLE attachment (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,

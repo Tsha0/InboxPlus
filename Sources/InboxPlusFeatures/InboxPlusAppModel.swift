@@ -245,12 +245,23 @@ public final class InboxPlusAppModel {
     }
 
     public func markConversationRead(_ route: ConversationRoute) {
-        guard
-            let index = conversations.firstIndex(where: { $0.route == route }),
-            conversations[index].unreadCount != 0
-        else { return }
+        guard let index = conversations.firstIndex(where: { $0.route == route }) else { return }
+        // Saved even when the badge already reads zero: a message that arrives while Inbox+ is
+        // running does not raise the badge, but the source still counts it as unread.
+        saveReadState(of: route)
+        guard conversations[index].unreadCount != 0 else { return }
         conversations[index].unreadCount = 0
         rebuildInbox()
+    }
+
+    private func saveReadState(of route: ConversationRoute) {
+        Task { [gateway] in
+            do {
+                try await gateway.markRead(route)
+            } catch {
+                FileHandle.standardError.write(Data("Inbox+: could not save read state: \(error)\n".utf8))
+            }
+        }
     }
 
     /// Names each loaded account and how many conversations it owns.
@@ -664,6 +675,9 @@ public final class InboxPlusAppModel {
                     ?? identities.first { $0.id == message.senderIdentityID }?.displayName
                     ?? "New message"
                 onIncomingMessage?(message, title)
+            }
+            if isLive, isNew, !message.isOutgoing, message.route == openRoute {
+                saveReadState(of: message.route)
             }
             var messages = messagesByRoute[message.route, default: []]
             if let index = messages.firstIndex(where: { $0.id == message.id }) {

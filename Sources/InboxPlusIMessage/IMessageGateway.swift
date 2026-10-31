@@ -19,6 +19,7 @@ public actor IMessageGateway: MessagingGateway {
     private let contacts: any IMessageContactSource
     private let historyLimit: Int
     private let pollInterval: Duration
+    private let readMarkerStore: IMessageReadMarkerStore?
 
     private var streamContinuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
     private var pollTask: Task<Void, Never>?
@@ -27,6 +28,7 @@ public actor IMessageGateway: MessagingGateway {
     private var publishedChatGUIDs: Set<String> = []
     private var loadedHistoryChatGUIDs: Set<String> = []
     private var knownIdentityIDs: Set<String> = []
+    private var readMarkers: [String: Int64] = [:]
     private var contactBook = IMessageContactBook()
 
     public init(
@@ -34,13 +36,15 @@ public actor IMessageGateway: MessagingGateway {
         sender: IMessageSender = IMessageSender(),
         contacts: any IMessageContactSource = IMessageContactBook(),
         historyLimit: Int = 50,
-        pollInterval: Duration = .seconds(3)
+        pollInterval: Duration = .seconds(3),
+        readMarkerStore: IMessageReadMarkerStore? = nil
     ) {
         self.store = store
         self.sender = sender
         self.contacts = contacts
         self.historyLimit = historyLimit
         self.pollInterval = pollInterval
+        self.readMarkerStore = readMarkerStore
     }
 
     deinit { pollTask?.cancel() }
@@ -60,6 +64,7 @@ public actor IMessageGateway: MessagingGateway {
         let activeSince = activeSince()
         var messagesByRoute: [ConversationRoute: [Message]] = [:]
         var identities: [String: RemoteIdentity] = [:]
+        let unreadByChat = try unreadCounts()
         var conversations: [RemoteConversation] = []
 
         for row in try store.latestMessages() {
@@ -74,7 +79,9 @@ public actor IMessageGateway: MessagingGateway {
             // identity is the chat itself rather than any sender.
             let chatIdentity = identity(for: chat)
             if identities[chatIdentity.id] == nil { identities[chatIdentity.id] = chatIdentity }
-            conversations.append(conversation(for: chat, preview: latest?.body ?? "", at: date))
+            conversations.append(conversation(
+                for: chat, preview: latest?.body ?? "", at: date, unreadCount: unreadByChat[chat.guid] ?? 0
+            ))
         }
 
         knownIdentityIDs = Set(identities.keys)
@@ -128,6 +135,22 @@ public actor IMessageGateway: MessagingGateway {
         throw IMessageSendError.messagesReportedFailure(
             "Inbox+ cannot send attachments to iMessage yet."
         )
+    }
+
+    /// Everything Inbox+ has shown in the chat is now read. A message written to the database since
+    /// the last poll has not been shown yet, so it stays unread.
+    public func markRead(_ route: ConversationRoute) async throws {
+        let chatGUID = route.conversationID
+        guard lastSeenRowID > readMarkers[chatGUID] ?? 0 else { return }
+        var updated = readMarkers
+        updated[chatGUID] = lastSeenRowID
+        try readMarkerStore?.save(updated)
+        readMarkers = updated
+    }
+
+    private func unreadCounts() throws -> [String: Int] {
+        if let readMarkerStore { readMarkers = try readMarkerStore.load() }
+        return try store.unreadCounts(after: readMarkers)
     }
 
     // MARK: - Polling
@@ -195,7 +218,9 @@ public actor IMessageGateway: MessagingGateway {
 
     // MARK: - Mapping
 
-    private func conversation(for chat: IMessageChat, preview: String, at date: Date) -> RemoteConversation {
+    private func conversation(
+        for chat: IMessageChat, preview: String, at date: Date, unreadCount: Int = 0
+    ) -> RemoteConversation {
         RemoteConversation(
             id: chat.guid,
             accountID: Self.accountID,
@@ -203,7 +228,7 @@ public actor IMessageGateway: MessagingGateway {
             title: displayName(for: chat),
             latestPreview: preview,
             latestActivity: date,
-            unreadCount: 0,
+            unreadCount: unreadCount,
             // Messages accepts text through Apple events. Attachments would need a
             // different mechanism, so the composer does not offer them here.
             capabilities: ConversationCapabilities(canSendText: true, attachmentKinds: []),

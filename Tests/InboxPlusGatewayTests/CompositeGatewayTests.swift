@@ -8,6 +8,7 @@ private actor RecordingGateway: MessagingGateway {
     private var continuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
     private(set) var historyRoutes: [ConversationRoute] = []
     private(set) var sentRoutes: [ConversationRoute] = []
+    private(set) var readRoutes: [ConversationRoute] = []
 
     init(accounts: [ConnectedAccount]) {
         snapshot = MessagingSnapshot(accounts: accounts, identities: [], conversations: [], messagesByRoute: [:])
@@ -38,6 +39,10 @@ private actor RecordingGateway: MessagingGateway {
 
     func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt {
         try await sendText(attachment.filename, to: route)
+    }
+
+    func markRead(_ route: ConversationRoute) async throws {
+        readRoutes.append(route)
     }
 }
 
@@ -85,4 +90,21 @@ func aReplyInANetworkConnectedAfterTheSnapshotReachesTheGatewayThatReportedIt() 
 
     #expect(await matrix.sentRoutes == [route])
     #expect(await imessage.sentRoutes.isEmpty)
+}
+
+@Test func markingAConversationReadReachesOnlyTheGatewayThatOwnsIt() async throws {
+    let matrix = RecordingGateway(
+        accounts: [ConnectedAccount(id: "matrix-local", platform: .matrix, displayName: "Local Matrix")]
+    )
+    let imessage = RecordingGateway(
+        accounts: [ConnectedAccount(id: "imessage-local", platform: .iMessage, displayName: "iMessage")]
+    )
+    let composite = CompositeMessagingGateway([matrix, imessage])
+    _ = try await composite.loadSnapshot()
+
+    let route = ConversationRoute(accountID: "imessage-local", conversationID: "chat")
+    try await composite.markRead(route)
+
+    #expect(await imessage.readRoutes == [route])
+    #expect(await matrix.readRoutes.isEmpty)
 }

@@ -229,6 +229,19 @@ public actor MatrixMessagingGateway: MessagingGateway {
         )
     }
 
+    public func markRead(_ route: ConversationRoute) async throws {
+        let matrixClient = try await client.requireClient()
+        guard let room = try matrixClient.getRoom(roomId: route.conversationID) else {
+            throw MatrixGatewayError.unknownRoom(route.conversationID)
+        }
+        try await room.markAsRead(receiptType: Self.readReceiptType)
+    }
+
+    /// Private, so the homeserver's unread count clears without anyone else being told. The
+    /// bridges only pass a public `m.read` on to the network (mautrix-go bridgev2
+    /// `Portal.handleMatrixReceipts`); a public receipt here would mark the message as seen there.
+    static let readReceiptType = ReceiptType.readPrivate
+
     // MARK: - Lifecycle
 
     public func start() async throws {

@@ -66,7 +66,7 @@ import Testing
         )
     )
 
-    let built = try GatewaySelection.makeMatrixGateway(paths: paths, state: state, makeIMessage: { nil })
+    let built = try GatewaySelection.makeMatrixGateway(paths: paths, state: state, makeIMessage: { _ in nil })
 
     let matrix = try #require(built.gateway as? MatrixMessagingGateway)
     #expect(built.media.client === matrix.mediaFetcher.client)

@@ -16,4 +16,6 @@ extension TextOnlyTestGateway {
         Issue.record("\(Self.self) does not model attachment sending")
         throw TextOnlyTestGatewayError()
     }
+
+    func markRead(_ route: ConversationRoute) async throws {}
 }

@@ -75,6 +75,10 @@ public actor CompositeMessagingGateway: MessagingGateway {
         try await gateway(for: route).send(attachment, to: route)
     }
 
+    public func markRead(_ route: ConversationRoute) async throws {
+        try await gateway(for: route).markRead(route)
+    }
+
     // MARK: - Routing
 
     private func gateway(for route: ConversationRoute) throws -> any MessagingGateway {

@@ -96,7 +96,7 @@ extension GatewaySelection {
     static func makeMatrixGateway(
         paths: RuntimePaths,
         state: RuntimeProfileState,
-        makeIMessage: () -> (any MessagingGateway)? = { GatewaySelection.makeIMessageGateway() }
+        makeIMessage: (RuntimePaths) -> (any MessagingGateway)? = { GatewaySelection.makeIMessageGateway(paths: $0) }
     ) throws -> (gateway: any MessagingGateway, media: MatrixMediaFetcher) {
         guard let port = state.snapshot.loopbackPort else {
             throw GatewaySelectionError.profileNotRunning(paths.profile.lastPathComponent)
@@ -162,7 +162,7 @@ extension GatewaySelection {
         // behind it. It is only added when the Messages database is actually readable: offering a
         // source that will throw on every read is worse than not offering it.
         var sources: [any MessagingGateway] = [matrix]
-        if let imessage = makeIMessage() { sources.append(imessage) }
+        if let imessage = makeIMessage(paths) { sources.append(imessage) }
         let gateway: any MessagingGateway =
             sources.count == 1 ? matrix : CompositeMessagingGateway(sources)
         return (gateway, matrix.mediaFetcher)
@@ -229,9 +229,15 @@ extension GatewaySelection {
     /// Full Disk Access is the usual reason and it cannot be requested programmatically, so the
     /// failure is written to stderr rather than swallowed — a silently missing iMessage looks like
     /// a bug in Inbox+ rather than a permission the user has not granted.
-    static func makeIMessageGateway() -> IMessageGateway? {
+    static func makeIMessageGateway(paths: RuntimePaths) -> IMessageGateway? {
         do {
-            return IMessageGateway(store: try IMessageStore(), contacts: SystemContactSource())
+            return IMessageGateway(
+                store: try IMessageStore(),
+                contacts: SystemContactSource(),
+                readMarkerStore: IMessageReadMarkerStore(
+                    fileURL: paths.profile.appendingPathComponent("imessage-read-markers.json")
+                )
+            )
         } catch {
             FileHandle.standardError.write(Data(
                 "Inbox+: iMessage is not available: \(error)\n".utf8
