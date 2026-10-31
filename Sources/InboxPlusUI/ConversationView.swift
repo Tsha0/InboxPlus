@@ -299,6 +299,21 @@ private struct MessageBubble: View {
         return !body.isEmpty && !message.attachments.contains { $0.displayName == body }
     }
 
+    private var foreground: Color {
+        message.isOutgoing ? InboxPlusTheme.paper : InboxPlusTheme.ink
+    }
+
+    /// Links are underlined and tinted to the bubble's text colour, so they stay legible on both
+    /// bubble backgrounds.
+    private var bodyText: Text {
+        guard let markdown = message.markdownBody else { return Text(message.body) }
+        var formatted = MessageFormatting.attributed(markdown: markdown)
+        for run in formatted.runs where run.link != nil {
+            formatted[run.range].swiftUI.underlineStyle = .single
+        }
+        return Text(formatted)
+    }
+
     var body: some View {
         HStack {
             if message.isOutgoing { Spacer(minLength: 60) }
@@ -312,10 +327,11 @@ private struct MessageBubble: View {
                     )
                 }
                 if showsBody {
-                    Text(message.body)
+                    bodyText
+                        .tint(foreground)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .foregroundStyle(message.isOutgoing ? InboxPlusTheme.paper : InboxPlusTheme.ink)
+                        .foregroundStyle(foreground)
                         .background(
                             message.isOutgoing ? AnyShapeStyle(InboxPlusTheme.ink) : AnyShapeStyle(.quaternary),
                             in: .rect(cornerRadius: 12)
