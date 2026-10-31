@@ -8,6 +8,9 @@ import InboxPlusGateway
 private let chatA = "iMessage;-;a@example.com"
 private let chatB = "iMessage;-;b@example.com"
 
+/// Yesterday, in the nanoseconds since 2001 that Messages writes. Chats quiet for a year are hidden.
+private let recent = Int64((Date().timeIntervalSince1970 - 86_400 - AppleTimestamp.referenceOffset) * 1_000_000_000)
+
 /// Row ids follow insertion order: 1 read, 2 and 3 unread, 4 a tapback, 5 mine, 6 in the other chat.
 private let fixture = """
 INSERT INTO handle (id, service) VALUES ('a@example.com', 'iMessage');
@@ -17,18 +20,18 @@ INSERT INTO chat (guid, style, chat_identifier, service_name)
 INSERT INTO chat (guid, style, chat_identifier, service_name)
   VALUES ('\(chatB)', 45, 'b@example.com', 'iMessage');
 INSERT INTO message (guid, text, handle_id, date, is_from_me, is_read)
-  VALUES ('read', 'already read on another device', 1, 731160000000000000, 0, 1);
+  VALUES ('read', 'already read on another device', 1, \(recent), 0, 1);
 INSERT INTO message (guid, text, handle_id, date, is_from_me, is_read)
-  VALUES ('unread-1', 'first', 1, 731160001000000000, 0, 0);
+  VALUES ('unread-1', 'first', 1, \(recent + 1_000_000_000), 0, 0);
 INSERT INTO message (guid, text, handle_id, date, is_from_me, is_read)
-  VALUES ('unread-2', 'second', 1, 731160002000000000, 0, 0);
+  VALUES ('unread-2', 'second', 1, \(recent + 2_000_000_000), 0, 0);
 INSERT INTO message (guid, text, handle_id, date, is_from_me, is_read, associated_message_guid)
-  VALUES ('tapback', 'Liked "second"', 1, 731160003000000000, 0, 0, 'p:0/unread-2');
+  VALUES ('tapback', 'Liked "second"', 1, \(recent + 3_000_000_000), 0, 0, 'p:0/unread-2');
 INSERT INTO message (guid, text, handle_id, date, is_from_me, is_read)
-  VALUES ('mine', 'reply', 0, 731160004000000000, 1, 0);
+  VALUES ('mine', 'reply', 0, \(recent + 4_000_000_000), 1, 0);
 INSERT INTO message (guid, text, handle_id, date, is_from_me, is_read)
-  VALUES ('other-chat', 'hello', 2, 731160005000000000, 0, 0);
-INSERT INTO chat_message_join VALUES (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (2, 6);
+  VALUES ('other-chat', 'hello', 2, \(recent + 5_000_000_000), 0, 0);
+INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (2, 6);
 """
 
 /// Stands in for Messages writing to its own database while Inbox+ has it open.
@@ -97,8 +100,8 @@ private func unreadCounts(in snapshot: MessagingSnapshot) -> [String: Int] {
     _ = try await gateway.loadSnapshot()
     try messagesWrites("""
     INSERT INTO message (guid, text, handle_id, date, is_from_me, is_read)
-      VALUES ('arrived-later', 'still there?', 1, 731160006000000000, 0, 0);
-    INSERT INTO chat_message_join VALUES (1, 7);
+      VALUES ('arrived-later', 'still there?', 1, \(recent + 6_000_000_000), 0, 0);
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 7);
     """, to: url)
 
     try await gateway.markRead(ConversationRoute(accountID: IMessageGateway.accountID, conversationID: chatA))
