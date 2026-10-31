@@ -12,11 +12,12 @@ private func bridgedEvent(
     _ id: String,
     sender: String = ownerGhost,
     isOwn: Bool = false,
-    body: String = "Sent from the native app"
+    body: String = "Sent from the native app",
+    profile: ProfileDetails = .unavailable
 ) -> EventTimelineItem {
     EventTimelineItem(
         isRemote: true, eventOrTransactionId: .eventId(eventId: id), sender: sender,
-        senderProfile: .unavailable, forwarder: nil, forwarderProfile: nil,
+        senderProfile: profile, forwarder: nil, forwarderProfile: nil,
         isOwn: isOwn, isEditable: false,
         content: .msgLike(content: MsgLikeContent(
             kind: .message(content: MessageContent(
@@ -140,4 +141,12 @@ private final class MessagesReceived: @unchecked Sendable {
         bridgedEvent("$voice-incoming", sender: "@gvoice_peer:local"), roomID: "voice",
         outgoingIdentifiers: ["$voice-send"]
     )?.isOutgoing == false)
+}
+
+@Test func senderProfileNameSurvivesNormalization() throws {
+    let event = bridgedEvent("named", sender: otherGhost, profile:
+        .ready(displayName: "Alice Chen", displayNameAmbiguous: false, avatarUrl: nil, status: nil, call: nil))
+    let message = try #require(MatrixEventNormalizer(accountID: "account").normalize(event, roomID: "room"))
+    #expect(message.senderDisplayName == "Alice Chen")
+    #expect(message.senderIdentityID == otherGhost)
 }

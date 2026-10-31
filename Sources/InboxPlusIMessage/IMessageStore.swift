@@ -196,7 +196,7 @@ public final class IMessageStore {
 
     // MARK: - Plumbing
 
-    private func rows<T>(_ sql: String, _ decode: (OpaquePointer) -> T) throws -> [T] {
+    func rows<T>(_ sql: String, _ decode: (OpaquePointer) -> T) throws -> [T] {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
             throw IMessageStoreError.queryFailed(String(cString: sqlite3_errmsg(handle)))
@@ -217,7 +217,7 @@ public final class IMessageStore {
         return results
     }
 
-    private static func string(_ statement: OpaquePointer, _ column: Int32) -> String? {
+    static func string(_ statement: OpaquePointer, _ column: Int32) -> String? {
         guard let raw = sqlite3_column_text(statement, column) else { return nil }
         return String(cString: raw)
     }

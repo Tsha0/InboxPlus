@@ -16,8 +16,7 @@ import InboxPlusRuntime
 actor DeferredRuntimeGateway: MessagingGateway {
     private let paths: RuntimePaths
     private let profileName: String
-    private let build: @Sendable (RuntimeProfileState) throws -> any MessagingGateway
-    private let onReady: @Sendable (RuntimeProfileState) async -> Void
+    private let build: @Sendable (RuntimeProfileState) async throws -> any MessagingGateway
 
     private var resolved: (any MessagingGateway)?
     private var resolving: Task<any MessagingGateway, any Error>?
@@ -25,13 +24,11 @@ actor DeferredRuntimeGateway: MessagingGateway {
     init(
         paths: RuntimePaths,
         profileName: String,
-        build: @escaping @Sendable (RuntimeProfileState) throws -> any MessagingGateway,
-        onReady: @escaping @Sendable (RuntimeProfileState) async -> Void = { _ in }
+        build: @escaping @Sendable (RuntimeProfileState) async throws -> any MessagingGateway
     ) {
         self.paths = paths
         self.profileName = profileName
         self.build = build
-        self.onReady = onReady
     }
 
     // MARK: - MessagingGateway
@@ -67,7 +64,7 @@ actor DeferredRuntimeGateway: MessagingGateway {
         if let resolved { return resolved }
         if let resolving { return try await resolving.value }
 
-        let task = Task<any MessagingGateway, any Error> { [paths, profileName, build, onReady] in
+        let task = Task<any MessagingGateway, any Error> { [paths, profileName, build] in
             let state = try await ManagedRuntime.shared.ensureRunning(
                 paths: paths,
                 profileName: profileName,
@@ -75,9 +72,7 @@ actor DeferredRuntimeGateway: MessagingGateway {
                     FileHandle.standardError.write(Data("Inbox+: \(message)\n".utf8))
                 }
             )
-            let gateway = try build(state)
-            await onReady(state)
-            return gateway
+            return try await build(state)
         }
         resolving = task
 

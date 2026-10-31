@@ -13,6 +13,7 @@ func makeDatabase(_ statements: String) throws -> URL {
     let schema = """
     CREATE TABLE handle (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL,
         country TEXT, service TEXT NOT NULL, uncanonicalized_id TEXT);
+    CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER, UNIQUE (chat_id, handle_id));
     CREATE TABLE chat (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,
         style INTEGER, state INTEGER, chat_identifier TEXT, service_name TEXT,
         room_name TEXT, display_name TEXT);
@@ -57,7 +58,7 @@ func cleanUp(_ url: URL) {
 }
 
 /// 2024-03-01T12:00:00Z as nanoseconds since 2001, which is what current macOS writes.
-private let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_", with: "")
+let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_", with: "")
 
 @Test func chatsAreReadWithTheirAddressingIdentity() throws {
     let url = try makeDatabase("""
