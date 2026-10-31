@@ -342,7 +342,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
                     identityID: identityID,
                     title: title,
                     latestPreview: messages.last?.body ?? "",
-                    latestActivity: messages.last?.timestamp ?? Date(),
+                    latestActivity: messages.last?.timestamp ?? Date(timeIntervalSince1970: 0),
                     unreadCount: Int(info?.numUnreadMessages ?? 0)
                 )
             ))
