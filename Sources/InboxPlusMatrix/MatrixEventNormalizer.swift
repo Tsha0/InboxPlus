@@ -55,6 +55,7 @@ public struct MatrixEventNormalizer: Sendable {
             deliveryState: Self.deliveryState(for: item.localSendState),
             kind: described.kind,
             attachments: described.attachments,
+            markdownBody: described.markdownBody,
             senderDisplayName: senderName
         )
     }
@@ -64,6 +65,7 @@ public struct MatrixEventNormalizer: Sendable {
         var body: String
         var kind: MessageKind
         var attachments: [MessageAttachment] = []
+        var markdownBody: String?
     }
 
     /// Local echoes are keyed by transaction ID until the server assigns an event ID.
@@ -98,11 +100,7 @@ public struct MatrixEventNormalizer: Sendable {
         switch content {
         case let .msgLike(msgLike):
             describe(msgLike.kind, identifier: identifier)
-        case let .roomMembership(_, displayName, change, _):
-            Described(body: "\(displayName ?? "Someone") \(Self.describe(change))", kind: .membership)
-        case .profileChange:
-            Described(body: "Updated their profile", kind: .membership)
-        case .state:
+        case .roomMembership, .profileChange, .state:
             // Bridges replay settings and avatars while syncing. These are metadata, not chat
             // messages; omit them before either historical or live events reach the inbox.
             nil
@@ -152,11 +150,11 @@ public struct MatrixEventNormalizer: Sendable {
     private func describe(_ messageType: MessageType, identifier: String) -> Described {
         switch messageType {
         case let .text(content):
-            return Described(body: content.body, kind: .text)
+            return Self.described(content.body, formatted: content.formatted, kind: .text)
         case let .notice(content):
-            return Described(body: content.body, kind: .notice)
+            return Self.described(content.body, formatted: content.formatted, kind: .notice)
         case let .emote(content):
-            return Described(body: content.body, kind: .emote)
+            return Self.described(content.body, formatted: content.formatted, kind: .emote)
         // Attachments carry a filename plus an optional caption rather than a body. Prefer the
         // caption the sender wrote, fall back to the filename, and only then to a generic label,
         // so an attachment is never rendered as an empty message.
@@ -176,8 +174,9 @@ public struct MatrixEventNormalizer: Sendable {
             let attachments = content.itemtypes.enumerated().compactMap { index, item in
                 Self.attachment(from: item, id: "\(identifier)#\(index)")
             }
-            return Described(
-                body: Self.caption(content.body, fallback: attachments.isEmpty ? "Photos" : "\(attachments.count) items"),
+            return Self.described(
+                Self.caption(content.body, fallback: attachments.isEmpty ? "Photos" : "\(attachments.count) items"),
+                formatted: content.formatted,
                 kind: .gallery,
                 attachments: attachments
             )
@@ -189,6 +188,31 @@ public struct MatrixEventNormalizer: Sendable {
                 kind: .unsupported
             )
         }
+    }
+
+    /// mautrix bridges write `body` as the Markdown rendering of `formatted_body`, so a formatted
+    /// event's body is read as Markdown. An unformatted body is the sender's literal text: its
+    /// asterisks and underscores are their own.
+    static func described(
+        _ body: String,
+        formatted: FormattedBody?,
+        kind: MessageKind,
+        attachments: [MessageAttachment] = []
+    ) -> Described {
+        guard case .html = formatted?.format else {
+            return Described(body: body, kind: kind, attachments: attachments)
+        }
+        return Described(
+            body: MessageFormatting.plainText(markdown: body),
+            kind: kind,
+            attachments: attachments,
+            markdownBody: body
+        )
+    }
+
+    static func plainCaption(_ caption: String?, formatted: FormattedBody?) -> String? {
+        guard let caption, case .html = formatted?.format else { return caption }
+        return MessageFormatting.plainText(markdown: caption)
     }
 
     // MARK: - Attachments
@@ -217,7 +241,7 @@ public struct MatrixEventNormalizer: Sendable {
             id: id,
             kind: .image,
             filename: content.filename,
-            caption: content.caption,
+            caption: plainCaption(content.caption, formatted: content.formattedCaption),
             mimeType: content.info?.mimetype,
             byteCount: content.info?.size,
             pixelSize: pixelSize(width: content.info?.width, height: content.info?.height),
@@ -233,7 +257,7 @@ public struct MatrixEventNormalizer: Sendable {
             id: id,
             kind: .audio,
             filename: content.filename,
-            caption: content.caption,
+            caption: plainCaption(content.caption, formatted: content.formattedCaption),
             mimeType: content.info?.mimetype,
             byteCount: content.info?.size,
             pixelSize: nil,
@@ -249,7 +273,7 @@ public struct MatrixEventNormalizer: Sendable {
             id: id,
             kind: .video,
             filename: content.filename,
-            caption: content.caption,
+            caption: plainCaption(content.caption, formatted: content.formattedCaption),
             mimeType: content.info?.mimetype,
             byteCount: content.info?.size,
             pixelSize: pixelSize(width: content.info?.width, height: content.info?.height),
@@ -265,7 +289,7 @@ public struct MatrixEventNormalizer: Sendable {
             id: id,
             kind: .file,
             filename: content.filename,
-            caption: content.caption,
+            caption: plainCaption(content.caption, formatted: content.formattedCaption),
             mimeType: content.info?.mimetype,
             byteCount: content.info?.size,
             pixelSize: nil,
@@ -338,18 +362,6 @@ public struct MatrixEventNormalizer: Sendable {
     private static func caption(_ body: String, fallback: String) -> String {
         body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallback : body
     }
-
-    private static func describe(_ change: MembershipChange?) -> String {
-        switch change {
-        case .some(.joined): "joined"
-        case .some(.left): "left"
-        case .some(.invited): "was invited"
-        case .some(.banned): "was banned"
-        case .some(.kicked): "was removed"
-        default: "membership changed"
-        }
-    }
-
 }
 
 /// Orders a conversation deterministically.

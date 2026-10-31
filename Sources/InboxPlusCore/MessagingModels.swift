@@ -141,7 +141,10 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
     public let route: ConversationRoute
     public let senderIdentityID: String?
     public var senderDisplayName: String?
+    /// Always plain text, so previews, notifications and VoiceOver never show formatting syntax.
     public var body: String
+    /// The sender's formatting as inline Markdown. Nil unless the network sent formatted text.
+    public var markdownBody: String?
     public let timestamp: Date
     public var deliveryState: MessageDeliveryState
     public var kind: MessageKind
@@ -159,6 +162,7 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
         deliveryState: MessageDeliveryState,
         kind: MessageKind = .text,
         attachments: [MessageAttachment] = [],
+        markdownBody: String? = nil,
         senderDisplayName: String? = nil
     ) {
         self.id = id
@@ -166,6 +170,7 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
         self.senderIdentityID = senderIdentityID
         self.senderDisplayName = senderDisplayName
         self.body = body
+        self.markdownBody = markdownBody
         self.timestamp = timestamp
         self.deliveryState = deliveryState
         self.kind = kind
