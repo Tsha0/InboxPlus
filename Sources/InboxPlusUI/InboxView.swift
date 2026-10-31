@@ -7,16 +7,24 @@ public struct InboxView: View {
     let onToggleFavourite: (InboxItem) -> Void
     let favouriteError: String?
     let onSelect: (InboxItem) -> Void
-    @State private var showsUnreadOnly = false
-    @State private var query = ""
+    @Binding private var showsUnreadOnly: Bool
+    @Binding private var query: String
+    let searchFocusRequest: UUID?
+    @FocusState private var searchFocused: Bool
 
     public init(
         items: [InboxItem],
+        query: Binding<String>,
+        showsUnreadOnly: Binding<Bool>,
+        searchFocusRequest: UUID?,
         selectedID: InboxItem.ID? = nil,
         favouriteError: String? = nil,
         onToggleFavourite: @escaping (InboxItem) -> Void = { _ in },
         onSelect: @escaping (InboxItem) -> Void
     ) {
+        self._showsUnreadOnly = showsUnreadOnly
+        self._query = query
+        self.searchFocusRequest = searchFocusRequest
         self.favouriteError = favouriteError
         self.onToggleFavourite = onToggleFavourite
         self.items = items
@@ -25,16 +33,7 @@ public struct InboxView: View {
     }
 
     private var visibleItems: [InboxItem] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return items.filter { item in
-            if showsUnreadOnly, item.unreadCount == 0 { return false }
-            guard !trimmed.isEmpty else { return true }
-            return item.title.localizedCaseInsensitiveContains(trimmed)
-                || item.conversationSummaries.contains {
-                    $0.title.localizedCaseInsensitiveContains(trimmed)
-                        || $0.latestPreview.localizedCaseInsensitiveContains(trimmed)
-                }
-        }
+        InboxProjector.filtered(items, query: query, unreadOnly: showsUnreadOnly)
     }
 
     private var unreadTotal: Int {
@@ -65,6 +64,8 @@ public struct InboxView: View {
                 TextField("Search", text: $query)
                     .textFieldStyle(.plain)
                     .accessibilityIdentifier("inbox-search")
+                    .focused($searchFocused)
+                    .onExitCommand { query = "" }
                 if !query.isEmpty {
                     Button {
                         query = ""
@@ -130,6 +131,9 @@ public struct InboxView: View {
                 .listStyle(.sidebar)
                 .scrollContentBackground(.hidden)
             }
+        }
+        .onChange(of: searchFocusRequest, initial: true) { _, request in
+            if request != nil { searchFocused = true }
         }
         .padding(.top, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

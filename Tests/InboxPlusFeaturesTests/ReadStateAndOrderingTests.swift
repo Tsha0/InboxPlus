@@ -204,6 +204,54 @@ private func eventually(_ condition: @MainActor () async throws -> Bool) async r
 }
 
 @MainActor
+@Test func conversationCommandsFollowInboxOrderAndWrap() async throws {
+    let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: Fixtures.snapshot), directory: Fixtures.directory)
+    try await model.start()
+    let routes = model.inboxItems.flatMap { $0.conversationSummaries.map(\.route) }
+    #expect(routes.count == 3)
+    model.navigateConversation(forward: true, query: "", unreadOnly: false)
+    #expect(model.openRoute == routes[0])
+    model.navigateConversation(forward: true, query: "", unreadOnly: false)
+    #expect(model.openRoute == routes[1])
+    model.navigateConversation(forward: false, query: "", unreadOnly: false)
+    #expect(model.openRoute == routes[0])
+    model.navigateConversation(forward: false, query: "", unreadOnly: false)
+    #expect(model.openRoute == routes.last)
+}
+
+@MainActor
+@Test func conversationNavigationRespectsSearchAndPreservesDrafts() async throws {
+    let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: Fixtures.snapshot), directory: Fixtures.directory)
+    try await model.start()
+    model.openConversation(Fixtures.instagramRoute)
+    model.draft = "still writing"
+    model.navigateConversation(forward: true, query: "Family", unreadOnly: false)
+    #expect(model.openRoute == Fixtures.instagramRoute)
+    #expect(model.draft == "still writing")
+    model.draft = ""
+    model.navigateConversation(forward: true, query: "Family", unreadOnly: false)
+    #expect(model.openRoute == Fixtures.telegramRoute)
+    model.navigateConversation(forward: false, query: "no matching conversation", unreadOnly: false)
+    #expect(model.openRoute == Fixtures.telegramRoute)
+    model.navigateConversation(forward: false, query: "MAYA", unreadOnly: true)
+    #expect(model.openRoute != Fixtures.telegramRoute)
+}
+
+@MainActor
+@Test func conversationUnreadCommandTogglesOnlyTheSelectedRoute() async throws {
+    let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: Fixtures.snapshot), directory: Fixtures.directory)
+    try await model.start()
+    model.openConversation(Fixtures.telegramRoute)
+    model.toggleConversationUnread(Fixtures.telegramRoute)
+    #expect(model.conversations.first { $0.route == Fixtures.telegramRoute }?.unreadCount == 1)
+    #expect(model.inboxItems.first { $0.id == .conversation(Fixtures.telegramRoute) }?.unreadCount == 1)
+    #expect(model.conversations.first { $0.route == Fixtures.instagramRoute }?.unreadCount == 2)
+    model.toggleConversationUnread(Fixtures.telegramRoute)
+    #expect(model.conversations.first { $0.route == Fixtures.telegramRoute }?.unreadCount == 0)
+    #expect(model.openRoute == Fixtures.telegramRoute)
+}
+
+@MainActor
 @Test func aConversationReadInOneLaunchStaysReadInTheNext() async throws {
     let gateway = InMemoryMessagingGateway(seed: Fixtures.snapshot)
     let model = InboxPlusAppModel(gateway: gateway, directory: Fixtures.directory)

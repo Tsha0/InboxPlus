@@ -12,6 +12,9 @@ public typealias BridgeLoginSessionProvider =
 
 public struct RootView: View {
     @Bindable var model: InboxPlusAppModel
+    @State private var inboxQuery = ""
+    @State private var showsUnreadOnly = false
+    @State private var searchFocusRequest: UUID?
     @State private var section: SidebarSection = .inbox
     @State private var accountFlow: AccountFlow?
     @State private var connectFailure: String?
@@ -119,6 +122,7 @@ public struct RootView: View {
         }
         .frame(minWidth: 900, minHeight: 600)
         .disabled(model.isPreparingForUpdate)
+        .focusedSceneValue(\.inboxCommandActions, commandActions)
         .tint(InboxPlusTheme.ink)
         .accentColor(InboxPlusTheme.ink)
         // The menu bar panel owns the connections overview; a Connect there lands here as a
@@ -253,6 +257,23 @@ public struct RootView: View {
         accountFlow = nil
     }
 
+    private var commandActions: InboxCommandActions? {
+        guard accountFlow == nil, connectFailure == nil, connectNotice == nil, accountFailure == nil,
+              !model.isPreparingForUpdate else { return nil }
+        let canNavigate = !InboxProjector.filtered(model.inboxItems, query: inboxQuery, unreadOnly: showsUnreadOnly).isEmpty
+            && !model.hasUnfinishedMessagingWork
+        let route = model.openRoute
+        return InboxCommandActions(
+            selectSection: { section = $0 },
+            focusSearch: { section = .inbox; searchFocusRequest = UUID() },
+            clearSearch: section == .inbox && !inboxQuery.isEmpty ? { inboxQuery = "" } : nil,
+            nextConversation: canNavigate ? { section = .inbox; model.navigateConversation(forward: true, query: inboxQuery, unreadOnly: showsUnreadOnly) } : nil,
+            previousConversation: canNavigate ? { section = .inbox; model.navigateConversation(forward: false, query: inboxQuery, unreadOnly: showsUnreadOnly) } : nil,
+            toggleUnread: route.map { route in { model.toggleConversationUnread(route) } },
+            isUnread: model.conversations.first { $0.route == route }?.unreadCount ?? 0 > 0
+        )
+    }
+
     private var canStartNewConversation: Bool {
         !model.hasUnfinishedMessagingWork && !model.isPreparingForUpdate
             && accountFlow == nil && connectFailure == nil && connectNotice == nil && accountFailure == nil
@@ -310,6 +331,9 @@ public struct RootView: View {
         case .inbox:
             InboxView(
                 items: model.inboxItems,
+                query: $inboxQuery,
+                showsUnreadOnly: $showsUnreadOnly,
+                searchFocusRequest: searchFocusRequest,
                 selectedID: selectedInboxID,
                 favouriteError: model.favouriteError,
                 onToggleFavourite: model.toggleFavourite,

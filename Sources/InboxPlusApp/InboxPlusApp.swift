@@ -150,6 +150,7 @@ struct InboxPlusApp: App {
         }
         .windowResizability(.contentMinSize)
         .commands {
+            InboxCommands()
             CommandGroup(replacing: .newItem) {
                 Button("New Message…") { newConversation?() }
                     .keyboardShortcut("n")
