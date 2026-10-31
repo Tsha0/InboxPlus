@@ -63,12 +63,20 @@ public actor CompositeMessagingGateway: MessagingGateway {
         }
     }
 
+    public func loadRecentMessages(in route: ConversationRoute) async throws {
+        try await gateway(for: route).loadRecentMessages(in: route)
+    }
+
     public func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
         try await gateway(for: route).sendText(body, to: route)
     }
 
     public func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt {
         try await gateway(for: route).send(attachment, to: route)
+    }
+
+    public func markRead(_ route: ConversationRoute) async throws {
+        try await gateway(for: route).markRead(route)
     }
 
     // MARK: - Routing

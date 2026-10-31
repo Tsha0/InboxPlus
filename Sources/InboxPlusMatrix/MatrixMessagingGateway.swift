@@ -61,6 +61,10 @@ public actor MatrixMessagingGateway: MessagingGateway {
         normalizer = MatrixEventNormalizer(accountID: accountID)
     }
 
+    /// Downloads media through this gateway's own client. Only `start()` connects a client, so a
+    /// fetcher built on any other one fails every download with `.notConnected`.
+    public nonisolated var mediaFetcher: MatrixMediaFetcher { MatrixMediaFetcher(client: client) }
+
     // MARK: - MessagingGateway
 
     public func loadSnapshot() async throws -> MessagingSnapshot {
@@ -117,7 +121,8 @@ public actor MatrixMessagingGateway: MessagingGateway {
                     title: title,
                     latestPreview: ordered.last?.body ?? "",
                     latestActivity: ordered.last?.timestamp ?? Date(timeIntervalSince1970: 0),
-                    unreadCount: Int(info.numUnreadMessages)
+                    unreadCount: Int(info.numUnreadMessages),
+                    isGroup: isGroup(info, accountID: roomAccountID)
                 )
             )
         }
@@ -223,6 +228,19 @@ public actor MatrixMessagingGateway: MessagingGateway {
             deliveryState: .pending
         )
     }
+
+    public func markRead(_ route: ConversationRoute) async throws {
+        let matrixClient = try await client.requireClient()
+        guard let room = try matrixClient.getRoom(roomId: route.conversationID) else {
+            throw MatrixGatewayError.unknownRoom(route.conversationID)
+        }
+        try await room.markAsRead(receiptType: Self.readReceiptType)
+    }
+
+    /// Private, so the homeserver's unread count clears without anyone else being told. The
+    /// bridges only pass a public `m.read` on to the network (mautrix-go bridgev2
+    /// `Portal.handleMatrixReceipts`); a public receipt here would mark the message as seen there.
+    static let readReceiptType = ReceiptType.readPrivate
 
     // MARK: - Lifecycle
 
@@ -338,8 +356,9 @@ public actor MatrixMessagingGateway: MessagingGateway {
                     identityID: identityID,
                     title: title,
                     latestPreview: messages.last?.body ?? "",
-                    latestActivity: messages.last?.timestamp ?? Date(),
-                    unreadCount: Int(info?.numUnreadMessages ?? 0)
+                    latestActivity: messages.last?.timestamp ?? Date(timeIntervalSince1970: 0),
+                    unreadCount: Int(info?.numUnreadMessages ?? 0),
+                    isGroup: info.map { isGroup($0, accountID: roomAccountID) } ?? false
                 )
             ))
             for message in messages { publish(.historicalMessageUpserted(message)) }
@@ -364,6 +383,30 @@ public actor MatrixMessagingGateway: MessagingGateway {
             let account = accountIDByRoomID[roomID] ?? accountID
             observer.updateOutgoingIdentifiers(outgoingIdentifiersByAccount[account] ?? [])
         }
+    }
+
+    private func isGroup(_ info: RoomInfo, accountID: String) -> Bool {
+        Self.isGroup(
+            isDirect: info.isDirect || info.isDm,
+            joinedMembers: info.joinedMembersCount,
+            serviceMembers: Set(info.serviceMembers),
+            ownIdentities: outgoingIdentifiersByAccount[accountID] ?? []
+        )
+    }
+
+    /// Bridges rarely mark a portal as a direct chat, so the flag alone would make nearly every
+    /// bridged conversation a group. What decides it is how many people are left once this
+    /// account, the bridge's service members and this account's own network identity are set aside.
+    static func isGroup(
+        isDirect: Bool,
+        joinedMembers: UInt64,
+        serviceMembers: Set<String>,
+        ownIdentities: Set<String>
+    ) -> Bool {
+        if isDirect { return false }
+        let ownGhost = ownIdentities.contains { $0.hasPrefix("@") && !serviceMembers.contains($0) } ? 1 : 0
+        let others = Int(joinedMembers) - serviceMembers.count - 1 - ownGhost
+        return others > 1
     }
 
     /// Which account a room belongs to, resolved from who is in it.

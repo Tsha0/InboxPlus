@@ -9,28 +9,42 @@ import InboxPlusGateway
 /// implements the same seam the Matrix gateway does and the app layer cannot tell the difference.
 public actor IMessageGateway: MessagingGateway {
     public static let accountID = "imessage-local"
+    /// How long a chat can go without a message before it is left out of the inbox. A Mac's
+    /// Messages history goes back years, and listing every chat ever started buries the ones still
+    /// going. A new message brings a chat back.
+    static let activityWindow: TimeInterval = 365 * 24 * 60 * 60
 
     private let store: IMessageStore
     private let sender: IMessageSender
+    private let contacts: any IMessageContactSource
     private let historyLimit: Int
     private let pollInterval: Duration
+    private let readMarkerStore: IMessageReadMarkerStore?
 
     private var streamContinuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
     private var pollTask: Task<Void, Never>?
     private var lastSeenRowID: Int64 = 0
     private var chatsByGUID: [String: IMessageChat] = [:]
+    private var publishedChatGUIDs: Set<String> = []
+    private var loadedHistoryChatGUIDs: Set<String> = []
     private var knownIdentityIDs: Set<String> = []
+    private var readMarkers: [String: Int64] = [:]
+    private var contactBook = IMessageContactBook()
 
     public init(
         store: IMessageStore,
         sender: IMessageSender = IMessageSender(),
-        historyLimit: Int = 300,
-        pollInterval: Duration = .seconds(3)
+        contacts: any IMessageContactSource = IMessageContactBook(),
+        historyLimit: Int = 50,
+        pollInterval: Duration = .seconds(3),
+        readMarkerStore: IMessageReadMarkerStore? = nil
     ) {
         self.store = store
         self.sender = sender
+        self.contacts = contacts
         self.historyLimit = historyLimit
         self.pollInterval = pollInterval
+        self.readMarkerStore = readMarkerStore
     }
 
     deinit { pollTask?.cancel() }
@@ -38,59 +52,41 @@ public actor IMessageGateway: MessagingGateway {
     // MARK: - MessagingGateway
 
     public func loadSnapshot() async throws -> MessagingSnapshot {
+        // Read before anything is titled. The first time, this waits for the Contacts prompt.
+        contactBook = await contacts.contactBook()
         let chats = try store.chats()
         chatsByGUID = Dictionary(chats.map { ($0.guid, $0) }, uniquingKeysWith: { first, _ in first })
 
-        let rows = try store.recentMessages(limit: historyLimit)
-        let highestRowID = try rows.map(\.rowID).max() ?? store.maxMessageRowID()
-        lastSeenRowID = max(lastSeenRowID, highestRowID)
-
+        // Each active chat arrives with only its newest message: history for every chat would be
+        // every message in the database, so a chat's history waits until it is opened.
+        // The row id is read before those messages, so one arriving meanwhile is polled, not missed.
+        lastSeenRowID = max(lastSeenRowID, try store.maxMessageRowID())
+        let activeSince = activeSince()
         var messagesByRoute: [ConversationRoute: [Message]] = [:]
         var identities: [String: RemoteIdentity] = [:]
-        var latestByChat: [String: Message] = [:]
-
-        for row in rows {
-            guard let message = message(from: row) else { continue }
-            messagesByRoute[message.route, default: []].append(message)
-            latestByChat[row.chatGUID] = message
-            if let identity = identity(for: row) { identities[identity.id] = identity }
-        }
-
+        let unreadByChat = try unreadCounts()
         var conversations: [RemoteConversation] = []
-        for chat in chats {
-            let route = ConversationRoute(accountID: Self.accountID, conversationID: chat.guid)
-            let latest = latestByChat[chat.guid]
-            // A conversation with no readable message still needs an identity, or the inbox drops
-            // it and the user simply never sees the chat.
-            let identityID = identityID(for: chat)
-            if identities[identityID] == nil {
-                identities[identityID] = RemoteIdentity(
-                    id: identityID,
-                    accountID: Self.accountID,
-                    displayName: displayName(for: chat)
-                )
+
+        for row in try store.latestMessages() {
+            guard let chat = chatsByGUID[row.chatGUID], let date = row.date, date >= activeSince
+            else { continue }
+            let latest = message(from: row)
+            if let latest {
+                messagesByRoute[latest.route] = [latest]
+                if let identity = identity(for: row) { identities[identity.id] = identity }
             }
-            conversations.append(
-                RemoteConversation(
-                    id: chat.guid,
-                    accountID: Self.accountID,
-                    identityID: identityID,
-                    title: displayName(for: chat),
-                    latestPreview: latest?.body ?? "",
-                    latestActivity: latest?.timestamp ?? Date(timeIntervalSince1970: 0),
-                    unreadCount: 0,
-                    // Messages accepts text through Apple events. Attachments would need a
-                    // different mechanism, so the composer does not offer them here.
-                    capabilities: ConversationCapabilities(canSendText: true, attachmentKinds: [])
-                )
-            )
-            _ = route
+            // A conversation whose own identity is unknown is dropped by the inbox, and a group's
+            // identity is the chat itself rather than any sender.
+            let chatIdentity = identity(for: chat)
+            if identities[chatIdentity.id] == nil { identities[chatIdentity.id] = chatIdentity }
+            conversations.append(conversation(
+                for: chat, preview: latest?.body ?? "", at: date, unreadCount: unreadByChat[chat.guid] ?? 0
+            ))
         }
 
         knownIdentityIDs = Set(identities.keys)
-        for key in messagesByRoute.keys {
-            messagesByRoute[key]?.sort { $0.timestamp < $1.timestamp }
-        }
+        publishedChatGUIDs = Set(conversations.map(\.id))
+        loadedHistoryChatGUIDs = []
 
         startPolling()
 
@@ -114,6 +110,19 @@ public actor IMessageGateway: MessagingGateway {
         }
     }
 
+    public func loadRecentMessages(in route: ConversationRoute) async throws {
+        guard !loadedHistoryChatGUIDs.contains(route.conversationID),
+              let chat = chatsByGUID[route.conversationID]
+        else { return }
+        let rows = try store.recentMessages(inChat: chat.rowID, limit: historyLimit)
+        loadedHistoryChatGUIDs.insert(chat.guid)
+        for row in rows {
+            guard let message = message(from: row) else { continue }
+            if let identity = identity(for: row) { publishIfNew(identity) }
+            publish(.historicalMessageUpserted(message))
+        }
+    }
+
     public func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
         try sender.send(body, toChatGUID: route.conversationID)
         // Deliberately pending. Messages has accepted the request; the sent message appears in the
@@ -126,6 +135,22 @@ public actor IMessageGateway: MessagingGateway {
         throw IMessageSendError.messagesReportedFailure(
             "Inbox+ cannot send attachments to iMessage yet."
         )
+    }
+
+    /// Everything Inbox+ has shown in the chat is now read. A message written to the database since
+    /// the last poll has not been shown yet, so it stays unread.
+    public func markRead(_ route: ConversationRoute) async throws {
+        let chatGUID = route.conversationID
+        guard lastSeenRowID > readMarkers[chatGUID] ?? 0 else { return }
+        var updated = readMarkers
+        updated[chatGUID] = lastSeenRowID
+        try readMarkerStore?.save(updated)
+        readMarkers = updated
+    }
+
+    private func unreadCounts() throws -> [String: Int] {
+        if let readMarkerStore { readMarkers = try readMarkerStore.load() }
+        return try store.unreadCounts(after: readMarkers)
     }
 
     // MARK: - Polling
@@ -166,13 +191,34 @@ public actor IMessageGateway: MessagingGateway {
         }
 
         for row in rows {
-            guard let message = message(from: row) else { continue }
+            guard let message = message(from: row), publishConversationIfNeeded(for: message)
+            else { continue }
             // An identity must reach the inbox before any conversation or message naming it.
-            if let identity = identity(for: row), knownIdentityIDs.insert(identity.id).inserted {
-                publish(.identityUpserted(identity))
-            }
+            if let identity = identity(for: row) { publishIfNew(identity) }
             publish(.messageUpserted(message))
         }
+    }
+
+    /// Brings a chat into the inbox with its first new message, whether the snapshot left it out as
+    /// quiet or it was started since, and reports whether the message now has a chat to land in.
+    /// Old history still arriving from iCloud does not count, or a sync would bring back every
+    /// quiet chat.
+    private func publishConversationIfNeeded(for message: Message) -> Bool {
+        let guid = message.route.conversationID
+        guard !publishedChatGUIDs.contains(guid) else { return true }
+        guard message.timestamp >= activeSince(), let chat = chatsByGUID[guid] else { return false }
+        publishIfNew(identity(for: chat))
+        publish(.conversationUpserted(conversation(for: chat, preview: message.body, at: message.timestamp)))
+        publishedChatGUIDs.insert(guid)
+        return true
+    }
+
+    private func publishIfNew(_ identity: RemoteIdentity) {
+        if knownIdentityIDs.insert(identity.id).inserted { publish(.identityUpserted(identity)) }
+    }
+
+    private func activeSince() -> Date {
+        Date().addingTimeInterval(-Self.activityWindow)
     }
 
     private func publish(_ event: GatewayEvent) {
@@ -182,6 +228,24 @@ public actor IMessageGateway: MessagingGateway {
     private func removeContinuation(_ id: UUID) { streamContinuations[id] = nil }
 
     // MARK: - Mapping
+
+    private func conversation(
+        for chat: IMessageChat, preview: String, at date: Date, unreadCount: Int = 0
+    ) -> RemoteConversation {
+        RemoteConversation(
+            id: chat.guid,
+            accountID: Self.accountID,
+            identityID: identityID(for: chat),
+            title: displayName(for: chat),
+            latestPreview: preview,
+            latestActivity: date,
+            unreadCount: unreadCount,
+            // Messages accepts text through Apple events. Attachments would need a
+            // different mechanism, so the composer does not offer them here.
+            capabilities: ConversationCapabilities(canSendText: true, attachmentKinds: []),
+            isGroup: chat.isGroup
+        )
+    }
 
     private func message(from row: IMessageRow) -> Message? {
         guard let timestamp = row.date else { return nil }
@@ -213,8 +277,13 @@ public actor IMessageGateway: MessagingGateway {
         return RemoteIdentity(
             id: id,
             accountID: Self.accountID,
-            displayName: row.handle ?? chatsByGUID[row.chatGUID].map(displayName(for:)) ?? id
+            displayName: row.handle.map(contactBook.name(forHandle:))
+                ?? chatsByGUID[row.chatGUID].map(displayName(for:)) ?? id
         )
+    }
+
+    private func identity(for chat: IMessageChat) -> RemoteIdentity {
+        RemoteIdentity(id: identityID(for: chat), accountID: Self.accountID, displayName: displayName(for: chat))
     }
 
     private func identityID(for row: IMessageRow) -> String {
@@ -232,6 +301,12 @@ public actor IMessageGateway: MessagingGateway {
         if let name = chat.displayName, !name.trimmingCharacters(in: .whitespaces).isEmpty {
             return name
         }
-        return chat.identifier.isEmpty ? "iMessage conversation" : chat.identifier
+        // An unnamed group's identifier is an internal id such as `chat123456789`, so it is titled
+        // after the people in it, as Messages does.
+        if chat.isGroup {
+            let participants = (try? store.participants(inChat: chat.rowID)) ?? []
+            return contactBook.groupTitle(forHandles: participants) ?? "Group conversation"
+        }
+        return chat.identifier.isEmpty ? "iMessage conversation" : contactBook.name(forHandle: chat.identifier)
     }
 }

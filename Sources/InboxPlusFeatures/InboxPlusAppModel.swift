@@ -231,16 +231,40 @@ public final class InboxPlusAppModel {
 
     public func openConversation(_ route: ConversationRoute) {
         detailSelection = .conversation(route)
+        loadRecentMessages(in: route)
         markConversationRead(route)
     }
 
+    /// A source may leave history out of its snapshot, so opening a conversation is what asks for
+    /// it. The messages arrive as ordinary gateway events.
+    private func loadRecentMessages(in route: ConversationRoute) {
+        Task { [gateway] in
+            do {
+                try await gateway.loadRecentMessages(in: route)
+            } catch {
+                FileHandle.standardError.write(Data("Inbox+: could not load recent messages: \(error)\n".utf8))
+            }
+        }
+    }
+
     public func markConversationRead(_ route: ConversationRoute) {
-        guard
-            let index = conversations.firstIndex(where: { $0.route == route }),
-            conversations[index].unreadCount != 0
-        else { return }
+        guard let index = conversations.firstIndex(where: { $0.route == route }) else { return }
+        // Saved even when the badge already reads zero: a message that arrives while Inbox+ is
+        // running does not raise the badge, but the source still counts it as unread.
+        saveReadState(of: route)
+        guard conversations[index].unreadCount != 0 else { return }
         conversations[index].unreadCount = 0
         rebuildInbox()
+    }
+
+    private func saveReadState(of route: ConversationRoute) {
+        Task { [gateway] in
+            do {
+                try await gateway.markRead(route)
+            } catch {
+                FileHandle.standardError.write(Data("Inbox+: could not save read state: \(error)\n".utf8))
+            }
+        }
     }
 
     /// Names each loaded account and how many conversations it owns.
@@ -499,9 +523,33 @@ public final class InboxPlusAppModel {
         return directory.personID(linkedTo: identityID)
     }
 
+    public func canLinkConversation(_ route: ConversationRoute) -> Bool {
+        conversations.contains { $0.route == route && !$0.isGroup }
+    }
+
+    public var suggestedContactLinks: [SuggestedContactLink] {
+        SuggestedContactLink.matches(conversations: conversations.filter {
+            directory.personID(linkedTo: $0.identityID) == nil
+        }, accounts: accounts)
+    }
+
+    public func acceptSuggestedContactLink(_ suggestion: SuggestedContactLink) throws {
+        guard suggestedContactLinks.contains(suggestion) else { return }
+        let personID = UUID().uuidString
+        var updated = directory
+        try updated.createPerson(id: personID, displayName: suggestion.displayName)
+        for identityID in suggestion.identityIDs {
+            try updated.link(remoteIdentityID: identityID, to: personID)
+        }
+        directory = updated
+        rebuildInbox()
+        detailSelection = .personSummary(personID)
+    }
+
     public func linkOpenConversation(to personID: String) throws {
         guard
             let route = openRoute,
+            canLinkConversation(route),
             let identityID = conversations.first(where: { $0.route == route })?.identityID
         else { throw InboxPlusAppModelError.missingOpenConversation }
         try directory.link(remoteIdentityID: identityID, to: personID)
@@ -685,6 +733,9 @@ public final class InboxPlusAppModel {
                     ?? identities.first { $0.id == message.senderIdentityID }?.displayName
                     ?? "New message"
                 onIncomingMessage?(message, title)
+            }
+            if isLive, isNew, !message.isOutgoing, message.route == openRoute {
+                saveReadState(of: message.route)
             }
             var messages = messagesByRoute[message.route, default: []]
             if let index = messages.firstIndex(where: { $0.id == message.id }) {
