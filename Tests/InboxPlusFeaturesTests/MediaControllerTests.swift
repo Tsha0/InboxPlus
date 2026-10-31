@@ -169,3 +169,28 @@ private func waitForFailure(_ controller: MediaController, _ attachment: Message
     }
     throw Failure()
 }
+
+@MainActor
+@Test func localIMessageMediaLoadsWithoutARuntimeAndMissingFilesCanBeRetried() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let attachment = MessageAttachment(id: "local", kind: .image, source: MediaHandle(source: url.absoluteString))
+    let controller = MediaController()
+    controller.load(attachment, accountID: "imessage-local", messageID: "fixture")
+    guard case .failed = controller.state(for: attachment) else {
+        Issue.record("Missing local attachments must explain the failure")
+        return
+    }
+    try Data([1, 2, 3]).write(to: url)
+    controller.retry(attachment, accountID: "imessage-local", messageID: "fixture")
+    #expect(controller.state(for: attachment) == .ready(url))
+}
+
+@MainActor
+@Test func remoteAccountsCannotLoadLocalFileReferences() {
+    let attachment = MessageAttachment(id: "remote", kind: .file,
+        source: MediaHandle(source: "file:///tmp/fixture"))
+    let controller = MediaController()
+    controller.load(attachment, accountID: "instagram", messageID: "fixture")
+    #expect(controller.state(for: attachment) == .idle)
+}

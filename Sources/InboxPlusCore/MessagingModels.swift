@@ -152,6 +152,7 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
     public var deliveryState: MessageDeliveryState
     public var kind: MessageKind
     public var attachments: [MessageAttachment]
+    public var reactions: [String]
 
     /// Messages this account sent carry no remote sender identity.
     public var isOutgoing: Bool { senderIdentityID == nil }
@@ -165,6 +166,7 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
         deliveryState: MessageDeliveryState,
         kind: MessageKind = .text,
         attachments: [MessageAttachment] = [],
+        reactions: [String] = [],
         markdownBody: String? = nil,
         senderDisplayName: String? = nil
     ) {
@@ -178,5 +180,6 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
         self.deliveryState = deliveryState
         self.kind = kind
         self.attachments = attachments
+        self.reactions = reactions
     }
 }

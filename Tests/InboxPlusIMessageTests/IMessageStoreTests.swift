@@ -23,11 +23,12 @@ func makeDatabase(_ statements: String) throws -> URL {
     CREATE TABLE message (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,
         text TEXT, handle_id INTEGER DEFAULT 0, service TEXT, date INTEGER,
         is_from_me INTEGER DEFAULT 0, attributedBody BLOB, associated_message_guid TEXT,
+        associated_message_type INTEGER DEFAULT 0, associated_message_emoji TEXT,
         is_read INTEGER DEFAULT 0);
     CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER,
         PRIMARY KEY (chat_id, message_id));
     CREATE TABLE attachment (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,
-        filename TEXT, mime_type TEXT);
+        filename TEXT, mime_type TEXT, transfer_name TEXT);
     CREATE TABLE message_attachment_join (message_id INTEGER, attachment_id INTEGER,
         PRIMARY KEY (message_id, attachment_id));
     -- Messages also keeps each message's date on its chat link, indexed for reading a chat
@@ -331,4 +332,98 @@ func typedStream(containing text: String) -> [UInt8] {
     _ = try await gateway.sendText("hello", to: started.conversation.route)
     #expect(scripts.withLock { $0.count } == 1)
     #expect(scripts.withLock { !$0[0].contains("buddy") })
+}
+
+/// Yesterday, in the nanoseconds since 2001 that Messages writes. Chats quiet for a year are hidden.
+private let yesterdayInMessagesTime =
+    Int64((Date().timeIntervalSince1970 - 86_400 - AppleTimestamp.referenceOffset) * 1_000_000_000)
+
+@Test(.timeLimit(.minutes(1))) func attachmentsAndTapbacksReachTheSnapshotAndRefreshTheirTarget() async throws {
+    let url = try makeDatabase("""
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;-;fixture@example.com', 45, 'fixture@example.com', 'iMessage');
+    INSERT INTO message (guid, text, date) VALUES ('original', '￼', \(yesterdayInMessagesTime));
+    INSERT INTO attachment (guid, filename, mime_type, transfer_name) VALUES
+      ('photo', '~/Library/Messages/Attachments/fixture.heic', 'image/heic', 'Photo.heic'),
+      ('video', '/tmp/fixture.mov', 'video/quicktime', 'Movie.mov'),
+      ('file', NULL, 'application/pdf', 'Notes.pdf');
+    INSERT INTO message_attachment_join VALUES (1, 1), (1, 2), (1, 3);
+    INSERT INTO message (guid, date, handle_id, associated_message_guid,
+                         associated_message_type, associated_message_emoji) VALUES
+      ('like', \(yesterdayInMessagesTime), 1, 'p:0/original', 2001, NULL),
+      ('replace', \(yesterdayInMessagesTime), 1, 'p:0/original', 2000, NULL),
+      ('emoji', \(yesterdayInMessagesTime), 2, 'p:0/original', 2006, '🎉'),
+      ('remove', \(yesterdayInMessagesTime), 1, 'p:0/original', 3000, NULL);
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2), (1, 3), (1, 4), (1, 5);
+    """)
+    defer { cleanUp(url) }
+    let store = try IMessageStore(url: url)
+    let row = try #require(store.recentMessages(inChat: 1, limit: 50).first)
+    #expect(row.attachments.map(\.kind) == [.image, .video, .file])
+    #expect(row.attachments.map(\.filename) == ["Photo.heic", "Movie.mov", "Notes.pdf"])
+    #expect(row.attachments[0].source?.source == URL(fileURLWithPath: NSHomeDirectory())
+        .appendingPathComponent("Library/Messages/Attachments/fixture.heic").absoluteString)
+    #expect(row.attachments[2].source == nil)
+    #expect(row.reactions == ["🎉"])
+    #expect(try store.messages(afterRowID: 4).map(\.guid) == ["original"])
+
+    let gateway = IMessageGateway(store: store, pollInterval: .seconds(3600))
+    let snapshot = try await gateway.loadSnapshot()
+    let message = try #require(snapshot.messagesByRoute.values.first?.first)
+    #expect(message.attachments.count == 3)
+    #expect(message.reactions == ["🎉"])
+    #expect(message.kind == .image)
+    #expect(!message.body.contains("￼"))
+    #expect(snapshot.messagesByRoute.values.flatMap { $0 }.count == 1)
+
+    let stream = await gateway.events()
+    var iterator = stream.makeAsyncIterator()
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+    process.arguments = [url.path, """
+    INSERT INTO message (guid, date, handle_id, associated_message_guid, associated_message_type)
+      VALUES ('remove-last', \(yesterdayInMessagesTime), 2, 'p:0/original', 3006);
+    """]
+    try process.run()
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0)
+    await gateway.pollOnce()
+    guard case let .messageUpserted(updated) = await iterator.next() else {
+        Issue.record("A tapback removal must update its original message")
+        return
+    }
+    #expect(updated.id == "original")
+    #expect(updated.reactions.isEmpty)
+    #expect(updated.attachments.count == 3)
+}
+
+@Test func standardTapbacksAndRemovedCustomEmojiAreReduced() throws {
+    let reactions = (0...6).map { index in
+        "INSERT INTO message (guid, date, handle_id, associated_message_guid, associated_message_type, associated_message_emoji) VALUES ('r\(index)', \(yesterdayInMessagesTime), \(index + 1), 'p:0/target', \(2000 + index), '🦊');"
+    }.joined(separator: "\n")
+    let url = try makeDatabase("""
+    INSERT INTO chat (guid, style, chat_identifier, service_name) VALUES ('chat', 45, 'fixture', 'iMessage');
+    INSERT INTO message (guid, text, date) VALUES ('target', 'hello', \(yesterdayInMessagesTime));
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1);
+    \(reactions)
+    INSERT INTO message (guid, date, handle_id, associated_message_guid, associated_message_type)
+      VALUES ('remove-emoji', \(yesterdayInMessagesTime), 7, 'p:0/target', 3006);
+    """)
+    defer { cleanUp(url) }
+    #expect(try IMessageStore(url: url).recentMessages(inChat: 1, limit: 50).first?.reactions == ["❤️", "👍", "👎", "😂", "‼️", "❓"])
+}
+
+@Test func balloonAndBareGUIDTapbacksRefreshTheirOriginalMessages() throws {
+    let url = try makeDatabase("""
+    INSERT INTO chat (guid, style, chat_identifier, service_name) VALUES ('chat', 45, 'fixture', 'iMessage');
+    INSERT INTO message (guid, text, date) VALUES ('balloon', 'link preview', \(yesterdayInMessagesTime)),
+      ('bare', 'text', \(yesterdayInMessagesTime));
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2);
+    INSERT INTO message (guid, date, handle_id, associated_message_guid, associated_message_type) VALUES
+      ('r1', \(yesterdayInMessagesTime), 1, 'bp:balloon', 2001), ('r2', \(yesterdayInMessagesTime), 2, 'bare', 2000);
+    """)
+    defer { cleanUp(url) }
+    let rows = try IMessageStore(url: url).messages(afterRowID: 2)
+    #expect(rows.map(\.guid) == ["balloon", "bare"])
+    #expect(rows.map(\.reactions) == [["👍"], ["❤️"]])
 }
