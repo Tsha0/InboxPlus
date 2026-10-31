@@ -110,6 +110,7 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
     public var latestActivity: Date
     public var unreadCount: Int
     public var capabilities: ConversationCapabilities
+    public var isGroup: Bool
 
     public var route: ConversationRoute { .init(accountID: accountID, conversationID: id) }
 
@@ -121,7 +122,8 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
         latestPreview: String = "",
         latestActivity: Date,
         unreadCount: Int,
-        capabilities: ConversationCapabilities = .mediaCapable
+        capabilities: ConversationCapabilities = .mediaCapable,
+        isGroup: Bool = false
     ) {
         self.id = id
         self.accountID = accountID
@@ -131,6 +133,7 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
         self.latestActivity = latestActivity
         self.unreadCount = unreadCount
         self.capabilities = capabilities
+        self.isGroup = isGroup
     }
 }
 
