@@ -87,7 +87,8 @@ public actor IMessageGateway: MessagingGateway {
                     unreadCount: 0,
                     // Messages accepts text through Apple events. Attachments would need a
                     // different mechanism, so the composer does not offer them here.
-                    capabilities: ConversationCapabilities(canSendText: true, attachmentKinds: [])
+                    capabilities: ConversationCapabilities(canSendText: true, attachmentKinds: []),
+                    isGroup: chat.isGroup
                 )
             )
             _ = route

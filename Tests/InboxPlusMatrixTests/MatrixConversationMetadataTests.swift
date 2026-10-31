@@ -29,3 +29,19 @@ import MatrixRustSDK
     #expect(message.body == "Unsupported message (com.example.message)")
     #expect(message.kind == .unsupported)
 }
+
+@Test func membershipAndProfileSyncDoNotBecomeMessages() {
+    let normalizer = MatrixEventNormalizer(accountID: "bridge")
+    for change: MembershipChange? in [.joined, .left, .invited, nil] {
+        for name: String? in ["Alex", "inboxplus", nil] {
+            #expect(normalizer.describe(
+                .roomMembership(userId: "@user:example", userDisplayName: name, change: change, reason: nil),
+                identifier: "membership"
+            ) == nil)
+        }
+    }
+    #expect(normalizer.describe(
+        .profileChange(displayName: "Alex", prevDisplayName: "A", avatarUrl: nil, prevAvatarUrl: nil),
+        identifier: "profile"
+    ) == nil)
+}

@@ -240,6 +240,8 @@ public struct RootView: View {
             )
         case .contacts:
             ContactsListView(
+                suggestions: model.suggestedContactLinks,
+                onLink: model.acceptSuggestedContactLink,
                 people: model.people,
                 items: model.inboxItems,
                 selectedPersonID: selectedPersonID,

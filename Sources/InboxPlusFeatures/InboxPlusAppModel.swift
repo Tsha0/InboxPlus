@@ -443,9 +443,33 @@ public final class InboxPlusAppModel {
         return directory.personID(linkedTo: identityID)
     }
 
+    public func canLinkConversation(_ route: ConversationRoute) -> Bool {
+        conversations.contains { $0.route == route && !$0.isGroup }
+    }
+
+    public var suggestedContactLinks: [SuggestedContactLink] {
+        SuggestedContactLink.matches(conversations: conversations.filter {
+            directory.personID(linkedTo: $0.identityID) == nil
+        }, accounts: accounts)
+    }
+
+    public func acceptSuggestedContactLink(_ suggestion: SuggestedContactLink) throws {
+        guard suggestedContactLinks.contains(suggestion) else { return }
+        let personID = UUID().uuidString
+        var updated = directory
+        try updated.createPerson(id: personID, displayName: suggestion.displayName)
+        for identityID in suggestion.identityIDs {
+            try updated.link(remoteIdentityID: identityID, to: personID)
+        }
+        directory = updated
+        rebuildInbox()
+        detailSelection = .personSummary(personID)
+    }
+
     public func linkOpenConversation(to personID: String) throws {
         guard
             let route = openRoute,
+            canLinkConversation(route),
             let identityID = conversations.first(where: { $0.route == route })?.identityID
         else { throw InboxPlusAppModelError.missingOpenConversation }
         try directory.link(remoteIdentityID: identityID, to: personID)
