@@ -231,7 +231,7 @@ extension GatewaySelection {
     /// a bug in Inbox+ rather than a permission the user has not granted.
     static func makeIMessageGateway() -> IMessageGateway? {
         do {
-            return IMessageGateway(store: try IMessageStore())
+            return IMessageGateway(store: try IMessageStore(), contacts: SystemContactSource())
         } catch {
             FileHandle.standardError.write(Data(
                 "Inbox+: iMessage is not available: \(error)\n".utf8
