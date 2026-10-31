@@ -105,6 +105,7 @@ final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
 struct InboxPlusApp: App {
     @NSApplicationDelegateAdaptor(InboxPlusAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
+    @FocusedValue(\.newConversationAction) private var newConversation
     @State private var updates = AppUpdateController.shared
     @State private var model = {
         let services = GatewaySelection.makeServices()
@@ -112,7 +113,8 @@ struct InboxPlusApp: App {
             gateway: services.gateway,
             directory: services.directory,
             media: services.media,
-            favouriteStore: services.favouriteStore
+            favouriteStore: services.favouriteStore,
+            accountLifecycle: services.accountLifecycle
         )
     }()
 
@@ -148,7 +150,12 @@ struct InboxPlusApp: App {
         }
         .windowResizability(.contentMinSize)
         .commands {
-            CommandGroup(replacing: .newItem) {}
+            InboxCommands()
+            CommandGroup(replacing: .newItem) {
+                Button("New Message…") { newConversation?() }
+                    .keyboardShortcut("n")
+                    .disabled(newConversation == nil)
+            }
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…", action: updates.checkForUpdates)
                     .disabled(!updates.canCheckForUpdates)

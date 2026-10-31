@@ -97,6 +97,17 @@ public struct BridgeProvisioningClient: BridgeLoginSession, Sendable {
         )
     }
 
+    /// Signs every login the acting user has on this bridge out of the network, and deletes it
+    /// from the bridge.
+    public func logOutEverywhere() async throws {
+        let _: EmptyMatrixResponse = try await client.send(
+            .post,
+            path: ["_matrix", "provision", "v3", "logout", "all"],
+            query: actingUser,
+            body: Data("{}".utf8)
+        )
+    }
+
     /// Validates values against the step's own declared fields before anything leaves the machine.
     ///
     /// The rules live on `BridgeLoginStep` so the UI can apply them on every keystroke without a

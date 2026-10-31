@@ -49,8 +49,21 @@ public struct SendReceipt: Sendable {
 public protocol MessagingGateway: Sendable {
     func loadSnapshot() async throws -> MessagingSnapshot
     func events() async -> AsyncStream<GatewayEvent>
+    /// Delivers a conversation's recent messages as `historicalMessageUpserted` if the snapshot
+    /// left them out. Called every time a conversation is opened, so a repeat must be cheap.
+    func loadRecentMessages(in route: ConversationRoute) async throws
     func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt
     /// Uploads and sends a local file. Like `sendText`, the receipt is only `acknowledged` once
     /// the server has confirmed it.
     func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt
+    /// Records that the user has read a conversation up to its latest message, wherever the next
+    /// snapshot reads unread counts from, so a badge cleared now stays cleared after a relaunch.
+    ///
+    /// Must never tell the other person their message was seen.
+    func markRead(_ route: ConversationRoute) async throws
+}
+
+public extension MessagingGateway {
+    /// A gateway that delivers each conversation's history on its own has nothing to load.
+    func loadRecentMessages(in route: ConversationRoute) async throws {}
 }

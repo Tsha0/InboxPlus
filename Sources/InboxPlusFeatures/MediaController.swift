@@ -54,6 +54,15 @@ public final class MediaController {
 
     /// Starts a download unless one already ran. Safe to call every time a view appears.
     public func load(_ attachment: MessageAttachment, accountID: String, messageID: String) {
+        if accountID == "imessage-local" {
+            guard let source = attachment.source?.source, let url = URL(string: source), url.isFileURL else {
+                states[attachment.id] = .failed("This attachment is not available on this Mac.")
+                return
+            }
+            states[attachment.id] = FileManager.default.isReadableFile(atPath: url.path)
+                ? .ready(url) : .failed("This attachment is missing or cannot be read. Check Full Disk Access in System Settings.")
+            return
+        }
         guard attachment.isDownloadable, let loader else { return }
         switch state(for: attachment) {
         case .idle, .failed: break
@@ -86,6 +95,11 @@ public final class MediaController {
     public func retry(_ attachment: MessageAttachment, accountID: String, messageID: String) {
         states[attachment.id] = .idle
         load(attachment, accountID: accountID, messageID: messageID)
+    }
+
+    /// Deletes what was downloaded for an account that is being removed.
+    public func purge(accountID: String) async throws {
+        try await loader?.purge(accountID: accountID)
     }
 
     public func refreshStorageWarning() {
