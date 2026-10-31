@@ -283,6 +283,8 @@ func typedStream(containing text: String) -> [UInt8] {
 }
 
 @Test func firstSendReconcilesADifferentMessagesGUID() async throws {
+    // The inbox leaves out chats with nothing in the last year, so the send has to be recent.
+    let yesterday = Int64((Date().timeIntervalSince1970 - 86_400 - AppleTimestamp.referenceOffset) * 1_000_000_000)
     let url = try makeDatabase("")
     defer { cleanUp(url) }
     let scripts = Mutex<[String]>([])
@@ -297,8 +299,8 @@ func typedStream(containing text: String) -> [UInt8] {
     process.arguments = [url.path, """
     INSERT INTO chat (guid, style, chat_identifier, service_name)
       VALUES ('assigned-guid', 45, 'person@example.com', 'iMessage');
-    INSERT INTO message (guid, text, date, is_from_me) VALUES ('sent', 'hello', \(nanoseconds), 1);
-    INSERT INTO chat_message_join VALUES (1, 1);
+    INSERT INTO message (guid, text, date, is_from_me) VALUES ('sent', 'hello', \(yesterday), 1);
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1);
     """]
     try process.run()
     process.waitUntilExit()
