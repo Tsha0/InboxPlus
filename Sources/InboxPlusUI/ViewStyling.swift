@@ -5,6 +5,9 @@ import SwiftUI
 /// trims them to the compact form messaging clients actually use.
 enum RelativeTime {
     static func short(_ date: Date, now: Date = Date()) -> String {
+        // A conversation with nothing displayable yet sorts on the epoch; it is not a time
+        // anything happened, so it has no label.
+        guard date.timeIntervalSince1970 > 0 else { return "" }
         let seconds = now.timeIntervalSince(date)
         guard seconds >= 0 else { return "now" }
         switch seconds {
