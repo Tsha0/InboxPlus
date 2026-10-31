@@ -73,6 +73,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <string>AGPL-3.0-or-later</string>
   <key>NSAppleEventsUsageDescription</key>
   <string>Inbox+ sends your iMessage replies by asking Messages to send them. It is never used for anything else.</string>
+  <key>NSContactsUsageDescription</key>
+  <string>Inbox+ shows the names from your contacts instead of phone numbers and email addresses in iMessage. Contacts never leave your Mac.</string>
 </dict>
 </plist>
 PLIST

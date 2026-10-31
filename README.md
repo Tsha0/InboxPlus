@@ -100,7 +100,8 @@ rather than a password:
 2. Add `/Applications/Inbox+.app`
 3. **Quit and reopen the app** — macOS only applies the grant to a newly launched process
 
-Sending prompts separately for Automation control of Messages the first time.
+Sending prompts separately for Automation control of Messages the first time. Inbox+ also asks for
+Contacts once, to show names instead of phone numbers; without it, numbers and addresses are shown.
 
 ## Developing
 

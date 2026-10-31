@@ -111,17 +111,57 @@ public final class IMessageStore {
         }
     }
 
-    /// The most recent messages across every conversation.
+    /// Each chat's newest message, which is what its inbox row shows. A chat with none is absent.
     ///
-    /// Ordered newest-first in SQL so the limit keeps recent history rather than the oldest
-    /// messages ever sent, then reversed so callers get chronological order.
-    public func recentMessages(limit: Int = 200) throws -> [IMessageRow] {
-        try messages(where: "", limit: limit).reversed()
+    /// Ordered by date rather than row id: Messages in iCloud can download old history after newer
+    /// messages, so a chat's highest row id is not always its newest message. Reactions and rows
+    /// with nothing to show, such as someone joining a group, are passed over.
+    ///
+    /// `CROSS JOIN` and the unary `+` pin the plan to one index lookup per chat. Left to choose,
+    /// SQLite can treat `associated_message_guid IS NULL` as selective, start from `message`, and
+    /// repeat the per-chat lookup for every message ever sent.
+    public func latestMessages() throws -> [IMessageRow] {
+        try messages("""
+        FROM chat
+        CROSS JOIN message ON message.ROWID = (
+            SELECT latest.message_id FROM chat_message_join AS latest
+            CROSS JOIN message AS candidate ON candidate.ROWID = latest.message_id
+            WHERE latest.chat_id = chat.ROWID
+              AND +candidate.associated_message_guid IS NULL
+              AND (candidate.text IS NOT NULL OR candidate.attributedBody IS NOT NULL
+                   OR EXISTS (SELECT 1 FROM message_attachment_join
+                              WHERE message_attachment_join.message_id = candidate.ROWID))
+            ORDER BY latest.message_date DESC, latest.message_id DESC
+            LIMIT 1)
+        LEFT JOIN handle ON handle.ROWID = message.handle_id
+        """)
+    }
+
+    /// A chat's most recent messages, newest-first in SQL so the limit keeps recent history, then
+    /// reversed so callers get chronological order.
+    public func recentMessages(inChat chatRowID: Int64, limit: Int) throws -> [IMessageRow] {
+        try messages("""
+        FROM chat_message_join
+        CROSS JOIN message ON message.ROWID = chat_message_join.message_id
+        JOIN chat ON chat.ROWID = chat_message_join.chat_id
+        LEFT JOIN handle ON handle.ROWID = message.handle_id
+        WHERE chat_message_join.chat_id = \(chatRowID) AND +message.associated_message_guid IS NULL
+        ORDER BY chat_message_join.message_date DESC, chat_message_join.message_id DESC
+        LIMIT \(limit)
+        """).reversed()
     }
 
     /// Everything newer than a row id, which is how new messages are noticed.
     public func messages(afterRowID rowID: Int64) throws -> [IMessageRow] {
-        try messages(where: "AND message.ROWID > \(rowID)", limit: 500).reversed()
+        try messages("""
+        FROM message
+        JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
+        JOIN chat ON chat.ROWID = chat_message_join.chat_id
+        LEFT JOIN handle ON handle.ROWID = message.handle_id
+        WHERE message.associated_message_guid IS NULL AND message.ROWID > \(rowID)
+        ORDER BY message.ROWID DESC
+        LIMIT 500
+        """).reversed()
     }
 
     public func maxMessageRowID() throws -> Int64 {
@@ -129,19 +169,15 @@ public final class IMessageStore {
             .first ?? 0
     }
 
-    private func messages(where clause: String, limit: Int) throws -> [IMessageRow] {
+    /// Reads one message per row; `query` is everything from `FROM` on, joining `message`,
+    /// `chat` and `handle`.
+    private func messages(_ query: String) throws -> [IMessageRow] {
         let sql = """
         SELECT message.ROWID, message.guid, chat.guid, message.text, message.attributedBody,
                handle.id, message.is_from_me, message.date,
                (SELECT COUNT(*) FROM message_attachment_join
                  WHERE message_attachment_join.message_id = message.ROWID)
-        FROM message
-        JOIN chat_message_join ON chat_message_join.message_id = message.ROWID
-        JOIN chat ON chat.ROWID = chat_message_join.chat_id
-        LEFT JOIN handle ON handle.ROWID = message.handle_id
-        WHERE message.associated_message_guid IS NULL \(clause)
-        ORDER BY message.ROWID DESC
-        LIMIT \(limit)
+        \(query)
         """
         return try rows(sql) { statement in
             IMessageRow(
@@ -182,7 +218,7 @@ public final class IMessageStore {
 
     // MARK: - Plumbing
 
-    private func rows<T>(_ sql: String, _ decode: (OpaquePointer) -> T) throws -> [T] {
+    func rows<T>(_ sql: String, _ decode: (OpaquePointer) -> T) throws -> [T] {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
             throw IMessageStoreError.queryFailed(String(cString: sqlite3_errmsg(handle)))
@@ -203,7 +239,7 @@ public final class IMessageStore {
         return results
     }
 
-    private static func string(_ statement: OpaquePointer, _ column: Int32) -> String? {
+    static func string(_ statement: OpaquePointer, _ column: Int32) -> String? {
         guard let raw = sqlite3_column_text(statement, column) else { return nil }
         return String(cString: raw)
     }
