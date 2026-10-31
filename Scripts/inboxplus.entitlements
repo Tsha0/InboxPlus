@@ -21,6 +21,10 @@
   <key>com.apple.security.automation.apple-events</key>
   <true/>
 
+  <!-- iMessage stores only phone numbers and addresses; names come from Contacts, read locally. -->
+  <key>com.apple.security.personal-information.addressbook</key>
+  <true/>
+
   <!-- Deliberately absent: JIT, and getting an unsigned-memory exception. InboxPlus runs no
        interpreted code of its own, so granting either would widen the attack surface for
        nothing. -->

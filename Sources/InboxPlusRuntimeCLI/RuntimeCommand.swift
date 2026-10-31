@@ -101,7 +101,8 @@ public enum RuntimeCommand: Equatable, Sendable {
       bootstrap --profile <name> --python <path>
           Prepare the pinned profile-local Synapse runtime.
       start --profile <name> [--exit-with-parent]
-          Launch the supervised loopback-only Synapse process and every prepared bridge.
+          Launch the supervised loopback-only Synapse process and every prepared bridge
+          that is not disconnected, stopping and starting bridges as accounts change.
           --exit-with-parent also stops when the launching process goes away, which is how
           the app takes its runtime down with it even if the app is killed outright.
       status --profile <name>

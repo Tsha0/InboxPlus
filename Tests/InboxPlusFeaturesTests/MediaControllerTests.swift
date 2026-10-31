@@ -12,6 +12,16 @@ private struct StubFetcher: RemoteMediaFetching {
     }
 }
 
+/// Refuses until it is connected, like a Matrix client asked for media before it has signed in.
+private actor ConnectingFetcher: RemoteMediaFetching {
+    private var connected = false
+    func connect() { connected = true }
+    func fetch(_ handle: MediaHandle) async throws -> Data {
+        guard connected else { throw Failure() }
+        return Data(repeating: 4, count: 16)
+    }
+}
+
 private struct FixedFreeSpace: FreeSpaceReporting {
     let bytes: Int?
     func freeBytes() -> Int? { bytes }
@@ -24,13 +34,14 @@ private struct Failure: Error, LocalizedError {
 @MainActor
 private func makeController(
     failure: (any Error)? = nil,
+    fetcher: (any RemoteMediaFetching)? = nil,
     freeBytes: Int = 100 * 1024 * 1024 * 1024
 ) throws -> (MediaController, URL) {
     let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         .appendingPathComponent(".build/MediaControllerTests-\(UUID().uuidString)")
     let loader = MediaLoader(
         cache: try MediaCache(directory: directory),
-        fetcher: StubFetcher(failure: failure),
+        fetcher: fetcher ?? StubFetcher(failure: failure),
         freeSpace: FixedFreeSpace(bytes: freeBytes)
     )
     return (MediaController(loader: loader), directory)
@@ -77,6 +88,24 @@ func aFailedDownloadSaysWhyAndCanBeRetried() async throws {
     // A failure must not be sticky, or a transient network blip loses the photo forever.
     controller.retry(image, accountID: "instagram", messageID: "$1")
     #expect(controller.state(for: image) != .idle)
+}
+
+@MainActor
+@Test(.timeLimit(.minutes(1)))
+func aDownloadAskedForBeforeTheClientConnectedLoadsOnRetry() async throws {
+    // The loader is attached before the gateway's client finishes connecting. A fetch in that
+    // window fails, and "Try again" has to fetch again rather than replay that failure.
+    let fetcher = ConnectingFetcher()
+    let (controller, directory) = try makeController(fetcher: fetcher)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    controller.load(image, accountID: "instagram", messageID: "$1")
+    _ = try await waitForFailure(controller, image)
+
+    await fetcher.connect()
+    controller.retry(image, accountID: "instagram", messageID: "$1")
+    let url = try await waitForFile(controller, image)
+    #expect(FileManager.default.fileExists(atPath: url.path))
 }
 
 @MainActor

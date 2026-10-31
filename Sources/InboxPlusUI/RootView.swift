@@ -12,11 +12,15 @@ public typealias BridgeLoginSessionProvider =
 
 public struct RootView: View {
     @Bindable var model: InboxPlusAppModel
+    @State private var inboxQuery = ""
+    @State private var showsUnreadOnly = false
+    @State private var searchFocusRequest: UUID?
     @State private var section: SidebarSection = .inbox
     @State private var accountFlow: AccountFlow?
     @State private var connectFailure: String?
     /// Informational, not a failure — reusing the failure alert would title good news as an error.
     @State private var connectNotice: ConnectNotice?
+    @State private var accountFailure: AccountFailure?
 
     private let makeLoginSession: BridgeLoginSessionProvider?
     private let update: AppUpdatePresentation?
@@ -24,6 +28,7 @@ public struct RootView: View {
 
     enum AccountFlow: Identifiable {
         case picker
+        case newConversation
         /// Downloading and registering a bridge this profile has never installed, which takes long
         /// enough that a picker sitting there unchanged would read as a dead click.
         case installing(Platform)
@@ -35,6 +40,7 @@ public struct RootView: View {
         var id: String {
             switch self {
             case .picker: "picker"
+            case .newConversation: "new-conversation"
             case let .installing(platform): "installing-\(platform.rawValue)"
             case let .login(platform, _): "login-\(platform.rawValue)"
             case .iMessagePermissions: "imessage"
@@ -47,6 +53,12 @@ public struct RootView: View {
         let title: String
         let message: String
         var id: String { title }
+    }
+
+    /// An account change that did not happen, titled with what was attempted.
+    struct AccountFailure {
+        let title: String
+        let message: String
     }
 
     public init(
@@ -96,7 +108,9 @@ public struct RootView: View {
                     .accessibilityIdentifier("health-banner")
             }
             HStack(spacing: 0) {
-                NavigationRailView(selection: $section, update: update, onUpdate: onUpdate)
+                NavigationRailView(selection: $section, update: update, onUpdate: onUpdate,
+                                   canCompose: canStartNewConversation,
+                                   onCompose: { accountFlow = .newConversation })
                     .fixedSize(horizontal: true, vertical: false)
                 Divider()
                 sidebar
@@ -108,6 +122,7 @@ public struct RootView: View {
         }
         .frame(minWidth: 900, minHeight: 600)
         .disabled(model.isPreparingForUpdate)
+        .focusedSceneValue(\.inboxCommandActions, commandActions)
         .tint(InboxPlusTheme.ink)
         .accentColor(InboxPlusTheme.ink)
         // The menu bar panel owns the connections overview; a Connect there lands here as a
@@ -117,8 +132,11 @@ public struct RootView: View {
             model.clearConnectionRequest()
             startConnecting(platform)
         }
+        .focusedSceneValue(\.newConversationAction, canStartNewConversation ? { accountFlow = .newConversation } : nil)
         .sheet(item: $accountFlow) { flow in
             switch flow {
+            case .newConversation:
+                NewConversationView(model: model)
             case .picker:
                 AccountPickerView(
                     connectedPlatforms: model.platformsWithAccounts,
@@ -174,6 +192,17 @@ public struct RootView: View {
         } message: {
             Text(connectNotice?.message ?? "")
         }
+        .alert(
+            accountFailure?.title ?? "",
+            isPresented: Binding(
+                get: { accountFailure != nil },
+                set: { if !$0 { accountFailure = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { accountFailure = nil }
+        } message: {
+            Text(accountFailure?.message ?? "")
+        }
     }
 
     private func startConnecting(_ platform: Platform) {
@@ -228,11 +257,83 @@ public struct RootView: View {
         accountFlow = nil
     }
 
+    private var commandActions: InboxCommandActions? {
+        guard accountFlow == nil, connectFailure == nil, connectNotice == nil, accountFailure == nil,
+              !model.isPreparingForUpdate else { return nil }
+        let canNavigate = !InboxProjector.filtered(model.inboxItems, query: inboxQuery, unreadOnly: showsUnreadOnly).isEmpty
+            && !model.hasUnfinishedMessagingWork
+        let route = model.openRoute
+        return InboxCommandActions(
+            selectSection: { section = $0 },
+            focusSearch: { section = .inbox; searchFocusRequest = UUID() },
+            clearSearch: section == .inbox && !inboxQuery.isEmpty ? { inboxQuery = "" } : nil,
+            nextConversation: canNavigate ? { section = .inbox; model.navigateConversation(forward: true, query: inboxQuery, unreadOnly: showsUnreadOnly) } : nil,
+            previousConversation: canNavigate ? { section = .inbox; model.navigateConversation(forward: false, query: inboxQuery, unreadOnly: showsUnreadOnly) } : nil,
+            toggleUnread: route.map { route in { model.toggleConversationUnread(route) } },
+            isUnread: model.conversations.first { $0.route == route }?.unreadCount ?? 0 > 0
+        )
+    }
+
+    private var canStartNewConversation: Bool {
+        !model.hasUnfinishedMessagingWork && !model.isPreparingForUpdate
+            && accountFlow == nil && connectFailure == nil && connectNotice == nil && accountFailure == nil
+    }
+
+    private func disconnect(_ account: ConnectedAccount) {
+        Task { @MainActor in
+            do { try await model.disconnect(accountID: account.id) }
+            catch {
+                accountFailure = AccountFailure(
+                    title: "\(account.displayName) is still connected",
+                    message: String(describing: error)
+                )
+            }
+        }
+    }
+
+    private func reconnect(_ account: ConnectedAccount) {
+        Task { @MainActor in
+            do {
+                guard try await model.reconnect(accountID: account.id) == .onNextLaunch else { return }
+                connectNotice = ConnectNotice(
+                    title: "\(account.displayName) is reconnected",
+                    message: "Quit and reopen Inbox+ to load your \(account.displayName) conversations."
+                )
+            } catch {
+                accountFailure = AccountFailure(
+                    title: "\(account.displayName) is still disconnected",
+                    message: String(describing: error)
+                )
+            }
+        }
+    }
+
+    private func erase(_ account: ConnectedAccount) {
+        Task { @MainActor in
+            do {
+                let removal = try await model.eraseAccount(accountID: account.id)
+                guard !removal.unfinished.isEmpty else { return }
+                connectNotice = ConnectNotice(
+                    title: "\(account.displayName) was removed",
+                    message: removal.unfinished.joined(separator: "\n\n")
+                )
+            } catch {
+                accountFailure = AccountFailure(
+                    title: "\(account.displayName) was not removed",
+                    message: String(describing: error)
+                )
+            }
+        }
+    }
+
     @ViewBuilder private var sidebar: some View {
         switch section {
         case .inbox:
             InboxView(
                 items: model.inboxItems,
+                query: $inboxQuery,
+                showsUnreadOnly: $showsUnreadOnly,
+                searchFocusRequest: searchFocusRequest,
                 selectedID: selectedInboxID,
                 favouriteError: model.favouriteError,
                 onToggleFavourite: model.toggleFavourite,
@@ -240,6 +341,8 @@ public struct RootView: View {
             )
         case .contacts:
             ContactsListView(
+                suggestions: model.suggestedContactLinks,
+                onLink: model.acceptSuggestedContactLink,
                 people: model.people,
                 items: model.inboxItems,
                 selectedPersonID: selectedPersonID,
@@ -250,11 +353,12 @@ public struct RootView: View {
                 accounts: model.accounts,
                 health: model.health,
                 isConnected: model.isConnected,
+                isChanging: { model.accountIDsChanging.contains($0) },
                 lastActivity: { model.lastActivity(for: $0) },
                 onAddAccount: { accountFlow = .picker },
-                onDisconnect: { model.disconnect(accountID: $0.id) },
-                onReconnect: { model.reconnect(accountID: $0.id) },
-                onErase: { model.eraseAccount(accountID: $0.id) }
+                onDisconnect: disconnect,
+                onReconnect: reconnect,
+                onErase: erase
             )
         }
     }

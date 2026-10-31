@@ -7,6 +7,7 @@ struct AccountsListView: View {
     let accounts: [ConnectedAccount]
     let health: ServiceHealth
     let isConnected: (String) -> Bool
+    let isChanging: (String) -> Bool
     let lastActivity: (String) -> Date?
     let onAddAccount: () -> Void
     let onDisconnect: (ConnectedAccount) -> Void
@@ -72,17 +73,25 @@ struct AccountsListView: View {
             ),
             titleVisibility: .visible
         ) {
-            Button("Remove account and delete its messages", role: .destructive) {
+            Button("Sign out and remove", role: .destructive) {
                 if let account = pendingErase { onErase(account) }
                 pendingErase = nil
             }
             Button("Cancel", role: .cancel) { pendingErase = nil }
         } message: {
-            Text("""
-            Every conversation and message from this account is deleted from Inbox+. \
-            This cannot be undone. To keep the history, disconnect instead.
-            """)
+            Text(Self.removalExplanation(for: pendingErase?.displayName ?? "this network"))
         }
+    }
+
+    /// Says exactly what removing does, and no more: the network keeps its own copy of every
+    /// conversation, and Inbox+ cannot reach that.
+    static func removalExplanation(for network: String) -> String {
+        """
+        Inbox+ signs out of \(network) and deletes its bridge, saved login and downloaded files, \
+        then leaves every \(network) conversation so none of it appears in Inbox+ again. Your \
+        messages stay on \(network) itself. This cannot be undone. To keep the history in Inbox+, \
+        disconnect instead.
+        """
     }
 
     private func row(_ account: ConnectedAccount) -> some View {
@@ -100,25 +109,38 @@ struct AccountsListView: View {
                     .foregroundStyle(.tertiary)
             }
             Spacer(minLength: 4)
-            Circle()
-                .fill(connected ? InboxPlusTheme.ink : Color.secondary)
-                .frame(width: 8, height: 8)
-                .accessibilityLabel(connected ? "Connected" : "Disconnected")
-            Menu {
-                if connected {
-                    Button("Disconnect") { onDisconnect(account) }
-                } else {
-                    Button("Reconnect") { onReconnect(account) }
-                }
-                Divider()
-                Button("Remove account…", role: .destructive) { pendingErase = account }
-            } label: {
-                Image(systemName: "ellipsis.circle")
+            if isChanging(account.id) {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Updating \(account.platform.accessibilityLabel)")
+            } else {
+                Circle()
+                    .fill(connected ? InboxPlusTheme.ink : Color.secondary)
+                    .frame(width: 8, height: 8)
+                    .accessibilityLabel(connected ? "Connected" : "Disconnected")
             }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .accessibilityLabel("Manage \(account.platform.accessibilityLabel)")
-            .accessibilityIdentifier("account-menu-\(account.id)")
+            if account.canDisconnect || account.canRemove {
+                Menu {
+                    if account.canDisconnect {
+                        if connected {
+                            Button("Disconnect") { onDisconnect(account) }
+                        } else {
+                            Button("Reconnect") { onReconnect(account) }
+                        }
+                    }
+                    if account.canRemove {
+                        Divider()
+                        Button("Remove account…", role: .destructive) { pendingErase = account }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(isChanging(account.id))
+                .accessibilityLabel("Manage \(account.platform.accessibilityLabel)")
+                .accessibilityIdentifier("account-menu-\(account.id)")
+            }
         }
         .padding(.vertical, 3)
         .accessibilityElement(children: .contain)

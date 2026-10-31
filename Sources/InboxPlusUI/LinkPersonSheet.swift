@@ -8,6 +8,13 @@ struct LinkPersonSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var newName = ""
 
+    init(people: [InboxPlusPerson], suggestedName: String = "", onSelect: @escaping (String) -> Void, onCreate: @escaping (String) -> Void) {
+        self.people = people
+        self.onSelect = onSelect
+        self.onCreate = onCreate
+        _newName = State(initialValue: suggestedName)
+    }
+
     private var trimmedName: String {
         newName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
