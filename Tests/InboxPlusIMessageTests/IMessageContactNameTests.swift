@@ -17,7 +17,8 @@ private let savedContacts = [
 private let hexGroupGUID = "iMessage;+;0123456789abcdef0123456789abcdef"
 
 /// Two one-to-one chats, two unnamed groups (one with an internal `chat…` id, one with a hex id),
-/// and a group the user named. Handle 4 is the same number as handle 1 over SMS.
+/// and a group the user named, each with a recent message. Handle 4 is the same number as handle 1
+/// over SMS.
 private let namingFixture = """
 INSERT INTO handle (id, service) VALUES ('+15550100100', 'iMessage'), ('friend@example.com', 'iMessage'),
   ('+15550100101', 'iMessage'), ('+15550100100', 'SMS'), ('+15550100102', 'iMessage'),
@@ -31,11 +32,17 @@ INSERT INTO chat (guid, style, chat_identifier, service_name, display_name) VALU
 INSERT INTO chat_handle_join VALUES (3, 1), (3, 2), (3, 3), (3, 4),
   (4, 1), (4, 2), (4, 3), (4, 5), (4, 6), (5, 1), (5, 2);
 INSERT INTO message (guid, text, handle_id, date, is_from_me) VALUES
-  ('m1', 'see you soon', 1, \(nanoseconds), 0),
-  ('m2', 'on the way', 2, \(nanoseconds), 0),
-  ('m3', 'me too', 3, \(nanoseconds), 0);
-INSERT INTO chat_message_join VALUES (1, 1), (3, 2), (3, 3);
+  ('m1', 'see you soon', 1, \(recent), 0),
+  ('m2', 'on the way', 2, \(recent), 0),
+  ('m3', 'me too', 3, \(recent + 1_000_000_000), 0),
+  ('m4', 'thanks', 2, \(recent), 0),
+  ('m5', 'hello all', 1, \(recent), 0),
+  ('m6', 'saturday?', 1, \(recent), 0);
+INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (3, 2), (3, 3), (2, 4), (4, 5), (5, 6);
 """
+
+/// Yesterday, in the nanoseconds since 2001 that Messages writes. Chats quiet for a year are hidden.
+private let recent = Int64((Date().timeIntervalSince1970 - 86_400 - AppleTimestamp.referenceOffset) * 1_000_000_000)
 
 private func snapshot(contacts: any IMessageContactSource) async throws -> MessagingSnapshot {
     let url = try makeDatabase(namingFixture)

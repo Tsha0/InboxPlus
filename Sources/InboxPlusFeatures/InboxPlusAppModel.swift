@@ -228,7 +228,20 @@ public final class InboxPlusAppModel {
 
     public func openConversation(_ route: ConversationRoute) {
         detailSelection = .conversation(route)
+        loadRecentMessages(in: route)
         markConversationRead(route)
+    }
+
+    /// A source may leave history out of its snapshot, so opening a conversation is what asks for
+    /// it. The messages arrive as ordinary gateway events.
+    private func loadRecentMessages(in route: ConversationRoute) {
+        Task { [gateway] in
+            do {
+                try await gateway.loadRecentMessages(in: route)
+            } catch {
+                FileHandle.standardError.write(Data("Inbox+: could not load recent messages: \(error)\n".utf8))
+            }
+        }
     }
 
     public func markConversationRead(_ route: ConversationRoute) {

@@ -6,6 +6,7 @@ import Testing
 private actor RecordingGateway: MessagingGateway {
     private let snapshot: MessagingSnapshot
     private var continuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
+    private(set) var historyRoutes: [ConversationRoute] = []
     private(set) var sentRoutes: [ConversationRoute] = []
 
     init(accounts: [ConnectedAccount]) {
@@ -26,6 +27,10 @@ private actor RecordingGateway: MessagingGateway {
         continuations.values.forEach { $0.yield(event) }
     }
 
+    func loadRecentMessages(in route: ConversationRoute) async throws {
+        historyRoutes.append(route)
+    }
+
     func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
         sentRoutes.append(route)
         return SendReceipt(messageID: UUID().uuidString, route: route, deliveryState: .pending)
@@ -34,6 +39,25 @@ private actor RecordingGateway: MessagingGateway {
     func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt {
         try await sendText(attachment.filename, to: route)
     }
+}
+
+@Test func openingAConversationAsksTheGatewayThatOwnsIt() async throws {
+    // The protocol's default does nothing, so a wrapper that forgot to pass this on would leave
+    // every iMessage conversation showing only its latest message.
+    let matrix = RecordingGateway(
+        accounts: [ConnectedAccount(id: "matrix-local", platform: .matrix, displayName: "Local Matrix")]
+    )
+    let imessage = RecordingGateway(
+        accounts: [ConnectedAccount(id: "imessage-local", platform: .iMessage, displayName: "iMessage")]
+    )
+    let composite = CompositeMessagingGateway([matrix, imessage])
+    _ = try await composite.loadSnapshot()
+
+    let route = ConversationRoute(accountID: "imessage-local", conversationID: "iMessage;-;a@b.com")
+    try await composite.loadRecentMessages(in: route)
+
+    #expect(await imessage.historyRoutes == [route])
+    #expect(await matrix.historyRoutes.isEmpty)
 }
 
 @Test(.timeLimit(.minutes(1)))

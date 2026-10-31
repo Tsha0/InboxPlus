@@ -45,6 +45,10 @@ actor DeferredRuntimeGateway: MessagingGateway {
         return await gateway.events()
     }
 
+    func loadRecentMessages(in route: ConversationRoute) async throws {
+        try await gateway().loadRecentMessages(in: route)
+    }
+
     func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
         try await gateway().sendText(body, to: route)
     }
