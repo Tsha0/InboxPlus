@@ -1,4 +1,5 @@
 import Foundation
+import InboxPlusCore
 import InboxPlusFeatures
 import InboxPlusGateway
 import InboxPlusBridge
@@ -30,6 +31,7 @@ enum GatewaySelection {
         /// exist, is indistinguishable from a bug.
         let directory: ContactDirectory
         var favouriteStore: InboxFavouriteStore? = nil
+        var accountLifecycle: (any AccountLifecycle)? = nil
     }
 
     @MainActor
@@ -55,12 +57,16 @@ enum GatewaySelection {
             // The media controller exists before the runtime does, so the transcript can render
             // immediately and attach its loader once there is a homeserver to fetch from.
             let media = MediaController()
+            let sources = LiveSources()
 
             let gateway = DeferredRuntimeGateway(
                 paths: paths,
                 profileName: profileName,
-                build: { state in try makeMatrixGateway(paths: paths, state: state) },
-                onReady: { state in await attachMedia(media, paths: paths, state: state) }
+                build: { state in
+                    let built = try makeMatrixGateway(paths: paths, state: state, sources: sources)
+                    await attachMedia(media, fetcher: built.media, paths: paths)
+                    return built.gateway
+                }
             )
 
             return Services(
@@ -68,7 +74,8 @@ enum GatewaySelection {
                 media: media,
                 // Real accounts start with no linked people. Linking is something the user does.
                 directory: ContactDirectory(),
-                favouriteStore: InboxFavouriteStore(fileURL: paths.profile.appendingPathComponent("inbox-favourites.json"))
+                favouriteStore: InboxFavouriteStore(fileURL: paths.profile.appendingPathComponent("inbox-favourites.json")),
+                accountLifecycle: ProfileAccountLifecycle(paths: paths, sources: sources)
             )
         } catch {
             // Surface the reason instead of silently substituting fake conversations.
@@ -85,11 +92,17 @@ enum GatewaySelection {
 }
 
 extension GatewaySelection {
-    /// Builds the real gateway, once the homeserver behind it is answering.
+    /// Builds the real gateway, once the homeserver behind it is answering, and the media fetcher
+    /// that downloads through the client that gateway connects.
+    ///
+    /// `makeIMessage` is replaceable so a test can build this without opening the Messages
+    /// database.
     static func makeMatrixGateway(
         paths: RuntimePaths,
-        state: RuntimeProfileState
-    ) throws -> any MessagingGateway {
+        state: RuntimeProfileState,
+        sources: LiveSources = LiveSources(),
+        makeIMessage: (RuntimePaths) -> IMessageGateway? = { GatewaySelection.makeIMessageGateway(paths: $0) }
+    ) throws -> (gateway: any MessagingGateway, media: MatrixMediaFetcher) {
         guard let port = state.snapshot.loopbackPort else {
             throw GatewaySelectionError.profileNotRunning(paths.profile.lastPathComponent)
         }
@@ -150,41 +163,48 @@ extension GatewaySelection {
             }
         )
 
+        sources.matrix = matrix
+
         // iMessage never reaches the homeserver, so it sits beside the Matrix gateway rather than
         // behind it. It is only added when the Messages database is actually readable: offering a
         // source that will throw on every read is worse than not offering it.
-        var sources: [any MessagingGateway] = [matrix]
-        if let imessage = makeIMessageGateway() { sources.append(imessage) }
-        return sources.count == 1 ? matrix : CompositeMessagingGateway(sources)
+        var gateways: [any MessagingGateway] = [matrix]
+        if try DisconnectedAccountStore(paths: paths).load().contains(IMessageGateway.accountID) {
+            gateways.append(disconnectedIMessage())
+        } else if let imessage = makeIMessage(paths) {
+            sources.iMessage = imessage
+            gateways.append(imessage)
+        }
+        let gateway: any MessagingGateway =
+            gateways.count == 1 ? matrix : CompositeMessagingGateway(gateways)
+        return (gateway, matrix.mediaFetcher)
+    }
+
+    /// A disconnected iMessage is not read at all, but stays listed so it can be reconnected.
+    static func disconnectedIMessage() -> any MessagingGateway {
+        InMemoryMessagingGateway(seed: MessagingSnapshot(
+            accounts: [ConnectedAccount(id: IMessageGateway.accountID, platform: .iMessage, displayName: "iMessage")],
+            identities: [],
+            conversations: [],
+            messagesByRoute: [:]
+        ))
     }
 
     /// Gives the media controller something to download with, now that there is a homeserver.
     static func attachMedia(
         _ media: MediaController,
-        paths: RuntimePaths,
-        state: RuntimeProfileState
+        fetcher: any RemoteMediaFetching,
+        paths: RuntimePaths
     ) async {
-        guard let port = state.snapshot.loopbackPort else { return }
         // Media lives beside the rest of the profile's private data and is bounded, so a long
         // history cannot fill the disk on its own. Per profile, not per runtime root: two profiles
         // are two separate installations and must not share cached message content.
         let cacheDirectory = paths.profile.appendingPathComponent("media")
         guard let cache = try? MediaCache(directory: cacheDirectory) else { return }
 
-        let homeserver = URL(string: "http://127.0.0.1:\(port)")!
-        guard let provisioner = try? MatrixAccountProvisioner(
-            baseURL: homeserver,
-            serverName: state.serverName,
-            registrationSecret: state.registrationSecret
-        ) else { return }
-        let client = InboxPlusMatrixClient(
-            homeserverURL: homeserver,
-            store: MatrixClientStore(profile: paths),
-            provisioner: provisioner
-        )
         let loader = MediaLoader(
             cache: cache,
-            fetcher: MatrixMediaFetcher(client: client),
+            fetcher: fetcher,
             freeSpace: VolumeFreeSpaceReporter(url: cacheDirectory)
         )
         await MainActor.run { media.attach(loader: loader) }
@@ -231,9 +251,15 @@ extension GatewaySelection {
     /// Full Disk Access is the usual reason and it cannot be requested programmatically, so the
     /// failure is written to stderr rather than swallowed — a silently missing iMessage looks like
     /// a bug in Inbox+ rather than a permission the user has not granted.
-    static func makeIMessageGateway() -> IMessageGateway? {
+    static func makeIMessageGateway(paths: RuntimePaths) -> IMessageGateway? {
         do {
-            return IMessageGateway(store: try IMessageStore())
+            return IMessageGateway(
+                store: try IMessageStore(),
+                contacts: SystemContactSource(),
+                readMarkerStore: IMessageReadMarkerStore(
+                    fileURL: paths.profile.appendingPathComponent("imessage-read-markers.json")
+                )
+            )
         } catch {
             FileHandle.standardError.write(Data(
                 "Inbox+: iMessage is not available: \(error)\n".utf8

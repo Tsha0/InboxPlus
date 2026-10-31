@@ -68,5 +68,10 @@ public actor InMemoryMessagingGateway: MessagingGateway {
         return SendReceipt(messageID: message.id, route: route, deliveryState: message.deliveryState)
     }
 
+    public func markRead(_ route: ConversationRoute) async throws {
+        guard let index = snapshot.conversations.firstIndex(where: { $0.route == route }) else { return }
+        snapshot.conversations[index].unreadCount = 0
+    }
+
     private func removeContinuation(_ id: UUID) { continuations[id] = nil }
 }

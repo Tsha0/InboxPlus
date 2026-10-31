@@ -8,10 +8,13 @@ import InboxPlusGateway
 /// The rest of Inbox+ only ever holds a `MediaHandle`, so this is the single place that knows an
 /// `mxc://` URI is what it contains. The SDK handles authenticated media and decryption for
 /// encrypted rooms, which is why the bytes are asked of it rather than of a plain HTTP client.
+///
+/// Obtained from `MatrixMessagingGateway.mediaFetcher`, so it shares the client the gateway
+/// connects.
 public struct MatrixMediaFetcher: RemoteMediaFetching {
-    private let client: InboxPlusMatrixClient
+    let client: InboxPlusMatrixClient
 
-    public init(client: InboxPlusMatrixClient) {
+    init(client: InboxPlusMatrixClient) {
         self.client = client
     }
 

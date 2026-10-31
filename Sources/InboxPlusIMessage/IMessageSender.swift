@@ -36,6 +36,21 @@ public struct IMessageSender: Sendable {
         try run(Self.script(body: body, chatGUID: guid))
     }
 
+    @discardableResult
+    public func send(_ body: String, toNewRecipient recipient: String) throws -> String {
+        try run(Self.newRecipientScript(body: body, recipient: recipient))
+    }
+
+    static func newRecipientScript(body: String, recipient: String) -> String {
+        """
+        tell application "Messages"
+            set targetService to first service whose service type is iMessage
+            set targetBuddy to buddy "\(escape(recipient))" of targetService
+            send "\(escape(body))" to targetBuddy
+        end tell
+        """
+    }
+
     /// Addresses the existing chat by its GUID rather than looking a buddy up by handle.
     ///
     /// A handle lookup picks a service for you and silently sends green-bubble SMS when the

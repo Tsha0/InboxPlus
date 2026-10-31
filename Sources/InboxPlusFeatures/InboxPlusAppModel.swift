@@ -135,6 +135,7 @@ public final class InboxPlusAppModel {
     private var draftRevision: UInt64 = 0
     private var sendsInFlight = 0
     private var disconnectedAccountIDs: Set<String> = []
+    private let accountLifecycle: (any AccountLifecycle)?
     private var sendFailuresByRoute: [ConversationRoute: String] = [:]
     private var latestSendGenerationByRoute: [ConversationRoute: UInt64] = [:]
     private var startupID: UUID?
@@ -153,12 +154,14 @@ public final class InboxPlusAppModel {
         gateway: any MessagingGateway,
         directory: ContactDirectory = .init(),
         media: MediaController = MediaController(),
-        favouriteStore: InboxFavouriteStore? = nil
+        favouriteStore: InboxFavouriteStore? = nil,
+        accountLifecycle: (any AccountLifecycle)? = nil
     ) {
         self.gateway = gateway
         self.directory = directory
         self.media = media
         self.favouriteStore = favouriteStore
+        self.accountLifecycle = accountLifecycle
         do { favouriteRoutes = try favouriteStore?.load() ?? [] }
         catch { favouriteError = "Could not load favourites: \(error.localizedDescription)" }
     }
@@ -228,14 +231,52 @@ public final class InboxPlusAppModel {
 
     public func openConversation(_ route: ConversationRoute) {
         detailSelection = .conversation(route)
+        loadRecentMessages(in: route)
         markConversationRead(route)
     }
 
+    public func canStartConversation(accountID: String) async -> Bool {
+        guard isConnected(accountID), let source = gateway as? any ConversationStartingGateway else { return false }
+        return await source.canStartConversation(accountID: accountID)
+    }
+
+    public func startConversation(accountID: String, recipient: String) async throws {
+        guard accounts.contains(where: { $0.id == accountID }), isConnected(accountID) else {
+            throw ConversationStartError.unavailable
+        }
+        guard let source = gateway as? any ConversationStartingGateway else { throw ConversationStartError.unsupported }
+        let started = try await source.startConversation(accountID: accountID, recipient: recipient)
+        guard isConnected(accountID), accounts.contains(where: { $0.id == accountID }) else {
+            throw ConversationStartError.unavailable
+        }
+        if !identities.contains(where: { $0.id == started.identity.id && $0.accountID == accountID }) {
+            identities.append(started.identity)
+        }
+        if !conversations.contains(where: { $0.route == started.conversation.route }) {
+            conversations.append(started.conversation)
+        }
+        rebuildInbox()
+        openConversation(started.conversation.route)
+    }
+
+    /// A source may leave history out of its snapshot, so opening a conversation is what asks for
+    /// it. The messages arrive as ordinary gateway events.
+    private func loadRecentMessages(in route: ConversationRoute) {
+        Task { [gateway] in
+            do {
+                try await gateway.loadRecentMessages(in: route)
+            } catch {
+                FileHandle.standardError.write(Data("Inbox+: could not load recent messages: \(error)\n".utf8))
+            }
+        }
+    }
+
     public func markConversationRead(_ route: ConversationRoute) {
-        guard
-            let index = conversations.firstIndex(where: { $0.route == route }),
-            conversations[index].unreadCount != 0
-        else { return }
+        guard let index = conversations.firstIndex(where: { $0.route == route }) else { return }
+        // Saved even when the badge already reads zero: a message that arrives while Inbox+ is
+        // running does not raise the badge, but the source still counts it as unread.
+        saveReadState(of: route)
+        guard conversations[index].unreadCount != 0 else { return }
         conversations[index].unreadCount = 0
         rebuildInbox()
     }
@@ -262,6 +303,16 @@ public final class InboxPlusAppModel {
             index = forward ? 0 : routes.count - 1
         }
         openConversation(routes[index])
+    }
+
+    private func saveReadState(of route: ConversationRoute) {
+        Task { [gateway] in
+            do {
+                try await gateway.markRead(route)
+            } catch {
+                FileHandle.standardError.write(Data("Inbox+: could not save read state: \(error)\n".utf8))
+            }
+        }
     }
 
     /// Names each loaded account and how many conversations it owns.
@@ -320,26 +371,43 @@ public final class InboxPlusAppModel {
         }
     }
 
-    /// Marks an account disconnected without touching anything it delivered.
+    /// Accounts with a disconnect, reconnect or removal still under way.
+    public private(set) var accountIDsChanging: Set<String> = []
+
+    /// Stops an account delivering anything, without touching anything it already delivered.
     ///
     /// History stays: a disconnected account is a connection problem, and deleting someone's
-    /// messages is never the right response to one.
-    public func disconnect(accountID: String) {
-        guard accounts.contains(where: { $0.id == accountID }) else { return }
+    /// messages is never the right response to one. The account only shows as disconnected once
+    /// its bridge has actually stopped.
+    public func disconnect(accountID: String) async throws {
+        guard let account = beginChange(accountID, allowedFor: \.canDisconnect) else { return }
+        defer { accountIDsChanging.remove(accountID) }
+        try await accountLifecycle?.disconnect(account)
         disconnectedAccountIDs.insert(accountID)
-        health = .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
+        reportDisconnections()
     }
 
-    public func reconnect(accountID: String) {
+    @discardableResult
+    public func reconnect(accountID: String) async throws -> AccountReconnection {
+        guard let account = beginChange(accountID, allowedFor: \.canDisconnect) else { return .reconnected }
+        defer { accountIDsChanging.remove(accountID) }
+        let reconnection = try await accountLifecycle?.reconnect(account) ?? .reconnected
         disconnectedAccountIDs.remove(accountID)
-        if disconnectedAccountIDs.isEmpty { health = .healthy }
+        reportDisconnections()
+        return reconnection
     }
 
     /// Removes an account and everything it brought with it.
     ///
     /// Separate from `disconnect` and destructive on purpose — the caller must have confirmed with
-    /// the user, because nothing here can be undone.
-    public func eraseAccount(accountID: String) {
+    /// the user, because nothing here can be undone. Nothing leaves the screen until the lifecycle
+    /// has signed out and deleted it, so an account never looks removed while it is still there.
+    @discardableResult
+    public func eraseAccount(accountID: String) async throws -> AccountRemoval {
+        guard let account = beginChange(accountID, allowedFor: \.canRemove) else { return AccountRemoval() }
+        defer { accountIDsChanging.remove(accountID) }
+        var removal = try await accountLifecycle?.remove(account) ?? AccountRemoval()
+
         accounts.removeAll { $0.id == accountID }
         let removedIdentityIDs = Set(
             identities.filter { $0.accountID == accountID }.map(\.id)
@@ -355,9 +423,45 @@ public final class InboxPlusAppModel {
         }
         disconnectedAccountIDs.remove(accountID)
         lastActivityByAccount[accountID] = nil
+        stagedAttachmentsByRoute = stagedAttachmentsByRoute.filter { $0.key.accountID != accountID }
         if openRoute?.accountID == accountID { detailSelection = .empty }
-        if disconnectedAccountIDs.isEmpty, case .needsAttention = health { health = .healthy }
+        reportDisconnections()
+        let remainingFavourites = favouriteRoutes.filter { $0.accountID != accountID }
+        if remainingFavourites != favouriteRoutes {
+            do {
+                try favouriteStore?.save(remainingFavourites)
+                favouriteRoutes = remainingFavourites
+            } catch {
+                favouriteError = "Could not save favourites: \(error.localizedDescription)"
+            }
+        }
         rebuildInbox()
+
+        do { try await media.purge(accountID: accountID) }
+        catch {
+            removal.unfinished.append(
+                "Its downloaded photos and files could not be deleted: \(error.localizedDescription)"
+            )
+        }
+        return removal
+    }
+
+    /// One change per account at a time: a second click must not race the first one's bridge.
+    private func beginChange(
+        _ accountID: String,
+        allowedFor isAllowed: (ConnectedAccount) -> Bool
+    ) -> ConnectedAccount? {
+        guard let account = accounts.first(where: { $0.id == accountID }), isAllowed(account),
+              accountIDsChanging.insert(accountID).inserted
+        else { return nil }
+        return account
+    }
+
+    /// The banner counts disconnected accounts, so it follows every change to them.
+    private func reportDisconnections() {
+        health = disconnectedAccountIDs.isEmpty
+            ? .healthy
+            : .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
     }
 
     public func captureDraft(to route: ConversationRoute) -> DraftSubmission {
@@ -467,9 +571,33 @@ public final class InboxPlusAppModel {
         return directory.personID(linkedTo: identityID)
     }
 
+    public func canLinkConversation(_ route: ConversationRoute) -> Bool {
+        conversations.contains { $0.route == route && !$0.isGroup }
+    }
+
+    public var suggestedContactLinks: [SuggestedContactLink] {
+        SuggestedContactLink.matches(conversations: conversations.filter {
+            directory.personID(linkedTo: $0.identityID) == nil
+        }, accounts: accounts)
+    }
+
+    public func acceptSuggestedContactLink(_ suggestion: SuggestedContactLink) throws {
+        guard suggestedContactLinks.contains(suggestion) else { return }
+        let personID = UUID().uuidString
+        var updated = directory
+        try updated.createPerson(id: personID, displayName: suggestion.displayName)
+        for identityID in suggestion.identityIDs {
+            try updated.link(remoteIdentityID: identityID, to: personID)
+        }
+        directory = updated
+        rebuildInbox()
+        detailSelection = .personSummary(personID)
+    }
+
     public func linkOpenConversation(to personID: String) throws {
         guard
             let route = openRoute,
+            canLinkConversation(route),
             let identityID = conversations.first(where: { $0.route == route })?.identityID
         else { throw InboxPlusAppModelError.missingOpenConversation }
         try directory.link(remoteIdentityID: identityID, to: personID)
@@ -520,12 +648,14 @@ public final class InboxPlusAppModel {
         eventTaskID = id
 
         let snapshot = try await gateway.loadSnapshot()
+        // A disconnect outlives the session: its bridge stays stopped, so it has to read as stopped.
+        let disconnected = try await accountLifecycle?.disconnectedAccountIDs() ?? []
         try Task.checkCancellation()
         guard startupID == id else { throw CancellationError() }
         try AccountPolicy.validate(snapshot.accounts)
         apply(snapshot)
-        disconnectedAccountIDs.removeAll()
-        health = .healthy
+        disconnectedAccountIDs = disconnected.intersection(snapshot.accounts.map(\.id))
+        reportDisconnections()
 
         let events = bufferedStartupEvents
         bufferedStartupEvents.removeAll()
@@ -651,6 +781,9 @@ public final class InboxPlusAppModel {
                     ?? identities.first { $0.id == message.senderIdentityID }?.displayName
                     ?? "New message"
                 onIncomingMessage?(message, title)
+            }
+            if isLive, isNew, !message.isOutgoing, message.route == openRoute {
+                saveReadState(of: message.route)
             }
             var messages = messagesByRoute[message.route, default: []]
             if let index = messages.firstIndex(where: { $0.id == message.id }) {

@@ -57,6 +57,9 @@ enum BridgeSelection {
                     BridgeInstallOutcome(platform: platform, profile: profileName)
                 )
             }
+            // Choosing a network the user disconnected is asking for it back. A disconnected
+            // network with no conversations is not listed in Settings, so this is its way back.
+            try DisconnectedAccountStore(paths: paths).remove(record.bridgeID)
             // The homeserver takes a new port each session, so the config on disk may name the
             // previous one.
             try runtime.rebindToHomeserver(port: port)
