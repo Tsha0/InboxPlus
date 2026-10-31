@@ -18,3 +18,12 @@ import Testing
     #expect(outcome.message.contains("reopen Inbox+"))
     #expect(!outcome.message.contains("RuntimeCLI"))
 }
+
+@MainActor
+@Test func removingAnAccountPromisesOnlyWhatRemovalDoes() {
+    let explanation = AccountsListView.removalExplanation(for: "Telegram")
+    // Removal cannot delete what the network itself keeps, so it must not claim every message is gone.
+    #expect(!explanation.contains("Every conversation and message"))
+    #expect(explanation.contains("signs out of Telegram"))
+    #expect(explanation.contains("Your messages stay on Telegram itself"))
+}

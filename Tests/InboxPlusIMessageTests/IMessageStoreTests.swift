@@ -7,7 +7,7 @@ import InboxPlusGateway
 
 /// Builds a database with the same schema and quirks as the real one, using the `sqlite3` tool so
 /// the fixture is defined by SQL rather than by the code under test.
-private func makeDatabase(_ statements: String) throws -> URL {
+func makeDatabase(_ statements: String) throws -> URL {
     let directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         .appendingPathComponent(".build/IMessageStoreTests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -16,18 +16,31 @@ private func makeDatabase(_ statements: String) throws -> URL {
     let schema = """
     CREATE TABLE handle (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL,
         country TEXT, service TEXT NOT NULL, uncanonicalized_id TEXT);
+    CREATE TABLE chat_handle_join (chat_id INTEGER, handle_id INTEGER, UNIQUE (chat_id, handle_id));
     CREATE TABLE chat (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,
         style INTEGER, state INTEGER, chat_identifier TEXT, service_name TEXT,
         room_name TEXT, display_name TEXT);
     CREATE TABLE message (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,
         text TEXT, handle_id INTEGER DEFAULT 0, service TEXT, date INTEGER,
-        is_from_me INTEGER DEFAULT 0, attributedBody BLOB, associated_message_guid TEXT);
+        is_from_me INTEGER DEFAULT 0, attributedBody BLOB, associated_message_guid TEXT,
+        is_read INTEGER DEFAULT 0);
     CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER,
         PRIMARY KEY (chat_id, message_id));
     CREATE TABLE attachment (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,
         filename TEXT, mime_type TEXT);
     CREATE TABLE message_attachment_join (message_id INTEGER, attachment_id INTEGER,
         PRIMARY KEY (message_id, attachment_id));
+    -- Messages also keeps each message's date on its chat link, indexed for reading a chat
+    -- newest-first. The trigger stands in for Messages filling it in, so a test cannot set the
+    -- two differently.
+    ALTER TABLE chat_message_join ADD COLUMN message_date INTEGER DEFAULT 0;
+    CREATE INDEX chat_message_join_idx_message_date_id_chat_id
+        ON chat_message_join (chat_id, message_date, message_id);
+    CREATE TRIGGER copy_message_date AFTER INSERT ON chat_message_join BEGIN
+        UPDATE chat_message_join
+        SET message_date = (SELECT date FROM message WHERE ROWID = NEW.message_id)
+        WHERE chat_id = NEW.chat_id AND message_id = NEW.message_id;
+    END;
     """
 
     let process = Process()
@@ -44,12 +57,12 @@ private func makeDatabase(_ statements: String) throws -> URL {
     return url
 }
 
-private func cleanUp(_ url: URL) {
+func cleanUp(_ url: URL) {
     try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
 }
 
 /// 2024-03-01T12:00:00Z as nanoseconds since 2001, which is what current macOS writes.
-private let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_", with: "")
+let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_", with: "")
 
 @Test func chatsAreReadWithTheirAddressingIdentity() throws {
     let url = try makeDatabase("""
@@ -79,11 +92,11 @@ private let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_"
       VALUES ('m1', 'are you around?', 1, \(nanoseconds), 0);
     INSERT INTO message (guid, text, handle_id, date, is_from_me)
       VALUES ('m2', 'yes', 1, \(nanoseconds), 1);
-    INSERT INTO chat_message_join VALUES (1, 1), (1, 2);
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2);
     """)
     defer { cleanUp(url) }
 
-    let rows = try IMessageStore(url: url).recentMessages()
+    let rows = try IMessageStore(url: url).recentMessages(inChat: 1, limit: 50)
     #expect(rows.count == 2)
     #expect(rows[0].body == "are you around?")
     #expect(rows[0].handle == "+15555550123")
@@ -103,11 +116,11 @@ private let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_"
       VALUES ('iMessage;-;a@b.com', 45, 'a@b.com', 'iMessage');
     INSERT INTO message (guid, text, handle_id, date, is_from_me, attributedBody)
       VALUES ('m1', NULL, 0, \(nanoseconds), 0, X'\(hex)');
-    INSERT INTO chat_message_join VALUES (1, 1);
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1);
     """)
     defer { cleanUp(url) }
 
-    let rows = try IMessageStore(url: url).recentMessages()
+    let rows = try IMessageStore(url: url).recentMessages(inChat: 1, limit: 50)
     #expect(rows.first?.text == nil)
     #expect(rows.first?.body == "sent from the new Messages")
 }
@@ -122,11 +135,11 @@ private let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_"
       VALUES ('m1', 'hello', 0, \(nanoseconds), 0, NULL);
     INSERT INTO message (guid, text, handle_id, date, is_from_me, associated_message_guid)
       VALUES ('m2', 'Liked "hello"', 0, \(nanoseconds), 0, 'p:0/m1');
-    INSERT INTO chat_message_join VALUES (1, 1), (1, 2);
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2);
     """)
     defer { cleanUp(url) }
 
-    let rows = try IMessageStore(url: url).recentMessages()
+    let rows = try IMessageStore(url: url).recentMessages(inChat: 1, limit: 50)
     #expect(rows.map(\.guid) == ["m1"])
 }
 
@@ -136,13 +149,13 @@ private let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_"
       VALUES ('iMessage;-;a@b.com', 45, 'a@b.com', 'iMessage');
     INSERT INTO message (guid, text, handle_id, date, is_from_me)
       VALUES ('m1', NULL, 0, \(nanoseconds), 0);
-    INSERT INTO chat_message_join VALUES (1, 1);
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1);
     INSERT INTO attachment (guid, filename, mime_type) VALUES ('a1', 'IMG_1.HEIC', 'image/heic');
     INSERT INTO message_attachment_join VALUES (1, 1);
     """)
     defer { cleanUp(url) }
 
-    #expect(try IMessageStore(url: url).recentMessages().first?.attachmentCount == 1)
+    #expect(try IMessageStore(url: url).recentMessages(inChat: 1, limit: 50).first?.attachmentCount == 1)
 }
 
 @Test func onlyMessagesAfterAWatermarkAreReturned() throws {
@@ -153,7 +166,7 @@ private let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_"
       VALUES ('m1', 'one', 0, \(nanoseconds), 0);
     INSERT INTO message (guid, text, handle_id, date, is_from_me)
       VALUES ('m2', 'two', 0, \(nanoseconds), 0);
-    INSERT INTO chat_message_join VALUES (1, 1), (1, 2);
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2);
     """)
     defer { cleanUp(url) }
 
@@ -161,6 +174,52 @@ private let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_"
     #expect(try store.maxMessageRowID() == 2)
     #expect(try store.messages(afterRowID: 1).map(\.guid) == ["m2"])
     #expect(try store.messages(afterRowID: 2).isEmpty)
+}
+
+@Test func eachChatsLatestMessageIsItsNewestByDate() throws {
+    // Messages in iCloud can download old history after newer messages, so the newest message is
+    // not always the highest row id. Neither a reaction nor a member joining is a preview.
+    let url = try makeDatabase("""
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;-;a@b.com', 45, 'a@b.com', 'iMessage');
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;+;chat1', 43, 'chat1', 'iMessage');
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;-;empty@b.com', 45, 'empty@b.com', 'iMessage');
+    INSERT INTO message (guid, text, date) VALUES ('newest', 'see you then', 731160000000000000);
+    INSERT INTO message (guid, text, date) VALUES ('synced', 'from last year', 700000000000000000);
+    INSERT INTO message (guid, text, date, associated_message_guid)
+      VALUES ('reaction', 'Liked "see you then"', 731170000000000000, 'p:0/newest');
+    INSERT INTO message (guid, text, date) VALUES ('group', 'agenda attached', 731100000000000000);
+    INSERT INTO message (guid, text, date) VALUES ('joined', NULL, 731150000000000000);
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2), (1, 3), (2, 4), (2, 5);
+    """)
+    defer { cleanUp(url) }
+
+    let latest = try IMessageStore(url: url).latestMessages()
+    // The chat with no messages at all has no row.
+    #expect(Dictionary(uniqueKeysWithValues: latest.map { ($0.chatGUID, $0.guid) }) == [
+        "iMessage;-;a@b.com": "newest",
+        "iMessage;+;chat1": "group",
+    ])
+}
+
+@Test func aChatsRecentHistoryIsItsNewestMessagesInOrder() throws {
+    let url = try makeDatabase("""
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;-;a@b.com', 45, 'a@b.com', 'iMessage');
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;-;c@d.com', 45, 'c@d.com', 'iMessage');
+    INSERT INTO message (guid, text, date) VALUES ('one', 'one', 731160000000000000);
+    INSERT INTO message (guid, text, date) VALUES ('three', 'three', 731160300000000000);
+    INSERT INTO message (guid, text, date) VALUES ('elsewhere', 'other chat', 731160400000000000);
+    INSERT INTO message (guid, text, date) VALUES ('two', 'two', 731160200000000000);
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2), (2, 3), (1, 4);
+    """)
+    defer { cleanUp(url) }
+
+    let rows = try IMessageStore(url: url).recentMessages(inChat: 1, limit: 2)
+    #expect(rows.map(\.guid) == ["two", "three"])
 }
 
 @Test func aMissingDatabaseIsReportedClearly() {

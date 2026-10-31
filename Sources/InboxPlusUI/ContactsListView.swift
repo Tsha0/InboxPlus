@@ -3,6 +3,9 @@ import InboxPlusCore
 import InboxPlusFeatures
 
 struct ContactsListView: View {
+    let suggestions: [SuggestedContactLink]
+    let onLink: (SuggestedContactLink) throws -> Void
+    @State private var linkError: String?
     let people: [InboxPlusPerson]
     let items: [InboxItem]
     let selectedPersonID: String?
@@ -18,6 +21,32 @@ struct ContactsListView: View {
                 .font(.title2.bold())
                 .padding(.horizontal)
 
+            if !suggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Suggested links").font(.headline)
+                    ForEach(suggestions) { suggestion in
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(suggestion.displayName)
+                                Text(suggestion.platforms.map(\.accessibilityLabel).joined(separator: " · "))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("Link these?") {
+                                do {
+                                    try onLink(suggestion)
+                                    linkError = nil
+                                } catch {
+                                    linkError = error.localizedDescription
+                                }
+                            }
+                            .accessibilityLabel("Link \(suggestion.displayName) across networks")
+                        }
+                    }
+                    if let linkError { Text(linkError).font(.caption) }
+                }
+                .padding(.horizontal)
+            }
             if people.isEmpty {
                 ContentUnavailableView(
                     "No people yet",

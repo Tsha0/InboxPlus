@@ -63,6 +63,10 @@ public actor CompositeMessagingGateway: ConversationStartingGateway {
         }
     }
 
+    public func loadRecentMessages(in route: ConversationRoute) async throws {
+        try await gateway(for: route).loadRecentMessages(in: route)
+    }
+
     public func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
         try await gateway(for: route).sendText(body, to: route)
     }
@@ -81,6 +85,10 @@ public actor CompositeMessagingGateway: ConversationStartingGateway {
             throw ConversationStartError.unsupported
         }
         return try await gateway.startConversation(accountID: accountID, recipient: recipient)
+    }
+
+    public func markRead(_ route: ConversationRoute) async throws {
+        try await gateway(for: route).markRead(route)
     }
 
     // MARK: - Routing

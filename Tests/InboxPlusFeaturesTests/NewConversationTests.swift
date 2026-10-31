@@ -39,7 +39,7 @@ private actor ConversationStartTestGateway: ConversationStartingGateway, TextOnl
     #expect(model.identities.count == 1)
     #expect(model.openRoute == model.conversations.first?.route)
     #expect(await gateway.sends == 0)
-    model.disconnect(accountID: "account")
+    try await model.disconnect(accountID: "account")
     #expect(await !model.canStartConversation(accountID: "account"))
     await #expect(throws: ConversationStartError.self) {
         try await model.startConversation(accountID: "account", recipient: "other@example.com")

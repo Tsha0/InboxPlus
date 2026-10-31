@@ -16,8 +16,7 @@ import InboxPlusRuntime
 actor DeferredRuntimeGateway: ConversationStartingGateway {
     private let paths: RuntimePaths
     private let profileName: String
-    private let build: @Sendable (RuntimeProfileState) throws -> any MessagingGateway
-    private let onReady: @Sendable (RuntimeProfileState) async -> Void
+    private let build: @Sendable (RuntimeProfileState) async throws -> any MessagingGateway
 
     private var resolved: (any MessagingGateway)?
     private var resolving: Task<any MessagingGateway, any Error>?
@@ -25,13 +24,11 @@ actor DeferredRuntimeGateway: ConversationStartingGateway {
     init(
         paths: RuntimePaths,
         profileName: String,
-        build: @escaping @Sendable (RuntimeProfileState) throws -> any MessagingGateway,
-        onReady: @escaping @Sendable (RuntimeProfileState) async -> Void = { _ in }
+        build: @escaping @Sendable (RuntimeProfileState) async throws -> any MessagingGateway
     ) {
         self.paths = paths
         self.profileName = profileName
         self.build = build
-        self.onReady = onReady
     }
 
     // MARK: - MessagingGateway
@@ -46,6 +43,10 @@ actor DeferredRuntimeGateway: ConversationStartingGateway {
         // path resolves rather than inventing a second answer.
         guard let gateway = try? await gateway() else { return AsyncStream { $0.finish() } }
         return await gateway.events()
+    }
+
+    func loadRecentMessages(in route: ConversationRoute) async throws {
+        try await gateway().loadRecentMessages(in: route)
     }
 
     func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
@@ -68,6 +69,10 @@ actor DeferredRuntimeGateway: ConversationStartingGateway {
         return try await source.startConversation(accountID: accountID, recipient: recipient)
     }
 
+    func markRead(_ route: ConversationRoute) async throws {
+        try await gateway().markRead(route)
+    }
+
     // MARK: - Resolution
 
     /// Starts the runtime once, however many callers arrive at the same moment.
@@ -75,7 +80,7 @@ actor DeferredRuntimeGateway: ConversationStartingGateway {
         if let resolved { return resolved }
         if let resolving { return try await resolving.value }
 
-        let task = Task<any MessagingGateway, any Error> { [paths, profileName, build, onReady] in
+        let task = Task<any MessagingGateway, any Error> { [paths, profileName, build] in
             let state = try await ManagedRuntime.shared.ensureRunning(
                 paths: paths,
                 profileName: profileName,
@@ -83,9 +88,7 @@ actor DeferredRuntimeGateway: ConversationStartingGateway {
                     FileHandle.standardError.write(Data("Inbox+: \(message)\n".utf8))
                 }
             )
-            let gateway = try build(state)
-            await onReady(state)
-            return gateway
+            return try await build(state)
         }
         resolving = task
 

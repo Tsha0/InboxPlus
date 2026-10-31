@@ -93,6 +93,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>LSMinimumSystemVersion</key><string>15.0</string>
   <key>NSAppleEventsUsageDescription</key>
   <string>Inbox+ uses Automation to send iMessages on your behalf. It is never used for anything else.</string>
+  <key>NSContactsUsageDescription</key>
+  <string>Inbox+ shows the names from your contacts instead of phone numbers and email addresses in iMessage. Contacts never leave your Mac.</string>
   <key>NSDesktopFolderUsageDescription</key>
   <string>Inbox+ asks for a folder only when you attach a file to a message.</string>
 </dict>
