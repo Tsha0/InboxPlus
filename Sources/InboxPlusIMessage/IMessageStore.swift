@@ -177,6 +177,16 @@ public final class IMessageStore {
         """).reversed()
     }
 
+    /// The phone number or address this Mac last sent or received a message as.
+    public func ownHandle() throws -> String? {
+        try rows("""
+        SELECT destination_caller_id FROM message
+        WHERE destination_caller_id IS NOT NULL AND destination_caller_id != ''
+        ORDER BY ROWID DESC
+        LIMIT 1
+        """) { Self.string($0, 0) }.first ?? nil
+    }
+
     /// Whether the user has written in a chat. A tapback is a reaction, not a reply.
     public func hasMessagesFromMe(inChat chatRowID: Int64) throws -> Bool {
         try !rows("""

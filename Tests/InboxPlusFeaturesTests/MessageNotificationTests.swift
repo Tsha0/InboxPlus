@@ -27,7 +27,7 @@ private actor NotificationGateway: TextOnlyTestGateway {
     let gateway = NotificationGateway(snapshot: .init(accounts: [], identities: [], conversations: [], messagesByRoute: [route: [initial]]))
     let model = InboxPlusAppModel(gateway: gateway)
     var delivered: [String] = []
-    model.onIncomingMessage = { message, _ in delivered.append(message.id) }
+    model.onIncomingMessage = { delivered.append($0.message.id) }
     try await model.start()
     #expect(delivered.isEmpty)
     await gateway.publish(.messageUpserted(initial))

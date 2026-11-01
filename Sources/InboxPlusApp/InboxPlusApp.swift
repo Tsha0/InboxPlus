@@ -46,6 +46,7 @@ final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.activate(ignoringOtherApps: true)
         NSApplication.shared.windows.first { $0.canBecomeKey }?.makeKeyAndOrderFront(nil)
         AppUpdateController.shared.start()
+        LaunchAtLoginController.shared.refresh()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -107,9 +108,14 @@ struct InboxPlusApp: App {
     @Environment(\.openWindow) private var openWindow
     @FocusedValue(\.newConversationAction) private var newConversation
     @State private var updates = AppUpdateController.shared
-    @State private var model = {
+    @State private var launchAtLogin = LaunchAtLoginController.shared
+    @State private var preferences = AppPreferences()
+    @State private var model: InboxPlusAppModel
+    private let exportDiagnostics: (@Sendable (URL) async throws -> Void)?
+
+    init() {
         let services = GatewaySelection.makeServices()
-        return InboxPlusAppModel(
+        _model = State(initialValue: InboxPlusAppModel(
             gateway: services.gateway,
             directory: services.directory,
             media: services.media,
@@ -117,13 +123,29 @@ struct InboxPlusApp: App {
             preferenceStore: services.preferenceStore,
             accountLifecycle: services.accountLifecycle,
             composerFiles: services.composerFiles
+        ))
+        exportDiagnostics = services.exportDiagnostics
+    }
+
+    private var unreadBadgeCount: Int {
+        preferences.showsUnreadBadge ? model.unreadBadgeCount : 0
+    }
+
+    private var settings: AppSettingsServices {
+        AppSettingsServices(
+            launchAtLogin: launchAtLogin.status,
+            setLaunchAtLogin: launchAtLogin.setEnabled,
+            refreshLaunchAtLogin: { launchAtLogin.refresh() },
+            openLoginItemsSettings: launchAtLogin.openLoginItemsSettings,
+            exportDiagnostics: exportDiagnostics
         )
-    }()
+    }
 
     var body: some Scene {
         WindowGroup("Inbox+", id: "main") {
             RootView(
-                model: model, makeLoginSession: BridgeSelection.makeProvider(),
+                model: model, preferences: preferences, settings: settings,
+                makeLoginSession: BridgeSelection.makeProvider(),
                 update: updates.presentation, onUpdate: updates.checkForUpdates
             )
                 .task {
@@ -141,8 +163,18 @@ struct InboxPlusApp: App {
                         model.openConversation(route)
                         showMainWindow()
                     }
-                    model.onIncomingMessage = { message, title in
-                        notifications.deliver(message, title: title)
+                    notifications.onReply = { reply in
+                        Task {
+                            do { try await model.sendReply(reply.text, to: reply.route) }
+                            catch { notifications.deliverFailure(of: reply, error: error) }
+                        }
+                    }
+                    model.onIncomingMessage = { alert in
+                        notifications.deliver(alert, preferences: preferences.notifications)
+                    }
+                    let (appModel, appPreferences) = (model, preferences)
+                    DockBadgeController.shared.start {
+                        appPreferences.showsUnreadBadge ? appModel.unreadBadgeCount : 0
                     }
                     notifications.requestAuthorization()
                     do { try await model.start() }
@@ -179,8 +211,14 @@ struct InboxPlusApp: App {
             )
             .disabled(model.isPreparingForUpdate)
         } label: {
-            Image(systemName: model.health.symbolName)
-                .accessibilityLabel(model.health.menuBarTitle)
+            HStack(spacing: 3) {
+                Image(systemName: model.health.symbolName)
+                if let count = UnreadBadge.label(for: unreadBadgeCount) {
+                    Text(count).monospacedDigit()
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(UnreadBadge.menuBarAccessibilityLabel(health: model.health, unread: unreadBadgeCount))
         }
         // A window-style panel, not a menu: the connections list needs rows with status dots
         // and Connect buttons, which a flattened menu cannot render.

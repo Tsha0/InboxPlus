@@ -12,6 +12,7 @@ public typealias BridgeLoginSessionProvider =
 
 public struct RootView: View {
     @Bindable var model: InboxPlusAppModel
+    @Bindable var preferences: AppPreferences
     @State private var inboxQuery = ""
     @State private var inboxFilter = InboxFilter()
     @State private var searchFocusRequest: UUID?
@@ -25,6 +26,7 @@ public struct RootView: View {
     private let makeLoginSession: BridgeLoginSessionProvider?
     private let update: AppUpdatePresentation?
     private let onUpdate: () -> Void
+    private let settings: AppSettingsServices
 
     enum AccountFlow: Identifiable {
         case picker
@@ -65,11 +67,15 @@ public struct RootView: View {
 
     public init(
         model: InboxPlusAppModel,
+        preferences: AppPreferences,
+        settings: AppSettingsServices = AppSettingsServices(),
         makeLoginSession: BridgeLoginSessionProvider? = nil,
         update: AppUpdatePresentation? = nil,
         onUpdate: @escaping () -> Void = {}
     ) {
         self.model = model
+        self.preferences = preferences
+        self.settings = settings
         self.makeLoginSession = makeLoginSession
         self.update = update
         self.onUpdate = onUpdate
@@ -133,6 +139,11 @@ public struct RootView: View {
             guard let platform else { return }
             model.clearConnectionRequest()
             startConnecting(platform)
+        }
+        // Settings fills the detail pane, so a conversation opened from elsewhere — a notification,
+        // a new message — has to bring the inbox back to be seen.
+        .onChange(of: model.detailSelection) { _, selection in
+            if section == .settings, selection != .empty { section = .inbox }
         }
         .focusedSceneValue(\.newConversationAction, canStartNewConversation ? { accountFlow = .newConversation } : nil)
         .sheet(item: $accountFlow) { flow in
@@ -387,6 +398,7 @@ public struct RootView: View {
                 isConnected: model.isConnected,
                 isChanging: { model.accountIDsChanging.contains($0) },
                 lastActivity: { model.lastActivity(for: $0) },
+                signedInName: model.signedInName(for:),
                 onAddAccount: { accountFlow = .picker },
                 onDisconnect: disconnect,
                 onReconnect: reconnect,
@@ -396,6 +408,14 @@ public struct RootView: View {
     }
 
     @ViewBuilder private var detail: some View {
+        if section == .settings {
+            PreferencesView(model: model, preferences: preferences, services: settings)
+        } else {
+            selectionDetail
+        }
+    }
+
+    @ViewBuilder private var selectionDetail: some View {
         switch model.detailSelection {
         case .empty:
             ContentUnavailableView(

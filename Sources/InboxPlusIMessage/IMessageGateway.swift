@@ -9,12 +9,12 @@ import InboxPlusGateway
 /// implements the same seam the Matrix gateway does and the app layer cannot tell the difference.
 public actor IMessageGateway: ConversationStartingGateway {
     public static let accountID = "imessage-local"
-    /// How long a chat can go without a message before it is left out of the inbox. A Mac's
-    /// Messages history goes back years, and listing every chat ever started buries the ones still
-    /// going. A new message brings a chat back.
-    static let activityWindow: TimeInterval = 365 * 24 * 60 * 60
 
     private let store: IMessageStore
+    /// How long a chat can go without a message before it is left out of the inbox. A Mac's
+    /// Messages history goes back years, and listing every chat ever started buries the ones still
+    /// going. A new message brings a chat back. Nil lists every chat.
+    private let activityWindow: TimeInterval?
     private let sender: IMessageSender
     private let contacts: any IMessageContactSource
     private let historyLimit: Int
@@ -68,6 +68,7 @@ public actor IMessageGateway: ConversationStartingGateway {
         sender: IMessageSender = IMessageSender(),
         contacts: any IMessageContactSource = IMessageContactBook(),
         historyLimit: Int = RecentHistory.messageCount,
+        activityWindow: TimeInterval? = 365 * 24 * 60 * 60,
         pollInterval: Duration = .seconds(3),
         readMarkerStore: IMessageReadMarkerStore? = nil
     ) {
@@ -75,6 +76,7 @@ public actor IMessageGateway: ConversationStartingGateway {
         self.sender = sender
         self.contacts = contacts
         self.historyLimit = historyLimit
+        self.activityWindow = activityWindow
         self.pollInterval = pollInterval
         self.readMarkerStore = readMarkerStore
     }
@@ -124,7 +126,10 @@ public actor IMessageGateway: ConversationStartingGateway {
 
         return MessagingSnapshot(
             accounts: [
-                ConnectedAccount(id: Self.accountID, platform: .iMessage, displayName: "iMessage"),
+                ConnectedAccount(
+                    id: Self.accountID, platform: .iMessage, displayName: "iMessage",
+                    signedInAs: try? store.ownHandle()
+                ),
             ],
             identities: Array(identities.values),
             conversations: conversations.sorted { $0.latestActivity > $1.latestActivity },
@@ -261,7 +266,7 @@ public actor IMessageGateway: ConversationStartingGateway {
     }
 
     private func activeSince() -> Date {
-        Date().addingTimeInterval(-Self.activityWindow)
+        activityWindow.map { Date().addingTimeInterval(-$0) } ?? .distantPast
     }
 
     private func publish(_ event: GatewayEvent) {

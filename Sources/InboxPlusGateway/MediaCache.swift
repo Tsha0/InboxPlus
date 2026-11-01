@@ -212,6 +212,21 @@ public actor MediaCache {
         return doomed.map(\.key)
     }
 
+    /// Deletes every file that can be fetched again, and returns how many bytes that freed.
+    ///
+    /// The same rule as eviction: a file Inbox+ cannot fetch again stays, because clearing a cache
+    /// must never lose something irreplaceable.
+    @discardableResult
+    public func clear() throws -> Int {
+        let doomed = records.values.filter(\.isReproducible)
+        for record in doomed {
+            try? fileManager.removeItem(at: fileURL(key: record.key, mimeType: record.mimeType))
+            records[record.key] = nil
+        }
+        if !doomed.isEmpty { try persistIndex() }
+        return doomed.reduce(0) { $0 + $1.byteCount }
+    }
+
     // MARK: - Storage
 
     /// A cache filename is derived from the media's own identifier, so the same media is never

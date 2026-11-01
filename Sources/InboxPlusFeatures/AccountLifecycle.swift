@@ -13,6 +13,9 @@ public protocol AccountLifecycle: Sendable {
     func reconnect(_ account: ConnectedAccount) async throws -> AccountReconnection
     /// Returns only once the account's login, bridge and conversations are gone.
     func remove(_ account: ConnectedAccount) async throws -> AccountRemoval
+    /// Who each account is signed in as, by account ID, for the accounts whose source does not
+    /// say so itself.
+    func signedInNames() async -> [String: String]
 }
 
 public enum AccountReconnection: Equatable, Sendable {

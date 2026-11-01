@@ -44,6 +44,14 @@ public struct DiagnosticsBundle {
         self.fileManager = fileManager
     }
 
+    /// A bundle for one profile. Everything the profile knows to be secret is removed by value as
+    /// well as by pattern.
+    public static func forProfile(_ paths: RuntimePaths) throws -> DiagnosticsBundle {
+        let state = try RuntimeProfileStore(paths: paths).load()
+        let known = [state?.registrationSecret].compactMap { $0 }
+        return DiagnosticsBundle(paths: paths, redactor: DiagnosticsRedactor(knownSecrets: known))
+    }
+
     /// Files that are never collected, whatever redaction could do to them.
     ///
     /// This is a deny-by-pattern rule rather than a list of exact names, because the first version

@@ -106,7 +106,7 @@ private func item(_ route: ConversationRoute, in model: InboxPlusAppModel) throw
     let gateway = PublishingGateway(snapshot: Fixtures.snapshot)
     let model = InboxPlusAppModel(gateway: gateway, preferenceStore: store)
     var notified: [String] = []
-    model.onIncomingMessage = { message, _ in notified.append(message.id) }
+    model.onIncomingMessage = { notified.append($0.message.id) }
     try await model.start()
     defer { model.stop() }
 
