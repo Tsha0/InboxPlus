@@ -149,7 +149,20 @@ struct AccountsListView: View {
 
     private func statusLine(_ account: ConnectedAccount, connected: Bool) -> String {
         guard connected else { return "Disconnected — messages are kept" }
+        if let problem = Self.networkProblem(account) { return problem }
         guard let activity = lastActivity(account.id) else { return "Connected" }
         return "Last message \(activity.formatted(.relative(presentation: .named)))"
+    }
+
+    /// What the network's bridge last reported, when it is not simply connected.
+    static func networkProblem(_ account: ConnectedAccount) -> String? {
+        let network = account.platform.accessibilityLabel
+        switch account.networkState {
+        case .connecting: return "Connecting to \(network)…"
+        case .reconnecting: return "\(network) dropped the connection — reconnecting…"
+        case .signedOut, .badCredentials: return "Signed out of \(network) — remove it and add it again"
+        case .unknownError: return "\(network) reports a connection problem"
+        case .connected, nil: return nil
+        }
     }
 }

@@ -377,7 +377,7 @@ public struct RootView: View {
             )
         case .settings:
             AccountsListView(
-                accounts: model.accounts,
+                accounts: model.userAccounts,
                 health: model.health,
                 isConnected: model.isConnected,
                 isChanging: { model.accountIDsChanging.contains($0) },
