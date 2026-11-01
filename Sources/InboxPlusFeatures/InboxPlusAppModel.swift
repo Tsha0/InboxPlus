@@ -345,8 +345,14 @@ public final class InboxPlusAppModel {
         lastActivityByAccount[accountID]
     }
 
+    /// The accounts the user connected. The local Matrix account is Inbox+'s own homeserver, which
+    /// carries the bridges; it is not something the user signed in to, so it is not listed.
+    public var userAccounts: [ConnectedAccount] {
+        accounts.filter { $0.platform != .matrix }
+    }
+
     public var platformsWithAccounts: Set<Platform> {
-        Set(accounts.map(\.platform))
+        Set(userAccounts.map(\.platform))
     }
 
     /// Records a newly connected account.

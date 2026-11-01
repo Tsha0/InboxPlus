@@ -52,6 +52,12 @@ public struct BridgeInvitePolicy: Sendable, Equatable {
             .first { localpart.hasPrefix("\($0)_") || localpart == "\($0)bot" }
     }
 
+    /// Whether this user is a bridge's own bot rather than a ghost standing in for a person.
+    public func isBridgeBot(_ userID: String) -> Bool {
+        guard let localpart = Self.localpart(of: userID, on: serverName) else { return false }
+        return bridgeIDs.contains { localpart == "\($0)bot" }
+    }
+
     /// The localpart, but only for a user on the server this policy pins.
     static func localpart(of userID: String, on serverName: String) -> String? {
         guard !serverName.isEmpty, userID.hasPrefix("@") else { return nil }

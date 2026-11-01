@@ -165,7 +165,7 @@ struct InboxPlusApp: App {
         MenuBarExtra {
             MenuBarContentView(
                 health: model.health,
-                accounts: model.accounts,
+                accounts: model.userAccounts,
                 isAccountConnected: model.isConnected,
                 openWindow: showMainWindow,
                 onConnect: { platform in

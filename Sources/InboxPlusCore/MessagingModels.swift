@@ -4,12 +4,26 @@ public struct ConnectedAccount: Identifiable, Codable, Hashable, Sendable {
     public let id: String
     public let platform: Platform
     public var displayName: String
+    /// What the network's bridge last reported about its own connection. Nil until it says.
+    public var networkState: NetworkConnectionState?
 
-    public init(id: String, platform: Platform, displayName: String) {
+    public init(id: String, platform: Platform, displayName: String, networkState: NetworkConnectionState? = nil) {
         self.id = id
         self.platform = platform
         self.displayName = displayName
+        self.networkState = networkState
     }
+}
+
+/// A bridge's connection to its network, as the bridge reports it. The raw values are the states
+/// mautrix bridges publish.
+public enum NetworkConnectionState: String, Codable, Hashable, Sendable {
+    case connecting = "CONNECTING"
+    case connected = "CONNECTED"
+    case reconnecting = "TRANSIENT_DISCONNECT"
+    case signedOut = "LOGGED_OUT"
+    case badCredentials = "BAD_CREDENTIALS"
+    case unknownError = "UNKNOWN_ERROR"
 }
 
 public enum AccountPolicyError: Error, Equatable {

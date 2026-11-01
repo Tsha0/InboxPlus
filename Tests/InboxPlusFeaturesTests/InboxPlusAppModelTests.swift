@@ -775,7 +775,10 @@ private func startAndRecord(
         model.inboxItems.contains { $0.id == .conversation(portal.route) }
     }
     #expect(shown)
-    #expect(model.platformsWithAccounts == [.matrix, .instagram])
+    // The local Matrix account still files rooms, but it is the app's own, not one the user added.
+    #expect(model.accounts.contains { $0.platform == .matrix })
+    #expect(model.platformsWithAccounts == [.instagram])
+    #expect(model.userAccounts.map(\.platform) == [.instagram])
 }
 
 @MainActor

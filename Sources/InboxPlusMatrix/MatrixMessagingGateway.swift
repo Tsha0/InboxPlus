@@ -33,6 +33,10 @@ public actor MatrixMessagingGateway: MessagingGateway {
     private var discoveryTask: Task<Void, Never>?
     /// Which account each room belongs to, resolved once from its members.
     private var accountIDByRoomID: [String: String] = [:]
+    /// Each bridge's management room, mapped to the account it reports on.
+    private var managementRoomAccountByID: [String: String] = [:]
+    private var networkStates: [String: NetworkConnectionState] = [:]
+    private var networkStateDates: [String: Date] = [:]
 
     public init(
         client: InboxPlusMatrixClient,
@@ -79,6 +83,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
         for room in rooms where room.membership() == .joined {
             let info = try await room.roomInfo()
             let roomAccountID = await resolvedAccountID(for: room)
+            if await setAsideBridgeRoom(room, info: info, accountID: roomAccountID) { continue }
             let route = normalizer.route(forRoom: room.id(), accountID: roomAccountID)
             knownRoomIDs.insert(room.id())
             await attachTimeline(to: room)
@@ -273,6 +278,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
         discoveryTask?.cancel()
         discoveryTask = nil
         knownRoomIDs.removeAll()
+        managementRoomAccountByID.removeAll()
         for handle in timelineHandles.values { handle.cancel() }
         timelineHandles.removeAll()
         observers.removeAll()
@@ -327,12 +333,13 @@ public actor MatrixMessagingGateway: MessagingGateway {
             guard !knownRoomIDs.contains(roomID) else { continue }
             knownRoomIDs.insert(roomID)
             let roomAccountID = await resolvedAccountID(for: room)
+            let info = try? await room.roomInfo()
+            if let info, await setAsideBridgeRoom(room, info: info, accountID: roomAccountID) { continue }
             await attachTimeline(to: room)
 
             let messages = await observers[roomID]?
                 .messages(waitingUpTo: initialMessageWait)
                 .sorted(by: inboxplusMessageOrdering) ?? []
-            let info = try? await room.roomInfo()
             let title = info?.displayName ?? info?.rawName ?? roomID
             let identityID = messages.compactMap(\.senderIdentityID).first ?? roomID
 
@@ -409,6 +416,62 @@ public actor MatrixMessagingGateway: MessagingGateway {
         return others > 1
     }
 
+    /// Leaves a bridge's own rooms out of the inbox: the spaces it files portals under, and the
+    /// management room where its bot talks to this account. Neither is a conversation, and typing
+    /// in the management room would send commands to the bot. Its status notices become the
+    /// account's network state instead.
+    private func setAsideBridgeRoom(_ room: Room, info: RoomInfo, accountID: String) async -> Bool {
+        let roomID = room.id()
+        if info.isSpace {
+            knownRoomIDs.insert(roomID)
+            return true
+        }
+        guard await isManagementRoom(room, info: info) else { return false }
+        knownRoomIDs.insert(roomID)
+        managementRoomAccountByID[roomID] = accountID
+        await attachTimeline(to: room)
+        let notices = await observers[roomID]?.messages(waitingUpTo: initialMessageWait) ?? []
+        for notice in notices.sorted(by: inboxplusMessageOrdering) {
+            recordNetworkState(from: notice, accountID: accountID, publishing: false)
+        }
+        return true
+    }
+
+    private func isManagementRoom(_ room: Room, info: RoomInfo) async -> Bool {
+        // Only this account and the bot are in one, so a larger room needs no member lookup.
+        guard info.joinedMembersCount <= 2,
+              let ownUserID = try? await client.requireClient().userId() else { return false }
+        var members = await joinedMemberIDs(of: room, synchronising: false)
+        if members.count < 2 { members = await joinedMemberIDs(of: room, synchronising: true) }
+        return Self.isManagementRoom(memberIDs: members, ownUserID: ownUserID, policy: invitePolicy)
+    }
+
+    /// Everyone else in the room is a bridge's bot.
+    static func isManagementRoom(memberIDs: [String], ownUserID: String, policy: BridgeInvitePolicy) -> Bool {
+        let others = memberIDs.filter { $0 != ownUserID }
+        return !others.isEmpty && others.allSatisfy(policy.isBridgeBot)
+    }
+
+    private func joinedMemberIDs(of room: Room, synchronising: Bool) async -> [String] {
+        guard let iterator = synchronising ? try? await room.members() : try? await room.membersNoSync()
+        else { return [] }
+        var ids: [String] = []
+        while let chunk = iterator.nextChunk(chunkSize: 64), !chunk.isEmpty {
+            ids += chunk.filter { $0.membership == .join }.map(\.userId)
+        }
+        return ids
+    }
+
+    /// Notices can arrive out of order while history loads, so only a newer one replaces the state.
+    private func recordNetworkState(from notice: Message, accountID: String, publishing: Bool) {
+        guard let state = BridgeStateNotice.state(in: notice.body),
+              notice.timestamp >= networkStateDates[accountID] ?? .distantPast else { return }
+        networkStateDates[accountID] = notice.timestamp
+        guard networkStates[accountID] != state else { return }
+        networkStates[accountID] = state
+        if publishing, let account = bridgeAccount(accountID) { publish(.accountUpserted(account)) }
+    }
+
     /// Which account a room belongs to, resolved from who is in it.
     ///
     /// A bridged conversation is a portal room the bridge created, and the bridge's own ghost or
@@ -475,6 +538,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
             timelineHandles.removeValue(forKey: roomID)?.cancel()
             observers[roomID] = nil
             knownRoomIDs.remove(roomID)
+            managementRoomAccountByID[roomID] = nil
             if membership == .joined || membership == .invited { try await room.leave() }
             try await room.forget()
             accountIDByRoomID[roomID] = nil
@@ -509,7 +573,8 @@ public actor MatrixMessagingGateway: MessagingGateway {
         return ConnectedAccount(
             id: descriptor.bridgeID,
             platform: descriptor.platform,
-            displayName: descriptor.displayName
+            displayName: descriptor.displayName,
+            networkState: networkStates[bridgeID]
         )
     }
 
@@ -546,6 +611,14 @@ public actor MatrixMessagingGateway: MessagingGateway {
     }
 
     private func publishTimelineEvent(_ event: GatewayEvent, roomID: String) async {
+        if let accountID = managementRoomAccountByID[roomID] {
+            if case let .messageUpserted(notice) = event {
+                recordNetworkState(from: notice, accountID: accountID, publishing: true)
+            } else if case let .historicalMessageUpserted(notice) = event {
+                recordNetworkState(from: notice, accountID: accountID, publishing: true)
+            }
+            return
+        }
         let message: Message
         let historical: Bool
         switch event {
