@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import InboxPlusCore
 import InboxPlusRuntime
 import Security
 
@@ -172,8 +173,8 @@ public struct BridgeConfiguration: Sendable {
 
         backfill:
             enabled: true
-            max_initial_messages: 50
-            max_catchup_messages: 500
+            max_initial_messages: \(RecentHistory.messageCount)
+            max_catchup_messages: \(RecentHistory.messageCount)
 
         provisioning:
             shared_secret: \(yaml(provisioningSecret))
