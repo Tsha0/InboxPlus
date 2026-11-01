@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import InboxPlusCore
 import InboxPlusFeatures
 
@@ -56,11 +57,14 @@ public struct ConversationSendFailureDescriptor: Equatable, Sendable {
 }
 
 public struct ConversationView: View {
+    /// One line of text plus the field's vertical padding.
+    private static let singleLineFieldHeight: CGFloat = 32
+
     @Bindable var model: InboxPlusAppModel
     let route: ConversationRoute
     @State private var showsLinkSheet = false
     @State private var linkError: String?
-    @FocusState private var composerFocused: Bool
+    @State private var isDropTargeted = false
 
     public init(model: InboxPlusAppModel, route: ConversationRoute) {
         self.model = model
@@ -77,8 +81,8 @@ public struct ConversationView: View {
         model.messagesByRoute[route] ?? []
     }
 
-    private var trimmedDraft: String {
-        model.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var draft: String {
+        model.draft(for: route)
     }
 
     public var body: some View {
@@ -90,6 +94,19 @@ public struct ConversationView: View {
             composer
         }
         .background(.background)
+        .onDrop(
+            of: capabilities.acceptsAttachments ? [.fileURL, .image] : [],
+            isTargeted: $isDropTargeted,
+            perform: stageDropped
+        )
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(InboxPlusTheme.ink, lineWidth: 2)
+                    .padding(6)
+                    .allowsHitTesting(false)
+            }
+        }
         .sheet(isPresented: $showsLinkSheet) {
             LinkPersonSheet(
                 people: model.people,
@@ -102,10 +119,8 @@ public struct ConversationView: View {
                 }
             )
         }
-        .onAppear { composerFocused = true }
         .onChange(of: route) {
             model.markConversationRead(route)
-            composerFocused = true
         }
         .accessibilityIdentifier("conversation-\(route.accountID)-\(route.conversationID)")
     }
@@ -200,7 +215,7 @@ public struct ConversationView: View {
     }
 
     private var canSend: Bool {
-        !trimmedDraft.isEmpty || !stagedAttachments.isEmpty
+        !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !stagedAttachments.isEmpty
     }
 
     private var composer: some View {
@@ -211,30 +226,42 @@ public struct ConversationView: View {
                     remove: { model.removeStagedAttachment($0, for: route) }
                 )
             }
-            HStack(spacing: 10) {
+            // Bottom-aligned, so the buttons stay beside the line being typed as the field grows.
+            HStack(alignment: .bottom, spacing: 10) {
                 // Absent, not disabled, when the network cannot take attachments at all: an action
                 // that can never work here has no business occupying the composer.
                 if capabilities.acceptsAttachments {
                     Button(action: chooseAttachment) {
                         Image(systemName: "paperclip")
                             .font(.title3)
+                            .frame(height: Self.singleLineFieldHeight)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Attach a file")
                     .accessibilityIdentifier("attach-file")
                 }
-                TextField("Message…", text: $model.draft)
-                    .textFieldStyle(.plain)
-                    .focused($composerFocused)
-                    .onSubmit(send)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 9))
-                    .accessibilityIdentifier("message-composer")
+                ZStack(alignment: .topLeading) {
+                    if draft.isEmpty {
+                        Text("Message…")
+                            .foregroundStyle(.tertiary)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                    ComposerTextEditor(
+                        text: draft,
+                        onTextChange: { model.setDraft($0, for: route) },
+                        onSubmit: send,
+                        onStage: capabilities.acceptsAttachments ? { stage($0) } : nil
+                    )
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 9))
                 Button(action: send) {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.title2)
+                        .frame(height: Self.singleLineFieldHeight)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(canSend ? AnyShapeStyle(InboxPlusTheme.ink) : AnyShapeStyle(.tertiary))
@@ -280,13 +307,28 @@ public struct ConversationView: View {
         panel.canChooseFiles = true
         panel.prompt = "Attach"
         guard panel.runModal() == .OK else { return }
-        for url in panel.urls {
-            if let rejection = model.stageAttachment(at: url, for: route) {
-                linkError = rejection.message
-                return
+        stage(.files(panel.urls))
+    }
+
+    /// Stops at the first file refused, as the open panel always has.
+    private func stage(_ content: StageableContent) {
+        let rejection = switch content {
+        case let .files(urls):
+            urls.lazy.compactMap { model.stageAttachment(at: $0, for: route) }.first
+        case let .image(data, filename):
+            model.stageAttachment(data, named: filename, for: route)
+        }
+        linkError = rejection?.message
+    }
+
+    private func stageDropped(_ providers: [NSItemProvider]) -> Bool {
+        Task {
+            for provider in providers {
+                guard let content = await StageableContent.load(from: provider) else { continue }
+                stage(content)
             }
         }
-        linkError = nil
+        return true
     }
 
     private func scrollToLatest(_ proxy: ScrollViewProxy, animated: Bool = true) {
