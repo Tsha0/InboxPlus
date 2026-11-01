@@ -151,6 +151,13 @@ public struct ConversationView: View {
             // scrollTo(bottom) can repeatedly invalidate its estimated heights on
             // macOS when switching chats, trapping the main thread in layout.
             List {
+                RecentHistoryNotice(
+                    isEmpty: messages.isEmpty,
+                    link: model.conversations.first { $0.route == route }?.deepLink
+                )
+                .listRowInsets(EdgeInsets(top: 8, leading: 18, bottom: 4, trailing: 18))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
                 ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                     let previous = index > 0 ? messages[index - 1] : nil
                     let next = index + 1 < messages.count ? messages[index + 1] : nil
@@ -298,6 +305,32 @@ public struct ConversationView: View {
         } catch {
             linkError = error.localizedDescription
         }
+    }
+}
+
+/// Inbox+ keeps only recent messages and never pages further back, so the top of a transcript
+/// says so and points to the network's own app for the rest.
+private struct RecentHistoryNotice: View {
+    let isEmpty: Bool
+    let link: VerifiedDeepLink?
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(TranscriptPresentation.recentHistoryNotice(isEmpty: isEmpty))
+            if let link {
+                Text("·")
+                    .accessibilityHidden(true)
+                Button("Open in \(link.platform.accessibilityLabel)") { openURL(link.url) }
+                    .buttonStyle(.link)
+                    .accessibilityIdentifier("open-conversation-in-app")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("recent-history-notice")
     }
 }
 

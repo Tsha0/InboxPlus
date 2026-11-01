@@ -39,3 +39,8 @@ private func transcriptMessage(_ id: String, sender: String? = "alice", time: Ti
     #expect(!TranscriptPresentation.namesSenders(in: []))
     #expect(TranscriptPresentation.namesSenders(in: direct + [transcriptMessage("c", sender: "bob")]))
 }
+
+@Test func transcriptTopSaysOnlyRecentMessagesAreShown() {
+    #expect(TranscriptPresentation.recentHistoryNotice(isEmpty: false) == "Showing recent messages")
+    #expect(TranscriptPresentation.recentHistoryNotice(isEmpty: true) == "No recent messages")
+}

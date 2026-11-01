@@ -96,6 +96,18 @@ public actor InboxPlusMatrixClient {
         self.syncService = nil
     }
 
+    /// A room's current state, straight from the homeserver. The SDK has no way to read an
+    /// arbitrary state event, and a bridge's `m.bridge` event is one.
+    func roomState(_ roomID: String) async throws -> Data {
+        let token = try requireClient().session().accessToken
+        return try await MatrixHTTPClient(
+            baseURL: homeserverURL,
+            accessToken: token,
+            requestTimeout: .seconds(5),
+            maximumAttempts: 1
+        ).sendForData(.get, path: ["_matrix", "client", "v3", "rooms", roomID, "state"])
+    }
+
     public func roomListService() throws -> RoomListService {
         guard let syncService else { throw InboxPlusMatrixClientError.notConnected }
         return syncService.roomListService()

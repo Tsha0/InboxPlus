@@ -40,6 +40,10 @@ private actor HistoryOnOpenGateway: TextOnlyTestGateway {
         }
     }
 
+    func deliver(_ event: GatewayEvent) {
+        continuations.values.forEach { $0.yield(event) }
+    }
+
     private func removeContinuation(_ id: UUID) { continuations[id] = nil }
 }
 
@@ -49,7 +53,22 @@ private func settle(until condition: @MainActor () -> Bool) async -> Bool {
         if condition() { return true }
         await Task.yield()
     }
+    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+    while ContinuousClock.now < deadline {
+        if condition() { return true }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
     return condition()
+}
+
+private func history(_ count: Int, in route: ConversationRoute, prefix: String) -> [Message] {
+    (1...count).map { index in
+        Message(
+            id: "\(prefix)-\(index)", route: route, senderIdentityID: "family-telegram-identity",
+            body: "message \(index)", timestamp: Date(timeIntervalSince1970: Double(index)),
+            deliveryState: .acknowledged
+        )
+    }
 }
 
 @MainActor
@@ -73,4 +92,47 @@ private func settle(until condition: @MainActor () -> Bool) async -> Bool {
     #expect(await gateway.requestedRoutes == [Fixtures.telegramRoute])
     // History is older than the preview, which stays on the newest message.
     #expect(model.conversations.first { $0.route == Fixtures.telegramRoute }?.latestPreview == "Dinner this weekend?")
+}
+
+@MainActor
+@Test func closingAConversationTrimsItBackToTheRecentWindow() async throws {
+    let unsent = Message(
+        id: "unsent", route: Fixtures.telegramRoute, senderIdentityID: nil, body: "still sending",
+        timestamp: Date(timeIntervalSince1970: 0.5), deliveryState: .pending
+    )
+    let gateway = HistoryOnOpenGateway(
+        snapshot: Fixtures.snapshot,
+        history: [unsent] + history(60, in: Fixtures.telegramRoute, prefix: "tg-history")
+    )
+    let model = InboxPlusAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+
+    model.openConversation(Fixtures.telegramRoute)
+    // Everything that arrives while the conversation is open stays on screen.
+    #expect(await settle { model.messagesByRoute[Fixtures.telegramRoute]?.count == 62 })
+
+    model.openConversation(Fixtures.whatsAppRoute)
+
+    let kept = try #require(model.messagesByRoute[Fixtures.telegramRoute])
+    #expect(kept.filter { $0.deliveryState == .acknowledged }.count == RecentHistory.messageCount)
+    #expect(kept.last?.id == "tg-1")
+    #expect(kept.contains { $0.id == "tg-history-12" })
+    #expect(!kept.contains { $0.id == "tg-history-11" })
+    // A send that has not been confirmed is never dropped, however old it is.
+    #expect(kept.first?.id == "unsent")
+}
+
+@MainActor
+@Test func aClosedConversationNeverHoldsMoreThanTheRecentWindow() async throws {
+    let gateway = HistoryOnOpenGateway(snapshot: Fixtures.snapshot, history: [])
+    let model = InboxPlusAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+
+    for message in history(60, in: Fixtures.telegramRoute, prefix: "tg-history") {
+        await gateway.deliver(.historicalMessageUpserted(message))
+    }
+
+    #expect(await settle { model.messagesByRoute[Fixtures.telegramRoute]?.last?.id == "tg-1"
+        && model.messagesByRoute[Fixtures.telegramRoute]?.first?.id == "tg-history-12" })
+    #expect(model.messagesByRoute[Fixtures.telegramRoute]?.count == RecentHistory.messageCount)
 }
