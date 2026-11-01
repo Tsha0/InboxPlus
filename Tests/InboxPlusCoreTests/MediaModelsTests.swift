@@ -2,12 +2,32 @@ import Foundation
 import Testing
 @testable import InboxPlusCore
 
-@Test func anAttachmentPrefersTheSendersCaptionThenTheFilename() {
-    let captioned = MessageAttachment(id: "1", kind: .image, filename: "IMG_0042.HEIC", caption: "beach")
-    #expect(captioned.displayName == "beach")
+@Test func aCardIsTitledWithWhatItHoldsRatherThanTheServersFilename() {
+    let serverName = "462555709_902766575152919_3265496144511665546_n.jpg"
+    let photo = MessageAttachment(id: "1", kind: .image, filename: serverName)
+    #expect(photo.title == "Photo")
+    // Kept for saving the photo under its own name.
+    #expect(photo.filename == serverName)
+    #expect(MessageAttachment(id: "2", kind: .video, filename: "video-1730.mp4").title == "Video")
+    #expect(MessageAttachment(id: "3", kind: .audio, filename: "audioclip.m4a").title == "Audio message")
 
-    let named = MessageAttachment(id: "2", kind: .image, filename: "IMG_0042.HEIC", caption: "   ")
-    #expect(named.displayName == "IMG_0042.HEIC")
+    // A document's name is what tells it apart from the others.
+    #expect(MessageAttachment(id: "4", kind: .file, filename: "Lease.pdf").title == "Lease.pdf")
+    #expect(MessageAttachment(id: "5", kind: .file, filename: "  ").title == "File")
+}
+
+@Test func aCaptionIsTheAttachmentsTextButNeverItsTitle() {
+    let caption = """
+    sample.account
+    Sunset over the bay, with the whole crew for the last night of the trip.
+    https://www.instagram.com/p/Cabc123/
+    """
+    let post = MessageAttachment(id: "1", kind: .image, filename: "462555709_n.jpg", caption: caption)
+    #expect(post.title == "Photo")
+    #expect(post.displayName == caption)
+
+    let uncaptioned = MessageAttachment(id: "2", kind: .image, filename: "IMG_0042.HEIC", caption: "   ")
+    #expect(uncaptioned.displayName == "Photo")
 
     // Never an empty bubble.
     #expect(MessageAttachment(id: "3", kind: .video).displayName == "Video")

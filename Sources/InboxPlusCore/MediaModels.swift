@@ -107,22 +107,32 @@ public struct MessageAttachment: Identifiable, Codable, Hashable, Sendable {
     /// True when there are bytes to fetch. An app-native card has a deep link and nothing else.
     public var isDownloadable: Bool { source != nil }
 
-    /// A short, human label for the payload, never empty.
-    public var displayName: String {
-        for candidate in [caption, filename] {
-            if let candidate, !candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return candidate
-            }
-        }
+    /// What the attachment's card is headed with, never empty.
+    ///
+    /// A photo's or video's filename is one the server made up, such as
+    /// `462555709_902766575152919_3265496144511665546_n.jpg`, so only a file is headed by its name.
+    /// `filename` stays on the attachment for saving the bytes under their own name.
+    public var title: String {
         switch kind {
-        case .image: return "Photo"
-        case .gallery: return "Photos"
-        case .sticker: return "Sticker"
-        case .audio: return "Audio message"
-        case .video: return "Video"
-        case .location: return "Location"
-        case .appNative: return "Shared post"
-        default: return "File"
+        case .image: "Photo"
+        case .gallery: "Photos"
+        case .sticker: "Sticker"
+        case .audio: "Audio message"
+        case .video: "Video"
+        case .location: "Location"
+        case .appNative: "Shared post"
+        case .file: Self.nonBlank(filename) ?? "File"
+        default: "Attachment"
         }
+    }
+
+    /// A short, human label for the payload, never empty: the sender's caption, or else `title`.
+    public var displayName: String {
+        Self.nonBlank(caption) ?? title
+    }
+
+    private static func nonBlank(_ value: String?) -> String? {
+        guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return value
     }
 }

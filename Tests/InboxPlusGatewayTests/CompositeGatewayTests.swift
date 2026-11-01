@@ -108,3 +108,8 @@ func aReplyInANetworkConnectedAfterTheSnapshotReachesTheGatewayThatReportedIt() 
     #expect(await imessage.readRoutes == [route])
     #expect(await matrix.readRoutes.isEmpty)
 }
+
+@Test func aSendToAnAccountThatIsGoneSaysSoInPlainWords() {
+    let shown = CompositeGatewayError.unknownAccount("instagram-bridge").localizedDescription
+    #expect(shown == "This account isn't connected.")
+}

@@ -656,12 +656,18 @@ public actor MatrixMessagingGateway: MessagingGateway {
     }
 }
 
-public enum MatrixGatewayError: Error, Equatable, Sendable, CustomStringConvertible {
+public enum MatrixGatewayError: Error, Equatable, Sendable, CustomStringConvertible, LocalizedError {
     case unknownRoom(String)
 
     public var description: String {
         switch self {
         case let .unknownRoom(roomID): "no such conversation: \(roomID)"
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .unknownRoom: "This conversation isn't available anymore."
         }
     }
 }

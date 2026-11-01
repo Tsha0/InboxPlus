@@ -35,33 +35,32 @@ public actor InMemoryMessagingGateway: MessagingGateway {
 
     public func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt {
         let id = UUID().uuidString
+        let sent = MessageAttachment(
+            id: "\(id)#0",
+            kind: attachment.kind,
+            filename: attachment.filename,
+            caption: attachment.caption,
+            mimeType: attachment.mimeType,
+            byteCount: attachment.byteCount,
+            pixelSize: attachment.pixelSize,
+            duration: attachment.duration,
+            // The fake serves the local file straight back, which is what makes an
+            // outgoing attachment visible in previews and tests without a homeserver.
+            source: MediaHandle(
+                source: attachment.fileURL.absoluteString,
+                mimeType: attachment.mimeType,
+                byteCount: attachment.byteCount
+            )
+        )
         let message = Message(
             id: id,
             route: route,
             senderIdentityID: nil,
-            body: attachment.caption ?? attachment.filename,
+            body: sent.displayName,
             timestamp: Date(),
             deliveryState: .acknowledged,
             kind: attachment.kind,
-            attachments: [
-                MessageAttachment(
-                    id: "\(id)#0",
-                    kind: attachment.kind,
-                    filename: attachment.filename,
-                    caption: attachment.caption,
-                    mimeType: attachment.mimeType,
-                    byteCount: attachment.byteCount,
-                    pixelSize: attachment.pixelSize,
-                    duration: attachment.duration,
-                    // The fake serves the local file straight back, which is what makes an
-                    // outgoing attachment visible in previews and tests without a homeserver.
-                    source: MediaHandle(
-                        source: attachment.fileURL.absoluteString,
-                        mimeType: attachment.mimeType,
-                        byteCount: attachment.byteCount
-                    )
-                ),
-            ]
+            attachments: [sent]
         )
         snapshot.messagesByRoute[route, default: []].append(message)
         continuations.values.forEach { $0.yield(.messageUpserted(message)) }
