@@ -114,7 +114,8 @@ struct InboxPlusApp: App {
             directory: services.directory,
             media: services.media,
             favouriteStore: services.favouriteStore,
-            accountLifecycle: services.accountLifecycle
+            accountLifecycle: services.accountLifecycle,
+            composerFiles: services.composerFiles
         )
     }()
 
@@ -128,7 +129,7 @@ struct InboxPlusApp: App {
                     updates.installationPreflight = {
                         guard model.health != .starting, !model.hasUnfinishedMessagingWork else {
                             throw NSError(domain: "InboxPlus.Update", code: 2, userInfo: [
-                                NSLocalizedDescriptionKey: "Wait for setup and pending messages to finish, and send or clear your draft and attachments before restarting to update."
+                                NSLocalizedDescriptionKey: "Wait for setup and pending messages to finish, and send or clear your drafts and attachments before restarting to update. Conversations with a draft are marked in the inbox."
                             ])
                         }
                         model.isPreparingForUpdate = true

@@ -32,6 +32,7 @@ enum GatewaySelection {
         let directory: ContactDirectory
         var favouriteStore: InboxFavouriteStore? = nil
         var accountLifecycle: (any AccountLifecycle)? = nil
+        var composerFiles: ComposerFileStore = .temporary()
     }
 
     @MainActor
@@ -58,6 +59,8 @@ enum GatewaySelection {
             // immediately and attach its loader once there is a homeserver to fetch from.
             let media = MediaController()
             let sources = LiveSources()
+            let composerFiles = ComposerFileStore(directory: paths.profile.appendingPathComponent("composer", isDirectory: true))
+            composerFiles.removeAll()
 
             let gateway = DeferredRuntimeGateway(
                 paths: paths,
@@ -75,7 +78,8 @@ enum GatewaySelection {
                 // Real accounts start with no linked people. Linking is something the user does.
                 directory: ContactDirectory(),
                 favouriteStore: InboxFavouriteStore(fileURL: paths.profile.appendingPathComponent("inbox-favourites.json")),
-                accountLifecycle: ProfileAccountLifecycle(paths: paths, sources: sources)
+                accountLifecycle: ProfileAccountLifecycle(paths: paths, sources: sources),
+                composerFiles: composerFiles
             )
         } catch {
             // Surface the reason instead of silently substituting fake conversations.
