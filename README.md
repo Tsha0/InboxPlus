@@ -102,6 +102,9 @@ rather than a password:
 
 Sending prompts separately for Automation control of Messages the first time. Inbox+ also asks for
 Contacts once, to show names instead of phone numbers; without it, numbers and addresses are shown.
+With Contacts, a one-to-one chat with someone who isn't in them and whom you have never replied to
+is listed under **Unknown senders** rather than in the inbox. Replying, or linking the chat to a
+person in Inbox+, moves it back.
 
 ## Developing
 

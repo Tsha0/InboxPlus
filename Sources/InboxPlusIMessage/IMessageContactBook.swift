@@ -50,6 +50,9 @@ public struct IMessageContactBook: IMessageContactSource {
 
     public func contactBook() async -> IMessageContactBook { self }
 
+    /// Also what a Mac without Contacts access reads as.
+    var isEmpty: Bool { byPhoneDigits.isEmpty && byEmail.isEmpty }
+
     public func name(forHandle handle: String) -> String {
         contact(forHandle: handle)?.name ?? Self.formatted(handle)
     }

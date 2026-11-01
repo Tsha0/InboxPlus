@@ -173,6 +173,17 @@ public final class IMessageStore {
         """).reversed()
     }
 
+    /// Whether the user has written in a chat. A tapback is a reaction, not a reply.
+    public func hasMessagesFromMe(inChat chatRowID: Int64) throws -> Bool {
+        try !rows("""
+        SELECT 1 FROM chat_message_join
+        CROSS JOIN message ON message.ROWID = chat_message_join.message_id
+        WHERE chat_message_join.chat_id = \(chatRowID) AND message.is_from_me = 1
+          AND message.associated_message_guid IS NULL
+        LIMIT 1
+        """) { _ in () }.isEmpty
+    }
+
     public func maxMessageRowID() throws -> Int64 {
         try rows("SELECT COALESCE(MAX(ROWID), 0) FROM message") { sqlite3_column_int64($0, 0) }
             .first ?? 0

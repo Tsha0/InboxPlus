@@ -209,13 +209,13 @@ private func eventually(_ condition: @MainActor () async throws -> Bool) async r
     try await model.start()
     let routes = model.inboxItems.flatMap { $0.conversationSummaries.map(\.route) }
     #expect(routes.count == 3)
-    model.navigateConversation(forward: true, query: "", unreadOnly: false)
+    model.navigateConversation(forward: true, query: "", filter: InboxFilter())
     #expect(model.openRoute == routes[0])
-    model.navigateConversation(forward: true, query: "", unreadOnly: false)
+    model.navigateConversation(forward: true, query: "", filter: InboxFilter())
     #expect(model.openRoute == routes[1])
-    model.navigateConversation(forward: false, query: "", unreadOnly: false)
+    model.navigateConversation(forward: false, query: "", filter: InboxFilter())
     #expect(model.openRoute == routes[0])
-    model.navigateConversation(forward: false, query: "", unreadOnly: false)
+    model.navigateConversation(forward: false, query: "", filter: InboxFilter())
     #expect(model.openRoute == routes.last)
 }
 
@@ -225,15 +225,15 @@ private func eventually(_ condition: @MainActor () async throws -> Bool) async r
     try await model.start()
     model.openConversation(Fixtures.instagramRoute)
     model.draft = "still writing"
-    model.navigateConversation(forward: true, query: "Family", unreadOnly: false)
+    model.navigateConversation(forward: true, query: "Family", filter: InboxFilter())
     #expect(model.openRoute == Fixtures.instagramRoute)
     #expect(model.draft == "still writing")
     model.draft = ""
-    model.navigateConversation(forward: true, query: "Family", unreadOnly: false)
+    model.navigateConversation(forward: true, query: "Family", filter: InboxFilter())
     #expect(model.openRoute == Fixtures.telegramRoute)
-    model.navigateConversation(forward: false, query: "no matching conversation", unreadOnly: false)
+    model.navigateConversation(forward: false, query: "no matching conversation", filter: InboxFilter())
     #expect(model.openRoute == Fixtures.telegramRoute)
-    model.navigateConversation(forward: false, query: "MAYA", unreadOnly: true)
+    model.navigateConversation(forward: false, query: "MAYA", filter: InboxFilter(scope: .unread))
     #expect(model.openRoute != Fixtures.telegramRoute)
 }
 

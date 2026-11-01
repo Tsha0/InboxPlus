@@ -125,6 +125,9 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
     public var unreadCount: Int
     public var capabilities: ConversationCapabilities
     public var isGroup: Bool
+    /// Someone the user has no record of: not in their contacts and never written to. Only a
+    /// source that can tell sets it, which is why it defaults to false.
+    public var isFromUnknownSender: Bool
 
     public var route: ConversationRoute { .init(accountID: accountID, conversationID: id) }
 
@@ -137,7 +140,8 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
         latestActivity: Date,
         unreadCount: Int,
         capabilities: ConversationCapabilities = .mediaCapable,
-        isGroup: Bool = false
+        isGroup: Bool = false,
+        isFromUnknownSender: Bool = false
     ) {
         self.id = id
         self.accountID = accountID
@@ -148,6 +152,7 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
         self.unreadCount = unreadCount
         self.capabilities = capabilities
         self.isGroup = isGroup
+        self.isFromUnknownSender = isFromUnknownSender
     }
 }
 

@@ -301,8 +301,19 @@ public actor IMessageGateway: ConversationStartingGateway {
             // Messages accepts text through Apple events. Attachments would need a
             // different mechanism, so the composer does not offer them here.
             capabilities: ConversationCapabilities(canSendText: true, attachmentKinds: []),
-            isGroup: chat.isGroup
+            isGroup: chat.isGroup,
+            isFromUnknownSender: isFromUnknownSender(chat)
         )
+    }
+
+    /// A one-to-one chat with someone missing from Contacts whom the user has never written to.
+    /// With no contacts to compare against nobody counts as a stranger, and a chat that cannot
+    /// be checked stays in the inbox rather than being hidden.
+    private func isFromUnknownSender(_ chat: IMessageChat) -> Bool {
+        guard !chat.isGroup, !chat.identifier.isEmpty, !contactBook.isEmpty,
+              contactBook.contact(forHandle: chat.identifier) == nil
+        else { return false }
+        return (try? store.hasMessagesFromMe(inChat: chat.rowID)) == false
     }
 
     private func message(from row: IMessageRow) -> Message? {
