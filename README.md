@@ -22,6 +22,10 @@ in a terminal remains under your control.
 Conversation settings and avatar updates are kept out of chat history, so syncing metadata does
 not appear as messages.
 
+Inbox+ keeps a recent window, not the full history: each conversation opens on its latest 50
+messages, and older history stays on the network (an Instagram chat links to it). The local
+homeserver drops messages after 90 days and media nobody has opened after 30 days.
+
 Local builds are ad-hoc signed but not notarized. Only Instagram has been exercised with a live
 account; broader live-network certification and updated performance validation remain outstanding.
 

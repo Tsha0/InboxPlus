@@ -87,7 +87,11 @@ public final class InboxPlusAppModel {
     public private(set) var conversations: [RemoteConversation] = []
     public private(set) var messagesByRoute: [ConversationRoute: [Message]] = [:]
     public private(set) var inboxItems: [InboxItem] = []
-    public private(set) var detailSelection: DetailSelection = .empty
+    public private(set) var detailSelection: DetailSelection = .empty {
+        didSet {
+            if case let .conversation(closed) = oldValue, closed != openRoute { trimToRecentWindow(closed) }
+        }
+    }
     public private(set) var health: ServiceHealth = .starting
     public var draft = "" {
         didSet { draftRevision &+= 1 }
@@ -632,6 +636,7 @@ public final class InboxPlusAppModel {
         identities = snapshot.identities
         conversations = snapshot.conversations
         messagesByRoute = snapshot.messagesByRoute.mapValues { $0.sorted { $0.timestamp < $1.timestamp } }
+        for route in messagesByRoute.keys where route != openRoute { trimToRecentWindow(route) }
         lastActivityByAccount = Dictionary(
             snapshot.conversations.map { ($0.accountID, $0.latestActivity) },
             uniquingKeysWith: max
@@ -799,6 +804,7 @@ public final class InboxPlusAppModel {
                 messages.insert(message, at: insertion ?? messages.endIndex)
             }
             messagesByRoute[message.route] = messages
+            if message.route != openRoute { trimToRecentWindow(message.route) }
             let accountID = message.route.accountID
             if message.timestamp > lastActivityByAccount[accountID] ?? .distantPast {
                 lastActivityByAccount[accountID] = message.timestamp
@@ -836,6 +842,17 @@ public final class InboxPlusAppModel {
                 ? .healthy
                 : .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
         }
+    }
+
+    /// A closed conversation keeps only its recent window, so a long session does not hold every
+    /// message it has seen. One not yet confirmed stays whatever its age: it is still the user's.
+    private func trimToRecentWindow(_ route: ConversationRoute) {
+        guard let messages = messagesByRoute[route] else { return }
+        let cutoff = messages.count - RecentHistory.messageCount
+        guard cutoff > 0 else { return }
+        messagesByRoute[route] = messages.enumerated()
+            .filter { $0.offset >= cutoff || $0.element.deliveryState != .acknowledged }
+            .map(\.element)
     }
 
     private func rebuildInbox() {
