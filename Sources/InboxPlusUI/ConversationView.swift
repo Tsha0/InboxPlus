@@ -346,12 +346,8 @@ private struct MessageBubble: View {
         return reason
     }
 
-    /// An attachment carries its own caption, so repeating the body above it would print the
-    /// filename twice. Text alongside media is only shown when it says something different.
     private var showsBody: Bool {
-        guard !message.attachments.isEmpty else { return true }
-        let body = message.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !body.isEmpty && !message.attachments.contains { $0.displayName == body }
+        AttachmentFormatting.showsBody(of: message)
     }
 
     private var foreground: Color {

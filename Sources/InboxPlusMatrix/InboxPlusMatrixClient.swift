@@ -2,7 +2,7 @@ import Foundation
 import MatrixRustSDK
 import InboxPlusRuntime
 
-public enum InboxPlusMatrixClientError: Error, Equatable, Sendable, CustomStringConvertible {
+public enum InboxPlusMatrixClientError: Error, Equatable, Sendable, CustomStringConvertible, LocalizedError {
     case notConnected
     case sessionRestoreFailed(String)
 
@@ -12,6 +12,17 @@ public enum InboxPlusMatrixClientError: Error, Equatable, Sendable, CustomString
             "the Matrix client is not connected"
         case let .sessionRestoreFailed(reason):
             "could not restore the saved Matrix session: \(reason)"
+        }
+    }
+
+    // What the app shows. Without it a failed send reads
+    // "The operation couldn't be completed. (InboxPlusMatrix.InboxPlusMatrixClientError error 1.)".
+    public var errorDescription: String? {
+        switch self {
+        case .notConnected:
+            "Inbox+ isn't connected yet. Try again in a moment."
+        case .sessionRestoreFailed:
+            "Inbox+ couldn't restore its saved sign-in. Quit and reopen Inbox+ to sign in again."
         }
     }
 }
