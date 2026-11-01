@@ -2,7 +2,7 @@ import Foundation
 import MatrixRustSDK
 import InboxPlusRuntime
 
-public enum InboxPlusMatrixClientError: Error, Equatable, Sendable, CustomStringConvertible {
+public enum InboxPlusMatrixClientError: Error, Equatable, Sendable, CustomStringConvertible, LocalizedError {
     case notConnected
     case sessionRestoreFailed(String)
 
@@ -12,6 +12,17 @@ public enum InboxPlusMatrixClientError: Error, Equatable, Sendable, CustomString
             "the Matrix client is not connected"
         case let .sessionRestoreFailed(reason):
             "could not restore the saved Matrix session: \(reason)"
+        }
+    }
+
+    // What the app shows. Without it a failed send reads
+    // "The operation couldn't be completed. (InboxPlusMatrix.InboxPlusMatrixClientError error 1.)".
+    public var errorDescription: String? {
+        switch self {
+        case .notConnected:
+            "Inbox+ isn't connected yet. Try again in a moment."
+        case .sessionRestoreFailed:
+            "Inbox+ couldn't restore its saved sign-in. Quit and reopen Inbox+ to sign in again."
         }
     }
 }
@@ -94,6 +105,18 @@ public actor InboxPlusMatrixClient {
         guard let syncService else { return }
         await syncService.stop()
         self.syncService = nil
+    }
+
+    /// A room's current state, straight from the homeserver. The SDK has no way to read an
+    /// arbitrary state event, and a bridge's `m.bridge` event is one.
+    func roomState(_ roomID: String) async throws -> Data {
+        let token = try requireClient().session().accessToken
+        return try await MatrixHTTPClient(
+            baseURL: homeserverURL,
+            accessToken: token,
+            requestTimeout: .seconds(5),
+            maximumAttempts: 1
+        ).sendForData(.get, path: ["_matrix", "client", "v3", "rooms", roomID, "state"])
     }
 
     public func roomListService() throws -> RoomListService {

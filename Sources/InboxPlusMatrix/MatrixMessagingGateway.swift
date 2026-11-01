@@ -19,7 +19,9 @@ public actor MatrixMessagingGateway: MessagingGateway {
     private let invitePolicy: BridgeInvitePolicy
     private let bridgeAccounts: [String: BridgeAccountDescriptor]
     private let roomDiscoveryInterval: Duration
-    private let backfillEventCount: UInt16
+    private let historyWindow: Int
+    private let backfillStep: UInt16
+    private let backfillEventLimit: Int
 
     private let outgoingIdentifiersProvider: @Sendable () async -> [String: Set<String>]
     private var outgoingIdentifiersByAccount: [String: Set<String>] = [:]
@@ -47,7 +49,9 @@ public actor MatrixMessagingGateway: MessagingGateway {
         invitePolicy: BridgeInvitePolicy = .trustingNobody,
         bridgeAccounts: [BridgeAccountDescriptor] = [],
         roomDiscoveryInterval: Duration = .seconds(3),
-        backfillEventCount: UInt16 = 50,
+        historyWindow: Int = RecentHistory.messageCount,
+        backfillStep: UInt16 = 20,
+        backfillEventLimit: Int = 200,
         outgoingIdentifiersProvider: @escaping @Sendable () async -> [String: Set<String>] = { [:] }
     ) {
         self.outgoingIdentifiersProvider = outgoingIdentifiersProvider
@@ -61,7 +65,9 @@ public actor MatrixMessagingGateway: MessagingGateway {
             bridgeAccounts.map { ($0.bridgeID, $0) }, uniquingKeysWith: { first, _ in first }
         )
         self.roomDiscoveryInterval = roomDiscoveryInterval
-        self.backfillEventCount = backfillEventCount
+        self.historyWindow = historyWindow
+        self.backfillStep = backfillStep
+        self.backfillEventLimit = backfillEventLimit
         normalizer = MatrixEventNormalizer(accountID: accountID)
     }
 
@@ -118,18 +124,16 @@ public actor MatrixMessagingGateway: MessagingGateway {
                 )
             }
 
-            conversations.append(
-                RemoteConversation(
-                    id: room.id(),
-                    accountID: roomAccountID,
-                    identityID: identityID,
-                    title: title,
-                    latestPreview: ordered.last?.body ?? "",
-                    latestActivity: ordered.last?.timestamp ?? Date(timeIntervalSince1970: 0),
-                    unreadCount: Int(info.numUnreadMessages),
-                    isGroup: isGroup(info, accountID: roomAccountID)
-                )
-            )
+            conversations.append(Self.conversation(
+                roomID: room.id(),
+                accountID: roomAccountID,
+                identityID: identityID,
+                title: title,
+                messages: ordered,
+                unreadCount: Int(info.numUnreadMessages),
+                isGroup: isGroup(info, accountID: roomAccountID),
+                deepLink: await deepLink(forRoom: room.id(), accountID: roomAccountID)
+            ))
         }
 
         return MessagingSnapshot(
@@ -356,20 +360,51 @@ public actor MatrixMessagingGateway: MessagingGateway {
                     displayName: identityID == roomID ? title : Self.displayName(forUserID: identityID)
                 )
             ))
-            publish(.conversationUpserted(
-                RemoteConversation(
-                    id: roomID,
-                    accountID: roomAccountID,
-                    identityID: identityID,
-                    title: title,
-                    latestPreview: messages.last?.body ?? "",
-                    latestActivity: messages.last?.timestamp ?? Date(timeIntervalSince1970: 0),
-                    unreadCount: Int(info?.numUnreadMessages ?? 0),
-                    isGroup: info.map { isGroup($0, accountID: roomAccountID) } ?? false
-                )
-            ))
+            publish(.conversationUpserted(Self.conversation(
+                roomID: roomID,
+                accountID: roomAccountID,
+                identityID: identityID,
+                title: title,
+                messages: messages,
+                unreadCount: Int(info?.numUnreadMessages ?? 0),
+                isGroup: info.map { isGroup($0, accountID: roomAccountID) } ?? false,
+                deepLink: await deepLink(forRoom: roomID, accountID: roomAccountID)
+            )))
             for message in messages { publish(.historicalMessageUpserted(message)) }
         }
+    }
+
+    /// A room as the inbox lists it, from its messages in chronological order. Its preview and
+    /// time are its newest message's: a bridge sends member and profile events after the history
+    /// it backfills, and none of those is a message.
+    static func conversation(
+        roomID: String,
+        accountID: String,
+        identityID: String,
+        title: String,
+        messages ordered: [Message],
+        unreadCount: Int,
+        isGroup: Bool,
+        deepLink: VerifiedDeepLink?
+    ) -> RemoteConversation {
+        RemoteConversation(
+            id: roomID,
+            accountID: accountID,
+            identityID: identityID,
+            title: title,
+            latestPreview: ordered.last?.body ?? "",
+            latestActivity: ordered.last?.timestamp ?? Date(timeIntervalSince1970: 0),
+            unreadCount: unreadCount,
+            isGroup: isGroup,
+            deepLink: deepLink
+        )
+    }
+
+    /// Asked only for a network Inbox+ can build a link for, so any other room costs no request.
+    private func deepLink(forRoom roomID: String, accountID: String) async -> VerifiedDeepLink? {
+        guard let platform = bridgeAccounts[accountID]?.platform, BridgeChannelLink.supports(platform),
+              let state = try? await client.roomState(roomID) else { return nil }
+        return BridgeChannelLink.link(inRoomState: state, platform: platform)
     }
 
     // MARK: - Attribution
@@ -605,9 +640,34 @@ public actor MatrixMessagingGateway: MessagingGateway {
 
         // A live timeline begins where this account's view of the room begins. In a room Inbox+ has
         // only just joined — every bridged portal — that is the join event, so the conversation the
-        // bridge backfilled sits entirely behind it and would never be shown. Paginating once pulls
+        // bridge backfilled sits entirely behind it and would never be shown. Paging back pulls
         // that history in.
-        _ = try? await timeline.paginateBackwards(numEvents: backfillEventCount)
+        await Self.backfill(
+            toWindow: historyWindow,
+            step: backfillStep,
+            eventLimit: backfillEventLimit,
+            loadedMessages: { observer.messageCount },
+            paginate: { try await timeline.paginateBackwards(numEvents: $0) }
+        )
+    }
+
+    /// Pages back in small steps until `window` messages are loaded, the room's start is reached,
+    /// or `eventLimit` events have been asked for. Counting events instead would stop short in a
+    /// group, where member changes can outnumber messages six to one; the limit keeps such a room
+    /// from walking its whole history.
+    static func backfill(
+        toWindow window: Int,
+        step: UInt16,
+        eventLimit: Int,
+        loadedMessages: @Sendable () -> Int,
+        paginate: @Sendable (UInt16) async throws -> Bool
+    ) async {
+        var requested = 0
+        while loadedMessages() < window, requested < eventLimit {
+            let count = UInt16(min(Int(step), eventLimit - requested))
+            requested += Int(count)
+            guard let reachedStart = try? await paginate(count), !reachedStart else { return }
+        }
     }
 
     private func publishTimelineEvent(_ event: GatewayEvent, roomID: String) async {
@@ -656,12 +716,18 @@ public actor MatrixMessagingGateway: MessagingGateway {
     }
 }
 
-public enum MatrixGatewayError: Error, Equatable, Sendable, CustomStringConvertible {
+public enum MatrixGatewayError: Error, Equatable, Sendable, CustomStringConvertible, LocalizedError {
     case unknownRoom(String)
 
     public var description: String {
         switch self {
         case let .unknownRoom(roomID): "no such conversation: \(roomID)"
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .unknownRoom: "This conversation isn't available anymore."
         }
     }
 }
@@ -748,6 +814,11 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
 
     func message(id: String) -> Message? {
         lock.withLock { known[id] }
+    }
+
+    /// Events with nothing to show, such as member changes, are not among these.
+    var messageCount: Int {
+        lock.withLock { known.count }
     }
 
     /// Current messages, waiting briefly for the timeline's first batch to arrive.

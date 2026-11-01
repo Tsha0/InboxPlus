@@ -22,10 +22,22 @@ enum AttachmentFormatting {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
+    /// Whether a message's text is shown under its attachments. A caption is the text, so it reads
+    /// under the media. Without one the text is only the card's title, kept for previews, and
+    /// printing it again under the card would say it twice.
+    static func showsBody(of message: Message) -> Bool {
+        guard !message.attachments.isEmpty else { return true }
+        let body = message.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !body.isEmpty && !message.attachments.contains { $0.title == body }
+    }
+
     /// What VoiceOver reads for an attachment: what it is, then whatever is actually known about
-    /// it. Nothing is invented — an unknown size simply goes unmentioned.
+    /// it. Nothing is invented — an unknown size simply goes unmentioned. The caption is not part
+    /// of it: it is the message's text, read on its own under the media.
     static func accessibilityLabel(for attachment: MessageAttachment) -> String {
-        var parts = [noun(for: attachment.kind), attachment.displayName]
+        var parts = [noun(for: attachment.kind)]
+        // Only a file's title says more than its noun: it is the file's name.
+        if attachment.title != parts[0] { parts.append(attachment.title) }
         if let duration = durationLabel(attachment.duration) { parts.append(duration) }
         if let bytes = byteLabel(attachment.byteCount) { parts.append(bytes) }
         if let link = attachment.deepLink {

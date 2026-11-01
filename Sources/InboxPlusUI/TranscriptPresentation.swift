@@ -2,6 +2,11 @@ import Foundation
 import InboxPlusCore
 
 public enum TranscriptPresentation {
+    /// A transcript holds a recent window rather than the whole history, and its top says so.
+    public static func recentHistoryNotice(isEmpty: Bool) -> String {
+        isEmpty ? "No recent messages" : "Showing recent messages"
+    }
+
     public static func senderName(_ message: Message, identities: [RemoteIdentity]) -> String {
         if message.isOutgoing { return "You" }
         if let name = message.senderDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
