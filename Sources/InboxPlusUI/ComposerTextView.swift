@@ -75,6 +75,7 @@ final class ComposerTextView: NSTextView {
     var onSubmit: () -> Void = {}
     /// Nil where the conversation takes no attachments; a paste or drop is then ordinary text.
     var onStage: ((StageableContent) -> Void)?
+    var onCancel: (() -> Void)?
 
     override func insertNewline(_ sender: Any?) {
         returnPressed(modifiers: NSApp?.currentEvent?.modifierFlags ?? [])
@@ -97,6 +98,11 @@ final class ComposerTextView: NSTextView {
 
     override func insertBacktab(_ sender: Any?) {
         window?.selectPreviousKeyView(sender)
+    }
+
+    /// Escape, which a text view would otherwise turn into a completion list.
+    override func cancelOperation(_ sender: Any?) {
+        if let onCancel { onCancel() } else { super.cancelOperation(sender) }
     }
 
     override func paste(_ sender: Any?) {
@@ -169,9 +175,12 @@ struct ComposerTextEditor: NSViewRepresentable {
     let onTextChange: (String) -> Void
     let onSubmit: () -> Void
     let onStage: ((StageableContent) -> Void)?
+    var onCancel: (() -> Void)?
+    /// Changing it puts the cursor in the composer, as choosing Reply does.
+    var focusRequest = 0
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onTextChange: onTextChange)
+        Coordinator(onTextChange: onTextChange, focusRequest: focusRequest)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -209,6 +218,11 @@ struct ComposerTextEditor: NSViewRepresentable {
         context.coordinator.onTextChange = onTextChange
         textView.onSubmit = onSubmit
         textView.onStage = onStage
+        textView.onCancel = onCancel
+        if context.coordinator.focusRequest != focusRequest {
+            context.coordinator.focusRequest = focusRequest
+            textView.window?.makeFirstResponder(textView)
+        }
         // Never while an input method is composing: the half-typed characters are not in the
         // draft yet, and replacing the text would throw them away.
         if !textView.hasMarkedText(), textView.string != text {
@@ -228,9 +242,11 @@ struct ComposerTextEditor: NSViewRepresentable {
         let textView = ComposerTextView()
         let undoManager = UndoManager()
         var onTextChange: (String) -> Void
+        var focusRequest: Int
 
-        init(onTextChange: @escaping (String) -> Void) {
+        init(onTextChange: @escaping (String) -> Void, focusRequest: Int) {
             self.onTextChange = onTextChange
+            self.focusRequest = focusRequest
         }
 
         func textDidChange(_ notification: Notification) {

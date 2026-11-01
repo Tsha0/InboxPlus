@@ -4,10 +4,12 @@ import InboxPlusFeatures
 
 public struct InboxView: View {
     let items: [InboxItem]
+    let hiddenItems: [InboxItem]
     let messageMatches: [MessageSearchResult]
     let selectedID: InboxItem.ID?
     let highlightedMessage: MessageReference?
     let onToggleFavourite: (InboxItem) -> Void
+    let onAction: (InboxItem, InboxItemAction) -> Void
     let favouriteError: String?
     let onSelect: (InboxItem) -> Void
     let onSelectMessage: (MessageReference) -> Void
@@ -18,9 +20,12 @@ public struct InboxView: View {
     @Binding private var query: String
     let searchFocusRequest: UUID?
     @FocusState private var searchFocused: Bool
+    @State private var showsHidden = false
+    @Environment(\.openURL) private var openURL
 
     public init(
         items: [InboxItem],
+        hiddenItems: [InboxItem] = [],
         query: Binding<String>,
         filter: Binding<InboxFilter>,
         searchFocusRequest: UUID?,
@@ -29,6 +34,7 @@ public struct InboxView: View {
         highlightedMessage: MessageReference? = nil,
         favouriteError: String? = nil,
         onToggleFavourite: @escaping (InboxItem) -> Void = { _ in },
+        onAction: @escaping (InboxItem, InboxItemAction) -> Void = { _, _ in },
         unsentRoutes: Set<ConversationRoute> = [],
         onSelect: @escaping (InboxItem) -> Void,
         onSelectMessage: @escaping (MessageReference) -> Void = { _ in }
@@ -40,7 +46,9 @@ public struct InboxView: View {
         self.messageMatches = messageMatches
         self.favouriteError = favouriteError
         self.onToggleFavourite = onToggleFavourite
+        self.onAction = onAction
         self.items = items
+        self.hiddenItems = hiddenItems
         self.selectedID = selectedID
         self.highlightedMessage = highlightedMessage
         self.onSelect = onSelect
@@ -48,7 +56,7 @@ public struct InboxView: View {
     }
 
     private var visibleItems: [InboxItem] {
-        InboxProjector.filtered(items, query: query, filter: filter)
+        InboxProjector.filtered(showsHidden ? hiddenItems : items, query: query, filter: filter)
     }
 
     private var unreadTotal: Int {
@@ -73,7 +81,7 @@ public struct InboxView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("Inbox")
+                Text(showsHidden ? "Hidden" : "Inbox")
                     .font(.title2.bold())
                 Spacer()
                 if unreadTotal > 0 {
@@ -180,6 +188,7 @@ public struct InboxView: View {
                             .accessibilityIdentifier("inbox-favourite-\(item.id.accessibilityIdentifier)")
                         }
                         .selectedRowBackground(selectedID == item.id)
+                        .contextMenu { actions(for: item) }
                     }
                     if !messageMatches.isEmpty {
                         Section("Messages") {
@@ -192,9 +201,24 @@ public struct InboxView: View {
                 .listStyle(.sidebar)
                 .scrollContentBackground(.hidden)
             }
+
+            if showsHidden || !hiddenItems.isEmpty {
+                Button(showsHidden ? "Back to Inbox" : "\(hiddenItems.count) hidden") {
+                    showsHidden.toggle()
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal)
+                .padding(.bottom, 10)
+                .accessibilityIdentifier("inbox-hidden-toggle")
+            }
         }
         .onChange(of: searchFocusRequest, initial: true) { _, request in
             if request != nil { searchFocused = true }
+        }
+        .onChange(of: hiddenItems.isEmpty) { _, isEmpty in
+            if isEmpty { showsHidden = false }
         }
         .padding(.top, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -204,6 +228,7 @@ public struct InboxView: View {
 
     private var emptyTitle: String {
         if isSearching { return "No matches" }
+        if showsHidden { return "Nothing hidden" }
         switch filter.scope {
         case .all: return filter.platform.map { "No \($0.accessibilityLabel) conversations" } ?? "Inbox is empty"
         case .unread: return "Nothing unread"
@@ -259,6 +284,41 @@ public struct InboxView: View {
         return text
     }
 
+    @ViewBuilder private func actions(for item: InboxItem) -> some View {
+        Button(item.unreadCount > 0 ? "Mark as Read" : "Mark as Unread") {
+            onAction(item, item.unreadCount > 0 ? .markRead : .markUnread)
+        }
+        if item.isMuted {
+            Button("Unmute") { onAction(item, .unmute) }
+        } else {
+            Menu("Mute") {
+                ForEach(MuteDuration.allCases, id: \.self) { duration in
+                    Button(Self.label(for: duration)) { onAction(item, .mute(duration)) }
+                }
+            }
+        }
+        Button(item.isHidden ? "Show in Inbox" : "Hide") {
+            onAction(item, item.isHidden ? .unhide : .hide)
+        }
+        Button(item.isFavourite ? "Remove from Favourites" : "Add to Favourites") {
+            onToggleFavourite(item)
+        }
+        if !item.appLinks.isEmpty {
+            Divider()
+            ForEach(item.appLinks, id: \.self) { link in
+                Button("Open in \(link.platform.accessibilityLabel)") { openURL(link.url) }
+            }
+        }
+    }
+
+    static func label(for duration: MuteDuration) -> String {
+        switch duration {
+        case .oneHour: "For 1 Hour"
+        case .eightHours: "For 8 Hours"
+        case .forever: "Forever"
+        }
+    }
+
     private func row(for item: InboxItem) -> some View {
         HStack(spacing: 8) {
             if let first = item.conversationSummaries.first {
@@ -273,8 +333,16 @@ public struct InboxView: View {
                     )
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.title)
-                    .fontWeight(.semibold)
+                HStack(spacing: 4) {
+                    Text(item.title)
+                        .fontWeight(.semibold)
+                    if item.isMuted {
+                        Image(systemName: "bell.slash.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Muted")
+                    }
+                }
                 HStack(spacing: 4) {
                     if item.conversationSummaries.contains(where: { unsentRoutes.contains($0.route) }) {
                         Text("Draft")
@@ -297,7 +365,8 @@ public struct InboxView: View {
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
                         .foregroundStyle(InboxPlusTheme.paper)
-                        .background(InboxPlusTheme.ink, in: .capsule)
+                        // A muted conversation still counts, but should not shout.
+                        .background(item.isMuted ? AnyShapeStyle(.secondary) : AnyShapeStyle(InboxPlusTheme.ink), in: .capsule)
                         .accessibilityLabel("\(item.unreadCount) unread")
                 }
             }

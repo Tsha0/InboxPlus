@@ -19,11 +19,13 @@ public struct MatrixEventNormalizer: Sendable {
         ConversationRoute(accountID: accountID ?? self.accountID, conversationID: roomID)
     }
 
+    /// `ownUserID` is this client's Matrix login, which is who a reaction sent from Inbox+ is from.
     public func normalize(
         _ item: EventTimelineItem,
         roomID: String,
         accountID: String? = nil,
-        outgoingIdentifiers: Set<String> = []
+        outgoingIdentifiers: Set<String> = [],
+        ownUserID: String? = nil
     ) -> Message? {
         let identifier = identifier(for: item.eventOrTransactionId)
         guard var described = describe(item.content, identifier: identifier) else { return nil }
@@ -42,6 +44,21 @@ public struct MatrixEventNormalizer: Sendable {
         } else {
             senderName = nil
         }
+        var reactions: [MessageReaction] = []
+        var replyTo: MessageReply?
+        if case let .msgLike(content) = item.content {
+            reactions = content.reactions.map { reaction in
+                MessageReaction(
+                    key: reaction.key,
+                    count: reaction.senders.count,
+                    // A reaction made in the network's own app arrives from this account's ghost.
+                    includesMe: reaction.senders.contains {
+                        $0.senderId == ownUserID || outgoingIdentifiers.contains($0.senderId)
+                    }
+                )
+            }
+            replyTo = content.inReplyTo.map(reply(from:))
+        }
         return Message(
             id: identifier,
             route: route(forRoom: roomID, accountID: accountID),
@@ -55,9 +72,38 @@ public struct MatrixEventNormalizer: Sendable {
             deliveryState: Self.deliveryState(for: item.localSendState),
             kind: described.kind,
             attachments: described.attachments,
+            reactions: reactions,
+            replyTo: replyTo,
             markdownBody: described.markdownBody,
             senderDisplayName: senderName
         )
+    }
+
+    /// The quoted message's sender and text once the timeline has it. Until then only its
+    /// identifier is known, and the gateway asks for the rest.
+    func reply(from details: InReplyToDetails) -> MessageReply {
+        let messageID = details.eventId()
+        guard case let .ready(content, sender, senderProfile, _, _) = details.event() else {
+            return MessageReply(messageID: messageID)
+        }
+        let senderName: String
+        if case let .ready(displayName?, _, _, _, _) = senderProfile {
+            senderName = displayName
+        } else {
+            senderName = MatrixMessagingGateway.displayName(forUserID: sender)
+        }
+        return MessageReply(
+            messageID: messageID,
+            senderDisplayName: senderName,
+            body: describe(content, identifier: messageID)?.body
+        )
+    }
+
+    /// The reverse of `identifier(for:)`, for acting on a message the app layer names by its ID.
+    public func eventOrTransactionID(for identifier: String) -> EventOrTransactionId {
+        identifier.hasPrefix("txn:")
+            ? .transactionId(transactionId: String(identifier.dropFirst(4)))
+            : .eventId(eventId: identifier)
     }
 
     /// What one timeline event turned into: a line of text, a category, and any payloads.

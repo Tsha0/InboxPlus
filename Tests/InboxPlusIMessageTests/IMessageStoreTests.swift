@@ -382,14 +382,14 @@ private let yesterdayInMessagesTime =
     #expect(row.attachments[0].source?.source == URL(fileURLWithPath: NSHomeDirectory())
         .appendingPathComponent("Library/Messages/Attachments/fixture.heic").absoluteString)
     #expect(row.attachments[2].source == nil)
-    #expect(row.reactions == ["🎉"])
+    #expect(row.reactions.map(\.key) == ["🎉"])
     #expect(try store.messages(afterRowID: 4).map(\.guid) == ["original"])
 
     let gateway = IMessageGateway(store: store, pollInterval: .seconds(3600))
     let snapshot = try await gateway.loadSnapshot()
     let message = try #require(snapshot.messagesByRoute.values.first?.first)
     #expect(message.attachments.count == 3)
-    #expect(message.reactions == ["🎉"])
+    #expect(message.reactions.map(\.key) == ["🎉"])
     #expect(message.kind == .image)
     #expect(!message.body.contains("￼"))
     #expect(snapshot.messagesByRoute.values.flatMap { $0 }.count == 1)
@@ -428,7 +428,7 @@ private let yesterdayInMessagesTime =
       VALUES ('remove-emoji', \(yesterdayInMessagesTime), 7, 'p:0/target', 3006);
     """)
     defer { cleanUp(url) }
-    #expect(try IMessageStore(url: url).recentMessages(inChat: 1, limit: 50).first?.reactions == ["❤️", "👍", "👎", "😂", "‼️", "❓"])
+    #expect(try IMessageStore(url: url).recentMessages(inChat: 1, limit: 50).first?.reactions.map(\.key) == ["❤️", "👍", "👎", "😂", "‼️", "❓"])
 }
 
 @Test func balloonAndBareGUIDTapbacksRefreshTheirOriginalMessages() throws {
@@ -443,5 +443,24 @@ private let yesterdayInMessagesTime =
     defer { cleanUp(url) }
     let rows = try IMessageStore(url: url).messages(afterRowID: 2)
     #expect(rows.map(\.guid) == ["balloon", "bare"])
-    #expect(rows.map(\.reactions) == [["👍"], ["❤️"]])
+    #expect(rows.map { $0.reactions.map(\.key) } == [["👍"], ["❤️"]])
+}
+
+@Test func tapbacksFromSeveralPeopleAreCountedAndKnowWhichOneIsYours() throws {
+    let url = try makeDatabase("""
+    INSERT INTO chat (guid, style, chat_identifier, service_name) VALUES ('chat', 43, 'group', 'iMessage');
+    INSERT INTO message (guid, text, date) VALUES ('target', 'hello', \(yesterdayInMessagesTime));
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1);
+    INSERT INTO message (guid, date, handle_id, is_from_me, associated_message_guid, associated_message_type) VALUES
+      ('r1', \(yesterdayInMessagesTime), 1, 0, 'p:0/target', 2000),
+      ('r2', \(yesterdayInMessagesTime), 2, 0, 'p:0/target', 2000),
+      ('r3', \(yesterdayInMessagesTime), 0, 1, 'p:0/target', 2000),
+      ('r4', \(yesterdayInMessagesTime), 2, 0, 'p:0/target', 2001);
+    """)
+    defer { cleanUp(url) }
+    // One tapback per person: the second person's 👍 replaces their ❤️.
+    #expect(try IMessageStore(url: url).recentMessages(inChat: 1, limit: 50).first?.reactions == [
+        MessageReaction(key: "❤️", count: 2, includesMe: true),
+        MessageReaction(key: "👍", count: 1, includesMe: false),
+    ])
 }

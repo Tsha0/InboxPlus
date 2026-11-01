@@ -136,7 +136,7 @@ func aPastedPictureIsStagedWhereOnlyThisUserCanReadItAndDeletedOnceSent() async 
     #expect(model.routesWithDrafts.isEmpty)
     #expect(model.hasUnfinishedMessagingWork)
 
-    try await model.sendStagedAttachments(to: maya)
+    try await model.sendStagedAttachments(for: model.captureDraft(to: maya))
 
     #expect(model.stagedAttachments(for: maya).isEmpty)
     #expect(!FileManager.default.fileExists(atPath: staged.fileURL.deletingLastPathComponent().path))

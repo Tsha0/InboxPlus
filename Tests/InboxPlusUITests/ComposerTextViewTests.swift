@@ -55,6 +55,19 @@ private let pngSignature = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
 }
 
 @MainActor
+@Test func escapeCancelsTheReplyWithoutTouchingTheText() {
+    let textView = ComposerTextView()
+    var cancels = 0
+    textView.onCancel = { cancels += 1 }
+    textView.string = "half a reply"
+
+    textView.cancelOperation(nil)
+
+    #expect(cancels == 1)
+    #expect(textView.string == "half a reply")
+}
+
+@MainActor
 @Test func optionReturnStillStartsANewLine() {
     let textView = ComposerTextView()
     var sends = 0

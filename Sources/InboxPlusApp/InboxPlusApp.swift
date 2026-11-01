@@ -114,6 +114,7 @@ struct InboxPlusApp: App {
             directory: services.directory,
             media: services.media,
             favouriteStore: services.favouriteStore,
+            preferenceStore: services.preferenceStore,
             accountLifecycle: services.accountLifecycle,
             composerFiles: services.composerFiles
         )

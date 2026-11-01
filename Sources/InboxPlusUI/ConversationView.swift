@@ -38,6 +38,60 @@ private struct StagedAttachmentsRow: View {
     }
 }
 
+/// The message the next send will answer, with a way to stop answering it.
+private struct ReplyTargetRow: View {
+    let label: String
+    let preview: String
+    let cancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrowshape.turn.up.left.fill")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                Text(preview)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button(action: cancel) {
+                Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tertiary)
+            .accessibilityLabel("Cancel reply")
+        }
+        .accessibilityIdentifier("reply-target")
+    }
+}
+
+private struct ReplyQuoteView: View {
+    let quote: ReplyQuote
+
+    var body: some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(.tertiary)
+                .frame(width: 3)
+            VStack(alignment: .leading, spacing: 1) {
+                if let sender = quote.sender {
+                    Text(sender).font(.caption.weight(.semibold))
+                }
+                Text(quote.text)
+                    .font(.caption)
+                    .lineLimit(2)
+            }
+            .foregroundStyle(.secondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Replying to \(quote.accessibilityLabel)")
+    }
+}
+
 public struct ConversationSendFailureDescriptor: Equatable, Sendable {
     public let route: ConversationRoute
     public let message: String
@@ -65,6 +119,7 @@ public struct ConversationView: View {
     @State private var showsLinkSheet = false
     @State private var linkError: String?
     @State private var isDropTargeted = false
+    @State private var composerFocusRequest = 0
 
     public init(model: InboxPlusAppModel, route: ConversationRoute) {
         self.model = model
@@ -194,7 +249,15 @@ public struct ConversationView: View {
                             senderName: TranscriptPresentation.senderName(message, identities: model.identities),
                             showsSender: namesSenders && !message.isOutgoing
                                 && !TranscriptPresentation.sameRun(previous, message),
-                            showsTimestamp: !TranscriptPresentation.sameRun(message, next)
+                            showsTimestamp: !TranscriptPresentation.sameRun(message, next),
+                            quote: message.replyTo.map {
+                                TranscriptPresentation.quote($0, in: messages, identities: model.identities)
+                            },
+                            onReply: {
+                                model.beginReply(to: message)
+                                composerFocusRequest += 1
+                            },
+                            onFailure: { linkError = $0 }
                         )
                     }
                     .id(message.id)
@@ -228,6 +291,13 @@ public struct ConversationView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let target = model.replyTarget(in: route) {
+                ReplyTargetRow(
+                    label: TranscriptPresentation.replyingToLabel(target, identities: model.identities),
+                    preview: target.body,
+                    cancel: { model.cancelReply(in: route) }
+                )
+            }
             if !stagedAttachments.isEmpty {
                 StagedAttachmentsRow(
                     attachments: stagedAttachments,
@@ -260,7 +330,9 @@ public struct ConversationView: View {
                         text: draft,
                         onTextChange: { model.setDraft($0, for: route) },
                         onSubmit: send,
-                        onStage: capabilities.acceptsAttachments ? { stage($0) } : nil
+                        onStage: capabilities.acceptsAttachments ? { stage($0) } : nil,
+                        onCancel: { model.cancelReply(in: route) },
+                        focusRequest: composerFocusRequest
                     )
                 }
                 .padding(.horizontal, 12)
@@ -299,7 +371,7 @@ public struct ConversationView: View {
             do {
                 // Attachments first, so a caption typed alongside a photo arrives after it rather
                 // than referring to something not yet on screen.
-                try await model.sendStagedAttachments(to: route)
+                try await model.sendStagedAttachments(for: submission)
                 try await model.sendDraft(submission)
             } catch {
                 model.reportSendFailure(error, for: submission)
@@ -394,6 +466,9 @@ private struct MessageBubble: View {
     let senderName: String
     let showsSender: Bool
     let showsTimestamp: Bool
+    let quote: ReplyQuote?
+    let onReply: () -> Void
+    let onFailure: (String) -> Void
 
     private var failureReason: String? {
         guard case let .failed(reason) = message.deliveryState else { return nil }
@@ -428,6 +503,9 @@ private struct MessageBubble: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
+                if let quote {
+                    ReplyQuoteView(quote: quote)
+                }
                 ForEach(message.attachments) { attachment in
                     AttachmentView(
                         model: model,
@@ -449,12 +527,7 @@ private struct MessageBubble: View {
                         .textSelection(.enabled)
                 }
                 if !message.reactions.isEmpty {
-                    Text(message.reactions.joined(separator: " "))
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.quaternary, in: .capsule)
-                        .accessibilityLabel("Reactions: " + message.reactions.joined(separator: ", "))
+                    reactionRow
                 }
                 HStack(spacing: 4) {
                     if let failureReason {
@@ -478,16 +551,107 @@ private struct MessageBubble: View {
         // Combining would swallow the attachment's own controls — its play button and its
         // "Open in app" action have to stay reachable.
         .accessibilityElement(children: message.attachments.isEmpty ? .combine : .contain)
-        .accessibilityLabel(MessageBubble.accessibilityLabel(for: message, senderName: senderName))
+        .accessibilityLabel(MessageBubble.accessibilityLabel(for: message, senderName: senderName, quote: quote))
+        .contextMenu { actions }
     }
 
-    static func accessibilityLabel(for message: Message, senderName: String) -> String {
+    /// Each pill toggles this account's own reaction, as choosing it from the menu does.
+    private var reactionRow: some View {
+        HStack(spacing: 4) {
+            ForEach(message.reactions, id: \.key) { reaction in
+                Button { react(reaction.key) } label: {
+                    Text(TranscriptPresentation.reactionLabel(reaction))
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            reaction.includesMe ? AnyShapeStyle(InboxPlusTheme.ink.opacity(0.18)) : AnyShapeStyle(.quaternary),
+                            in: .capsule
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!model.canReact(to: message))
+                .help(reaction.includesMe ? "Remove your \(reaction.key)" : "React with \(reaction.key)")
+            }
+        }
+    }
+
+    /// Only what this network and this message allow: a reply or reaction that could only fail is
+    /// not offered.
+    @ViewBuilder private var actions: some View {
+        let canReply = model.canReply(to: message)
+        let canReact = model.canReact(to: message)
+        if canReply {
+            Button("Reply", action: onReply)
+        }
+        if canReact {
+            Menu("React") {
+                ForEach(TranscriptPresentation.reactionChoices(for: message), id: \.key) { choice in
+                    Toggle(choice.key, isOn: Binding(get: { choice.includesMe }, set: { _ in react(choice.key) }))
+                }
+            }
+        }
+        if canReply || canReact {
+            Divider()
+        }
+        if let text = TranscriptPresentation.copyableText(message) {
+            Button("Copy Text") { copy(text) }
+        }
+        ForEach(message.attachments.filter { $0.deepLink != nil }) { attachment in
+            Button(message.attachments.count == 1 ? "Copy Link" : "Copy Link to \(attachment.displayName)") {
+                if let link = attachment.deepLink { copy(link.url.absoluteString) }
+            }
+        }
+        ForEach(message.attachments.filter(\.isDownloadable)) { attachment in
+            Button(message.attachments.count == 1 ? "Save Attachment…" : "Save \(attachment.displayName)…") {
+                save(attachment)
+            }
+            .disabled(downloadedFile(of: attachment) == nil)
+        }
+    }
+
+    private func react(_ key: String) {
+        Task {
+            do { try await model.toggleReaction(key, on: message) }
+            catch { onFailure("Could not react: \(error.localizedDescription)") }
+        }
+    }
+
+    private func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func downloadedFile(of attachment: MessageAttachment) -> URL? {
+        guard case let .ready(url) = model.media.state(for: attachment) else { return nil }
+        return url
+    }
+
+    /// The save panel has already asked before replacing an existing file.
+    private func save(_ attachment: MessageAttachment) {
+        guard let source = downloadedFile(of: attachment) else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = AttachmentFormatting.suggestedFilename(for: attachment)
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        do {
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.copyItem(at: source, to: destination)
+        } catch {
+            onFailure("Could not save \(attachment.displayName): \(error.localizedDescription)")
+        }
+    }
+
+    static func accessibilityLabel(for message: Message, senderName: String, quote: ReplyQuote?) -> String {
         let speaker = message.isOutgoing ? "You" : senderName
-        let reactions = message.reactions.isEmpty ? "" : ", reactions: " + message.reactions.joined(separator: ", ")
-        guard !message.attachments.isEmpty else { return "\(speaker): \(message.body)\(reactions)" }
+        let reply = quote.map { ", replying to \($0.accessibilityLabel)" } ?? ""
+        let reactions = message.reactions.isEmpty ? ""
+            : ", reactions: " + message.reactions.map(TranscriptPresentation.reactionLabel).joined(separator: ", ")
+        guard !message.attachments.isEmpty else { return "\(speaker): \(message.body)\(reply)\(reactions)" }
         let described = message.attachments
             .map(AttachmentFormatting.accessibilityLabel(for:))
             .joined(separator: ", ")
-        return "\(speaker): \(described)\(reactions)"
+        return "\(speaker): \(described)\(reply)\(reactions)"
     }
 }

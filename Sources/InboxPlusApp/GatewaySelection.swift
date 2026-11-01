@@ -31,6 +31,7 @@ enum GatewaySelection {
         /// exist, is indistinguishable from a bug.
         let directory: ContactDirectory
         var favouriteStore: InboxFavouriteStore? = nil
+        var preferenceStore: ConversationPreferenceStore? = nil
         var accountLifecycle: (any AccountLifecycle)? = nil
         var composerFiles: ComposerFileStore = .temporary()
     }
@@ -78,6 +79,9 @@ enum GatewaySelection {
                 // Real accounts start with no linked people. Linking is something the user does.
                 directory: ContactDirectory(),
                 favouriteStore: InboxFavouriteStore(fileURL: paths.profile.appendingPathComponent("inbox-favourites.json")),
+                preferenceStore: ConversationPreferenceStore(
+                    fileURL: paths.profile.appendingPathComponent("inbox-conversation-preferences.json")
+                ),
                 accountLifecycle: ProfileAccountLifecycle(paths: paths, sources: sources),
                 composerFiles: composerFiles
             )

@@ -96,6 +96,27 @@ public enum DeepLinkVerifier {
         return nil
     }
 
+    /// Where a network's own app lists its conversations, for **Open in app** on a conversation.
+    ///
+    /// Bridges do not report a link to an individual chat, so this opens the network's inbox rather
+    /// than building one from identifiers that may not mean the same thing to the network. It goes
+    /// through the verifier like any other link, and a network without a verifiable domain has none.
+    public static func inboxLink(for platform: Platform) -> VerifiedDeepLink? {
+        let raw: String? = switch platform {
+        case .instagram: "https://www.instagram.com/direct/inbox/"
+        case .whatsApp: "https://web.whatsapp.com/"
+        case .facebookMessenger: "https://www.messenger.com/"
+        case .telegram: "https://web.telegram.org/"
+        case .discord: "https://discord.com/channels/@me"
+        case .googleMessages: "https://messages.google.com/web/conversations"
+        case .googleChat: "https://chat.google.com/"
+        case .googleVoice: "https://voice.google.com/messages"
+        // The local Matrix account is Inbox+'s own homeserver, which no other app shows.
+        case .matrix, .iMessage, .irc, .slack, .x, .linkedIn: nil
+        }
+        return raw.flatMap { try? verify($0, for: platform) }
+    }
+
     /// Domains each platform serves its own links from. A host matches one of these exactly or as a
     /// subdomain of it; the leading dot in the suffix check is what keeps `evil-instagram.com` out.
     public static func verifiableDomains(for platform: Platform) -> [String] {
