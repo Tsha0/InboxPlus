@@ -37,6 +37,33 @@ public enum InboxPlusAppModelError: Error, Equatable {
     case missingOpenConversation
 }
 
+public enum ReplyError: Error, Equatable, LocalizedError {
+    case restartingToUpdate
+
+    public var errorDescription: String? {
+        switch self {
+        case .restartingToUpdate: "Inbox+ is restarting to update. Send it again once it reopens."
+        }
+    }
+}
+
+/// A message worth telling the user about, with what a notification needs to describe it.
+public struct IncomingMessageAlert: Equatable, Sendable {
+    public let message: Message
+    /// The conversation's title.
+    public let title: String
+    /// Who sent it, in a group. A one-to-one conversation is already titled with that person.
+    public let senderName: String?
+    public let canReply: Bool
+
+    public init(message: Message, title: String, senderName: String? = nil, canReply: Bool = false) {
+        self.message = message
+        self.title = title
+        self.senderName = senderName
+        self.canReply = canReply
+    }
+}
+
 public struct DraftSubmission: Sendable {
     public let body: String
     public let route: ConversationRoute
@@ -124,13 +151,17 @@ public final class InboxPlusAppModel {
         pendingConnectionRequest = nil
     }
 
-    public var onIncomingMessage: ((Message, String) -> Void)?
+    /// Not called for a muted conversation.
+    public var onIncomingMessage: ((IncomingMessageAlert) -> Void)?
     private var notificationsStartedAt = Date.distantFuture
 
     private let gateway: any MessagingGateway
     public private(set) var favouriteError: String?
     private let favouriteStore: InboxFavouriteStore?
     private var favouriteRoutes: Set<ConversationRoute> = []
+    public private(set) var muteError: String?
+    private let muteStore: MutedConversationStore?
+    public private(set) var mutedRoutes: Set<ConversationRoute> = []
     private var directory: ContactDirectory
     private var draftRevision: UInt64 = 0
     private var sendsInFlight = 0
@@ -155,15 +186,19 @@ public final class InboxPlusAppModel {
         directory: ContactDirectory = .init(),
         media: MediaController = MediaController(),
         favouriteStore: InboxFavouriteStore? = nil,
+        muteStore: MutedConversationStore? = nil,
         accountLifecycle: (any AccountLifecycle)? = nil
     ) {
         self.gateway = gateway
         self.directory = directory
         self.media = media
         self.favouriteStore = favouriteStore
+        self.muteStore = muteStore
         self.accountLifecycle = accountLifecycle
         do { favouriteRoutes = try favouriteStore?.load() ?? [] }
         catch { favouriteError = "Could not load favourites: \(error.localizedDescription)" }
+        do { mutedRoutes = try muteStore?.load() ?? [] }
+        catch { muteError = "Could not load muted conversations: \(error.localizedDescription)" }
     }
 
     public func start() async throws {
@@ -214,6 +249,70 @@ public final class InboxPlusAppModel {
         } catch {
             favouriteError = "Could not save favourites: \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Notifications
+
+    public func isMuted(_ route: ConversationRoute) -> Bool {
+        mutedRoutes.contains(route)
+    }
+
+    public func setMuted(_ muted: Bool, for route: ConversationRoute) {
+        var updated = mutedRoutes
+        if muted { updated.insert(route) } else { updated.remove(route) }
+        guard updated != mutedRoutes else { return }
+        do {
+            try muteStore?.save(updated)
+            mutedRoutes = updated
+            muteError = nil
+        } catch {
+            muteError = "Could not save muted conversations: \(error.localizedDescription)"
+        }
+    }
+
+    /// Muted conversations still in the inbox, so they can be unmuted by name.
+    public var mutedConversations: [ConversationSummary] {
+        inboxItems.flatMap(\.conversationSummaries)
+            .filter { mutedRoutes.contains($0.route) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    /// The count on the Dock and in the menu bar. A muted conversation is left out, or one busy
+    /// group would hold the badge up for good.
+    public var unreadBadgeCount: Int {
+        inboxItems.flatMap(\.conversationSummaries)
+            .filter { !mutedRoutes.contains($0.route) }
+            .reduce(0) { $0 + $1.unreadCount }
+    }
+
+    /// Sends a reply typed into a notification, leaving the composer's draft exactly as it was.
+    public func sendReply(_ text: String, to route: ConversationRoute) async throws {
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        guard !isPreparingForUpdate else { throw ReplyError.restartingToUpdate }
+        sendsInFlight += 1
+        defer { sendsInFlight -= 1 }
+        do {
+            _ = try await gateway.sendText(body, to: route)
+        } catch {
+            sendFailuresByRoute[route] = error.localizedDescription
+            throw error
+        }
+        markConversationRead(route)
+    }
+
+    private func alert(for message: Message) -> IncomingMessageAlert {
+        let conversation = conversations.first { $0.route == message.route }
+        let sender = message.senderDisplayName.flatMap { $0.isEmpty ? nil : $0 }
+            ?? identities.first {
+                $0.id == message.senderIdentityID && $0.accountID == message.route.accountID
+            }?.displayName
+        return IncomingMessageAlert(
+            message: message,
+            title: conversation?.title ?? sender ?? "New message",
+            senderName: conversation?.isGroup == true ? sender : nil,
+            canReply: conversation?.capabilities.canSendText ?? false
+        )
     }
 
     public func selectInboxItem(_ item: InboxItem) {
@@ -355,6 +454,18 @@ public final class InboxPlusAppModel {
         Set(userAccounts.map(\.platform))
     }
 
+    private var signedInNames: [String: String] = [:]
+
+    /// The username, phone number or address an account is signed in as, when it is known.
+    public func signedInName(for account: ConnectedAccount) -> String? {
+        account.signedInAs ?? signedInNames[account.id]
+    }
+
+    public func refreshSignedInNames() async {
+        guard let accountLifecycle else { return }
+        signedInNames = await accountLifecycle.signedInNames()
+    }
+
     /// Records a newly connected account.
     ///
     /// The one-account-per-platform rule is enforced here as well as in the picker: the picker
@@ -367,6 +478,7 @@ public final class InboxPlusAppModel {
         upsert(account)
         disconnectedAccountIDs.remove(account.id)
         rebuildInbox()
+        Task { await refreshSignedInNames() }
     }
 
     private func upsert(_ account: ConnectedAccount) {
@@ -439,6 +551,15 @@ public final class InboxPlusAppModel {
                 favouriteRoutes = remainingFavourites
             } catch {
                 favouriteError = "Could not save favourites: \(error.localizedDescription)"
+            }
+        }
+        let remainingMutes = mutedRoutes.filter { $0.accountID != accountID }
+        if remainingMutes != mutedRoutes {
+            do {
+                try muteStore?.save(remainingMutes)
+                mutedRoutes = remainingMutes
+            } catch {
+                muteError = "Could not save muted conversations: \(error.localizedDescription)"
             }
         }
         rebuildInbox()
@@ -662,6 +783,7 @@ public final class InboxPlusAppModel {
         apply(snapshot)
         disconnectedAccountIDs = disconnected.intersection(snapshot.accounts.map(\.id))
         reportDisconnections()
+        Task { await refreshSignedInNames() }
 
         let events = bufferedStartupEvents
         bufferedStartupEvents.removeAll()
@@ -782,11 +904,8 @@ public final class InboxPlusAppModel {
             if case .messageUpserted = event { isLive = true } else { isLive = false }
             let isNew = !(messagesByRoute[message.route] ?? []).contains { $0.id == message.id }
             if isLive, isNew, !message.isOutgoing, message.kind != .membership,
-               message.timestamp >= notificationsStartedAt {
-                let title = conversations.first { $0.route == message.route }?.title
-                    ?? identities.first { $0.id == message.senderIdentityID }?.displayName
-                    ?? "New message"
-                onIncomingMessage?(message, title)
+               message.timestamp >= notificationsStartedAt, !mutedRoutes.contains(message.route) {
+                onIncomingMessage?(alert(for: message))
             }
             if isLive, isNew, !message.isOutgoing, message.route == openRoute {
                 saveReadState(of: message.route)

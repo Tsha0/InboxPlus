@@ -129,6 +129,27 @@ func diskPressurePausesAndExplainsRatherThanLookingBroken() async throws {
 }
 
 @MainActor
+@Test(.timeLimit(.minutes(1)))
+func clearingTheCacheFreesItsBytesAndAShownAttachmentLoadsAgain() async throws {
+    let (controller, directory) = try makeController()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    #expect(await MediaController().cacheSize() == nil)
+    #expect(await controller.cacheSize() == 0)
+
+    controller.load(image, accountID: "instagram", messageID: "$1")
+    let url = try await waitForFile(controller, image)
+    #expect(await controller.cacheSize() == 16)
+
+    #expect(try await controller.clearCache() == 16)
+    #expect(!FileManager.default.fileExists(atPath: url.path))
+    #expect(await controller.cacheSize() == 0)
+    // A state still pointing at the deleted file would draw a broken image instead of loading.
+    #expect(controller.state(for: image) == .idle)
+    controller.load(image, accountID: "instagram", messageID: "$1")
+    #expect(FileManager.default.fileExists(atPath: try await waitForFile(controller, image).path))
+}
+
+@MainActor
 @Test func anAttachmentWithNothingToFetchIsNeverLoaded() throws {
     let (controller, directory) = try makeController()
     defer { try? FileManager.default.removeItem(at: directory) }

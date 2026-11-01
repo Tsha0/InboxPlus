@@ -50,14 +50,7 @@ func execute(_ command: RuntimeCommand) async throws -> String {
         // Handled above, before any profile is resolved.
         throw RuntimeCommandError.missingCommand
     case let .diagnostics(_, output):
-        let state = try RuntimeProfileStore(paths: service.paths).load()
-        // Everything Inbox+ knows to be secret is removed by value as well as by pattern.
-        let known = [state?.registrationSecret].compactMap { $0 }
-        let bundle = DiagnosticsBundle(
-            paths: service.paths,
-            redactor: DiagnosticsRedactor(knownSecrets: known)
-        )
-        let manifest = try bundle.write(
+        let manifest = try DiagnosticsBundle.forProfile(service.paths).write(
             to: URL(fileURLWithPath: output),
             inboxplusVersion: InboxPlusVersion.current
         )

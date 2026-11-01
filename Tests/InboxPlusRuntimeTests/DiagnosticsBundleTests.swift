@@ -176,3 +176,25 @@ func ordinaryDiagnosticFilesAreStillCollected(_ name: String) {
     let decoded = try JSONDecoder().decode(DiagnosticsManifest.self, from: data)
     #expect(decoded == manifest)
 }
+
+@Test func aProfilesBundleRemovesItsRegistrationSecretByValue() throws {
+    let (paths, root) = try makeProfile()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try RuntimeProfileStore(paths: paths).save(RuntimeProfileState(
+        serverName: "inboxplus.localhost",
+        registrationSecret: "plainwords-nobody-would-flag",
+        launchExecutable: "/usr/bin/true",
+        virtualEnvironmentPython: "/tmp/venv/bin/python",
+        configurationFile: "/tmp/homeserver.yaml",
+        snapshot: .stopped
+    ))
+    try "registering with plainwords-nobody-would-flag now"
+        .write(to: paths.logs.appendingPathComponent("stderr.log"), atomically: true, encoding: .utf8)
+
+    let destination = root.appendingPathComponent("bundle")
+    _ = try DiagnosticsBundle.forProfile(paths).write(to: destination, inboxplusVersion: "0.5.0")
+
+    let log = try String(contentsOf: destination.appendingPathComponent("stderr.log"), encoding: .utf8)
+    #expect(log.contains("registering with"))
+    #expect(!log.contains("plainwords-nobody-would-flag"))
+}

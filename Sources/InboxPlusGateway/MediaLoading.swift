@@ -114,6 +114,14 @@ public actor MediaLoader {
         try await cache.purge(accountID: accountID)
     }
 
+    public func cacheSize() async -> Int {
+        await cache.totalBytes
+    }
+
+    public func clearCache() async throws -> Int {
+        try await cache.clear()
+    }
+
     /// The local file for an attachment, downloading it if this is the first time it is needed.
     public func file(for attachment: MessageAttachment, context: MediaCacheContext) async throws -> URL {
         guard let handle = attachment.source else { throw MediaLoadError.nothingToDownload }

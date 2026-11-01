@@ -100,6 +100,19 @@ actor ProfileAccountLifecycle: AccountLifecycle {
         try disconnected.load()
     }
 
+    /// Read from each bridge's own database, so the name is there while a bridge is stopped too.
+    func signedInNames() -> [String: String] {
+        var names: [String: String] = [:]
+        for record in (try? runtime.prepared()) ?? [] {
+            let database = URL(fileURLWithPath: record.configurationFile)
+                .deletingLastPathComponent().appendingPathComponent("bridge.db")
+            if let name = try? BridgeOwnIdentityStore.signedInName(database: database, ownerUserID: record.ownerUserID) {
+                names[record.bridgeID] = name
+            }
+        }
+        return names
+    }
+
     func disconnect(_ account: ConnectedAccount) async throws {
         guard account.id != IMessageGateway.accountID else {
             try disconnected.insert(account.id)

@@ -228,9 +228,10 @@ remove       stop and remove exactly one profile, after confirmation
   non-persistent webview. Inbox+ captures only the declared credentials.
 - **Secrets stay out of reach.** Configs, registrations and cached media are `0600` in `0700`
   directories; the client store passphrase lives in the Keychain.
-- **Diagnostics are redacted.** `InboxPlusRuntimeCLI diagnostics` removes tokens, cookies, message
-  bodies and attachment URLs, and pseudonymises identifiers rather than deleting them, so a bundle
-  is still readable. Databases and key material are never collected at all.
+- **Diagnostics are redacted.** `InboxPlusRuntimeCLI diagnostics`, and **Settings → Export
+  Diagnostics…** in the app, remove tokens, cookies, message bodies and attachment URLs, and
+  pseudonymise identifiers rather than deleting them, so a bundle is still readable. Databases and
+  key material are never collected at all.
 - **Deep links are verified.** An **Open in app** action only ever follows an `https` link on a
   domain the named platform demonstrably owns.
 

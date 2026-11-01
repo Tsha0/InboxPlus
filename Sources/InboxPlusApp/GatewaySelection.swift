@@ -31,12 +31,16 @@ enum GatewaySelection {
         /// exist, is indistinguishable from a bug.
         let directory: ContactDirectory
         var favouriteStore: InboxFavouriteStore? = nil
+        var muteStore: MutedConversationStore? = nil
         var accountLifecycle: (any AccountLifecycle)? = nil
+        /// Writes a redacted diagnostics bundle of the profile to a folder. Nil without a profile.
+        var exportDiagnostics: (@Sendable (URL) async throws -> Void)? = nil
     }
 
     @MainActor
     static func makeServices(
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        defaults: UserDefaults = .standard
     ) -> Services {
         guard let profileName = resolveProfileName(environment: environment) else {
             FileHandle.standardError.write(Data(
@@ -58,12 +62,16 @@ enum GatewaySelection {
             // immediately and attach its loader once there is a homeserver to fetch from.
             let media = MediaController()
             let sources = LiveSources()
+            let iMessageWindow = AppPreferences.iMessageHistory(in: defaults).interval
 
             let gateway = DeferredRuntimeGateway(
                 paths: paths,
                 profileName: profileName,
                 build: { state in
-                    let built = try makeMatrixGateway(paths: paths, state: state, sources: sources)
+                    let built = try makeMatrixGateway(
+                        paths: paths, state: state, sources: sources,
+                        makeIMessage: { makeIMessageGateway(paths: $0, activityWindow: iMessageWindow) }
+                    )
                     await attachMedia(media, fetcher: built.media, paths: paths)
                     return built.gateway
                 }
@@ -75,7 +83,14 @@ enum GatewaySelection {
                 // Real accounts start with no linked people. Linking is something the user does.
                 directory: ContactDirectory(),
                 favouriteStore: InboxFavouriteStore(fileURL: paths.profile.appendingPathComponent("inbox-favourites.json")),
-                accountLifecycle: ProfileAccountLifecycle(paths: paths, sources: sources)
+                muteStore: MutedConversationStore(fileURL: paths.profile.appendingPathComponent("muted-conversations.json")),
+                accountLifecycle: ProfileAccountLifecycle(paths: paths, sources: sources),
+                exportDiagnostics: { destination in
+                    _ = try await Task.detached {
+                        try DiagnosticsBundle.forProfile(paths)
+                            .write(to: destination, inboxplusVersion: InboxPlusVersion.current)
+                    }.value
+                }
             )
         } catch {
             // Surface the reason instead of silently substituting fake conversations.
@@ -95,13 +110,12 @@ extension GatewaySelection {
     /// Builds the real gateway, once the homeserver behind it is answering, and the media fetcher
     /// that downloads through the client that gateway connects.
     ///
-    /// `makeIMessage` is replaceable so a test can build this without opening the Messages
-    /// database.
+    /// `makeIMessage` opens the Messages database, so a test can build this without it.
     static func makeMatrixGateway(
         paths: RuntimePaths,
         state: RuntimeProfileState,
         sources: LiveSources = LiveSources(),
-        makeIMessage: (RuntimePaths) -> IMessageGateway? = { GatewaySelection.makeIMessageGateway(paths: $0) }
+        makeIMessage: (RuntimePaths) -> IMessageGateway?
     ) throws -> (gateway: any MessagingGateway, media: MatrixMediaFetcher) {
         guard let port = state.snapshot.loopbackPort else {
             throw GatewaySelectionError.profileNotRunning(paths.profile.lastPathComponent)
@@ -251,11 +265,12 @@ extension GatewaySelection {
     /// Full Disk Access is the usual reason and it cannot be requested programmatically, so the
     /// failure is written to stderr rather than swallowed — a silently missing iMessage looks like
     /// a bug in Inbox+ rather than a permission the user has not granted.
-    static func makeIMessageGateway(paths: RuntimePaths) -> IMessageGateway? {
+    static func makeIMessageGateway(paths: RuntimePaths, activityWindow: TimeInterval?) -> IMessageGateway? {
         do {
             return IMessageGateway(
                 store: try IMessageStore(),
                 contacts: SystemContactSource(),
+                activityWindow: activityWindow,
                 readMarkerStore: IMessageReadMarkerStore(
                     fileURL: paths.profile.appendingPathComponent("imessage-read-markers.json")
                 )

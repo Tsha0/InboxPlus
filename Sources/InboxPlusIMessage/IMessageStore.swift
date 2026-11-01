@@ -173,6 +173,16 @@ public final class IMessageStore {
         """).reversed()
     }
 
+    /// The phone number or address this Mac last sent or received a message as.
+    public func ownHandle() throws -> String? {
+        try rows("""
+        SELECT destination_caller_id FROM message
+        WHERE destination_caller_id IS NOT NULL AND destination_caller_id != ''
+        ORDER BY ROWID DESC
+        LIMIT 1
+        """) { Self.string($0, 0) }.first ?? nil
+    }
+
     public func maxMessageRowID() throws -> Int64 {
         try rows("SELECT COALESCE(MAX(ROWID), 0) FROM message") { sqlite3_column_int64($0, 0) }
             .first ?? 0

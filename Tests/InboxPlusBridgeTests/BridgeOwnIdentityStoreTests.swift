@@ -16,7 +16,8 @@ private final class IdentityDatabase {
         db = try #require(pointer)
         try execute("""
             PRAGMA journal_mode = WAL;
-            CREATE TABLE user_login (bridge_id TEXT DEFAULT '', id TEXT, user_mxid TEXT, metadata TEXT);
+            CREATE TABLE user_login (bridge_id TEXT DEFAULT '', id TEXT, user_mxid TEXT,
+                remote_name TEXT DEFAULT '', remote_profile TEXT, metadata TEXT);
             CREATE TABLE message (bridge_id TEXT DEFAULT '', mxid TEXT, room_receiver TEXT, sender_id TEXT, sender_mxid TEXT);
             CREATE TABLE whatsmeow_device (jid TEXT PRIMARY KEY, lid TEXT);
             """)
@@ -123,6 +124,35 @@ func numericBridgeLoginsResolveOnlyTheOwnersGhosts(_ bridge: String) throws {
         )
     }
     #expect(!FileManager.default.fileExists(atPath: missing.path))
+}
+
+@Test func theSignedInNameIsTheOwnersUsernameBeforeAnythingElseTheLoginRecorded() throws {
+    let fixture = try IdentityDatabase()
+    func name(_ owner: String = "@owner:local") throws -> String? {
+        try BridgeOwnIdentityStore.signedInName(database: fixture.url, ownerUserID: owner)
+    }
+    #expect(try name() == nil)
+
+    try fixture.execute("""
+        INSERT INTO user_login (id, user_mxid, remote_name, remote_profile, metadata) VALUES
+            ('123', '@owner:local', 'Jason Shao', '{"username":"jason.s","name":"Jason Shao"}', '{"cookies":"secret"}'),
+            ('456', '@other:local', 'Someone Else', '{"username":"someone"}', '{}');
+        """)
+    #expect(try name() == "@jason.s")
+    #expect(try name("@other:local") == "@someone")
+
+    // A network without usernames falls back to what the bridge named the login.
+    try fixture.execute("""
+        UPDATE user_login SET remote_name = '+1 555-123-4567', remote_profile = '{"phone":"+15551234567"}'
+        WHERE id = '123'
+        """)
+    #expect(try name() == "+1 555-123-4567")
+    try fixture.execute("""
+        UPDATE user_login SET remote_name = '', remote_profile = '{"email":"me@example.com"}' WHERE id = '123'
+        """)
+    #expect(try name() == "me@example.com")
+    try fixture.execute("UPDATE user_login SET remote_name = '', remote_profile = NULL WHERE id = '123'")
+    #expect(try name() == nil)
 }
 
 @Test func matrixLocalpartEncodingMatchesMautrix() {

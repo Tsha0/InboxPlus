@@ -217,11 +217,15 @@ private actor FakeAccountLifecycle: AccountLifecycle {
     private(set) var calls: [String] = []
     private var failing = false
     private let removal: AccountRemoval
+    private let names: [String: String]
 
-    init(persisted: Set<String> = [], removal: AccountRemoval = AccountRemoval()) {
+    init(persisted: Set<String> = [], removal: AccountRemoval = AccountRemoval(), names: [String: String] = [:]) {
         self.persisted = persisted
         self.removal = removal
+        self.names = names
     }
+
+    func signedInNames() -> [String: String] { names }
 
     func failNextChanges() { failing = true }
 
@@ -249,6 +253,21 @@ private actor FakeAccountLifecycle: AccountLifecycle {
 
 private let localMatrix = ConnectedAccount(id: "matrix-local", platform: .matrix, displayName: "Local Matrix")
 private let iMessageAccount = ConnectedAccount(id: "imessage-local", platform: .iMessage, displayName: "iMessage")
+
+@MainActor
+@Test func anAccountSaysWhoItIsSignedInAsWhereItsSourceKnows() async throws {
+    let lifecycle = FakeAccountLifecycle(names: [instagramAccount.id: "@jason.s"])
+    let iMessage = ConnectedAccount(
+        id: "imessage-local", platform: .iMessage, displayName: "iMessage", signedInAs: "me@icloud.com"
+    )
+    let whatsApp = ConnectedAccount(id: "whatsapp", platform: .whatsApp, displayName: "WhatsApp")
+    let model = try await startedModel(seed: snapshot(accounts: [instagramAccount, iMessage, whatsApp]), lifecycle: lifecycle)
+    await model.refreshSignedInNames()
+
+    #expect(model.signedInName(for: instagramAccount) == "@jason.s")
+    #expect(model.signedInName(for: iMessage) == "me@icloud.com")
+    #expect(model.signedInName(for: whatsApp) == nil)
+}
 
 @MainActor
 @Test func anAccountDisconnectedInAnEarlierSessionStillReadsAsDisconnected() async throws {

@@ -2,6 +2,18 @@ import Testing
 import InboxPlusCore
 @testable import InboxPlusUI
 
+@MainActor
+@Test func anAccountRowNamesWhoIsSignedInRatherThanRepeatingTheNetwork() {
+    let instagram = ConnectedAccount(id: "instagram", platform: .instagram, displayName: "Instagram")
+    #expect(AccountsListView.identityLine(instagram, signedInAs: "@jason.s") == "@jason.s")
+    // Unknown, or only the network's own name again: the line is left out.
+    #expect(AccountsListView.identityLine(instagram, signedInAs: nil) == nil)
+    #expect(AccountsListView.identityLine(instagram, signedInAs: "  ") == nil)
+    #expect(AccountsListView.identityLine(instagram, signedInAs: "instagram") == nil)
+    let messenger = ConnectedAccount(id: "facebookmessenger", platform: .facebookMessenger, displayName: "Messenger")
+    #expect(AccountsListView.identityLine(messenger, signedInAs: "Messenger") == nil)
+}
+
 @Test func aBridgeReportingTroubleSaysSoInSettings() {
     func problem(_ state: NetworkConnectionState?) -> String? {
         AccountsListView.networkProblem(

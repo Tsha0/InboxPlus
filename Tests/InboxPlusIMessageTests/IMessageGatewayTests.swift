@@ -19,7 +19,11 @@ private func appleTime(daysAgo days: Double) -> Int64 {
 }
 
 /// Polls only when a test asks, and fails the test rather than reach Messages.
-private func makeGateway(_ url: URL, historyLimit: Int = 50) throws -> IMessageGateway {
+private func makeGateway(
+    _ url: URL,
+    historyLimit: Int = 50,
+    activityWindow: TimeInterval? = 365 * 86_400
+) throws -> IMessageGateway {
     IMessageGateway(
         store: try IMessageStore(url: url),
         sender: IMessageSender { _ in
@@ -27,6 +31,7 @@ private func makeGateway(_ url: URL, historyLimit: Int = 50) throws -> IMessageG
             return ""
         },
         historyLimit: historyLimit,
+        activityWindow: activityWindow,
         pollInterval: .seconds(3600)
     )
 }
@@ -96,6 +101,50 @@ private func next(
 
     #expect(snapshot.conversations.map(\.id) == ["iMessage;-;active@example.com"])
     #expect(snapshot.identities.map(\.id) == ["active@example.com"])
+}
+
+@Test func theHistoryWindowDecidesHowQuietAChatCanBeAndStillBeListed() async throws {
+    let url = try makeDatabase("""
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;-;recent@example.com', 45, 'recent@example.com', 'iMessage');
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;-;spring@example.com', 45, 'spring@example.com', 'iMessage');
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;-;dormant@example.com', 45, 'dormant@example.com', 'iMessage');
+    INSERT INTO message (guid, text, date) VALUES ('r1', 'this week', \(appleTime(daysAgo: 3)));
+    INSERT INTO message (guid, text, date) VALUES ('s1', 'in the spring', \(appleTime(daysAgo: 200)));
+    INSERT INTO message (guid, text, date) VALUES ('d1', 'long ago', \(appleTime(daysAgo: 800)));
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (2, 2), (3, 3);
+    """)
+    defer { cleanUp(url) }
+
+    func listed(within window: TimeInterval?) async throws -> Set<String> {
+        Set(try await makeGateway(url, activityWindow: window).loadSnapshot().conversations.map(\.id))
+    }
+    #expect(try await listed(within: 30 * 86_400) == ["iMessage;-;recent@example.com"])
+    #expect(try await listed(within: 365 * 86_400) == ["iMessage;-;recent@example.com", "iMessage;-;spring@example.com"])
+    #expect(try await listed(within: nil) == [
+        "iMessage;-;recent@example.com", "iMessage;-;spring@example.com", "iMessage;-;dormant@example.com",
+    ])
+}
+
+@Test func theAccountSaysWhichAddressThisMacUsesForMessages() async throws {
+    let url = try makeDatabase("""
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;-;friend@example.com', 45, 'friend@example.com', 'iMessage');
+    INSERT INTO message (guid, text, date, destination_caller_id)
+      VALUES ('m1', 'older', \(appleTime(daysAgo: 9)), 'old-number@example.com');
+    INSERT INTO message (guid, text, date, destination_caller_id)
+      VALUES ('m2', 'newer', \(appleTime(daysAgo: 2)), 'me@icloud.com');
+    INSERT INTO message (guid, text, date, destination_caller_id)
+      VALUES ('m3', 'unaddressed', \(appleTime(daysAgo: 1)), '');
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2), (1, 3);
+    """)
+    defer { cleanUp(url) }
+
+    let account = try #require(try await makeGateway(url).loadSnapshot().accounts.first)
+    #expect(account.signedInAs == "me@icloud.com")
+    #expect(account.displayName == "iMessage")
 }
 
 @Test(.timeLimit(.minutes(1)))

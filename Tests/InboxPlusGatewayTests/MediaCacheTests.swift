@@ -117,6 +117,30 @@ private let context = MediaCacheContext(accountID: "instagram", messageID: "$eve
     #expect(await cache.cachedFile(for: handle("file://outgoing/1")) != nil)
 }
 
+@Test func clearingTheCacheKeepsWhatCannotBeFetchedAgain() async throws {
+    let directory = makeCacheDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let cache = try MediaCache(directory: directory)
+
+    try await cache.store(Data(repeating: 1, count: 100), for: handle("mxc://s/ig"), context: MediaCacheContext(accountID: "instagram", messageID: "$1"))
+    try await cache.store(Data(repeating: 2, count: 30), for: handle("mxc://s/wa"), context: MediaCacheContext(accountID: "whatsapp", messageID: "$2"))
+    try await cache.store(
+        Data(repeating: 9, count: 400),
+        for: handle("file://outgoing/1"),
+        context: MediaCacheContext(accountID: "instagram", messageID: "draft", isReproducible: false)
+    )
+
+    #expect(try await cache.clear() == 130)
+    #expect(await cache.cachedFile(for: handle("mxc://s/ig")) == nil)
+    #expect(await cache.cachedFile(for: handle("mxc://s/wa")) == nil)
+    #expect(await cache.cachedFile(for: handle("file://outgoing/1")) != nil)
+    #expect(await cache.totalBytes == 400)
+
+    // The index is rewritten, so a relaunch does not resurrect what was cleared.
+    let reopened = try MediaCache(directory: directory)
+    #expect(await reopened.allRecords().map(\.messageID) == ["draft"])
+}
+
 @Test func erasingAnAccountTakesOnlyItsOwnMedia() async throws {
     let directory = makeCacheDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

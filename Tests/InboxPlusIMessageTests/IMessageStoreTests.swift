@@ -24,7 +24,7 @@ func makeDatabase(_ statements: String) throws -> URL {
         text TEXT, handle_id INTEGER DEFAULT 0, service TEXT, date INTEGER,
         is_from_me INTEGER DEFAULT 0, attributedBody BLOB, associated_message_guid TEXT,
         associated_message_type INTEGER DEFAULT 0, associated_message_emoji TEXT,
-        is_read INTEGER DEFAULT 0);
+        is_read INTEGER DEFAULT 0, destination_caller_id TEXT);
     CREATE TABLE chat_message_join (chat_id INTEGER, message_id INTEGER,
         PRIMARY KEY (chat_id, message_id));
     CREATE TABLE attachment (ROWID INTEGER PRIMARY KEY AUTOINCREMENT, guid TEXT UNIQUE NOT NULL,

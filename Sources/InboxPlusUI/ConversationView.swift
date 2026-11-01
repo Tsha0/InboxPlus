@@ -127,6 +127,18 @@ public struct ConversationView: View {
                         .font(.headline)
                 }
                 Spacer()
+                let muted = model.isMuted(route)
+                Button {
+                    model.setMuted(!muted, for: route)
+                } label: {
+                    Image(systemName: muted ? "bell.slash.fill" : "bell")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(muted ? AnyShapeStyle(InboxPlusTheme.ink) : AnyShapeStyle(.secondary))
+                .help(muted ? "Unmute notifications" : "Mute notifications")
+                .accessibilityLabel(muted ? "Unmute conversation" : "Mute conversation")
+                .accessibilityIdentifier("mute-conversation")
                 if model.canLinkConversation(route), model.personID(for: route) == nil {
                     Button("Link to person…") {
                         linkError = nil

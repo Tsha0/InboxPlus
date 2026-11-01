@@ -102,6 +102,24 @@ public final class MediaController {
         try await loader?.purge(accountID: accountID)
     }
 
+    /// Bytes of downloaded media. Nil until the runtime is up and there is a cache to measure.
+    public func cacheSize() async -> Int? {
+        await loader?.cacheSize()
+    }
+
+    /// Deletes downloaded media and returns the bytes freed. Anything that was showing loads again
+    /// the next time it appears.
+    @discardableResult
+    public func clearCache() async throws -> Int {
+        guard let loader else { return 0 }
+        let freed = try await loader.clearCache()
+        states = states.filter { _, state in
+            guard case let .ready(url) = state else { return true }
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+        return freed
+    }
+
     public func refreshStorageWarning() {
         guard let loader else { return }
         Task { [weak self] in

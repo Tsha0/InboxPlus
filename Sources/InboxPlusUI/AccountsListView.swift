@@ -9,6 +9,7 @@ struct AccountsListView: View {
     let isConnected: (String) -> Bool
     let isChanging: (String) -> Bool
     let lastActivity: (String) -> Date?
+    let signedInName: (ConnectedAccount) -> String?
     let onAddAccount: () -> Void
     let onDisconnect: (ConnectedAccount) -> Void
     let onReconnect: (ConnectedAccount) -> Void
@@ -101,9 +102,14 @@ struct AccountsListView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(account.platform.accessibilityLabel)
                     .fontWeight(.semibold)
-                Text(account.displayName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let identity = Self.identityLine(account, signedInAs: signedInName(account)) {
+                    Text(identity)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
                 Text(statusLine(account, connected: connected))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -145,6 +151,16 @@ struct AccountsListView: View {
         .padding(.vertical, 3)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("account-row-\(account.id)")
+    }
+
+    /// Who the account is signed in as. Never the network's own name again, which the row already
+    /// shows, so an unknown name leaves the line out rather than reading "Instagram / Instagram".
+    static func identityLine(_ account: ConnectedAccount, signedInAs name: String?) -> String? {
+        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty,
+              name.localizedCaseInsensitiveCompare(account.platform.accessibilityLabel) != .orderedSame,
+              name.localizedCaseInsensitiveCompare(account.displayName) != .orderedSame
+        else { return nil }
+        return name
     }
 
     private func statusLine(_ account: ConnectedAccount, connected: Bool) -> String {

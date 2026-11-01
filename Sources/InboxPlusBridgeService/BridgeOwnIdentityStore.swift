@@ -92,6 +92,35 @@ public enum BridgeOwnIdentityStore {
         return matrixIDs
     }
 
+    /// What the owner is signed in to the network as: a username where the network has them,
+    /// otherwise the name, phone number or address the bridge recorded for the login.
+    ///
+    /// Only the profile fields are read; the login's metadata holds its session and is never
+    /// selected.
+    public static func signedInName(database: URL, ownerUserID: String) throws -> String? {
+        var pointer: OpaquePointer?
+        guard sqlite3_open_v2(database.path, &pointer, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let db = pointer else {
+            if let pointer { sqlite3_close(pointer) }
+            throw IdentityStoreError.unavailable
+        }
+        defer { sqlite3_close(db) }
+        sqlite3_busy_timeout(db, 100)
+
+        let rows = try query(db, sql: """
+            SELECT json_extract(remote_profile, '$.username'), remote_name,
+                   json_extract(remote_profile, '$.phone'), json_extract(remote_profile, '$.email')
+            FROM user_login WHERE user_mxid = ? ORDER BY rowid LIMIT 1
+            """, arguments: [ownerUserID])
+        guard let row = rows.first else { return nil }
+        if let username = row[0]?.trimmingCharacters(in: .whitespaces), !username.isEmpty {
+            return username.hasPrefix("@") ? username : "@\(username)"
+        }
+        return row[1...].lazy
+            .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
+            .first { !$0.isEmpty }
+    }
+
     private static func query(_ db: OpaquePointer, sql: String, arguments: [String]) throws -> [[String?]] {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
