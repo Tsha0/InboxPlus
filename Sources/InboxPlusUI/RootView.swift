@@ -13,7 +13,7 @@ public typealias BridgeLoginSessionProvider =
 public struct RootView: View {
     @Bindable var model: InboxPlusAppModel
     @State private var inboxQuery = ""
-    @State private var showsUnreadOnly = false
+    @State private var inboxFilter = InboxFilter()
     @State private var searchFocusRequest: UUID?
     @State private var section: SidebarSection = .inbox
     @State private var accountFlow: AccountFlow?
@@ -287,14 +287,14 @@ public struct RootView: View {
     private var commandActions: InboxCommandActions? {
         guard accountFlow == nil, connectFailure == nil, connectNotice == nil, accountFailure == nil,
               !model.isPreparingForUpdate else { return nil }
-        let canNavigate = !InboxProjector.filtered(model.inboxItems, query: inboxQuery, unreadOnly: showsUnreadOnly).isEmpty
+        let canNavigate = !InboxProjector.filtered(model.inboxItems, query: inboxQuery, filter: inboxFilter).isEmpty
         let route = model.openRoute
         return InboxCommandActions(
             selectSection: { section = $0 },
             focusSearch: { section = .inbox; searchFocusRequest = UUID() },
             clearSearch: section == .inbox && !inboxQuery.isEmpty ? { inboxQuery = "" } : nil,
-            nextConversation: canNavigate ? { section = .inbox; model.navigateConversation(forward: true, query: inboxQuery, unreadOnly: showsUnreadOnly) } : nil,
-            previousConversation: canNavigate ? { section = .inbox; model.navigateConversation(forward: false, query: inboxQuery, unreadOnly: showsUnreadOnly) } : nil,
+            nextConversation: canNavigate ? { section = .inbox; model.navigateConversation(forward: true, query: inboxQuery, filter: inboxFilter) } : nil,
+            previousConversation: canNavigate ? { section = .inbox; model.navigateConversation(forward: false, query: inboxQuery, filter: inboxFilter) } : nil,
             toggleUnread: route.map { route in { model.toggleConversationUnread(route) } },
             isUnread: model.conversations.first { $0.route == route }?.unreadCount ?? 0 > 0
         )
@@ -358,13 +358,16 @@ public struct RootView: View {
             InboxView(
                 items: model.inboxItems,
                 query: $inboxQuery,
-                showsUnreadOnly: $showsUnreadOnly,
+                filter: $inboxFilter,
                 searchFocusRequest: searchFocusRequest,
+                messageMatches: model.messageMatches(query: inboxQuery, filter: inboxFilter),
                 selectedID: selectedInboxID,
+                highlightedMessage: model.highlightedMessage,
                 favouriteError: model.favouriteError,
                 onToggleFavourite: model.toggleFavourite,
                 unsentRoutes: model.routesWithDrafts.union(model.stagedAttachmentsByRoute.keys),
-                onSelect: model.selectInboxItem
+                onSelect: model.selectInboxItem,
+                onSelectMessage: model.openMessage
             )
         case .contacts:
             ContactsListView(
