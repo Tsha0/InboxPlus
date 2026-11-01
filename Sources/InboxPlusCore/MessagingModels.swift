@@ -81,25 +81,34 @@ public struct ConversationCapabilities: Codable, Hashable, Sendable {
     public var attachmentKinds: Set<MessageKind>
     /// Nil when the network has not told us a limit, which is not the same as having none.
     public var maximumAttachmentBytes: Int?
+    public var canReply: Bool
+    public var canReact: Bool
 
     public init(
         canSendText: Bool = true,
         attachmentKinds: Set<MessageKind> = [],
-        maximumAttachmentBytes: Int? = nil
+        maximumAttachmentBytes: Int? = nil,
+        canReply: Bool = false,
+        canReact: Bool = false
     ) {
         self.canSendText = canSendText
         self.attachmentKinds = attachmentKinds
         self.maximumAttachmentBytes = maximumAttachmentBytes
+        self.canReply = canReply
+        self.canReact = canReact
     }
 
     public var acceptsAttachments: Bool { !attachmentKinds.isEmpty }
 
     public func accepts(_ kind: MessageKind) -> Bool { attachmentKinds.contains(kind) }
 
-    /// Matrix itself accepts all four, so a bridge that has not declared otherwise gets them.
+    /// Matrix itself accepts all four attachment kinds, replies and reactions, so a bridge that has
+    /// not declared otherwise gets them.
     public static let mediaCapable = ConversationCapabilities(
         canSendText: true,
-        attachmentKinds: [.image, .video, .audio, .file]
+        attachmentKinds: [.image, .video, .audio, .file],
+        canReply: true,
+        canReact: true
     )
 
     public static let textOnly = ConversationCapabilities()
@@ -135,6 +144,11 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
     public var unreadCount: Int
     public var capabilities: ConversationCapabilities
     public var isGroup: Bool
+    /// Someone the user has no record of: not in their contacts and never written to. Only a
+    /// source that can tell sets it, which is why it defaults to false.
+    public var isFromUnknownSender: Bool
+    /// The conversation in its network's own app, which still has the history Inbox+ does not keep.
+    public var deepLink: VerifiedDeepLink?
 
     public var route: ConversationRoute { .init(accountID: accountID, conversationID: id) }
 
@@ -147,7 +161,9 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
         latestActivity: Date,
         unreadCount: Int,
         capabilities: ConversationCapabilities = .mediaCapable,
-        isGroup: Bool = false
+        isGroup: Bool = false,
+        isFromUnknownSender: Bool = false,
+        deepLink: VerifiedDeepLink? = nil
     ) {
         self.id = id
         self.accountID = accountID
@@ -158,10 +174,54 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
         self.unreadCount = unreadCount
         self.capabilities = capabilities
         self.isGroup = isGroup
+        self.isFromUnknownSender = isFromUnknownSender
+        self.deepLink = deepLink
     }
 }
 
 public enum MessageDeliveryState: Codable, Hashable, Sendable { case pending, acknowledged, failed(String) }
+
+/// One emoji on a message, with how many people chose it.
+public struct MessageReaction: Codable, Hashable, Sendable {
+    public let key: String
+    public var count: Int
+    /// Whether this account is one of them, which is what choosing the same emoji again takes back.
+    public var includesMe: Bool
+
+    public init(key: String, count: Int, includesMe: Bool) {
+        self.key = key
+        self.count = count
+        self.includesMe = includesMe
+    }
+
+    /// Folds one entry per person into one reaction per emoji, in the order each emoji first appeared.
+    public static func tally(_ entries: [(key: String, isMine: Bool)]) -> [MessageReaction] {
+        var reactions: [MessageReaction] = []
+        for entry in entries {
+            if let index = reactions.firstIndex(where: { $0.key == entry.key }) {
+                reactions[index].count += 1
+                reactions[index].includesMe = reactions[index].includesMe || entry.isMine
+            } else {
+                reactions.append(MessageReaction(key: entry.key, count: 1, includesMe: entry.isMine))
+            }
+        }
+        return reactions
+    }
+}
+
+/// The message a reply answers, as far as the network has delivered it.
+public struct MessageReply: Codable, Hashable, Sendable {
+    public let messageID: String
+    public var senderDisplayName: String?
+    /// Nil until the quoted message itself has been loaded.
+    public var body: String?
+
+    public init(messageID: String, senderDisplayName: String? = nil, body: String? = nil) {
+        self.messageID = messageID
+        self.senderDisplayName = senderDisplayName
+        self.body = body
+    }
+}
 
 public struct Message: Identifiable, Codable, Hashable, Sendable {
     public let id: String
@@ -176,10 +236,17 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
     public var deliveryState: MessageDeliveryState
     public var kind: MessageKind
     public var attachments: [MessageAttachment]
-    public var reactions: [String]
+    public var reactions: [MessageReaction]
+    public var replyTo: MessageReply?
 
     /// Messages this account sent carry no remote sender identity.
     public var isOutgoing: Bool { senderIdentityID == nil }
+
+    /// A reply or reaction has to point at something the server already has, and at something
+    /// someone said rather than a deletion or a change to the room.
+    public var acceptsResponses: Bool {
+        deliveryState == .acknowledged && ![.redacted, .encrypted, .membership, .state].contains(kind)
+    }
 
     public init(
         id: String,
@@ -190,7 +257,8 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
         deliveryState: MessageDeliveryState,
         kind: MessageKind = .text,
         attachments: [MessageAttachment] = [],
-        reactions: [String] = [],
+        reactions: [MessageReaction] = [],
+        replyTo: MessageReply? = nil,
         markdownBody: String? = nil,
         senderDisplayName: String? = nil
     ) {
@@ -205,5 +273,6 @@ public struct Message: Identifiable, Codable, Hashable, Sendable {
         self.kind = kind
         self.attachments = attachments
         self.reactions = reactions
+        self.replyTo = replyTo
     }
 }

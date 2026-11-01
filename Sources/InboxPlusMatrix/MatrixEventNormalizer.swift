@@ -19,11 +19,13 @@ public struct MatrixEventNormalizer: Sendable {
         ConversationRoute(accountID: accountID ?? self.accountID, conversationID: roomID)
     }
 
+    /// `ownUserID` is this client's Matrix login, which is who a reaction sent from Inbox+ is from.
     public func normalize(
         _ item: EventTimelineItem,
         roomID: String,
         accountID: String? = nil,
-        outgoingIdentifiers: Set<String> = []
+        outgoingIdentifiers: Set<String> = [],
+        ownUserID: String? = nil
     ) -> Message? {
         let identifier = identifier(for: item.eventOrTransactionId)
         guard var described = describe(item.content, identifier: identifier) else { return nil }
@@ -42,6 +44,21 @@ public struct MatrixEventNormalizer: Sendable {
         } else {
             senderName = nil
         }
+        var reactions: [MessageReaction] = []
+        var replyTo: MessageReply?
+        if case let .msgLike(content) = item.content {
+            reactions = content.reactions.map { reaction in
+                MessageReaction(
+                    key: reaction.key,
+                    count: reaction.senders.count,
+                    // A reaction made in the network's own app arrives from this account's ghost.
+                    includesMe: reaction.senders.contains {
+                        $0.senderId == ownUserID || outgoingIdentifiers.contains($0.senderId)
+                    }
+                )
+            }
+            replyTo = content.inReplyTo.map(reply(from:))
+        }
         return Message(
             id: identifier,
             route: route(forRoom: roomID, accountID: accountID),
@@ -55,9 +72,38 @@ public struct MatrixEventNormalizer: Sendable {
             deliveryState: Self.deliveryState(for: item.localSendState),
             kind: described.kind,
             attachments: described.attachments,
+            reactions: reactions,
+            replyTo: replyTo,
             markdownBody: described.markdownBody,
             senderDisplayName: senderName
         )
+    }
+
+    /// The quoted message's sender and text once the timeline has it. Until then only its
+    /// identifier is known, and the gateway asks for the rest.
+    func reply(from details: InReplyToDetails) -> MessageReply {
+        let messageID = details.eventId()
+        guard case let .ready(content, sender, senderProfile, _, _) = details.event() else {
+            return MessageReply(messageID: messageID)
+        }
+        let senderName: String
+        if case let .ready(displayName?, _, _, _, _) = senderProfile {
+            senderName = displayName
+        } else {
+            senderName = MatrixMessagingGateway.displayName(forUserID: sender)
+        }
+        return MessageReply(
+            messageID: messageID,
+            senderDisplayName: senderName,
+            body: describe(content, identifier: messageID)?.body
+        )
+    }
+
+    /// The reverse of `identifier(for:)`, for acting on a message the app layer names by its ID.
+    public func eventOrTransactionID(for identifier: String) -> EventOrTransactionId {
+        identifier.hasPrefix("txn:")
+            ? .transactionId(transactionId: String(identifier.dropFirst(4)))
+            : .eventId(eventId: identifier)
     }
 
     /// What one timeline event turned into: a line of text, a category, and any payloads.
@@ -133,7 +179,7 @@ public struct MatrixEventNormalizer: Sendable {
                 sourceSize: info.size,
                 thumbnail: info.thumbnailSource
             )
-            return Described(body: body.isEmpty ? "Sticker" : body, kind: .sticker, attachments: [attachment])
+            return Described(body: attachment.displayName, kind: .sticker, attachments: [attachment])
         case let .poll(question, _, _, _, _, _, _):
             return Described(body: "Poll: \(question)", kind: .poll)
         case .redacted:
@@ -155,21 +201,30 @@ public struct MatrixEventNormalizer: Sendable {
             return Self.described(content.body, formatted: content.formatted, kind: .notice)
         case let .emote(content):
             return Self.described(content.body, formatted: content.formatted, kind: .emote)
-        // Attachments carry a filename plus an optional caption rather than a body. Prefer the
-        // caption the sender wrote, fall back to the filename, and only then to a generic label,
-        // so an attachment is never rendered as an empty message.
         case let .image(content):
-            let attachment = Self.attachment(from: content, id: "\(identifier)#0")
-            return Described(body: attachment.displayName, kind: attachment.kind, attachments: [attachment])
+            return Self.described(
+                Self.attachment(from: content, id: "\(identifier)#0"),
+                caption: content.caption,
+                formatted: content.formattedCaption
+            )
         case let .audio(content):
-            let attachment = Self.attachment(from: content, id: "\(identifier)#0")
-            return Described(body: attachment.displayName, kind: .audio, attachments: [attachment])
+            return Self.described(
+                Self.attachment(from: content, id: "\(identifier)#0"),
+                caption: content.caption,
+                formatted: content.formattedCaption
+            )
         case let .video(content):
-            let attachment = Self.attachment(from: content, id: "\(identifier)#0")
-            return Described(body: attachment.displayName, kind: .video, attachments: [attachment])
+            return Self.described(
+                Self.attachment(from: content, id: "\(identifier)#0"),
+                caption: content.caption,
+                formatted: content.formattedCaption
+            )
         case let .file(content):
-            let attachment = Self.attachment(from: content, id: "\(identifier)#0")
-            return Described(body: attachment.displayName, kind: .file, attachments: [attachment])
+            return Self.described(
+                Self.attachment(from: content, id: "\(identifier)#0"),
+                caption: content.caption,
+                formatted: content.formattedCaption
+            )
         case let .gallery(content):
             let attachments = content.itemtypes.enumerated().compactMap { index, item in
                 Self.attachment(from: item, id: "\(identifier)#\(index)")
@@ -208,6 +263,17 @@ public struct MatrixEventNormalizer: Sendable {
             attachments: attachments,
             markdownBody: body
         )
+    }
+
+    /// Attachments carry a filename plus an optional caption rather than a body. The caption the
+    /// sender wrote is the message's text, shown under the media and read as Markdown like any other
+    /// formatted text. Without one the text is the card's own label, so the message is never empty.
+    static func described(_ attachment: MessageAttachment, caption: String?, formatted: FormattedBody?) -> Described {
+        var described = Described(body: attachment.displayName, kind: attachment.kind, attachments: [attachment])
+        if attachment.caption != nil, case .html = formatted?.format {
+            described.markdownBody = text(caption)
+        }
+        return described
     }
 
     static func plainCaption(_ caption: String?, formatted: FormattedBody?) -> String? {

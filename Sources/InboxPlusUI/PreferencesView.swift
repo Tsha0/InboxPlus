@@ -127,13 +127,13 @@ struct PreferencesView: View {
                         .accessibilityLabel("Unmute \(summary.title)")
                 }
             }
-            if let muteError = model.muteError {
-                Label(muteError, systemImage: "exclamationmark.triangle.fill").font(.caption)
+            if let preferenceError = model.preferenceError {
+                Label(preferenceError, systemImage: "exclamationmark.triangle.fill").font(.caption)
             }
         } header: {
             Text("Notifications")
         } footer: {
-            Text("Mute a conversation with the bell at the top of it. Muted conversations never notify and are left out of the unread badge.")
+            Text("Mute a conversation with the bell at the top of it, or by right-clicking it in the inbox. Muted conversations never notify and are left out of the unread badge.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

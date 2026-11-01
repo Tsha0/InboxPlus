@@ -112,10 +112,10 @@ private func drain(_ gateway: PreferenceGateway, _ model: InboxPlusAppModel) asy
 
 @MainActor
 @Test func aMutedConversationNeitherNotifiesNorCountsTowardTheBadge() async throws {
-    let store = MutedConversationStore(fileURL: temporaryFile("muted-conversations.json"))
+    let store = ConversationPreferenceStore(fileURL: temporaryFile("inbox-conversation-preferences.json"))
     defer { try? FileManager.default.removeItem(at: store.fileURL.deletingLastPathComponent()) }
     let gateway = PreferenceGateway(snapshot: seed())
-    let model = InboxPlusAppModel(gateway: gateway, muteStore: store)
+    let model = InboxPlusAppModel(gateway: gateway, preferenceStore: store)
     var notified: [String] = []
     model.onIncomingMessage = { notified.append($0.message.id) }
     try await model.start()
@@ -132,27 +132,27 @@ private func drain(_ gateway: PreferenceGateway, _ model: InboxPlusAppModel) asy
     #expect(notified == ["direct"])
 
     // A mute is the user's decision about that conversation, so it outlives the session.
-    #expect(try store.load() == [group])
-    #expect(InboxPlusAppModel(gateway: PreferenceGateway(snapshot: seed()), muteStore: store).isMuted(group))
+    #expect(try store.load().isMuted(group, at: Date()))
+    #expect(InboxPlusAppModel(gateway: PreferenceGateway(snapshot: seed()), preferenceStore: store).isMuted(group))
 
     model.setMuted(false, for: group)
     #expect(model.unreadBadgeCount == 5)
-    #expect(try store.load().isEmpty)
+    #expect(try !store.load().isMuted(group, at: Date()))
     model.stop()
 }
 
 @MainActor
 @Test func removingAnAccountForgetsItsMutes() async throws {
-    let store = MutedConversationStore(fileURL: temporaryFile("muted-conversations.json"))
+    let store = ConversationPreferenceStore(fileURL: temporaryFile("inbox-conversation-preferences.json"))
     defer { try? FileManager.default.removeItem(at: store.fileURL.deletingLastPathComponent()) }
-    let model = InboxPlusAppModel(gateway: PreferenceGateway(snapshot: seed()), muteStore: store)
+    let model = InboxPlusAppModel(gateway: PreferenceGateway(snapshot: seed()), preferenceStore: store)
     try await model.start()
     model.setMuted(true, for: group)
 
     try await model.eraseAccount(accountID: account.id)
 
-    #expect(model.mutedRoutes.isEmpty)
-    #expect(try store.load().isEmpty)
+    #expect(!model.isMuted(group))
+    #expect(try !store.load().isMuted(group, at: Date()))
     model.stop()
 }
 
@@ -193,9 +193,9 @@ func aReplyFromANotificationIsSentWithoutTouchingTheDraft() async throws {
     #expect(!model.hasUnfinishedMessagingWork)
     #expect(model.conversations.first { $0.route == direct }?.unreadCount == 0)
 
-    model.draft = "half-written"
+    model.setDraft("half-written", for: group)
     try await model.sendReply("ok", to: group)
-    #expect(model.draft == "half-written")
+    #expect(model.draft(for: group) == "half-written")
     #expect(await gateway.sent == ["On my way", "ok"])
     model.stop()
 }

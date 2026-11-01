@@ -9,7 +9,7 @@ import InboxPlusCore
 ///
 /// A gateway that fails is stepped over rather than allowed to empty the inbox: one broken source
 /// must not take the working ones down with it, which is the same rule bridge supervision follows.
-public actor CompositeMessagingGateway: ConversationStartingGateway {
+public actor CompositeMessagingGateway: ConversationStartingGateway, MessageInteractionGateway {
     private let gateways: [any MessagingGateway]
     /// Which gateway owns each account, so a send goes to the one that can actually perform it.
     private var gatewayByAccountID: [String: any MessagingGateway] = [:]
@@ -91,7 +91,30 @@ public actor CompositeMessagingGateway: ConversationStartingGateway {
         try await gateway(for: route).markRead(route)
     }
 
+    public func sendText(_ body: String, to route: ConversationRoute, replyingTo messageID: String) async throws -> SendReceipt {
+        try await interactions(for: route).sendText(body, to: route, replyingTo: messageID)
+    }
+
+    public func send(
+        _ attachment: OutgoingAttachment,
+        to route: ConversationRoute,
+        replyingTo messageID: String
+    ) async throws -> SendReceipt {
+        try await interactions(for: route).send(attachment, to: route, replyingTo: messageID)
+    }
+
+    public func toggleReaction(_ key: String, to messageID: String, in route: ConversationRoute) async throws {
+        try await interactions(for: route).toggleReaction(key, to: messageID, in: route)
+    }
+
     // MARK: - Routing
+
+    private func interactions(for route: ConversationRoute) throws -> any MessageInteractionGateway {
+        guard let gateway = try gateway(for: route) as? any MessageInteractionGateway else {
+            throw MessageInteractionError.unsupported
+        }
+        return gateway
+    }
 
     private func gateway(for route: ConversationRoute) throws -> any MessagingGateway {
         guard let gateway = gatewayByAccountID[route.accountID] else {
@@ -132,13 +155,19 @@ public actor CompositeMessagingGateway: ConversationStartingGateway {
     private func removeContinuation(_ id: UUID) { streamContinuations[id] = nil }
 }
 
-public enum CompositeGatewayError: Error, Equatable, CustomStringConvertible {
+public enum CompositeGatewayError: Error, Equatable, CustomStringConvertible, LocalizedError {
     case unknownAccount(String)
 
     public var description: String {
         switch self {
         case let .unknownAccount(id):
             "no connected source owns account '\(id)'"
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .unknownAccount: "This account isn't connected."
         }
     }
 }

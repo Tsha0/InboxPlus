@@ -349,7 +349,7 @@ private func startAndRecord(
     let whatsAppCountBefore = (try await gateway.loadSnapshot()).messagesByRoute[whatsApp]?.count
 
     model.openConversation(instagram)
-    model.draft = "Sent through Instagram"
+    model.setDraft("Sent through Instagram", for: instagram)
     try await model.sendDraft(model.captureDraft(to: instagram))
 
     #expect(model.openRoute == instagram)
@@ -366,7 +366,7 @@ private func startAndRecord(
     let submittedRoute = Fixtures.instagramRoute
     let newerRoute = Fixtures.whatsAppRoute
     model.openConversation(submittedRoute)
-    model.draft = "  route A draft  "
+    model.setDraft("  route A draft  ", for: submittedRoute)
     let submission = model.captureDraft(to: submittedRoute)
 
     let sendTask = Task { @MainActor in
@@ -378,7 +378,7 @@ private func startAndRecord(
     #expect(sendStarted)
 
     model.openConversation(newerRoute)
-    model.draft = "route B newer draft"
+    model.setDraft("route B newer draft", for: newerRoute)
     await gateway.completeSend()
     try await sendTask.value
 
@@ -387,7 +387,8 @@ private func startAndRecord(
             == ControlledSendGateway.Submission(body: "route A draft", route: submittedRoute)
     )
     #expect(model.openRoute == newerRoute)
-    #expect(model.draft == "route B newer draft")
+    #expect(model.draft(for: newerRoute) == "route B newer draft")
+    #expect(model.draft(for: submittedRoute).isEmpty)
 }
 
 @MainActor
@@ -395,7 +396,7 @@ private func startAndRecord(
     let gateway = ControlledSendGateway(snapshot: Fixtures.snapshot)
     let model = InboxPlusAppModel(gateway: gateway, directory: Fixtures.directory)
     try await model.start()
-    model.draft = "same text"
+    model.setDraft("same text", for: Fixtures.instagramRoute)
     let submission = model.captureDraft(to: Fixtures.instagramRoute)
 
     let sendTask = Task { @MainActor in
@@ -406,12 +407,12 @@ private func startAndRecord(
     }
     #expect(sendStarted)
 
-    model.draft = "intermediate edit"
-    model.draft = "same text"
+    model.setDraft("intermediate edit", for: Fixtures.instagramRoute)
+    model.setDraft("same text", for: Fixtures.instagramRoute)
     await gateway.completeSend()
     try await sendTask.value
 
-    #expect(model.draft == "same text")
+    #expect(model.draft(for: Fixtures.instagramRoute) == "same text")
 }
 
 @MainActor
@@ -421,7 +422,7 @@ private func startAndRecord(
     try await model.start()
     let route = Fixtures.instagramRoute
     model.openConversation(route)
-    model.draft = "retry this message"
+    model.setDraft("retry this message", for: route)
 
     let failedSubmission = model.captureDraft(to: route)
     do {
@@ -433,13 +434,13 @@ private func startAndRecord(
 
     #expect(model.sendFailure(for: route) == "Fixture gateway unavailable")
     #expect(model.sendFailure(for: Fixtures.whatsAppRoute) == nil)
-    #expect(model.draft == "retry this message")
+    #expect(model.draft(for: route) == "retry this message")
 
     await gateway.allowSends()
     try await model.sendDraft(model.captureDraft(to: route))
 
     #expect(model.sendFailure(for: route) == nil)
-    #expect(model.draft.isEmpty)
+    #expect(model.draft(for: route).isEmpty)
 }
 
 @MainActor
@@ -449,13 +450,13 @@ private func startAndRecord(
     try await model.start()
     let route = Fixtures.instagramRoute
 
-    model.draft = "submission A"
+    model.setDraft("submission A", for: route)
     let older = model.captureDraft(to: route)
     let olderTask = Task { @MainActor in
         try await model.sendDraft(older)
     }
 
-    model.draft = "submission B"
+    model.setDraft("submission B", for: route)
     let newer = model.captureDraft(to: route)
     let newerTask = Task { @MainActor in
         do {
@@ -470,13 +471,13 @@ private func startAndRecord(
     await gateway.fail("submission B")
     await newerTask.value
     #expect(model.sendFailure(for: route) == "Fixture gateway unavailable")
-    #expect(model.draft == "submission B")
+    #expect(model.draft(for: route) == "submission B")
 
     await gateway.succeed("submission A")
     try await olderTask.value
 
     #expect(model.sendFailure(for: route) == "Fixture gateway unavailable")
-    #expect(model.draft == "submission B")
+    #expect(model.draft(for: route) == "submission B")
 }
 
 @MainActor
@@ -486,7 +487,7 @@ private func startAndRecord(
     try await model.start()
     let route = Fixtures.instagramRoute
 
-    model.draft = "submission A"
+    model.setDraft("submission A", for: route)
     let older = model.captureDraft(to: route)
     let olderTask = Task { @MainActor in
         do {
@@ -496,7 +497,7 @@ private func startAndRecord(
         }
     }
 
-    model.draft = "submission B"
+    model.setDraft("submission B", for: route)
     let newer = model.captureDraft(to: route)
     let newerTask = Task { @MainActor in
         try await model.sendDraft(newer)
@@ -507,13 +508,13 @@ private func startAndRecord(
     await gateway.succeed("submission B")
     try await newerTask.value
     #expect(model.sendFailure(for: route) == nil)
-    #expect(model.draft.isEmpty)
+    #expect(model.draft(for: route).isEmpty)
 
     await gateway.fail("submission A")
     await olderTask.value
 
     #expect(model.sendFailure(for: route) == nil)
-    #expect(model.draft.isEmpty)
+    #expect(model.draft(for: route).isEmpty)
 }
 
 @MainActor

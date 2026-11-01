@@ -41,7 +41,7 @@ let package = Package(
             dependencies: ["InboxPlusCore", "InboxPlusGateway"],
             linkerSettings: [.linkedLibrary("sqlite3")]
         ),
-        .target(name: "InboxPlusRuntime"),
+        .target(name: "InboxPlusRuntime", dependencies: ["InboxPlusCore"]),
         // The bridge contract as pure data: bridgev2 protocol models, the network catalog, and the
         // login state machine. Deliberately dependency-free beyond InboxPlusCore so InboxPlusFeatures and
         // InboxPlusUI can drive a login without importing the runtime or a process supervisor.

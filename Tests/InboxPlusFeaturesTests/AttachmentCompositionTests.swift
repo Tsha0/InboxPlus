@@ -65,7 +65,7 @@ func sendingAStagedFileClearsItAndProducesAMessageWithTheAttachment() async thro
     let url = try writeFile(directory, named: "photo.png", bytes: 64)
     model.stageAttachment(at: url, for: route)
 
-    try await model.sendStagedAttachments(to: route)
+    try await model.sendStagedAttachments(for: model.captureDraft(to: route))
 
     #expect(model.stagedAttachments(for: route).isEmpty)
     // The sent message reaches the model through the gateway's event stream, not the send call.
@@ -75,7 +75,9 @@ func sendingAStagedFileClearsItAndProducesAMessageWithTheAttachment() async thro
     }
     let message = try #require(model.messagesByRoute[route]?.last)
     #expect(message.kind == .image)
+    #expect(message.body == "Photo")
     #expect(message.attachments.count == 1)
+    #expect(message.attachments.first?.filename == "photo.png")
     #expect(message.attachments.first?.byteCount == 64)
     #expect(message.isOutgoing)
 }

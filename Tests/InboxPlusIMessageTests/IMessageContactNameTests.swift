@@ -96,6 +96,65 @@ private func titles(_ snapshot: MessagingSnapshot) -> [String: String] {
     #expect(try store.participants(inChat: 1).isEmpty)
 }
 
+// MARK: - Unknown senders
+
+/// Alex, who is in Contacts; a stranger the user only tapped back at; a courier the user replied
+/// to; a short code; and a group of strangers.
+private let strangerFixture = """
+INSERT INTO handle (id, service) VALUES ('+15550100100', 'iMessage'), ('+15550100150', 'SMS'),
+  ('+15550100160', 'SMS'), ('262966', 'SMS');
+INSERT INTO chat (guid, style, chat_identifier, service_name, display_name) VALUES
+  ('iMessage;-;+15550100100', 45, '+15550100100', 'iMessage', NULL),
+  ('SMS;-;+15550100150', 45, '+15550100150', 'SMS', NULL),
+  ('SMS;-;+15550100160', 45, '+15550100160', 'SMS', NULL),
+  ('SMS;-;262966', 45, '262966', 'SMS', NULL),
+  ('iMessage;+;chat555', 43, 'chat555', 'iMessage', NULL);
+INSERT INTO chat_handle_join VALUES (5, 2), (5, 3);
+INSERT INTO message (guid, text, handle_id, date, is_from_me, associated_message_guid, associated_message_type) VALUES
+  ('s1', 'see you soon', 1, \(recent), 0, NULL, 0),
+  ('s2', 'You have won a prize', 2, \(recent), 0, NULL, 0),
+  ('s3', 'Liked “You have won a prize”', 2, \(recent + 1_000_000_000), 1, 'p:0/s2', 2001),
+  ('s4', 'Your parcel is downstairs', 3, \(recent), 0, NULL, 0),
+  ('s5', 'Thanks, on my way', 3, \(recent + 1_000_000_000), 1, NULL, 0),
+  ('s6', 'Your code is 123456', 4, \(recent), 0, NULL, 0),
+  ('s7', 'hi all', 2, \(recent), 0, NULL, 0);
+INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (2, 2), (2, 3), (3, 4), (3, 5), (4, 6), (5, 7);
+"""
+
+private func unknownSenders(contacts: any IMessageContactSource) async throws -> [String: Bool] {
+    let url = try makeDatabase(strangerFixture)
+    defer { cleanUp(url) }
+    let gateway = IMessageGateway(store: try IMessageStore(url: url), contacts: contacts, pollInterval: .seconds(3600))
+    let snapshot = try await gateway.loadSnapshot()
+    return Dictionary(uniqueKeysWithValues: snapshot.conversations.map { ($0.id, $0.isFromUnknownSender) })
+}
+
+@Test func someoneMissingFromContactsWhoWasNeverAnsweredIsAnUnknownSender() async throws {
+    let flags = try await unknownSenders(contacts: FakeContacts(contacts: savedContacts))
+    #expect(flags == [
+        "iMessage;-;+15550100100": false,
+        "SMS;-;+15550100150": true,
+        "SMS;-;+15550100160": false,
+        "SMS;-;262966": true,
+        "iMessage;+;chat555": false,
+    ])
+}
+
+@Test func withoutContactsNobodyIsAnUnknownSender() async throws {
+    let flags = try await unknownSenders(contacts: IMessageContactBook())
+    #expect(flags.count == 5)
+    #expect(!flags.values.contains(true))
+}
+
+@Test func aTapbackIsNotAReply() throws {
+    let url = try makeDatabase(strangerFixture)
+    defer { cleanUp(url) }
+    let store = try IMessageStore(url: url)
+    #expect(try store.hasMessagesFromMe(inChat: 3))
+    #expect(try !store.hasMessagesFromMe(inChat: 2))
+    #expect(try !store.hasMessagesFromMe(inChat: 1))
+}
+
 // MARK: - Matching
 
 @Test(arguments: [

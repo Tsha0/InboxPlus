@@ -13,7 +13,7 @@ import InboxPlusRuntime
 ///
 /// Everything downstream is built only once the homeserver answers, because a Matrix client
 /// constructed against a port nothing is listening on fails in ways that read as a bug in Inbox+.
-actor DeferredRuntimeGateway: ConversationStartingGateway {
+actor DeferredRuntimeGateway: ConversationStartingGateway, MessageInteractionGateway {
     private let paths: RuntimePaths
     private let profileName: String
     private let build: @Sendable (RuntimeProfileState) async throws -> any MessagingGateway
@@ -71,6 +71,29 @@ actor DeferredRuntimeGateway: ConversationStartingGateway {
 
     func markRead(_ route: ConversationRoute) async throws {
         try await gateway().markRead(route)
+    }
+
+    func sendText(_ body: String, to route: ConversationRoute, replyingTo messageID: String) async throws -> SendReceipt {
+        try await interactions().sendText(body, to: route, replyingTo: messageID)
+    }
+
+    func send(
+        _ attachment: OutgoingAttachment,
+        to route: ConversationRoute,
+        replyingTo messageID: String
+    ) async throws -> SendReceipt {
+        try await interactions().send(attachment, to: route, replyingTo: messageID)
+    }
+
+    func toggleReaction(_ key: String, to messageID: String, in route: ConversationRoute) async throws {
+        try await interactions().toggleReaction(key, to: messageID, in: route)
+    }
+
+    private func interactions() async throws -> any MessageInteractionGateway {
+        guard let source = try await gateway() as? any MessageInteractionGateway else {
+            throw MessageInteractionError.unsupported
+        }
+        return source
     }
 
     // MARK: - Resolution

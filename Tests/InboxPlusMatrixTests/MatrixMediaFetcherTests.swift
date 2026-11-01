@@ -27,3 +27,20 @@ import InboxPlusRuntime
 
     #expect(gateway.mediaFetcher.client === client)
 }
+
+@Test func aClientErrorReadsAsPlainWordsOnScreen() {
+    // Break caught: a send made before the client connected showed "The operation couldn't be
+    // completed. (InboxPlusMatrix.InboxPlusMatrixClientError error 1.)".
+    #expect(
+        InboxPlusMatrixClientError.notConnected.localizedDescription
+            == "Inbox+ isn't connected yet. Try again in a moment."
+    )
+    #expect(
+        !InboxPlusMatrixClientError.sessionRestoreFailed("M_UNKNOWN_TOKEN").localizedDescription
+            .contains("InboxPlusMatrixClientError")
+    )
+    #expect(
+        MatrixGatewayError.unknownRoom("!portal:inboxplus.localhost").localizedDescription
+            == "This conversation isn't available anymore."
+    )
+}

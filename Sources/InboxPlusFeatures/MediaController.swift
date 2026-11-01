@@ -86,9 +86,22 @@ public final class MediaController {
                     decision.warning ?? "Downloads are paused because your Mac is low on disk space."
                 )
             } catch {
-                self?.states[attachment.id] = .failed(error.localizedDescription)
+                self?.states[attachment.id] = .failed(Self.downloadFailure(for: attachment.kind))
             }
         }
+    }
+
+    /// What a failed download says on its card. The error itself is not shown: it is written for
+    /// developers, and one from the SDK can carry the media's address.
+    static func downloadFailure(for kind: MessageKind) -> String {
+        let noun = switch kind {
+        case .image, .gallery: "photo"
+        case .sticker: "sticker"
+        case .audio: "audio message"
+        case .video: "video"
+        default: "file"
+        }
+        return "Couldn't download this \(noun). Check that Inbox+ is connected and try again."
     }
 
     /// Clears a failure so the next appearance tries again.

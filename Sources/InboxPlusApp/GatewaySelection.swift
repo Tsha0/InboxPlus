@@ -31,8 +31,9 @@ enum GatewaySelection {
         /// exist, is indistinguishable from a bug.
         let directory: ContactDirectory
         var favouriteStore: InboxFavouriteStore? = nil
-        var muteStore: MutedConversationStore? = nil
+        var preferenceStore: ConversationPreferenceStore? = nil
         var accountLifecycle: (any AccountLifecycle)? = nil
+        var composerFiles: ComposerFileStore = .temporary()
         /// Writes a redacted diagnostics bundle of the profile to a folder. Nil without a profile.
         var exportDiagnostics: (@Sendable (URL) async throws -> Void)? = nil
     }
@@ -63,6 +64,8 @@ enum GatewaySelection {
             let media = MediaController()
             let sources = LiveSources()
             let iMessageWindow = AppPreferences.iMessageHistory(in: defaults).interval
+            let composerFiles = ComposerFileStore(directory: paths.profile.appendingPathComponent("composer", isDirectory: true))
+            composerFiles.removeAll()
 
             let gateway = DeferredRuntimeGateway(
                 paths: paths,
@@ -83,8 +86,11 @@ enum GatewaySelection {
                 // Real accounts start with no linked people. Linking is something the user does.
                 directory: ContactDirectory(),
                 favouriteStore: InboxFavouriteStore(fileURL: paths.profile.appendingPathComponent("inbox-favourites.json")),
-                muteStore: MutedConversationStore(fileURL: paths.profile.appendingPathComponent("muted-conversations.json")),
+                preferenceStore: ConversationPreferenceStore(
+                    fileURL: paths.profile.appendingPathComponent("inbox-conversation-preferences.json")
+                ),
                 accountLifecycle: ProfileAccountLifecycle(paths: paths, sources: sources),
+                composerFiles: composerFiles,
                 exportDiagnostics: { destination in
                     _ = try await Task.detached {
                         try DiagnosticsBundle.forProfile(paths)

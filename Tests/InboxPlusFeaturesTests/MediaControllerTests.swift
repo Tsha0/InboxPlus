@@ -77,17 +77,42 @@ func loadingAnAttachmentEndsWithAFileOnDisk() async throws {
 
 @MainActor
 @Test(.timeLimit(.minutes(1)))
-func aFailedDownloadSaysWhyAndCanBeRetried() async throws {
+func aFailedDownloadSaysWhatToDoAndCanBeRetried() async throws {
     let (controller, directory) = try makeController(failure: Failure())
     defer { try? FileManager.default.removeItem(at: directory) }
 
     controller.load(image, accountID: "instagram", messageID: "$1")
     let reason = try await waitForFailure(controller, image)
-    #expect(reason.contains("refused"))
+    #expect(reason == "Couldn't download this photo. Check that Inbox+ is connected and try again.")
+    // The error is for developers, and one from the SDK can name the media's address.
+    #expect(!reason.contains("refused"))
 
     // A failure must not be sticky, or a transient network blip loses the photo forever.
     controller.retry(image, accountID: "instagram", messageID: "$1")
     #expect(controller.state(for: image) != .idle)
+}
+
+/// Fails the way the SDK's `ClientError` does: its localized description is its debug dump.
+private struct AddressedFailure: Error, LocalizedError {
+    var errorDescription: String? { #"MatrixRustSDK.ClientError.Generic(msg: "404 for mxc://s/2", details: nil)"# }
+}
+
+@MainActor
+@Test(.timeLimit(.minutes(1)))
+func aFailedDownloadNeverShowsTheErrorOrTheMediaAddress() async throws {
+    let (controller, directory) = try makeController(failure: AddressedFailure())
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let video = MessageAttachment(
+        id: "v1",
+        kind: .video,
+        source: MediaHandle(source: "mxc://s/2", mimeType: "video/mp4")
+    )
+
+    controller.load(video, accountID: "instagram", messageID: "$2")
+    let reason = try await waitForFailure(controller, video)
+    #expect(reason == "Couldn't download this video. Check that Inbox+ is connected and try again.")
+    #expect(!reason.contains("mxc://"))
+    #expect(!reason.contains("ClientError"))
 }
 
 @MainActor
