@@ -125,3 +125,124 @@ import Testing
     #expect(result[0].unreadCount == 1)
     #expect(result.flatMap(\.conversationSummaries).contains { $0.route == malformedRoute } == false)
 }
+
+// MARK: - Filters
+
+/// Maya is linked across WhatsApp and Instagram, where she wrote last; Sam is only on WhatsApp.
+private func mayaAndSam() throws -> [InboxItem] {
+    let accounts = [
+        ConnectedAccount(id: "wa", platform: .whatsApp, displayName: "Personal"),
+        ConnectedAccount(id: "ig", platform: .instagram, displayName: "Personal"),
+    ]
+    let identities = [
+        RemoteIdentity(id: "maya-wa", accountID: "wa", displayName: "Maya"),
+        RemoteIdentity(id: "maya-ig", accountID: "ig", displayName: "@maya"),
+        RemoteIdentity(id: "sam-wa", accountID: "wa", displayName: "Sam"),
+    ]
+    let conversations = [
+        RemoteConversation(id: "maya-wa", accountID: "wa", identityID: "maya-wa", title: "Maya", latestPreview: "On WhatsApp", latestActivity: Date(timeIntervalSince1970: 200), unreadCount: 1),
+        RemoteConversation(id: "maya-ig", accountID: "ig", identityID: "maya-ig", title: "@maya", latestPreview: "On Instagram", latestActivity: Date(timeIntervalSince1970: 300), unreadCount: 2),
+        RemoteConversation(id: "sam-wa", accountID: "wa", identityID: "sam-wa", title: "Sam", latestActivity: Date(timeIntervalSince1970: 250), unreadCount: 0),
+    ]
+    var directory = ContactDirectory()
+    try directory.createPerson(id: "maya", displayName: "Maya")
+    try directory.link(remoteIdentityID: "maya-wa", to: "maya")
+    try directory.link(remoteIdentityID: "maya-ig", to: "maya")
+    return InboxProjector.project(accounts: accounts, identities: identities, conversations: conversations, directory: directory)
+}
+
+@Test func aNetworkFilterShowsAPersonOnlyThroughThatNetwork() throws {
+    let items = try mayaAndSam()
+    let mayaOnWhatsApp = ConversationRoute(accountID: "wa", conversationID: "maya-wa")
+    let sam = InboxItem.ID.conversation(ConversationRoute(accountID: "wa", conversationID: "sam-wa"))
+    #expect(items.map(\.id) == [.person("maya"), sam])
+
+    let whatsApp = InboxProjector.filtered(items, query: "", filter: InboxFilter(platform: .whatsApp))
+
+    // Maya's newest message is on Instagram, so on WhatsApp alone Sam is the more recent.
+    #expect(whatsApp.map(\.id) == [sam, .person("maya")])
+    let maya = try #require(whatsApp.last)
+    #expect(maya.conversationSummaries.map(\.route) == [mayaOnWhatsApp])
+    #expect(maya.conversationSummaries.first?.latestPreview == "On WhatsApp")
+    #expect(maya.unreadCount == 1)
+    #expect(maya.latestActivity == Date(timeIntervalSince1970: 200))
+    #expect(InboxProjector.filtered(items, query: "", filter: InboxFilter(platform: .telegram)).isEmpty)
+    #expect(
+        InboxProjector.filtered(items, query: "", filter: InboxFilter(scope: .unread, platform: .whatsApp)).map(\.id)
+            == [.person("maya")]
+    )
+}
+
+@Test func theNetworkChipsAreTheNetworksTheInboxHasConversationsOn() throws {
+    #expect(InboxProjector.platforms(in: try mayaAndSam()) == [.whatsApp, .instagram])
+    #expect(InboxProjector.platforms(in: []).isEmpty)
+}
+
+@Test func unknownSendersAreKeptOutOfTheInboxAndListedOnTheirOwn() throws {
+    let account = ConnectedAccount(id: "im", platform: .iMessage, displayName: "iMessage")
+    let identities = ["friend", "stranger", "courier"].map { RemoteIdentity(id: $0, accountID: "im", displayName: $0) }
+    let conversations = [
+        RemoteConversation(id: "friend", accountID: "im", identityID: "friend", title: "Friend", latestActivity: Date(timeIntervalSince1970: 10), unreadCount: 1),
+        RemoteConversation(id: "stranger", accountID: "im", identityID: "stranger", title: "+1 (555) 010-0150", latestPreview: "You have won", latestActivity: Date(timeIntervalSince1970: 30), unreadCount: 2, isFromUnknownSender: true),
+        RemoteConversation(id: "courier", accountID: "im", identityID: "courier", title: "+1 (555) 010-0160", latestActivity: Date(timeIntervalSince1970: 20), unreadCount: 0, isFromUnknownSender: true),
+    ]
+    // Linking a stranger to a person in Inbox+ is a way of saying who they are.
+    var directory = ContactDirectory()
+    try directory.createPerson(id: "courier", displayName: "Courier")
+    try directory.link(remoteIdentityID: "courier", to: "courier")
+    let items = InboxProjector.project(accounts: [account], identities: identities, conversations: conversations, directory: directory)
+    let stranger = InboxItem.ID.conversation(ConversationRoute(accountID: "im", conversationID: "stranger"))
+    let friend = InboxItem.ID.conversation(ConversationRoute(accountID: "im", conversationID: "friend"))
+
+    #expect(InboxProjector.filtered(items, query: "", filter: InboxFilter()).map(\.id) == [.person("courier"), friend])
+    #expect(InboxProjector.filtered(items, query: "", filter: InboxFilter(scope: .unread)).map(\.id) == [friend])
+    #expect(InboxProjector.filtered(items, query: "", filter: InboxFilter(scope: .unknownSenders)).map(\.id) == [stranger])
+    #expect(InboxProjector.filtered(items, query: "won", filter: InboxFilter()).isEmpty)
+    #expect(InboxProjector.filtered(items, query: "won", filter: InboxFilter(scope: .unknownSenders)).map(\.id) == [stranger])
+}
+
+// MARK: - Message search
+
+@Test func messageSearchFindsEarlierMessagesNewestFirst() throws {
+    let items = try mayaAndSam()
+    let mayaOnWhatsApp = ConversationRoute(accountID: "wa", conversationID: "maya-wa")
+    let mayaOnInstagram = ConversationRoute(accountID: "ig", conversationID: "maya-ig")
+    let sam = ConversationRoute(accountID: "wa", conversationID: "sam-wa")
+    func message(_ id: String, _ route: ConversationRoute, _ body: String, at seconds: TimeInterval, kind: MessageKind = .text) -> Message {
+        Message(id: id, route: route, senderIdentityID: "someone", body: body, timestamp: Date(timeIntervalSince1970: seconds), deliveryState: .acknowledged, kind: kind)
+    }
+    let messages = [
+        mayaOnWhatsApp: [message("wa-0", mayaOnWhatsApp, "The gate code is 4512", at: 150), message("wa-1", mayaOnWhatsApp, "On WhatsApp", at: 200)],
+        mayaOnInstagram: [message("ig-0", mayaOnInstagram, "Did you get the GATE code?", at: 280), message("ig-1", mayaOnInstagram, "On Instagram", at: 300)],
+        sam: [message("sam-0", sam, "Gate Code joined", at: 260, kind: .membership)],
+    ]
+
+    let results = InboxProjector.messageMatches(messages, in: items, query: "  gate code ")
+
+    #expect(results.map(\.id) == [
+        MessageReference(route: mayaOnInstagram, messageID: "ig-0"),
+        MessageReference(route: mayaOnWhatsApp, messageID: "wa-0"),
+    ])
+    // The conversation list alone finds nothing: neither preview says it.
+    #expect(InboxProjector.filtered(items, query: "gate code").isEmpty)
+    #expect(results.map(\.title) == ["Maya", "Maya"])
+    #expect(results.map(\.platform) == [.instagram, .whatsApp])
+    #expect(results.last?.snippet == "The gate code is 4512")
+    #expect(results.last?.timestamp == Date(timeIntervalSince1970: 150))
+
+    let whatsAppOnly = InboxProjector.filtered(items, query: "", filter: InboxFilter(platform: .whatsApp))
+    #expect(InboxProjector.messageMatches(messages, in: whatsAppOnly, query: "gate code").map(\.id.messageID) == ["wa-0"])
+    #expect(InboxProjector.messageMatches(messages, in: items, query: "gate code", limit: 1).map(\.id.messageID) == ["ig-0"])
+    #expect(InboxProjector.messageMatches(messages, in: items, query: " ").isEmpty)
+}
+
+@Test func aSnippetIsOneLineAndStartsNearAMatchFarIntoTheMessage() {
+    #expect(InboxProjector.snippet(of: "Line one\nline two", matching: "TWO") == "Line one line two")
+    #expect(InboxProjector.snippet(of: "Line one\nline two", matching: "three") == nil)
+    #expect(
+        InboxProjector.snippet(
+            of: "Your order has shipped and is on its way to you, the parcel will arrive Tuesday",
+            matching: "parcel"
+        ) == "…way to you, the parcel will arrive Tuesday"
+    )
+}

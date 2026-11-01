@@ -136,6 +136,11 @@ public struct ConversationView: View {
         model.messagesByRoute[route] ?? []
     }
 
+    private var highlightedMessageID: String? {
+        guard let highlighted = model.highlightedMessage, highlighted.route == route else { return nil }
+        return highlighted.messageID
+    }
+
     private var draft: String {
         model.draft(for: route)
     }
@@ -258,14 +263,17 @@ public struct ConversationView: View {
                     .id(message.id)
                     .listRowInsets(EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18))
                     .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
+                    .listRowBackground(
+                        message.id == highlightedMessageID ? InboxPlusTheme.ink.opacity(0.08) : Color.clear
+                    )
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .onChange(of: messages.count) { scrollToLatest(proxy) }
-            .onChange(of: route) { scrollToLatest(proxy, animated: false) }
-            .onAppear { scrollToLatest(proxy, animated: false) }
+            .onChange(of: messages.count) { scrollToFocus(proxy) }
+            .onChange(of: route) { scrollToFocus(proxy, animated: false) }
+            .onChange(of: model.highlightedMessage) { scrollToFocus(proxy) }
+            .onAppear { scrollToFocus(proxy, animated: false) }
         }
     }
 
@@ -403,12 +411,16 @@ public struct ConversationView: View {
         return true
     }
 
-    private func scrollToLatest(_ proxy: ScrollViewProxy, animated: Bool = true) {
-        guard let last = messages.last else { return }
+    /// The message opened from search while there is one, so history loading around it does not
+    /// pull the transcript away; otherwise the newest message.
+    private func scrollToFocus(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        let highlighted = messages.first { $0.id == highlightedMessageID }
+        guard let target = highlighted ?? messages.last else { return }
+        let anchor: UnitPoint = highlighted == nil ? .bottom : .center
         if animated {
-            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last.id, anchor: .bottom) }
+            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(target.id, anchor: anchor) }
         } else {
-            proxy.scrollTo(last.id, anchor: .bottom)
+            proxy.scrollTo(target.id, anchor: anchor)
         }
     }
 

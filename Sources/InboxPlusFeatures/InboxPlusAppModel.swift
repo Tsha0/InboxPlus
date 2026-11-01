@@ -336,7 +336,27 @@ public final class InboxPlusAppModel {
         detailSelection = .personSummary(personID)
     }
 
+    /// The message a search result opened, which the transcript keeps in view and marks.
+    public private(set) var highlightedMessage: MessageReference?
+
+    public func openMessage(_ message: MessageReference) {
+        openConversation(message.route)
+        highlightedMessage = message
+    }
+
+    /// Reading messages only while there is a query keeps every new message from redrawing the
+    /// inbox list.
+    public func messageMatches(query: String, filter: InboxFilter) -> [MessageSearchResult] {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        return InboxProjector.messageMatches(
+            messagesByRoute,
+            in: InboxProjector.filtered(inboxItems, query: "", filter: filter),
+            query: query
+        )
+    }
+
     public func openConversation(_ route: ConversationRoute) {
+        highlightedMessage = nil
         detailSelection = .conversation(route)
         loadRecentMessages(in: route)
         markConversationRead(route)
@@ -414,8 +434,8 @@ public final class InboxPlusAppModel {
         return marked
     }
 
-    public func navigateConversation(forward: Bool, query: String, unreadOnly: Bool) {
-        let routes = InboxProjector.filtered(listedInboxItems, query: query, unreadOnly: unreadOnly)
+    public func navigateConversation(forward: Bool, query: String, filter: InboxFilter) {
+        let routes = InboxProjector.filtered(listedInboxItems, query: query, filter: filter)
             .flatMap { $0.conversationSummaries.map(\.route) }
         guard !routes.isEmpty else { return }
         let index: Int
@@ -600,6 +620,8 @@ public final class InboxPlusAppModel {
     }
 
     public func captureDraft(to route: ConversationRoute) -> DraftSubmission {
+        // Replying is back at the newest message, where the reply will appear.
+        if highlightedMessage?.route == route { highlightedMessage = nil }
         let previousGeneration = latestSendGenerationByRoute[route, default: 0]
         precondition(previousGeneration < UInt64.max, "Send generation exhausted")
         let generation = previousGeneration + 1
@@ -1010,6 +1032,12 @@ public final class InboxPlusAppModel {
             let accountID = message.route.accountID
             if message.timestamp > lastActivityByAccount[accountID] ?? .distantPast {
                 lastActivityByAccount[accountID] = message.timestamp
+            }
+            // Writing back is what makes a stranger someone the user talks to.
+            if message.isOutgoing,
+               let index = conversations.firstIndex(where: { $0.route == message.route && $0.isFromUnknownSender }) {
+                conversations[index].isFromUnknownSender = false
+                rebuildInbox()
             }
             if
                 let conversationIndex = conversations.firstIndex(where: { $0.route == message.route }),

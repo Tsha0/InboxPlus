@@ -145,7 +145,7 @@ private func item(_ route: ConversationRoute, in model: InboxPlusAppModel) throw
     model.perform(.mute(.forever), on: maya)
     #expect(Set(model.hiddenInboxItems.map(\.id)) == [family.id, maya.id])
     #expect(model.listedInboxItems.map(\.id) == [.conversation(Fixtures.instagramRoute)])
-    model.navigateConversation(forward: true, query: "", unreadOnly: false)
+    model.navigateConversation(forward: true, query: "", filter: InboxFilter())
     #expect(model.openRoute == Fixtures.instagramRoute)
 
     let relaunched = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: Fixtures.snapshot), preferenceStore: store)
