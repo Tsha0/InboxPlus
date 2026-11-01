@@ -42,7 +42,7 @@ struct NavigationRailView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("New message")
-            .help(canCompose ? "New message" : "Send or clear your current draft and attachments first")
+            .help("New message")
             .disabled(!canCompose)
             Spacer()
             if let update {

@@ -73,7 +73,7 @@ private var seedWithEarlierHistory: MessagingSnapshot {
     #expect(InboxProjector.filtered(model.inboxItems, query: "", filter: InboxFilter(scope: .unknownSenders)).map(\.id) == [stranger])
 
     model.openConversation(Fixtures.telegramRoute)
-    model.draft = "Who is this?"
+    model.setDraft("Who is this?", for: Fixtures.telegramRoute)
     try await model.sendDraft(model.captureDraft(to: Fixtures.telegramRoute))
 
     let moved = await settle {

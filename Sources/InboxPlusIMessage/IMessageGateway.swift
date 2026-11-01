@@ -67,7 +67,7 @@ public actor IMessageGateway: ConversationStartingGateway {
         store: IMessageStore,
         sender: IMessageSender = IMessageSender(),
         contacts: any IMessageContactSource = IMessageContactBook(),
-        historyLimit: Int = 50,
+        historyLimit: Int = RecentHistory.messageCount,
         pollInterval: Duration = .seconds(3),
         readMarkerStore: IMessageReadMarkerStore? = nil
     ) {

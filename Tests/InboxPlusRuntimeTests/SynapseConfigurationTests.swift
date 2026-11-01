@@ -32,6 +32,24 @@ import Testing
     #expect(document.scalarValue(for: "registration_shared_secret") == "registration-secret")
 }
 
+@Test func renderedConfigurationPurgesOldMessagesAndUnopenedMedia() throws {
+    // Break caught: the homeserver keeps every message and every bridged file forever.
+    let yaml = try fixtureConfiguration().render()
+
+    #expect(yaml.contains("""
+
+    media_retention:
+      local_media_lifetime: 30d
+    retention:
+      enabled: true
+      default_policy:
+        max_lifetime: 90d
+      purge_jobs:
+        - interval: 1d
+
+    """))
+}
+
 @Test func quotedScalarsPreserveApostrophesAndUnicode() throws {
     // Break caught: YAML quoting corrupts an administration secret containing ordinary user data.
     let document = try ParsedSynapseConfiguration(

@@ -1,6 +1,7 @@
 import Foundation
 import InboxPlusCore
 import InboxPlusGateway
+import InboxPlusTestSupport
 import Testing
 @testable import InboxPlusFeatures
 
@@ -22,8 +23,8 @@ private actor SuspendedSendGateway: TextOnlyTestGateway {
 @Test func updateRestartWaitsForASendEvenAfterTheComposerWasCleared() async throws {
     let gateway = SuspendedSendGateway()
     let model = InboxPlusAppModel(gateway: gateway)
-    model.draft = "send me"
     let route = ConversationRoute(accountID: "account", conversationID: "conversation")
+    model.setDraft("send me", for: route)
     let submission = model.captureDraft(to: route)
     let task = Task { try await model.sendDraft(submission) }
     let deadline = ContinuousClock().now.advanced(by: .seconds(5))
@@ -31,7 +32,7 @@ private actor SuspendedSendGateway: TextOnlyTestGateway {
         try await Task.sleep(for: .milliseconds(10))
     }
     #expect(await gateway.hasStarted)
-    model.draft = ""
+    model.setDraft("", for: route)
     #expect(model.hasUnfinishedMessagingWork)
     await gateway.finish()
     try await task.value
@@ -41,11 +42,25 @@ private actor SuspendedSendGateway: TextOnlyTestGateway {
 @MainActor
 @Test func updateRestartPreservesAnUnsentDraftByRefusingToQuit() {
     let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: .empty))
+    let route = ConversationRoute(accountID: "account", conversationID: "conversation")
     #expect(!model.hasUnfinishedMessagingWork)
-    model.draft = "A message I have not sent"
+    model.setDraft("A message I have not sent", for: route)
     #expect(model.hasUnfinishedMessagingWork)
-    model.draft = "  \n"
+    model.setDraft("  \n", for: route)
     #expect(!model.hasUnfinishedMessagingWork)
+}
+
+@MainActor
+@Test func updateRestartRefusesADraftLeftInAConversationThatIsNoLongerOpen() async throws {
+    let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: Fixtures.snapshot), directory: Fixtures.directory)
+    try await model.start()
+    defer { model.stop() }
+    model.openConversation(Fixtures.instagramRoute)
+    model.setDraft("Half a reply", for: Fixtures.instagramRoute)
+    model.openConversation(Fixtures.telegramRoute)
+
+    #expect(model.draft(for: Fixtures.telegramRoute).isEmpty)
+    #expect(model.hasUnfinishedMessagingWork)
 }
 
 @MainActor

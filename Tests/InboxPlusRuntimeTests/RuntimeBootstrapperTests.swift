@@ -660,12 +660,15 @@ import Testing
     // assuming .build/debug, so custom scratch paths and release tests work too.
     let buildDirectory = Bundle(for: RuntimeBootstrapperTestBundle.self).bundleURL
         .deletingLastPathComponent()
-    let runtimeObjects = try FileManager.default.contentsOfDirectory(
-        at: buildDirectory.appendingPathComponent("InboxPlusRuntime.build", isDirectory: true),
-        includingPropertiesForKeys: nil
-    )
-        .filter { $0.pathExtension == "o" }
-        .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    // The runtime links against InboxPlusCore, so its objects come along too.
+    let runtimeObjects = try ["InboxPlusRuntime", "InboxPlusCore"].flatMap { target in
+        try FileManager.default.contentsOfDirectory(
+            at: buildDirectory.appendingPathComponent("\(target).build", isDirectory: true),
+            includingPropertiesForKeys: nil
+        )
+            .filter { $0.pathExtension == "o" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
     #expect(!runtimeObjects.isEmpty)
     let compile = try runIsolatedTestProcess(
         executable: URL(fileURLWithPath: "/usr/bin/swiftc"),

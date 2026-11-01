@@ -11,6 +11,9 @@ public struct InboxView: View {
     let favouriteError: String?
     let onSelect: (InboxItem) -> Void
     let onSelectMessage: (MessageReference) -> Void
+    /// Conversations holding a draft or staged attachment, so unsent work left in another chat
+    /// can be found again.
+    let unsentRoutes: Set<ConversationRoute>
     @Binding private var filter: InboxFilter
     @Binding private var query: String
     let searchFocusRequest: UUID?
@@ -26,10 +29,12 @@ public struct InboxView: View {
         highlightedMessage: MessageReference? = nil,
         favouriteError: String? = nil,
         onToggleFavourite: @escaping (InboxItem) -> Void = { _ in },
+        unsentRoutes: Set<ConversationRoute> = [],
         onSelect: @escaping (InboxItem) -> Void,
         onSelectMessage: @escaping (MessageReference) -> Void = { _ in }
     ) {
         self._filter = filter
+        self.unsentRoutes = unsentRoutes
         self._query = query
         self.searchFocusRequest = searchFocusRequest
         self.messageMatches = messageMatches
@@ -270,9 +275,16 @@ public struct InboxView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.title)
                     .fontWeight(.semibold)
-                Text(item.conversationSummaries.first?.latestPreview ?? "")
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    if item.conversationSummaries.contains(where: { unsentRoutes.contains($0.route) }) {
+                        Text("Draft")
+                            .fontWeight(.medium)
+                            .foregroundStyle(InboxPlusTheme.ink)
+                    }
+                    Text(item.conversationSummaries.first?.latestPreview ?? "")
+                        .foregroundStyle(.secondary)
+                }
+                .lineLimit(1)
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 4) {

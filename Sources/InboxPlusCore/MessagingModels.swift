@@ -128,6 +128,8 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
     /// Someone the user has no record of: not in their contacts and never written to. Only a
     /// source that can tell sets it, which is why it defaults to false.
     public var isFromUnknownSender: Bool
+    /// The conversation in its network's own app, which still has the history Inbox+ does not keep.
+    public var deepLink: VerifiedDeepLink?
 
     public var route: ConversationRoute { .init(accountID: accountID, conversationID: id) }
 
@@ -141,7 +143,8 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
         unreadCount: Int,
         capabilities: ConversationCapabilities = .mediaCapable,
         isGroup: Bool = false,
-        isFromUnknownSender: Bool = false
+        isFromUnknownSender: Bool = false,
+        deepLink: VerifiedDeepLink? = nil
     ) {
         self.id = id
         self.accountID = accountID
@@ -153,6 +156,7 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
         self.capabilities = capabilities
         self.isGroup = isGroup
         self.isFromUnknownSender = isFromUnknownSender
+        self.deepLink = deepLink
     }
 }
 

@@ -220,17 +220,15 @@ private func eventually(_ condition: @MainActor () async throws -> Bool) async r
 }
 
 @MainActor
-@Test func conversationNavigationRespectsSearchAndPreservesDrafts() async throws {
+@Test func conversationNavigationRespectsSearchAndLeavesTheDraftWithItsConversation() async throws {
     let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: Fixtures.snapshot), directory: Fixtures.directory)
     try await model.start()
     model.openConversation(Fixtures.instagramRoute)
-    model.draft = "still writing"
-    model.navigateConversation(forward: true, query: "Family", filter: InboxFilter())
-    #expect(model.openRoute == Fixtures.instagramRoute)
-    #expect(model.draft == "still writing")
-    model.draft = ""
+    model.setDraft("still writing", for: Fixtures.instagramRoute)
     model.navigateConversation(forward: true, query: "Family", filter: InboxFilter())
     #expect(model.openRoute == Fixtures.telegramRoute)
+    #expect(model.draft(for: Fixtures.telegramRoute).isEmpty)
+    #expect(model.draft(for: Fixtures.instagramRoute) == "still writing")
     model.navigateConversation(forward: false, query: "no matching conversation", filter: InboxFilter())
     #expect(model.openRoute == Fixtures.telegramRoute)
     model.navigateConversation(forward: false, query: "MAYA", filter: InboxFilter(scope: .unread))

@@ -32,18 +32,45 @@ import InboxPlusCore
     let known = MessageAttachment(
         id: "1",
         kind: .video,
-        filename: "clip.mp4",
+        filename: "462555709_902766575152919_3265496144511665546_n.mp4",
         byteCount: 1_048_576,
         duration: .seconds(75)
     )
     let label = AttachmentFormatting.accessibilityLabel(for: known)
     #expect(label.contains("Video"))
-    #expect(label.contains("clip.mp4"))
     #expect(label.contains("1:15"))
+    // A server's filename is noise read aloud, as it is on screen.
+    #expect(!label.contains("462555709"))
+
+    let document = MessageAttachment(id: "2", kind: .file, filename: "Lease.pdf")
+    #expect(AttachmentFormatting.accessibilityLabel(for: document) == "File, Lease.pdf")
 
     // Nothing known but the kind: still a usable label, with no fabricated duration or size.
-    let bare = AttachmentFormatting.accessibilityLabel(for: MessageAttachment(id: "2", kind: .video))
-    #expect(bare == "Video, Video")
+    let bare = AttachmentFormatting.accessibilityLabel(for: MessageAttachment(id: "3", kind: .video))
+    #expect(bare == "Video")
+}
+
+private func message(body: String, attachments: [MessageAttachment]) -> Message {
+    Message(
+        id: "$1", route: ConversationRoute(accountID: "instagram", conversationID: "room"),
+        senderIdentityID: "@maya:inboxplus.localhost", body: body, timestamp: Date(timeIntervalSince1970: 0),
+        deliveryState: .acknowledged, kind: attachments.first?.kind ?? .text, attachments: attachments
+    )
+}
+
+@Test func aCaptionShowsUnderTheMediaWhileACardsTitleIsNotRepeated() {
+    let caption = "sample.account\nSunset over the bay\nhttps://www.instagram.com/p/Cabc123/"
+    let post = MessageAttachment(id: "1", kind: .image, filename: "462555709_n.jpg", caption: caption)
+    #expect(AttachmentFormatting.showsBody(of: message(body: post.displayName, attachments: [post])))
+
+    let photo = MessageAttachment(id: "2", kind: .image, filename: "462555709_n.jpg")
+    #expect(!AttachmentFormatting.showsBody(of: message(body: photo.displayName, attachments: [photo])))
+    let document = MessageAttachment(id: "3", kind: .file, filename: "Lease.pdf")
+    #expect(!AttachmentFormatting.showsBody(of: message(body: document.displayName, attachments: [document])))
+
+    // Text sent alongside a photo, as iMessage does, is its own line.
+    #expect(AttachmentFormatting.showsBody(of: message(body: "look at this", attachments: [photo])))
+    #expect(AttachmentFormatting.showsBody(of: message(body: "hello", attachments: [])))
 }
 
 @Test func anAppNativeCardAnnouncesWhereItOpens() throws {
