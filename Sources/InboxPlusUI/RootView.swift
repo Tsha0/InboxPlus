@@ -287,7 +287,7 @@ public struct RootView: View {
     private var commandActions: InboxCommandActions? {
         guard accountFlow == nil, connectFailure == nil, connectNotice == nil, accountFailure == nil,
               !model.isPreparingForUpdate else { return nil }
-        let canNavigate = !InboxProjector.filtered(model.inboxItems, query: inboxQuery, unreadOnly: showsUnreadOnly).isEmpty
+        let canNavigate = !InboxProjector.filtered(model.listedInboxItems, query: inboxQuery, unreadOnly: showsUnreadOnly).isEmpty
             && !model.hasUnfinishedMessagingWork
         let route = model.openRoute
         return InboxCommandActions(
@@ -357,13 +357,15 @@ public struct RootView: View {
         switch section {
         case .inbox:
             InboxView(
-                items: model.inboxItems,
+                items: model.listedInboxItems,
+                hiddenItems: model.hiddenInboxItems,
                 query: $inboxQuery,
                 showsUnreadOnly: $showsUnreadOnly,
                 searchFocusRequest: searchFocusRequest,
                 selectedID: selectedInboxID,
-                favouriteError: model.favouriteError,
+                favouriteError: model.favouriteError ?? model.preferenceError,
                 onToggleFavourite: model.toggleFavourite,
+                onAction: { model.perform($1, on: $0) },
                 onSelect: model.selectInboxItem
             )
         case .contacts:

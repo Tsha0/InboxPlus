@@ -42,6 +42,10 @@ public struct InboxItem: Identifiable, Hashable, Sendable {
     public let latestActivity: Date
     public let unreadCount: Int
     public let isFavourite: Bool
+    /// True when every conversation in the item is muted, so it raises no notifications at all.
+    public let isMuted: Bool
+    /// True when every conversation in the item is hidden from the inbox.
+    public let isHidden: Bool
     public let conversationSummaries: [ConversationSummary]
 
     public init(
@@ -50,14 +54,29 @@ public struct InboxItem: Identifiable, Hashable, Sendable {
         latestActivity: Date,
         unreadCount: Int,
         conversationSummaries: [ConversationSummary],
-        isFavourite: Bool = false
+        isFavourite: Bool = false,
+        isMuted: Bool = false,
+        isHidden: Bool = false
     ) {
         self.id = id
         self.isFavourite = isFavourite
+        self.isMuted = isMuted
+        self.isHidden = isHidden
         self.title = title
         self.latestActivity = latestActivity
         self.unreadCount = unreadCount
         self.conversationSummaries = conversationSummaries
+    }
+}
+
+public extension InboxItem {
+    /// Where each of the item's networks lists its conversations, once per network.
+    var appLinks: [VerifiedDeepLink] {
+        var seen: Set<Platform> = []
+        return conversationSummaries.compactMap { summary in
+            guard seen.insert(summary.platform).inserted else { return nil }
+            return DeepLinkVerifier.inboxLink(for: summary.platform)
+        }
     }
 }
 
@@ -89,7 +108,9 @@ public enum InboxProjector {
         identities: [RemoteIdentity],
         conversations: [RemoteConversation],
         directory: ContactDirectory,
-        favouriteRoutes: Set<ConversationRoute> = []
+        favouriteRoutes: Set<ConversationRoute> = [],
+        preferences: ConversationPreferences = ConversationPreferences(),
+        now: Date = Date()
     ) -> [InboxItem] {
         let accountByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
         let identityByID = Dictionary(uniqueKeysWithValues: identities.map { ($0.id, $0) })
@@ -122,6 +143,7 @@ public enum InboxProjector {
             grouped[id, default: []].append(summary)
         }
 
+        let hidden = preferences.hidden
         return grouped.map { id, values in
             let sorted = values.sorted {
                 if $0.latestActivity != $1.latestActivity {
@@ -145,7 +167,9 @@ public enum InboxProjector {
                 latestActivity: sorted[0].latestActivity,
                 unreadCount: sorted.reduce(0) { $0 + $1.unreadCount },
                 conversationSummaries: sorted,
-                isFavourite: sorted.contains { favouriteRoutes.contains($0.route) }
+                isFavourite: sorted.contains { favouriteRoutes.contains($0.route) },
+                isMuted: sorted.allSatisfy { preferences.isMuted($0.route, at: now) },
+                isHidden: sorted.allSatisfy { hidden.contains($0.route) }
             )
         }
         .sorted {

@@ -1,7 +1,53 @@
 import Foundation
 import InboxPlusCore
 
+/// What a reply shows of the message it answers.
+public struct ReplyQuote: Equatable, Sendable {
+    public let sender: String?
+    public let text: String
+
+    public var accessibilityLabel: String {
+        sender.map { "\($0): \(text)" } ?? text
+    }
+}
+
 public enum TranscriptPresentation {
+    /// Offered on every message, ahead of whatever else people have already reacted with.
+    public static let quickReactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
+
+    public static func reactionChoices(for message: Message) -> [MessageReaction] {
+        let quick = quickReactions.map { key in
+            message.reactions.first { $0.key == key } ?? MessageReaction(key: key, count: 0, includesMe: false)
+        }
+        return quick + message.reactions.filter { !quickReactions.contains($0.key) }
+    }
+
+    public static func reactionLabel(_ reaction: MessageReaction) -> String {
+        reaction.count > 1 ? "\(reaction.key) \(reaction.count)" : reaction.key
+    }
+
+    /// The transcript's own copy of the quoted message wins over what arrived with the reply,
+    /// because it reflects edits and the names Inbox+ already shows for its sender.
+    public static func quote(_ reply: MessageReply, in messages: [Message], identities: [RemoteIdentity]) -> ReplyQuote {
+        if let quoted = messages.first(where: { $0.id == reply.messageID }) {
+            return ReplyQuote(sender: senderName(quoted, identities: identities), text: quoted.body)
+        }
+        return ReplyQuote(sender: reply.senderDisplayName, text: reply.body ?? "Original message not loaded")
+    }
+
+    public static func replyingToLabel(_ message: Message, identities: [RemoteIdentity]) -> String {
+        message.isOutgoing ? "Replying to yourself" : "Replying to \(senderName(message, identities: identities))"
+    }
+
+    /// What **Copy Text** copies: what the message says. A filename standing in for the body of an
+    /// attachment, or the placeholder for a deleted message, is not that.
+    public static func copyableText(_ message: Message) -> String? {
+        guard ![.redacted, .encrypted, .membership, .state].contains(message.kind) else { return nil }
+        let body = message.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty, !message.attachments.contains(where: { $0.displayName == body }) else { return nil }
+        return message.body
+    }
+
     public static func senderName(_ message: Message, identities: [RemoteIdentity]) -> String {
         if message.isOutgoing { return "You" }
         if let name = message.senderDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {

@@ -7,7 +7,7 @@ import InboxPlusGateway
 ///
 /// The app layer keeps talking to the protocol it already used for the in-memory fake, so nothing
 /// in `InboxPlusFeatures` or `InboxPlusUI` needs to know Matrix exists.
-public actor MatrixMessagingGateway: MessagingGateway {
+public actor MatrixMessagingGateway: MessageInteractionGateway {
     public static let defaultAccountID = "matrix-local"
 
     private let client: InboxPlusMatrixClient
@@ -28,6 +28,11 @@ public actor MatrixMessagingGateway: MessagingGateway {
     private var streamContinuations: [UUID: AsyncStream<GatewayEvent>.Continuation] = [:]
     private var timelineHandles: [String: TaskHandle] = [:]
     private var observers: [String: RoomTimelineObserver] = [:]
+    /// The timelines those observers watch. A reaction or a request for a quoted message acts on
+    /// an item, and only the timeline that loaded the item has it.
+    private var timelines: [String: Timeline] = [:]
+    /// Replies whose quoted message has been asked for, so a reply is only fetched once.
+    private var requestedReplyDetails: Set<String> = []
     private var started = false
     private var knownRoomIDs: Set<String> = []
     private var discoveryTask: Task<Void, Never>?
@@ -151,38 +156,53 @@ public actor MatrixMessagingGateway: MessagingGateway {
     }
 
     public func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
-        let matrixClient = try await client.requireClient()
-        guard let room = try matrixClient.getRoom(roomId: route.conversationID) else {
-            throw MatrixGatewayError.unknownRoom(route.conversationID)
-        }
-        await attachTimeline(to: room)
-
-        let timeline = try await room.timeline()
-        let handle = try await timeline.send(msg: messageEventContentFromMarkdown(md: body))
+        _ = try await liveTimeline(for: route).send(msg: messageEventContentFromMarkdown(md: body))
 
         // Deliberately `pending`. The design forbids showing a successful send before the server
         // confirms it; the timeline listener promotes this to `acknowledged` when the echo lands.
         return SendReceipt(
-            messageID: Self.transactionIdentifier(for: handle),
+            messageID: Self.transactionIdentifier(),
             route: route,
             deliveryState: .pending
         )
     }
 
-    public func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt {
-        let matrixClient = try await client.requireClient()
-        guard let room = try matrixClient.getRoom(roomId: route.conversationID) else {
-            throw MatrixGatewayError.unknownRoom(route.conversationID)
-        }
-        await attachTimeline(to: room)
+    public func sendText(_ body: String, to route: ConversationRoute, replyingTo messageID: String) async throws -> SendReceipt {
+        try await liveTimeline(for: route).sendReply(msg: messageEventContentFromMarkdown(md: body), eventId: messageID)
+        return SendReceipt(messageID: Self.transactionIdentifier(), route: route, deliveryState: .pending)
+    }
 
-        let timeline = try await room.timeline()
+    public func send(_ attachment: OutgoingAttachment, to route: ConversationRoute) async throws -> SendReceipt {
+        try await send(attachment, to: route, inReplyTo: nil)
+    }
+
+    public func send(
+        _ attachment: OutgoingAttachment,
+        to route: ConversationRoute,
+        replyingTo messageID: String
+    ) async throws -> SendReceipt {
+        try await send(attachment, to: route, inReplyTo: messageID)
+    }
+
+    public func toggleReaction(_ key: String, to messageID: String, in route: ConversationRoute) async throws {
+        _ = try await liveTimeline(for: route).toggleReaction(
+            itemId: normalizer.eventOrTransactionID(for: messageID),
+            key: key
+        )
+    }
+
+    private func send(
+        _ attachment: OutgoingAttachment,
+        to route: ConversationRoute,
+        inReplyTo messageID: String?
+    ) async throws -> SendReceipt {
+        let timeline = try await liveTimeline(for: route)
         let parameters = UploadParameters(
             source: .file(filename: attachment.fileURL.path),
             caption: attachment.caption,
             formattedCaption: nil,
             mentions: nil,
-            inReplyTo: nil
+            inReplyTo: messageID
         )
         let size = attachment.byteCount > 0 ? UInt64(attachment.byteCount) : nil
         let width = attachment.pixelSize.map { UInt64($0.width) }
@@ -282,6 +302,8 @@ public actor MatrixMessagingGateway: MessagingGateway {
         for handle in timelineHandles.values { handle.cancel() }
         timelineHandles.removeAll()
         observers.removeAll()
+        timelines.removeAll()
+        requestedReplyDetails.removeAll()
         for continuation in streamContinuations.values { continuation.finish() }
         streamContinuations.removeAll()
         started = false
@@ -537,6 +559,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
             let roomID = room.id()
             timelineHandles.removeValue(forKey: roomID)?.cancel()
             observers[roomID] = nil
+            timelines[roomID] = nil
             knownRoomIDs.remove(roomID)
             managementRoomAccountByID[roomID] = nil
             if membership == .joined || membership == .invited { try await room.leave() }
@@ -593,13 +616,15 @@ public actor MatrixMessagingGateway: MessagingGateway {
             roomID: roomID,
             normalizer: normalizer,
             accountID: roomAccountID,
-            outgoingIdentifiers: outgoingIdentifiersByAccount[roomAccountID] ?? []
+            outgoingIdentifiers: outgoingIdentifiersByAccount[roomAccountID] ?? [],
+            ownUserID: room.ownUserId()
         ) { [weak self] event in
             Task { await self?.publishTimelineEvent(event, roomID: roomID) }
         }
         // A listener may emit its initial batch before addListener returns. Register the
         // observer first so those callbacks can refresh and read the current attribution.
         observers[roomID] = observer
+        timelines[roomID] = timeline
         let handle = await timeline.addListener(listener: observer)
         timelineHandles[roomID] = handle
 
@@ -635,6 +660,31 @@ public actor MatrixMessagingGateway: MessagingGateway {
         // that hop, publish the observer's current value so a stale incoming event cannot undo it.
         let current = observers[roomID]?.message(id: message.id) ?? message
         publish(historical ? .historicalMessageUpserted(current) : .messageUpserted(current))
+
+        // The timeline quotes only a message it has already loaded. An older one has to be asked
+        // for, and arrives as an update to the reply.
+        if Self.needsQuotedMessage(current), requestedReplyDetails.insert(current.id).inserted,
+           let timeline = timelines[roomID] {
+            Task { try? await timeline.fetchDetailsForEvent(eventId: current.id) }
+        }
+    }
+
+    /// Only a reply the server already has can have its quoted message fetched.
+    static func needsQuotedMessage(_ message: Message) -> Bool {
+        guard let reply = message.replyTo else { return false }
+        return reply.body == nil && !message.id.hasPrefix("txn:")
+    }
+
+    /// The timeline this gateway watches for a conversation, so an action lands on the same items
+    /// the transcript was built from.
+    private func liveTimeline(for route: ConversationRoute) async throws -> Timeline {
+        let matrixClient = try await client.requireClient()
+        guard let room = try matrixClient.getRoom(roomId: route.conversationID) else {
+            throw MatrixGatewayError.unknownRoom(route.conversationID)
+        }
+        await attachTimeline(to: room)
+        if let timeline = timelines[route.conversationID] { return timeline }
+        return try await room.timeline()
     }
 
     private func publish(_ event: GatewayEvent) {
@@ -651,7 +701,7 @@ public actor MatrixMessagingGateway: MessagingGateway {
         return String(userID[userID.index(after: userID.startIndex)..<colon])
     }
 
-    private static func transactionIdentifier(for handle: SendHandle) -> String {
+    private static func transactionIdentifier() -> String {
         "txn:\(UUID().uuidString)"
     }
 }
@@ -673,6 +723,7 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
     /// The account this room belongs to. Live messages must be stamped with it too, or a bridged
     /// conversation loads as Instagram and then every new message arrives as Matrix.
     private let accountID: String
+    private let ownUserID: String?
     private let onEvent: @Sendable (GatewayEvent) -> Void
 
     private let lock = NSLock()
@@ -686,11 +737,13 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
         normalizer: MatrixEventNormalizer,
         accountID: String,
         outgoingIdentifiers: Set<String> = [],
+        ownUserID: String? = nil,
         onEvent: @escaping @Sendable (GatewayEvent) -> Void
     ) {
         self.roomID = roomID
         self.normalizer = normalizer
         self.accountID = accountID
+        self.ownUserID = ownUserID
         self.onEvent = onEvent
         self.outgoingIdentifiers = outgoingIdentifiers
     }
@@ -715,7 +768,8 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
                     guard let event = item.asEvent() else { continue }
                     let id = normalizer.identifier(for: event.eventOrTransactionId)
                     guard let message = normalizer.normalize(
-                        event, roomID: roomID, accountID: accountID, outgoingIdentifiers: outgoingIdentifiers
+                        event, roomID: roomID, accountID: accountID,
+                        outgoingIdentifiers: outgoingIdentifiers, ownUserID: ownUserID
                     ) else { continue }
                     events[id] = event
                     guard known[id] != message else { continue }
@@ -737,7 +791,8 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
             outgoingIdentifiers = identifiers
             return events.values.compactMap { event in
                 guard let message = normalizer.normalize(
-                    event, roomID: roomID, accountID: accountID, outgoingIdentifiers: identifiers
+                    event, roomID: roomID, accountID: accountID,
+                    outgoingIdentifiers: identifiers, ownUserID: ownUserID
                 ), known[message.id] != message else { return nil }
                 known[message.id] = message
                 return message

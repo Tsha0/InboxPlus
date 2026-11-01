@@ -37,23 +37,35 @@ public enum InboxPlusAppModelError: Error, Equatable {
     case missingOpenConversation
 }
 
+/// What the inbox's context menu does to a row. Each applies to every conversation the row groups.
+public enum InboxItemAction: Hashable, Sendable {
+    case markRead, markUnread, mute(MuteDuration), unmute, hide, unhide
+}
+
 public struct DraftSubmission: Sendable {
     public let body: String
     public let route: ConversationRoute
+    /// The message this send answers. The text carries the quote when there is any, otherwise
+    /// the first attachment does.
+    public let replyingTo: String?
     fileprivate let draftRevision: UInt64
     fileprivate let routeGeneration: UInt64
 
     fileprivate init(
         body: String,
         route: ConversationRoute,
+        replyingTo: String?,
         draftRevision: UInt64,
         routeGeneration: UInt64
     ) {
         self.body = body
         self.route = route
+        self.replyingTo = replyingTo
         self.draftRevision = draftRevision
         self.routeGeneration = routeGeneration
     }
+
+    fileprivate var hasText: Bool { !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 }
 
 private final class StartupWaiterCancellation: @unchecked Sendable {
@@ -131,6 +143,12 @@ public final class InboxPlusAppModel {
     public private(set) var favouriteError: String?
     private let favouriteStore: InboxFavouriteStore?
     private var favouriteRoutes: Set<ConversationRoute> = []
+    public private(set) var preferenceError: String?
+    private let preferenceStore: ConversationPreferenceStore?
+    private var preferences = ConversationPreferences()
+    private var muteEndTask: Task<Void, Never>?
+    /// The message the composer is answering in each conversation.
+    private var replyTargetIDByRoute: [ConversationRoute: String] = [:]
     private var directory: ContactDirectory
     private var draftRevision: UInt64 = 0
     private var sendsInFlight = 0
@@ -155,15 +173,19 @@ public final class InboxPlusAppModel {
         directory: ContactDirectory = .init(),
         media: MediaController = MediaController(),
         favouriteStore: InboxFavouriteStore? = nil,
+        preferenceStore: ConversationPreferenceStore? = nil,
         accountLifecycle: (any AccountLifecycle)? = nil
     ) {
         self.gateway = gateway
         self.directory = directory
         self.media = media
         self.favouriteStore = favouriteStore
+        self.preferenceStore = preferenceStore
         self.accountLifecycle = accountLifecycle
         do { favouriteRoutes = try favouriteStore?.load() ?? [] }
         catch { favouriteError = "Could not load favourites: \(error.localizedDescription)" }
+        do { preferences = try preferenceStore?.load() ?? ConversationPreferences() }
+        catch { preferenceError = "Could not load hidden and muted conversations: \(error.localizedDescription)" }
     }
 
     public func start() async throws {
@@ -197,6 +219,7 @@ public final class InboxPlusAppModel {
     isolated deinit {
         startupTask?.cancel()
         eventTask?.cancel()
+        muteEndTask?.cancel()
     }
 
     /// A person is favourite when any route is saved; toggling applies to the whole current group.
@@ -213,6 +236,63 @@ public final class InboxPlusAppModel {
             rebuildInbox()
         } catch {
             favouriteError = "Could not save favourites: \(error.localizedDescription)"
+        }
+    }
+
+    /// The inbox as listed: everything the user has not hidden.
+    public var listedInboxItems: [InboxItem] { inboxItems.filter { !$0.isHidden } }
+
+    public var hiddenInboxItems: [InboxItem] { inboxItems.filter(\.isHidden) }
+
+    public func perform(_ action: InboxItemAction, on item: InboxItem) {
+        guard let current = inboxItems.first(where: { $0.id == item.id }) else { return }
+        let summaries = current.conversationSummaries
+        let routes = summaries.map(\.route)
+        switch action {
+        case .markRead:
+            routes.forEach(markConversationRead)
+        case .markUnread:
+            // The most recent conversation is enough to make the whole row read as unread.
+            if let route = routes.first { markConversationUnread(route) }
+        case let .mute(duration):
+            updatePreferences { $0.mute(routes, for: duration, from: Date()) }
+        case .unmute:
+            updatePreferences { $0.unmute(routes) }
+        case .hide:
+            updatePreferences { $0.hide(summaries.map { ($0.route, $0.latestActivity) }) }
+        case .unhide:
+            updatePreferences { $0.unhide(routes) }
+        }
+        rebuildInbox()
+    }
+
+    public func isMuted(_ route: ConversationRoute) -> Bool {
+        preferences.isMuted(route, at: Date())
+    }
+
+    /// A change that cannot be saved still applies until Inbox+ quits, so a badge the user cleared
+    /// does not stay stuck because of a disk error.
+    private func updatePreferences(_ change: (inout ConversationPreferences) -> Void) {
+        var updated = preferences
+        change(&updated)
+        guard updated != preferences else { return }
+        preferences = updated
+        do {
+            try preferenceStore?.save(updated)
+            preferenceError = nil
+        } catch {
+            preferenceError = "Could not save hidden and muted conversations: \(error.localizedDescription)"
+        }
+    }
+
+    /// Redraws the inbox when the soonest mute runs out, so the row stops reading as muted then.
+    private func scheduleMuteEnd() {
+        muteEndTask?.cancel()
+        guard let end = preferences.nextMuteEnd(after: Date()) else { return }
+        muteEndTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(end.timeIntervalSinceNow))
+            guard !Task.isCancelled else { return }
+            self?.rebuildInbox()
         }
     }
 
@@ -276,6 +356,7 @@ public final class InboxPlusAppModel {
         // Saved even when the badge already reads zero: a message that arrives while Inbox+ is
         // running does not raise the badge, but the source still counts it as unread.
         saveReadState(of: route)
+        updatePreferences { $0.markedUnread.remove(route) }
         guard conversations[index].unreadCount != 0 else { return }
         conversations[index].unreadCount = 0
         rebuildInbox()
@@ -286,14 +367,29 @@ public final class InboxPlusAppModel {
         if conversations[index].unreadCount > 0 {
             markConversationRead(route)
         } else {
-            conversations[index].unreadCount = 1
-            rebuildInbox()
+            markConversationUnread(route)
         }
+    }
+
+    /// Remembered by Inbox+ rather than the network, so the badge survives a relaunch and a source
+    /// that reports nothing unread there.
+    private func markConversationUnread(_ route: ConversationRoute) {
+        guard let index = conversations.firstIndex(where: { $0.route == route }) else { return }
+        updatePreferences { $0.markedUnread.insert(route) }
+        conversations[index] = keepingUnreadMark(conversations[index])
+        rebuildInbox()
+    }
+
+    private func keepingUnreadMark(_ conversation: RemoteConversation) -> RemoteConversation {
+        guard preferences.markedUnread.contains(conversation.route) else { return conversation }
+        var marked = conversation
+        marked.unreadCount = max(marked.unreadCount, 1)
+        return marked
     }
 
     public func navigateConversation(forward: Bool, query: String, unreadOnly: Bool) {
         guard !hasUnfinishedMessagingWork else { return }
-        let routes = InboxProjector.filtered(inboxItems, query: query, unreadOnly: unreadOnly)
+        let routes = InboxProjector.filtered(listedInboxItems, query: query, unreadOnly: unreadOnly)
             .flatMap { $0.conversationSummaries.map(\.route) }
         guard !routes.isEmpty else { return }
         let index: Int
@@ -430,6 +526,7 @@ public final class InboxPlusAppModel {
         disconnectedAccountIDs.remove(accountID)
         lastActivityByAccount[accountID] = nil
         stagedAttachmentsByRoute = stagedAttachmentsByRoute.filter { $0.key.accountID != accountID }
+        replyTargetIDByRoute = replyTargetIDByRoute.filter { $0.key.accountID != accountID }
         if openRoute?.accountID == accountID { detailSelection = .empty }
         reportDisconnections()
         let remainingFavourites = favouriteRoutes.filter { $0.accountID != accountID }
@@ -441,6 +538,7 @@ public final class InboxPlusAppModel {
                 favouriteError = "Could not save favourites: \(error.localizedDescription)"
             }
         }
+        updatePreferences { $0.forget(accountID: accountID) }
         rebuildInbox()
 
         do { try await media.purge(accountID: accountID) }
@@ -478,6 +576,7 @@ public final class InboxPlusAppModel {
         return DraftSubmission(
             body: draft,
             route: route,
+            replyingTo: replyTargetIDByRoute[route],
             draftRevision: draftRevision,
             routeGeneration: generation
         )
@@ -488,7 +587,12 @@ public final class InboxPlusAppModel {
         guard !body.isEmpty else { return }
         sendsInFlight += 1
         defer { sendsInFlight -= 1 }
-        _ = try await gateway.sendText(body, to: submission.route)
+        if let messageID = submission.replyingTo {
+            _ = try await interactions().sendText(body, to: submission.route, replyingTo: messageID)
+            finishReply(to: messageID, in: submission.route)
+        } else {
+            _ = try await gateway.sendText(body, to: submission.route)
+        }
         guard isLatest(submission) else { return }
         sendFailuresByRoute[submission.route] = nil
         if draftRevision == submission.draftRevision {
@@ -540,13 +644,61 @@ public final class InboxPlusAppModel {
     ///
     /// A file that fails to send stays staged: dropping it would lose the user's choice with
     /// nothing to show for it.
-    public func sendStagedAttachments(to route: ConversationRoute) async throws {
+    public func sendStagedAttachments(for submission: DraftSubmission) async throws {
+        let route = submission.route
         sendsInFlight += 1
         defer { sendsInFlight -= 1 }
+        var replyingTo = submission.hasText ? nil : submission.replyingTo
         for attachment in stagedAttachments(for: route) {
-            _ = try await gateway.send(attachment, to: route)
+            if let messageID = replyingTo {
+                _ = try await interactions().send(attachment, to: route, replyingTo: messageID)
+                finishReply(to: messageID, in: route)
+                replyingTo = nil
+            } else {
+                _ = try await gateway.send(attachment, to: route)
+            }
             removeStagedAttachment(attachment, for: route)
         }
+    }
+
+    // MARK: - Replies and reactions
+
+    public func canReply(to message: Message) -> Bool {
+        capabilities(for: message.route).canReply && message.acceptsResponses
+    }
+
+    public func canReact(to message: Message) -> Bool {
+        capabilities(for: message.route).canReact && message.acceptsResponses
+    }
+
+    /// The message the composer is answering, while it is still in the transcript.
+    public func replyTarget(in route: ConversationRoute) -> Message? {
+        guard let messageID = replyTargetIDByRoute[route] else { return nil }
+        return messagesByRoute[route]?.first { $0.id == messageID }
+    }
+
+    public func beginReply(to message: Message) {
+        guard canReply(to: message) else { return }
+        replyTargetIDByRoute[message.route] = message.id
+    }
+
+    public func cancelReply(in route: ConversationRoute) {
+        replyTargetIDByRoute[route] = nil
+    }
+
+    public func toggleReaction(_ key: String, on message: Message) async throws {
+        guard canReact(to: message) else { throw MessageInteractionError.unsupported }
+        try await interactions().toggleReaction(key, to: message.id, in: message.route)
+    }
+
+    /// Clears the reply once it has gone, unless the user has since chosen another message.
+    private func finishReply(to messageID: String, in route: ConversationRoute) {
+        if replyTargetIDByRoute[route] == messageID { replyTargetIDByRoute[route] = nil }
+    }
+
+    private func interactions() throws -> any MessageInteractionGateway {
+        guard let source = gateway as? any MessageInteractionGateway else { throw MessageInteractionError.unsupported }
+        return source
     }
 
     public func reportSendFailure(_ error: any Error, for submission: DraftSubmission) {
@@ -630,7 +782,7 @@ public final class InboxPlusAppModel {
         Self.reportLoadedAccounts(snapshot)
         accounts = snapshot.accounts
         identities = snapshot.identities
-        conversations = snapshot.conversations
+        conversations = snapshot.conversations.map(keepingUnreadMark)
         messagesByRoute = snapshot.messagesByRoute.mapValues { $0.sorted { $0.timestamp < $1.timestamp } }
         lastActivityByAccount = Dictionary(
             snapshot.conversations.map { ($0.accountID, $0.latestActivity) },
@@ -782,7 +934,7 @@ public final class InboxPlusAppModel {
             if case .messageUpserted = event { isLive = true } else { isLive = false }
             let isNew = !(messagesByRoute[message.route] ?? []).contains { $0.id == message.id }
             if isLive, isNew, !message.isOutgoing, message.kind != .membership,
-               message.timestamp >= notificationsStartedAt {
+               message.timestamp >= notificationsStartedAt, !isMuted(message.route) {
                 let title = conversations.first { $0.route == message.route }?.title
                     ?? identities.first { $0.id == message.senderIdentityID }?.displayName
                     ?? "New message"
@@ -820,7 +972,7 @@ public final class InboxPlusAppModel {
             rebuildInbox()
         case let .conversationUpserted(conversation):
             conversations.removeAll { $0.id == conversation.id && $0.accountID == conversation.accountID }
-            conversations.append(conversation)
+            conversations.append(keepingUnreadMark(conversation))
             rebuildInbox()
         case let .accountUpserted(account):
             upsert(account)
@@ -839,12 +991,17 @@ public final class InboxPlusAppModel {
     }
 
     private func rebuildInbox() {
+        let now = Date()
+        updatePreferences { $0.reviveHidden(in: conversations, at: now) }
         inboxItems = InboxProjector.project(
             accounts: accounts,
             identities: identities,
             conversations: conversations,
             directory: directory,
-            favouriteRoutes: favouriteRoutes
+            favouriteRoutes: favouriteRoutes,
+            preferences: preferences,
+            now: now
         )
+        scheduleMuteEnd()
     }
 }

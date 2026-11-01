@@ -1,8 +1,17 @@
 import Foundation
 import InboxPlusCore
+import UniformTypeIdentifiers
 
 /// Labels for attachments, kept out of the views so they can be tested without a main actor.
 enum AttachmentFormatting {
+    /// What **Save Attachment…** proposes. A photo the bridge sent without a filename still gets
+    /// an extension, or Finder would not know how to open it.
+    static func suggestedFilename(for attachment: MessageAttachment) -> String {
+        if let filename = attachment.filename { return filename }
+        let ext = attachment.mimeType.flatMap { UTType(mimeType: $0)?.preferredFilenameExtension }
+        return ext.map { "\(attachment.displayName).\($0)" } ?? attachment.displayName
+    }
+
     static func byteLabel(_ byteCount: Int?) -> String? {
         guard let byteCount, byteCount > 0 else { return nil }
         return ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .file)

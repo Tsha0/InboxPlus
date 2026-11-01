@@ -44,7 +44,7 @@ public struct IMessageRow: Equatable, Sendable {
     public let isFromMe: Bool
     public let date: Date?
     public var attachments: [MessageAttachment] = []
-    public var reactions: [String] = []
+    public var reactions: [MessageReaction] = []
     public var attachmentCount: Int { attachments.count }
 
     /// The body as it should be displayed, preferring whichever column actually holds it.
@@ -237,7 +237,7 @@ public final class IMessageStore {
 
     /// A tapback is always stored after the message it reacts to, so only rows after the oldest
     /// loaded message can hold one. Without that bound every poll would scan every tapback ever.
-    private func reactions(messageGUIDs: Set<String>, afterRowID rowID: Int64) throws -> [String: [String]] {
+    private func reactions(messageGUIDs: Set<String>, afterRowID rowID: Int64) throws -> [String: [MessageReaction]] {
         guard !messageGUIDs.isEmpty else { return [:] }
         let events = try rows("""
         SELECT handle_id, is_from_me, associated_message_type, associated_message_emoji,
@@ -250,7 +250,7 @@ public final class IMessageStore {
             (sqlite3_column_int64(statement, 0), sqlite3_column_int64(statement, 1),
              Int(sqlite3_column_int64(statement, 2)), Self.string(statement, 3), Self.string(statement, 4) ?? "")
         }
-        var active: [String: [String: String]] = [:]
+        var active: [String: [String: (key: String, isMine: Bool)]] = [:]
         for (sender, fromMe, type, emoji, target) in events {
             let guid = target.hasPrefix("bp:") ? String(target.dropFirst(3))
                 : target.split(separator: "/", maxSplits: 1).last.map(String.init) ?? target
@@ -259,12 +259,12 @@ public final class IMessageStore {
             if (3000...3007).contains(type) {
                 active[guid, default: [:]][key] = nil
             } else if type == 2006, let emoji, !emoji.isEmpty {
-                active[guid, default: [:]][key] = emoji
+                active[guid, default: [:]][key] = (emoji, fromMe == 1)
             } else if (2000...2005).contains(type) {
-                active[guid, default: [:]][key] = ["❤️", "👍", "👎", "😂", "‼️", "❓"][type - 2000]
+                active[guid, default: [:]][key] = (["❤️", "👍", "👎", "😂", "‼️", "❓"][type - 2000], fromMe == 1)
             }
         }
-        return active.mapValues { $0.sorted { $0.key < $1.key }.map(\.value) }
+        return active.mapValues { MessageReaction.tally($0.sorted { $0.key < $1.key }.map(\.value)) }
     }
 
     // MARK: - Read state
