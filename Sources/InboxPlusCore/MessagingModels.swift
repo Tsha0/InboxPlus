@@ -134,6 +134,8 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
     public var unreadCount: Int
     public var capabilities: ConversationCapabilities
     public var isGroup: Bool
+    /// The conversation in its network's own app, which still has the history Inbox+ does not keep.
+    public var deepLink: VerifiedDeepLink?
 
     public var route: ConversationRoute { .init(accountID: accountID, conversationID: id) }
 
@@ -146,7 +148,8 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
         latestActivity: Date,
         unreadCount: Int,
         capabilities: ConversationCapabilities = .mediaCapable,
-        isGroup: Bool = false
+        isGroup: Bool = false,
+        deepLink: VerifiedDeepLink? = nil
     ) {
         self.id = id
         self.accountID = accountID
@@ -157,6 +160,7 @@ public struct RemoteConversation: Identifiable, Codable, Hashable, Sendable {
         self.unreadCount = unreadCount
         self.capabilities = capabilities
         self.isGroup = isGroup
+        self.deepLink = deepLink
     }
 }
 

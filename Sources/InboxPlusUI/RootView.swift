@@ -288,7 +288,6 @@ public struct RootView: View {
         guard accountFlow == nil, connectFailure == nil, connectNotice == nil, accountFailure == nil,
               !model.isPreparingForUpdate else { return nil }
         let canNavigate = !InboxProjector.filtered(model.listedInboxItems, query: inboxQuery, unreadOnly: showsUnreadOnly).isEmpty
-            && !model.hasUnfinishedMessagingWork
         let route = model.openRoute
         return InboxCommandActions(
             selectSection: { section = $0 },
@@ -302,7 +301,7 @@ public struct RootView: View {
     }
 
     private var canStartNewConversation: Bool {
-        !model.hasUnfinishedMessagingWork && !model.isPreparingForUpdate
+        !model.isPreparingForUpdate
             && accountFlow == nil && connectFailure == nil && connectNotice == nil && accountFailure == nil
     }
 
@@ -366,6 +365,7 @@ public struct RootView: View {
                 favouriteError: model.favouriteError ?? model.preferenceError,
                 onToggleFavourite: model.toggleFavourite,
                 onAction: { model.perform($1, on: $0) },
+                unsentRoutes: model.routesWithDrafts.union(model.stagedAttachmentsByRoute.keys),
                 onSelect: model.selectInboxItem
             )
         case .contacts:

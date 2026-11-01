@@ -179,7 +179,7 @@ public struct MatrixEventNormalizer: Sendable {
                 sourceSize: info.size,
                 thumbnail: info.thumbnailSource
             )
-            return Described(body: body.isEmpty ? "Sticker" : body, kind: .sticker, attachments: [attachment])
+            return Described(body: attachment.displayName, kind: .sticker, attachments: [attachment])
         case let .poll(question, _, _, _, _, _, _):
             return Described(body: "Poll: \(question)", kind: .poll)
         case .redacted:
@@ -201,21 +201,30 @@ public struct MatrixEventNormalizer: Sendable {
             return Self.described(content.body, formatted: content.formatted, kind: .notice)
         case let .emote(content):
             return Self.described(content.body, formatted: content.formatted, kind: .emote)
-        // Attachments carry a filename plus an optional caption rather than a body. Prefer the
-        // caption the sender wrote, fall back to the filename, and only then to a generic label,
-        // so an attachment is never rendered as an empty message.
         case let .image(content):
-            let attachment = Self.attachment(from: content, id: "\(identifier)#0")
-            return Described(body: attachment.displayName, kind: attachment.kind, attachments: [attachment])
+            return Self.described(
+                Self.attachment(from: content, id: "\(identifier)#0"),
+                caption: content.caption,
+                formatted: content.formattedCaption
+            )
         case let .audio(content):
-            let attachment = Self.attachment(from: content, id: "\(identifier)#0")
-            return Described(body: attachment.displayName, kind: .audio, attachments: [attachment])
+            return Self.described(
+                Self.attachment(from: content, id: "\(identifier)#0"),
+                caption: content.caption,
+                formatted: content.formattedCaption
+            )
         case let .video(content):
-            let attachment = Self.attachment(from: content, id: "\(identifier)#0")
-            return Described(body: attachment.displayName, kind: .video, attachments: [attachment])
+            return Self.described(
+                Self.attachment(from: content, id: "\(identifier)#0"),
+                caption: content.caption,
+                formatted: content.formattedCaption
+            )
         case let .file(content):
-            let attachment = Self.attachment(from: content, id: "\(identifier)#0")
-            return Described(body: attachment.displayName, kind: .file, attachments: [attachment])
+            return Self.described(
+                Self.attachment(from: content, id: "\(identifier)#0"),
+                caption: content.caption,
+                formatted: content.formattedCaption
+            )
         case let .gallery(content):
             let attachments = content.itemtypes.enumerated().compactMap { index, item in
                 Self.attachment(from: item, id: "\(identifier)#\(index)")
@@ -254,6 +263,17 @@ public struct MatrixEventNormalizer: Sendable {
             attachments: attachments,
             markdownBody: body
         )
+    }
+
+    /// Attachments carry a filename plus an optional caption rather than a body. The caption the
+    /// sender wrote is the message's text, shown under the media and read as Markdown like any other
+    /// formatted text. Without one the text is the card's own label, so the message is never empty.
+    static func described(_ attachment: MessageAttachment, caption: String?, formatted: FormattedBody?) -> Described {
+        var described = Described(body: attachment.displayName, kind: attachment.kind, attachments: [attachment])
+        if attachment.caption != nil, case .html = formatted?.format {
+            described.markdownBody = text(caption)
+        }
+        return described
     }
 
     static func plainCaption(_ caption: String?, formatted: FormattedBody?) -> String? {

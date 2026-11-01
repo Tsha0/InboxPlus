@@ -39,13 +39,18 @@ public enum TranscriptPresentation {
         message.isOutgoing ? "Replying to yourself" : "Replying to \(senderName(message, identities: identities))"
     }
 
-    /// What **Copy Text** copies: what the message says. A filename standing in for the body of an
-    /// attachment, or the placeholder for a deleted message, is not that.
+    /// What **Copy Text** copies: what the message says. The title standing in for the body of an
+    /// uncaptioned attachment, or the placeholder for a deleted message, is not that.
     public static func copyableText(_ message: Message) -> String? {
         guard ![.redacted, .encrypted, .membership, .state].contains(message.kind) else { return nil }
-        let body = message.body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty, !message.attachments.contains(where: { $0.displayName == body }) else { return nil }
+        guard !message.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              AttachmentFormatting.showsBody(of: message) else { return nil }
         return message.body
+    }
+
+    /// A transcript holds a recent window rather than the whole history, and its top says so.
+    public static func recentHistoryNotice(isEmpty: Bool) -> String {
+        isEmpty ? "No recent messages" : "Showing recent messages"
     }
 
     public static func senderName(_ message: Message, identities: [RemoteIdentity]) -> String {

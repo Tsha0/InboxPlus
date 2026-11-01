@@ -141,7 +141,8 @@ public final class IMessageStore {
     }
 
     /// A chat's most recent messages, newest-first in SQL so the limit keeps recent history, then
-    /// reversed so callers get chronological order.
+    /// reversed so callers get chronological order. Rows with nothing to show are passed over, so
+    /// the limit counts messages rather than group events.
     public func recentMessages(inChat chatRowID: Int64, limit: Int) throws -> [IMessageRow] {
         try messages("""
         FROM chat_message_join
@@ -149,6 +150,9 @@ public final class IMessageStore {
         JOIN chat ON chat.ROWID = chat_message_join.chat_id
         LEFT JOIN handle ON handle.ROWID = message.handle_id
         WHERE chat_message_join.chat_id = \(chatRowID) AND +message.associated_message_guid IS NULL
+          AND (message.text IS NOT NULL OR message.attributedBody IS NOT NULL
+               OR EXISTS (SELECT 1 FROM message_attachment_join
+                          WHERE message_attachment_join.message_id = message.ROWID))
         ORDER BY chat_message_join.message_date DESC, chat_message_join.message_id DESC
         LIMIT \(limit)
         """).reversed()

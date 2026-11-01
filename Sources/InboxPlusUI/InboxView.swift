@@ -10,6 +10,9 @@ public struct InboxView: View {
     let onAction: (InboxItem, InboxItemAction) -> Void
     let favouriteError: String?
     let onSelect: (InboxItem) -> Void
+    /// Conversations holding a draft or staged attachment, so unsent work left in another chat
+    /// can be found again.
+    let unsentRoutes: Set<ConversationRoute>
     @Binding private var showsUnreadOnly: Bool
     @Binding private var query: String
     let searchFocusRequest: UUID?
@@ -27,8 +30,10 @@ public struct InboxView: View {
         favouriteError: String? = nil,
         onToggleFavourite: @escaping (InboxItem) -> Void = { _ in },
         onAction: @escaping (InboxItem, InboxItemAction) -> Void = { _, _ in },
+        unsentRoutes: Set<ConversationRoute> = [],
         onSelect: @escaping (InboxItem) -> Void
     ) {
+        self.unsentRoutes = unsentRoutes
         self._showsUnreadOnly = showsUnreadOnly
         self._query = query
         self.searchFocusRequest = searchFocusRequest
@@ -231,9 +236,16 @@ public struct InboxView: View {
                             .accessibilityLabel("Muted")
                     }
                 }
-                Text(item.conversationSummaries.first?.latestPreview ?? "")
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    if item.conversationSummaries.contains(where: { unsentRoutes.contains($0.route) }) {
+                        Text("Draft")
+                            .fontWeight(.medium)
+                            .foregroundStyle(InboxPlusTheme.ink)
+                    }
+                    Text(item.conversationSummaries.first?.latestPreview ?? "")
+                        .foregroundStyle(.secondary)
+                }
+                .lineLimit(1)
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 4) {

@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import InboxPlusCore
 
 public struct SynapseCredentials: Sendable, Equatable {
     public let registrationSecret: String
@@ -91,6 +92,14 @@ public struct SynapseConfiguration: Sendable {
           args:
             database: \(yamlString(databasePath.path))
         media_store_path: \(yamlString(mediaPath.path))
+        media_retention:
+          local_media_lifetime: \(RecentHistory.mediaLifetimeDays)d
+        retention:
+          enabled: true
+          default_policy:
+            max_lifetime: \(RecentHistory.messageLifetimeDays)d
+          purge_jobs:
+            - interval: 1d
         signing_key_path: \(yamlString(signingKeyPath.path))
         \(renderedAppServiceConfigFiles)
         trusted_key_servers: []

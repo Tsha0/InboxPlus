@@ -215,7 +215,7 @@ private func item(_ route: ConversationRoute, in model: InboxPlusAppModel) throw
     model.beginReply(to: original)
     #expect(model.replyTarget(in: route)?.id == original.id)
     #expect(model.replyTarget(in: Fixtures.whatsAppRoute) == nil)
-    model.draft = "On my way"
+    model.setDraft("On my way", for: route)
     try await model.sendDraft(model.captureDraft(to: route))
 
     #expect(model.replyTarget(in: route) == nil)

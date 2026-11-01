@@ -45,6 +45,21 @@ private func temporaryDirectory() throws -> URL {
     #expect(rendered.contains("'@inboxplus:inboxplus.localhost': admin"))
 }
 
+@Test func backfillAndCatchUpAreBoundedToTheRecentWindow() throws {
+    let directory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let rendered = try makeConfiguration(directory: directory).render()
+    #expect(rendered.contains("""
+
+    backfill:
+        enabled: true
+        max_initial_messages: 50
+        max_catchup_messages: 50
+
+    """))
+}
+
 @Test func theBridgeIsNeverAllowedToReachANonLoopbackHomeserver() throws {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

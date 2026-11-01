@@ -75,7 +75,9 @@ func sendingAStagedFileClearsItAndProducesAMessageWithTheAttachment() async thro
     }
     let message = try #require(model.messagesByRoute[route]?.last)
     #expect(message.kind == .image)
+    #expect(message.body == "Photo")
     #expect(message.attachments.count == 1)
+    #expect(message.attachments.first?.filename == "photo.png")
     #expect(message.attachments.first?.byteCount == 64)
     #expect(message.isOutgoing)
 }

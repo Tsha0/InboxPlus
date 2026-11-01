@@ -223,6 +223,24 @@ let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_", with: 
     #expect(rows.map(\.guid) == ["two", "three"])
 }
 
+@Test func aChatsRecentHistoryLimitCountsOnlyMessagesWithSomethingToShow() throws {
+    // Group events such as someone joining are rows with no text, and must not use up the window.
+    let url = try makeDatabase("""
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;+;chat1', 43, 'chat1', 'iMessage');
+    INSERT INTO message (guid, text, date) VALUES ('one', 'one', 731160000000000000);
+    INSERT INTO message (guid, text, date) VALUES ('two', 'two', 731160100000000000);
+    INSERT INTO message (guid, text, date) VALUES ('three', 'three', 731160200000000000);
+    INSERT INTO message (guid, text, date) VALUES ('joined', NULL, 731160300000000000);
+    INSERT INTO message (guid, text, date) VALUES ('renamed', NULL, 731160400000000000);
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2), (1, 3), (1, 4), (1, 5);
+    """)
+    defer { cleanUp(url) }
+
+    let rows = try IMessageStore(url: url).recentMessages(inChat: 1, limit: 2)
+    #expect(rows.map(\.guid) == ["two", "three"])
+}
+
 @Test func aMissingDatabaseIsReportedClearly() {
     let missing = URL(fileURLWithPath: "/nonexistent/\(UUID().uuidString)/chat.db")
     #expect(throws: IMessageStoreError.databaseMissing(missing.path)) {

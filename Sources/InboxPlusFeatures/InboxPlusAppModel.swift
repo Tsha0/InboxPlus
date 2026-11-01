@@ -99,10 +99,35 @@ public final class InboxPlusAppModel {
     public private(set) var conversations: [RemoteConversation] = []
     public private(set) var messagesByRoute: [ConversationRoute: [Message]] = [:]
     public private(set) var inboxItems: [InboxItem] = []
-    public private(set) var detailSelection: DetailSelection = .empty
+    public private(set) var detailSelection: DetailSelection = .empty {
+        didSet {
+            if case let .conversation(closed) = oldValue, closed != openRoute { trimToRecentWindow(closed) }
+        }
+    }
     public private(set) var health: ServiceHealth = .starting
-    public var draft = "" {
-        didSet { draftRevision &+= 1 }
+
+    /// Unsent text, one per conversation, so a reply half-written to one person never follows you
+    /// into another chat.
+    private var draftsByRoute: [ConversationRoute: String] = [:]
+    private var draftRevisionsByRoute: [ConversationRoute: UInt64] = [:]
+
+    /// Conversations holding a draft worth keeping. Kept apart from the text itself so the inbox
+    /// redraws when a draft starts or ends, not on every keystroke.
+    public private(set) var routesWithDrafts: Set<ConversationRoute> = []
+
+    public func draft(for route: ConversationRoute) -> String {
+        draftsByRoute[route] ?? ""
+    }
+
+    public func setDraft(_ text: String, for route: ConversationRoute) {
+        draftsByRoute[route] = text.isEmpty ? nil : text
+        draftRevisionsByRoute[route, default: 0] &+= 1
+        let hasDraft = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if hasDraft, !routesWithDrafts.contains(route) {
+            routesWithDrafts.insert(route)
+        } else if !hasDraft, routesWithDrafts.contains(route) {
+            routesWithDrafts.remove(route)
+        }
     }
 
     public var openRoute: ConversationRoute? {
@@ -112,7 +137,7 @@ public final class InboxPlusAppModel {
 
     /// Prevent update restarts from discarding an unsent composer or interrupting a pending send.
     public var hasUnfinishedMessagingWork: Bool {
-        sendsInFlight > 0 || !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        sendsInFlight > 0 || !routesWithDrafts.isEmpty
             || stagedAttachmentsByRoute.values.contains { !$0.isEmpty }
             || messagesByRoute.values.contains { $0.contains { $0.deliveryState == .pending } }
     }
@@ -150,7 +175,7 @@ public final class InboxPlusAppModel {
     /// The message the composer is answering in each conversation.
     private var replyTargetIDByRoute: [ConversationRoute: String] = [:]
     private var directory: ContactDirectory
-    private var draftRevision: UInt64 = 0
+    private let composerFiles: ComposerFileStore
     private var sendsInFlight = 0
     private var disconnectedAccountIDs: Set<String> = []
     private let accountLifecycle: (any AccountLifecycle)?
@@ -174,7 +199,8 @@ public final class InboxPlusAppModel {
         media: MediaController = MediaController(),
         favouriteStore: InboxFavouriteStore? = nil,
         preferenceStore: ConversationPreferenceStore? = nil,
-        accountLifecycle: (any AccountLifecycle)? = nil
+        accountLifecycle: (any AccountLifecycle)? = nil,
+        composerFiles: ComposerFileStore = .temporary()
     ) {
         self.gateway = gateway
         self.directory = directory
@@ -182,6 +208,7 @@ public final class InboxPlusAppModel {
         self.favouriteStore = favouriteStore
         self.preferenceStore = preferenceStore
         self.accountLifecycle = accountLifecycle
+        self.composerFiles = composerFiles
         do { favouriteRoutes = try favouriteStore?.load() ?? [] }
         catch { favouriteError = "Could not load favourites: \(error.localizedDescription)" }
         do { preferences = try preferenceStore?.load() ?? ConversationPreferences() }
@@ -388,7 +415,6 @@ public final class InboxPlusAppModel {
     }
 
     public func navigateConversation(forward: Bool, query: String, unreadOnly: Bool) {
-        guard !hasUnfinishedMessagingWork else { return }
         let routes = InboxProjector.filtered(listedInboxItems, query: query, unreadOnly: unreadOnly)
             .flatMap { $0.conversationSummaries.map(\.route) }
         guard !routes.isEmpty else { return }
@@ -525,8 +551,13 @@ public final class InboxPlusAppModel {
         }
         disconnectedAccountIDs.remove(accountID)
         lastActivityByAccount[accountID] = nil
+        for (route, attachments) in stagedAttachmentsByRoute where route.accountID == accountID {
+            attachments.forEach { composerFiles.discard($0.fileURL) }
+        }
         stagedAttachmentsByRoute = stagedAttachmentsByRoute.filter { $0.key.accountID != accountID }
         replyTargetIDByRoute = replyTargetIDByRoute.filter { $0.key.accountID != accountID }
+        draftsByRoute = draftsByRoute.filter { $0.key.accountID != accountID }
+        routesWithDrafts = routesWithDrafts.filter { $0.accountID != accountID }
         if openRoute?.accountID == accountID { detailSelection = .empty }
         reportDisconnections()
         let remainingFavourites = favouriteRoutes.filter { $0.accountID != accountID }
@@ -574,10 +605,10 @@ public final class InboxPlusAppModel {
         let generation = previousGeneration + 1
         latestSendGenerationByRoute[route] = generation
         return DraftSubmission(
-            body: draft,
+            body: draft(for: route),
             route: route,
             replyingTo: replyTargetIDByRoute[route],
-            draftRevision: draftRevision,
+            draftRevision: draftRevisionsByRoute[route, default: 0],
             routeGeneration: generation
         )
     }
@@ -595,8 +626,8 @@ public final class InboxPlusAppModel {
         }
         guard isLatest(submission) else { return }
         sendFailuresByRoute[submission.route] = nil
-        if draftRevision == submission.draftRevision {
-            draft = ""
+        if draftRevisionsByRoute[submission.route, default: 0] == submission.draftRevision {
+            setDraft("", for: submission.route)
         }
     }
 
@@ -633,11 +664,34 @@ public final class InboxPlusAppModel {
         }
     }
 
+    /// Stages a picture that has no file of its own, such as a screenshot on the clipboard.
+    ///
+    /// The bytes are kept only until the picture is sent or taken back.
+    @discardableResult
+    public func stageAttachment(
+        _ data: Data,
+        named filename: String,
+        for route: ConversationRoute
+    ) -> AttachmentRejection? {
+        let fileURL: URL
+        do {
+            fileURL = try composerFiles.write(data, named: filename)
+        } catch {
+            let rejection = AttachmentRejection.unreadable("Inbox+ could not keep a copy of it to send")
+            sendFailuresByRoute[route] = rejection.message
+            return rejection
+        }
+        let rejection = stageAttachment(at: fileURL, for: route)
+        if rejection != nil { composerFiles.discard(fileURL) }
+        return rejection
+    }
+
     public func removeStagedAttachment(_ attachment: OutgoingAttachment, for route: ConversationRoute) {
         stagedAttachmentsByRoute[route]?.removeAll { $0 == attachment }
         if stagedAttachmentsByRoute[route]?.isEmpty == true {
             stagedAttachmentsByRoute[route] = nil
         }
+        composerFiles.discard(attachment.fileURL)
     }
 
     /// Sends everything staged for a route, then the text, in that order.
@@ -784,6 +838,7 @@ public final class InboxPlusAppModel {
         identities = snapshot.identities
         conversations = snapshot.conversations.map(keepingUnreadMark)
         messagesByRoute = snapshot.messagesByRoute.mapValues { $0.sorted { $0.timestamp < $1.timestamp } }
+        for route in messagesByRoute.keys where route != openRoute { trimToRecentWindow(route) }
         lastActivityByAccount = Dictionary(
             snapshot.conversations.map { ($0.accountID, $0.latestActivity) },
             uniquingKeysWith: max
@@ -951,6 +1006,7 @@ public final class InboxPlusAppModel {
                 messages.insert(message, at: insertion ?? messages.endIndex)
             }
             messagesByRoute[message.route] = messages
+            if message.route != openRoute { trimToRecentWindow(message.route) }
             let accountID = message.route.accountID
             if message.timestamp > lastActivityByAccount[accountID] ?? .distantPast {
                 lastActivityByAccount[accountID] = message.timestamp
@@ -988,6 +1044,17 @@ public final class InboxPlusAppModel {
                 ? .healthy
                 : .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
         }
+    }
+
+    /// A closed conversation keeps only its recent window, so a long session does not hold every
+    /// message it has seen. One not yet confirmed stays whatever its age: it is still the user's.
+    private func trimToRecentWindow(_ route: ConversationRoute) {
+        guard let messages = messagesByRoute[route] else { return }
+        let cutoff = messages.count - RecentHistory.messageCount
+        guard cutoff > 0 else { return }
+        messagesByRoute[route] = messages.enumerated()
+            .filter { $0.offset >= cutoff || $0.element.deliveryState != .acknowledged }
+            .map(\.element)
     }
 
     private func rebuildInbox() {

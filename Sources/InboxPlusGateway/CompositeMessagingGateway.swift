@@ -155,13 +155,19 @@ public actor CompositeMessagingGateway: ConversationStartingGateway, MessageInte
     private func removeContinuation(_ id: UUID) { streamContinuations[id] = nil }
 }
 
-public enum CompositeGatewayError: Error, Equatable, CustomStringConvertible {
+public enum CompositeGatewayError: Error, Equatable, CustomStringConvertible, LocalizedError {
     case unknownAccount(String)
 
     public var description: String {
         switch self {
         case let .unknownAccount(id):
             "no connected source owns account '\(id)'"
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .unknownAccount: "This account isn't connected."
         }
     }
 }

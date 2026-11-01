@@ -45,10 +45,11 @@ private func message(
 
 @Test func copyTextCopiesWhatAMessageSaysAndNothingStandingInForIt() {
     let photo = MessageAttachment(id: "a", kind: .image, filename: "IMG_1.jpg")
+    let captioned = MessageAttachment(id: "b", kind: .image, filename: "IMG_2.jpg", caption: "Look")
     #expect(TranscriptPresentation.copyableText(message("text", body: "See you")) == "See you")
-    #expect(TranscriptPresentation.copyableText(message("photo", body: "IMG_1.jpg", kind: .image, attachments: [photo])) == nil)
+    #expect(TranscriptPresentation.copyableText(message("photo", body: "Photo", kind: .image, attachments: [photo])) == nil)
     #expect(TranscriptPresentation.copyableText(
-        message("captioned", body: "Look", kind: .image, attachments: [photo])
+        message("captioned", body: "Look", kind: .image, attachments: [captioned])
     ) == "Look")
     #expect(TranscriptPresentation.copyableText(message("deleted", body: "Message deleted", kind: .redacted)) == nil)
     #expect(TranscriptPresentation.copyableText(message("blank", body: "  ")) == nil)

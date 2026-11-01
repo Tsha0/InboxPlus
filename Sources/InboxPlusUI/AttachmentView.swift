@@ -60,7 +60,7 @@ public struct AttachmentView: View {
                     .scaledToFit()
                     .frame(maxWidth: 320, maxHeight: 320)
                     .clipShape(.rect(cornerRadius: 10))
-                    .accessibilityLabel(attachment.displayName)
+                    .accessibilityLabel(attachment.title)
             } else {
                 // The bytes arrived but are not an image this Mac can decode. Say so rather than
                 // showing an empty frame.
@@ -92,7 +92,7 @@ public struct AttachmentView: View {
                     height: attachment.kind == .audio ? 60 : 200
                 )
                 .clipShape(.rect(cornerRadius: 10))
-                .accessibilityLabel("\(attachment.displayName), \(durationLabel ?? "playable")")
+                .accessibilityLabel("\(attachment.title), \(durationLabel ?? "playable")")
         case .idle, .loading:
             MediaPlaceholder(attachment: attachment, durationLabel: durationLabel)
         case let .failed(reason):
@@ -114,12 +114,12 @@ public struct AttachmentView: View {
             } label: {
                 AttachmentCardLabel(
                     symbol: "doc.fill",
-                    title: attachment.displayName,
+                    title: attachment.title,
                     detail: [attachment.mimeType, byteLabel].compactMap { $0 }.joined(separator: " · ")
                 )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Show \(attachment.displayName) in Finder")
+            .accessibilityLabel("Show \(attachment.title) in Finder")
         case .idle, .loading:
             MediaPlaceholder(attachment: attachment)
         case let .failed(reason):
@@ -164,13 +164,16 @@ struct MediaPlaceholder: View {
             RoundedRectangle(cornerRadius: 10).fill(.quaternary)
             VStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text([attachment.displayName, durationLabel].compactMap { $0 }.joined(separator: " · "))
+                Text([attachment.title, durationLabel].compactMap { $0 }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, 12)
             }
         }
         .frame(width: 320, height: attachment.kind == .audio ? 60 : height)
-        .accessibilityLabel("Loading \(attachment.displayName)")
+        .accessibilityLabel("Loading \(attachment.title)")
     }
 }
 
@@ -183,7 +186,7 @@ struct MediaRetryCard: View {
         VStack(alignment: .leading, spacing: 6) {
             AttachmentCardLabel(
                 symbol: "exclamationmark.triangle.fill",
-                title: attachment.displayName,
+                title: attachment.title,
                 detail: reason
             )
             Button("Try again", action: retry)
@@ -200,7 +203,7 @@ struct MediaPausedCard: View {
     let reason: String
 
     var body: some View {
-        AttachmentCardLabel(symbol: "internaldrive.fill", title: attachment.displayName, detail: reason)
+        AttachmentCardLabel(symbol: "internaldrive.fill", title: attachment.title, detail: reason)
             .padding(10)
             .background(.quaternary.opacity(0.6), in: .rect(cornerRadius: 10))
             .accessibilityIdentifier("attachment-paused-\(attachment.id)")
@@ -219,7 +222,7 @@ struct AppNativeCard: View {
         VStack(alignment: .leading, spacing: 8) {
             AttachmentCardLabel(
                 symbol: attachment.deepLink?.platform.symbolName ?? "square.and.arrow.up",
-                title: attachment.displayName,
+                title: attachment.title,
                 detail: attachment.reportedDescription
             )
             if let link = attachment.deepLink {
@@ -243,7 +246,7 @@ struct UnsupportedAttachmentCard: View {
     var body: some View {
         AttachmentCardLabel(
             symbol: "questionmark.square.dashed",
-            title: attachment.displayName,
+            title: attachment.title,
             detail: reason ?? attachment.reportedDescription
                 ?? "Inbox+ cannot display this yet, so it is shown as reported."
         )
@@ -263,7 +266,11 @@ struct AttachmentCardLabel: View {
                 .font(.title3)
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.callout)
+                // A title is a noun or a filename; the middle goes first so the extension stays.
+                Text(title)
+                    .font(.callout)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
                 if let detail, !detail.isEmpty {
                     Text(detail)
                         .font(.caption)

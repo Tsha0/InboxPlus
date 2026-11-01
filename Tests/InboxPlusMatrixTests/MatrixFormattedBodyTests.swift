@@ -109,3 +109,41 @@ private let normalizer = MatrixEventNormalizer(accountID: "matrix-local")
     #expect(message.body == "Weekend photos")
     #expect(message.markdownBody == "**Weekend** photos")
 }
+
+private let serverFilename = "462555709_902766575152919_3265496144511665546_n.jpg"
+
+private func photo(caption: String?, formatted: FormattedBody?) throws -> MessageType {
+    .image(content: ImageMessageContent(
+        filename: serverFilename,
+        caption: caption,
+        formattedCaption: formatted,
+        source: try MediaSource.fromUrl(url: "mxc://inboxplus.localhost/photo"),
+        info: nil
+    ))
+}
+
+@Test func aSharedPostsCaptionIsTheMessageTextAndNotItsCardTitle() throws {
+    let caption = "**sample.account** Sunset over the bay\n\n[instagram.com/p/Cabc123](https://www.instagram.com/p/Cabc123/)"
+    let message = try #require(normalizer.normalize(
+        event("post", try photo(caption: caption, formatted: html(
+            "<b>sample.account</b> Sunset over the bay<br><br>"
+                + "<a href=\"https://www.instagram.com/p/Cabc123/\">instagram.com/p/Cabc123</a>"
+        ))),
+        roomID: "room"
+    ))
+    let attachment = try #require(message.attachments.first)
+    #expect(attachment.title == "Photo")
+    #expect(attachment.filename == serverFilename)
+    #expect(message.body == "sample.account Sunset over the bay\n\ninstagram.com/p/Cabc123")
+    // Read as Markdown under the media, so its link opens like a link in any other message.
+    #expect(message.markdownBody == caption)
+}
+
+@Test func anUncaptionedPhotoReadsAsAPhotoRatherThanItsFilename() throws {
+    let message = try #require(normalizer.normalize(
+        event("photo", try photo(caption: nil, formatted: nil)), roomID: "room"
+    ))
+    #expect(message.body == "Photo")
+    #expect(message.markdownBody == nil)
+    #expect(message.attachments.first?.filename == serverFilename)
+}
