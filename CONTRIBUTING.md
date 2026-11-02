@@ -105,6 +105,7 @@ When bundle assembly is affected, build and verify the local app without install
 Scripts/build-app.sh
 codesign --verify --strict build/Inbox+.app
 build/Inbox+.app/Contents/MacOS/InboxPlusRuntimeCLI sbom > /dev/null
+otool -L build/Inbox+.app/Contents/MacOS/InboxPlus | grep -q '/AVKit.framework/'
 ```
 
 The default bundle is ad-hoc signed. Release signing and publishing follow

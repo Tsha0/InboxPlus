@@ -182,7 +182,9 @@ jobs:
           # The CLI ships inside the bundle and is how a profile is prepared; if it cannot run,
           # the bundle is useless even though it assembled.
           build/Inbox+.app/Contents/MacOS/InboxPlusRuntimeCLI sbom > /dev/null
-          echo "Bundle assembled and its CLI runs."
+          # Showing a video aborts the app unless AVKit itself is linked, not just its SwiftUI overlay.
+          otool -L build/Inbox+.app/Contents/MacOS/InboxPlus | grep -q '/AVKit.framework/'
+          echo "Bundle assembled, its CLI runs and it links AVKit."
 
       - name: Upload the unsigned bundle
         uses: actions/upload-artifact@v4

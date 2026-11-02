@@ -23,7 +23,10 @@ let package = Package(
         .target(
             name: "InboxPlusUI",
             dependencies: ["InboxPlusCore", "InboxPlusFeatures", "InboxPlusBridge"],
-            resources: [.process("Resources")]
+            resources: [.process("Resources")],
+            // `import AVKit` only links the `_AVKit_SwiftUI` overlay. Without AVKit itself loaded,
+            // `VideoPlayer` can't resolve its `AVPlayerView` superclass and aborts (#107).
+            linkerSettings: [.linkedFramework("AVKit")]
         ),
         .executableTarget(
             name: "InboxPlusApp",
