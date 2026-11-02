@@ -87,6 +87,36 @@ func invalidNonLoopbackConfigurationIsRejected(_ address: String) throws {
     #expect(await SynapseHealthChecker.systemIdentityStatus(identity) == .exited)
 }
 
+@Test func stopShutsDownAHomeserverItsSessionLeftBehind() async throws {
+    // Break caught: a session killed mid-shutdown left Synapse serving with no bridges, and `stop`
+    // refused it as belonging to a session that no longer existed.
+    let root = try faultRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let leftover = try LeftoverProcess()
+    defer { leftover.kill() }
+    let (service, store) = try recordRunning(leftover.identity, root: root)
+
+    #expect(try await service.stop() == .stopped)
+    #expect(await SynapseHealthChecker.systemIdentityStatus(leftover.identity) == .exited)
+    #expect(try store.load()?.snapshot == .stopped)
+}
+
+@Test func aLeftoverHomeserverThatIgnoresStopIsReportedNotKilled() async throws {
+    let root = try faultRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let leftover = try LeftoverProcess(ignoringTerminate: true)
+    defer { leftover.kill() }
+    let (service, store) = try recordRunning(leftover.identity, root: root)
+
+    await #expect(throws: RuntimeProfileError.orphanedRuntimeDidNotStop(
+        processIdentifier: leftover.identity.processIdentifier
+    )) {
+        try await service.stop(orphanExitTimeout: .milliseconds(300))
+    }
+    #expect(await SynapseHealthChecker.systemIdentityStatus(leftover.identity) == .matching)
+    #expect(try store.load()?.snapshot.phase == .healthy)
+}
+
 // MARK: - Backup and restore faults
 
 @Test func interruptedRestoreLeavesOriginalProfileUnchanged() async throws {
@@ -179,6 +209,65 @@ private func faultRoot() throws -> URL {
         .appendingPathComponent("InboxPlusFaultTests-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     return root
+}
+
+private func recordRunning(
+    _ identity: ManagedProcessIdentity,
+    root: URL
+) throws -> (RuntimeProfileService, RuntimeProfileStore) {
+    let paths = try RuntimePaths(root: root, profileName: "leftover")
+    let store = RuntimeProfileStore(paths: paths)
+    try store.save(RuntimeProfileState(
+        serverName: "inboxplus.localhost",
+        registrationSecret: "registration-secret",
+        launchExecutable: identity.executablePath,
+        virtualEnvironmentPython: identity.executablePath,
+        configurationFile: paths.configuration.appendingPathComponent("homeserver.yaml").path,
+        snapshot: try RuntimeSnapshot(
+            phase: .healthy,
+            processIdentity: identity,
+            loopbackPort: 8008,
+            restartCount: 0,
+            lastHealthResult: "healthy",
+            diagnosticLogDirectory: paths.logs,
+            lastError: nil
+        )
+    ))
+    return (RuntimeProfileService(paths: paths, packageRoot: root), store)
+}
+
+/// A process whose launcher has already exited, as Synapse is once the session that started it
+/// dies: reparented to launchd and nobody's child.
+private struct LeftoverProcess {
+    let identity: ManagedProcessIdentity
+
+    init(ignoringTerminate: Bool = false) throws {
+        let trap = ignoringTerminate ? "trap '' TERM; " : ""
+        let launcher = Process()
+        launcher.executableURL = URL(fileURLWithPath: "/bin/sh")
+        launcher.arguments = ["-c", "(\(trap)exec /bin/sleep 120) </dev/null >/dev/null 2>&1 & echo $!"]
+        let output = Pipe()
+        launcher.standardOutput = output
+        try launcher.run()
+        let printed = output.fileHandleForReading.readDataToEndOfFile()
+        launcher.waitUntilExit()
+        let pid = try #require(pid_t(
+            String(decoding: printed, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        ))
+        // The background shell only becomes `sleep` once it execs.
+        let deadline = Date().addingTimeInterval(10)
+        var identity = FoundationManagedProcess.readIdentity(for: pid)
+        while identity?.executablePath != "/bin/sleep", Date() < deadline {
+            usleep(10_000)
+            identity = FoundationManagedProcess.readIdentity(for: pid)
+        }
+        self.identity = try #require(identity.flatMap { $0.executablePath == "/bin/sleep" ? $0 : nil })
+    }
+
+    func kill() {
+        guard FoundationManagedProcess.readIdentity(for: identity.processIdentifier) == identity else { return }
+        Darwin.kill(identity.processIdentifier, SIGKILL)
+    }
 }
 
 private func seedProfile(_ paths: RuntimePaths) throws {

@@ -266,9 +266,12 @@ public struct RuntimeProfileService: Sendable {
 
     /// Reconciles a profile whose owning session is gone.
     ///
-    /// A live runtime belongs to the foreground session that launched it, so this refuses to act
-    /// while that session still owns the child rather than signalling a process it does not own.
-    public func stop() async throws -> RuntimeSnapshot {
+    /// Call only while holding the profile lock. The session that launches Synapse holds that lock
+    /// for as long as it runs, so a recorded Synapse still alive here has outlived its session and
+    /// is serving with no supervisor and no bridges. It is asked to shut down once its pid, start
+    /// time and executable match the record, and never killed: a homeserver that ignores SIGTERM is
+    /// reported rather than cut off mid-write.
+    public func stop(orphanExitTimeout: Duration = .seconds(30)) async throws -> RuntimeSnapshot {
         let state = try requirePreparedState()
         guard let identity = state.snapshot.processIdentity else {
             let snapshot = RuntimeSnapshot.stopped
@@ -277,15 +280,34 @@ public struct RuntimeProfileService: Sendable {
         }
         switch await SynapseHealthChecker.systemIdentityStatus(identity) {
         case .matching:
-            throw RuntimeProfileError.runtimeOwnedByForegroundSession(
-                processIdentifier: identity.processIdentifier
-            )
+            try await terminateOrphan(identity, timeout: orphanExitTimeout)
+            try store.save(state.replacing(snapshot: .stopped))
+            return .stopped
         case .exited, .mismatched:
             try store.save(state.replacing(snapshot: .stopped))
             return .stopped
         case let .indeterminate(failure):
             throw failure
         }
+    }
+
+    private func terminateOrphan(_ identity: ManagedProcessIdentity, timeout: Duration) async throws {
+        guard kill(identity.processIdentifier, SIGTERM) == 0 || errno == ESRCH else {
+            throw ManagedProcessError.signalFailed(signal: .terminate, code: errno)
+        }
+        let deadline = ContinuousClock.now.advanced(by: timeout)
+        while ContinuousClock.now < deadline {
+            switch await SynapseHealthChecker.systemIdentityStatus(identity) {
+            case .exited, .mismatched:
+                return
+            // An exited process reads as indeterminate until launchd reaps it.
+            case .matching, .indeterminate:
+                try await Task.sleep(for: .milliseconds(100))
+            }
+        }
+        throw RuntimeProfileError.orphanedRuntimeDidNotStop(
+            processIdentifier: identity.processIdentifier
+        )
     }
 
     // MARK: - Verification
@@ -923,7 +945,7 @@ public enum RuntimeProfileError: Error, Equatable, Sendable, CustomStringConvert
     case portAllocationFailed
     case pythonExecutableUnavailable
     case keyGenerationFailed(status: Int32, output: String)
-    case runtimeOwnedByForegroundSession(processIdentifier: Int32)
+    case orphanedRuntimeDidNotStop(processIdentifier: Int32)
     case profileLockedByAnotherSession
 
     public var description: String {
@@ -938,10 +960,10 @@ public enum RuntimeProfileError: Error, Equatable, Sendable, CustomStringConvert
             "could not resolve a stable Python application executable for the prepared runtime"
         case let .keyGenerationFailed(status, output):
             "Synapse key generation failed with status \(status): \(output)"
-        case let .runtimeOwnedByForegroundSession(processIdentifier):
+        case let .orphanedRuntimeDidNotStop(processIdentifier):
             """
-            the runtime is live as process \(processIdentifier) and belongs to the session that \
-            started it; interrupt that 'start' session to stop it
+            the homeserver left running as process \(processIdentifier) did not shut down when \
+            asked; try again, or quit that process once it has finished writing
             """
         case .profileLockedByAnotherSession:
             "another Inbox+ runtime session already holds this profile; interrupt it first"

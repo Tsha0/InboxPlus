@@ -4,8 +4,15 @@ import InboxPlusBridgeService
 import InboxPlusCore
 import InboxPlusRuntime
 
+// The app reads this process's output through a pipe and quits without waiting for it, so the
+// `bridge … stopped` lines of a shutdown are written after the reader is gone. SIGPIPE's default
+// action killed the session between stopping the bridges and stopping Synapse, which left the
+// homeserver running with no supervisor and no bridges.
+signal(SIGPIPE, SIG_IGN)
+
 func writeStandardError(_ message: String) {
-    FileHandle.standardError.write(Data((message + "\n").utf8))
+    // The non-throwing `write(_:)` raises an exception on a closed pipe.
+    try? FileHandle.standardError.write(contentsOf: Data((message + "\n").utf8))
 }
 
 func describe(_ snapshot: RuntimeSnapshot) -> String {

@@ -56,8 +56,8 @@ actor ManagedRuntime {
 
     /// Ensures the profile is running and returns the state once it is serving.
     ///
-    /// Idempotent: an already-running profile is attached to rather than restarted, which is what
-    /// makes launching the app safe while a shell session owns the runtime.
+    /// Idempotent: a profile some session is supervising is attached to rather than restarted,
+    /// which is what makes launching the app safe while a shell session owns the runtime.
     func ensureRunning(
         paths: RuntimePaths,
         profileName: String,
@@ -65,8 +65,22 @@ actor ManagedRuntime {
         progress: @Sendable (String) -> Void = { _ in }
     ) async throws -> RuntimeProfileState {
         if let state = try? await servingState(paths: paths) {
-            progress("attached to the runtime already serving '\(profileName)'")
-            return state
+            guard Self.isUnsupervised(paths: paths) else {
+                progress("attached to the runtime already serving '\(profileName)'")
+                return state
+            }
+            // Attaching would mean a homeserver whose bridges are never started, on this launch
+            // or any after it. Stopping it is what lets the launch below bring them back.
+            progress("restarting a runtime left running without its bridges")
+            if let process = child, !process.isRunning {
+                child = nil
+                startedByThisApp = false
+            }
+            reconcileStaleState(profileName: profileName)
+            if let state = try? await servingState(paths: paths) {
+                progress("attached to the runtime already serving '\(profileName)'")
+                return state
+            }
         }
 
         if try RuntimeProfileStore(paths: paths).load() == nil {
@@ -162,10 +176,21 @@ actor ManagedRuntime {
         startedByThisApp = true
     }
 
-    /// Runs `stop` so a profile recorded as running but serving nothing becomes stopped again.
+    /// A session holds the profile lock for as long as it supervises the runtime, and the
+    /// homeserver it launched does not inherit it. A homeserver answering while the lock is free has
+    /// outlived its session, and every bridge went with that session.
+    static func isUnsupervised(paths: RuntimePaths) -> Bool {
+        let service = RuntimeProfileService(
+            paths: paths, packageRoot: RuntimeProfileService.resolvedPackageRoot()
+        )
+        return (try? service.acquireProfileLock()) != nil
+    }
+
+    /// Runs `stop` so a profile recorded as running, but with no session supervising it, becomes
+    /// stopped again — shutting down a homeserver left behind if there is one.
     ///
-    /// Best effort by design: if a runtime really is alive, `stop` refuses and says so, and the
-    /// launch that follows fails with its own clear message rather than this one guessing.
+    /// Best effort by design: if a session owns the profile, or the homeserver will not stop,
+    /// `stop` refuses and says so, and the caller decides what to do with what is still running.
     private func reconcileStaleState(profileName: String) {
         let process = Process()
         process.executableURL = Self.runtimeCommandURL()
