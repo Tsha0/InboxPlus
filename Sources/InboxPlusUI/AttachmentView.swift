@@ -13,6 +13,7 @@ public struct AttachmentView: View {
     let attachment: MessageAttachment
     let accountID: String
     let messageID: String
+    @State private var showsImagePreview = false
 
     public init(model: InboxPlusAppModel, attachment: MessageAttachment, accountID: String, messageID: String) {
         self.model = model
@@ -55,12 +56,21 @@ public struct AttachmentView: View {
         switch state {
         case let .ready(url):
             if let image = NSImage(contentsOf: url) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 320, maxHeight: 320)
-                    .clipShape(.rect(cornerRadius: 10))
-                    .accessibilityLabel(attachment.title)
+                Button {
+                    showsImagePreview = true
+                } label: {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 320, maxHeight: 320)
+                        .clipShape(.rect(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open \(attachment.title)")
+                .help("Open image")
+                .sheet(isPresented: $showsImagePreview) {
+                    ImagePreview(image: image, url: url, filename: attachment.filename ?? url.lastPathComponent)
+                }
             } else {
                 // The bytes arrived but are not an image this Mac can decode. Say so rather than
                 // showing an empty frame.
