@@ -23,10 +23,17 @@ extension FocusedValues {
 
 public struct InboxCommands: Commands {
     @FocusedValue(\.inboxCommandActions) private var actions
+    // Keep focused callbacks out of App: view closures can otherwise retain old focus snapshots.
+    @FocusedValue(\.newConversationAction) private var newConversation
 
     public init() {}
 
     public var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Message…") { newConversation?() }
+                .keyboardShortcut("n")
+                .disabled(newConversation == nil)
+        }
         CommandGroup(replacing: .appSettings) {
             Button("Settings…") { actions?.selectSection(.settings) }
                 .keyboardShortcut(",")
