@@ -29,13 +29,15 @@ struct InboxPlusTheme {
     let logo: Color
     let onLogo: Color
     let logoGlow: Color
+    /// Nil keeps the standard macOS title bar.
+    let titleBar: NSColor?
 
     static var classic: InboxPlusTheme {
         InboxPlusTheme(
             accent: ink, onAccent: paper, highlight: ink,
             rail: AnyShapeStyle(.quaternary.opacity(0.25)), onRail: ink,
             onRailPrimary: AnyShapeStyle(.primary), onRailSecondary: AnyShapeStyle(.secondary),
-            sidebarWash: .clear, logo: .black, onLogo: .white, logoGlow: ink
+            sidebarWash: .clear, logo: .black, onLogo: .white, logoGlow: ink, titleBar: nil
         )
     }
 
@@ -70,8 +72,40 @@ extension InboxPlusTheme {
             }),
             logo: Color(palette.logo),
             onLogo: Color(palette.logo.legibleText),
-            logoGlow: Color(palette.logo)
+            logoGlow: Color(palette.logo),
+            titleBar: NSColor(palette.background)
         )
+    }
+}
+
+/// Paints the window's title bar in the theme's background, continuing the rail across the top.
+struct WindowTitleBar: NSViewRepresentable {
+    let color: NSColor?
+
+    func makeNSView(context: Context) -> TitleBarView { TitleBarView() }
+
+    func updateNSView(_ view: TitleBarView, context: Context) {
+        view.color = color
+    }
+
+    final class TitleBarView: NSView {
+        var color: NSColor? {
+            didSet { apply() }
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            apply()
+        }
+
+        /// A transparent title bar shows the window's own background color. The title text follows
+        /// the light or dark mode rather than the theme, so it is hidden where it could clash.
+        private func apply() {
+            guard let window else { return }
+            window.titlebarAppearsTransparent = color != nil
+            window.titleVisibility = color == nil ? .visible : .hidden
+            window.backgroundColor = color ?? .windowBackgroundColor
+        }
     }
 }
 
