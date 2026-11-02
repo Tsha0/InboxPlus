@@ -68,6 +68,26 @@ public final class AppPreferences {
         didSet { defaults.set(messageRetention.rawValue, forKey: Key.messageRetention) }
     }
 
+    public var appearanceMode: AppearanceMode {
+        didSet { defaults.set(appearanceMode.rawValue, forKey: Key.appearanceMode) }
+    }
+
+    public var theme: AppTheme {
+        didSet {
+            switch theme {
+            case let .preset(preset):
+                defaults.set(preset.rawValue, forKey: Key.theme)
+            case let .custom(palette):
+                defaults.set(Self.customThemeID, forKey: Key.theme)
+                defaults.set([palette.background.hex, palette.accent.hex, palette.logo.hex], forKey: Key.customColors)
+                customPalette = palette
+            }
+        }
+    }
+
+    /// The last custom colors, kept so they can be picked again after trying a ready-made theme.
+    public private(set) var customPalette: ThemePalette?
+
     @ObservationIgnored private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) {
@@ -80,6 +100,25 @@ public final class AppPreferences {
         showsUnreadBadge = defaults.object(forKey: Key.unreadBadge) as? Bool ?? true
         iMessageHistory = Self.iMessageHistory(in: defaults)
         messageRetention = Self.messageRetention(in: defaults)
+        appearanceMode = defaults.string(forKey: Key.appearanceMode).flatMap(AppearanceMode.init(rawValue:)) ?? .system
+        let customPalette = Self.customPalette(in: defaults)
+        self.customPalette = customPalette
+        // A theme a later version added, or colors that no longer parse, fall back to Classic.
+        let themeID = defaults.string(forKey: Key.theme)
+        if themeID == Self.customThemeID, let customPalette {
+            theme = .custom(customPalette)
+        } else {
+            theme = themeID.flatMap(ThemePreset.init(rawValue:)).map(AppTheme.preset) ?? .standard
+        }
+    }
+
+    private nonisolated static let customThemeID = "custom"
+
+    private nonisolated static func customPalette(in defaults: UserDefaults) -> ThemePalette? {
+        guard let stored = defaults.stringArray(forKey: Key.customColors), stored.count == 3 else { return nil }
+        let colors = stored.compactMap(ThemeColor.init(hex:))
+        guard colors.count == 3 else { return nil }
+        return ThemePalette(background: colors[0], accent: colors[1], logo: colors[2])
     }
 
     public nonisolated static func iMessageHistory(in defaults: UserDefaults) -> IMessageHistoryWindow {
@@ -106,5 +145,8 @@ public final class AppPreferences {
         static let unreadBadge = "unreadBadge.enabled"
         static let iMessageHistory = "imessage.historyWindow"
         static let messageRetention = "messages.retentionDays"
+        static let appearanceMode = "appearance.mode"
+        static let theme = "appearance.theme"
+        static let customColors = "appearance.customColors"
     }
 }

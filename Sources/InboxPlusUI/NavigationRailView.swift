@@ -28,10 +28,13 @@ struct NavigationRailView: View {
     var onUpdate: () -> Void = {}
     var canCompose = true
     var onCompose: () -> Void = {}
+    /// Changes when someone picks a theme, which the logo celebrates.
+    var themePicks = 0
+    @Environment(\.inboxPlusTheme) private var theme
 
     var body: some View {
         VStack(spacing: 14) {
-            InboxPlusLogoButton()
+            InboxPlusLogoButton(celebration: themePicks)
                 .padding(.bottom, 4)
 
             ForEach([SidebarSection.inbox, .contacts]) { section in
@@ -41,6 +44,7 @@ struct NavigationRailView: View {
                 Image(systemName: "square.and.pencil").frame(width: 30, height: 30)
             }
             .buttonStyle(.plain)
+            .foregroundStyle(theme.onRailPrimary)
             .accessibilityLabel("New message")
             .help("New message")
             .disabled(!canCompose)
@@ -48,9 +52,9 @@ struct NavigationRailView: View {
             if let update {
                 Button(action: onUpdate) {
                     Image(systemName: "arrow.down.circle.fill")
-                        .foregroundStyle(InboxPlusTheme.ink)
+                        .foregroundStyle(theme.onRail)
                         .frame(width: 30, height: 30)
-                        .background(InboxPlusTheme.ink.opacity(0.15), in: .rect(cornerRadius: 8))
+                        .background(theme.onRail.opacity(0.15), in: .rect(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(update.help)
@@ -61,7 +65,7 @@ struct NavigationRailView: View {
         }
         .padding(.vertical, 14)
         .frame(width: 54)
-        .background(.quaternary.opacity(0.25))
+        .background(theme.rail)
     }
 
     private func railButton(_ section: SidebarSection) -> some View {
@@ -70,10 +74,10 @@ struct NavigationRailView: View {
             selection = section
         } label: {
             Image(systemName: section.symbolName)
-                .foregroundStyle(isSelected ? AnyShapeStyle(InboxPlusTheme.ink) : AnyShapeStyle(.secondary))
+                .foregroundStyle(isSelected ? AnyShapeStyle(theme.onRail) : theme.onRailSecondary)
                 .frame(width: 30, height: 30)
                 .background(
-                    isSelected ? InboxPlusTheme.ink.opacity(0.15) : .clear,
+                    isSelected ? theme.onRail.opacity(0.15) : .clear,
                     in: .rect(cornerRadius: 8)
                 )
                 .contentShape(.rect)

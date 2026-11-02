@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import InboxPlusBridge
 import InboxPlusCore
@@ -22,6 +23,7 @@ public struct RootView: View {
     /// Informational, not a failure — reusing the failure alert would title good news as an error.
     @State private var connectNotice: ConnectNotice?
     @State private var accountFailure: AccountFailure?
+    @State private var themePicks = 0
 
     private let makeLoginSession: BridgeLoginSessionProvider?
     private let update: AppUpdatePresentation?
@@ -81,6 +83,10 @@ public struct RootView: View {
         self.onUpdate = onUpdate
     }
 
+    private var theme: InboxPlusTheme {
+        InboxPlusTheme(preferences.theme)
+    }
+
     private var selectedInboxID: InboxItem.ID? {
         switch model.detailSelection {
         case .empty: nil
@@ -118,7 +124,8 @@ public struct RootView: View {
             HStack(spacing: 0) {
                 NavigationRailView(selection: $section, update: update, onUpdate: onUpdate,
                                    canCompose: canStartNewConversation,
-                                   onCompose: { accountFlow = .newConversation })
+                                   onCompose: { accountFlow = .newConversation },
+                                   themePicks: themePicks)
                     .fixedSize(horizontal: true, vertical: false)
                 Divider()
                 sidebar
@@ -131,8 +138,12 @@ public struct RootView: View {
         .frame(minWidth: 900, minHeight: 600)
         .disabled(model.isPreparingForUpdate)
         .focusedSceneValue(\.inboxCommandActions, commandActions)
-        .tint(InboxPlusTheme.ink)
-        .accentColor(InboxPlusTheme.ink)
+        .environment(\.inboxPlusTheme, theme)
+        .tint(theme.highlight)
+        .accentColor(theme.highlight)
+        .onChange(of: preferences.appearanceMode, initial: true) { _, mode in
+            NSApplication.shared.appearance = mode.appearance
+        }
         // The menu bar panel owns the connections overview; a Connect there lands here as a
         // pending request because the login sheet has to present from a window.
         .onChange(of: model.pendingConnectionRequest, initial: true) { _, platform in
@@ -409,7 +420,8 @@ public struct RootView: View {
 
     @ViewBuilder private var detail: some View {
         if section == .settings {
-            PreferencesView(model: model, preferences: preferences, services: settings)
+            PreferencesView(model: model, preferences: preferences, services: settings,
+                            onThemePicked: { themePicks += 1 })
         } else {
             selectionDetail
         }
