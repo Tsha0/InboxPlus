@@ -4,7 +4,23 @@ import InboxPlusCore
 import Testing
 @testable import InboxPlusMatrix
 
-private func event(_ id: String, _ msgType: MessageType) -> EventTimelineItem {
+private final class LatestEventProvider: LazyTimelineItemProvider, @unchecked Sendable {
+    let json: String?
+
+    init(json: String?) {
+        self.json = json
+        super.init(noHandle: .init())
+    }
+
+    required init(unsafeFromHandle handle: UInt64) {
+        json = nil
+        super.init(unsafeFromHandle: handle)
+    }
+
+    override func latestJson() -> String? { json }
+}
+
+private func event(_ id: String, _ msgType: MessageType, json: String? = nil) -> EventTimelineItem {
     EventTimelineItem(
         isRemote: true, eventOrTransactionId: .eventId(eventId: id), sender: "@instagram_456:local",
         senderProfile: .unavailable, forwarder: nil, forwarderProfile: nil,
@@ -16,7 +32,7 @@ private func event(_ id: String, _ msgType: MessageType) -> EventTimelineItem {
         )),
         eventTypeRaw: "m.room.message", timestamp: 123_000, localSendState: nil,
         localCreatedAt: nil, readReceipts: [:], origin: nil, canBeRepliedTo: true,
-        lazyProvider: LazyTimelineItemProvider(noHandle: .init())
+        lazyProvider: LatestEventProvider(json: json)
     )
 }
 
@@ -87,6 +103,58 @@ private let normalizer = MatrixEventNormalizer(accountID: "matrix-local")
     #expect(message.body == "https://www.instagram.com/reel/Cabc123/")
     #expect(message.kind == .appNative)
     #expect(message.attachments.first?.deepLink?.platform == .instagram)
+}
+
+private func video(caption: String? = nil) throws -> MessageType {
+    .video(content: VideoMessageContent(
+        filename: "clip.mp4", caption: caption, formattedCaption: nil,
+        source: try MediaSource.fromUrl(url: "mxc://inboxplus.localhost/video"), info: nil
+    ))
+}
+
+@Test func aBridgeFetchedReelBecomesALinkWithoutDownloadableVideo() throws {
+    for path in ["reel", "reels"] {
+        let message = try #require(normalizer.normalize(
+            event("shared-video", try video(caption: "An author's caption"), json:
+                """
+                {"content":{"external_url":"https://www.instagram.com/\(path)/Cabc123/"}}
+                """
+            ), roomID: "room"
+        ))
+        #expect(message.kind == .appNative)
+        let attachment = try #require(message.attachments.first)
+        #expect(attachment.kind == .appNative)
+        #expect(attachment.deepLink?.platform == .instagram)
+        #expect(!attachment.isDownloadable)
+        #expect(attachment.source == nil)
+        #expect(attachment.thumbnail == nil)
+    }
+}
+
+@Test func anOrdinaryDirectVideoIsNotBlockedByACaptionMentioningAReel() throws {
+    let message = try #require(normalizer.normalize(
+        event("direct-video", try video(caption: "This reminds me of https://instagram.com/reel/Cabc123/")),
+        roomID: "room"
+    ))
+    #expect(message.kind == .video)
+    #expect(message.attachments.first?.isDownloadable == true)
+}
+
+@Test func unverifiedAndNonReelMetadataDoesNotTurnVideoIntoAnAppLink() throws {
+    for url in [
+        "https://instagram.com.evil.example/reel/Cabc123/", "http://instagram.com/reel/Cabc123/",
+        "https://instagram.com/profile", "https://instagram.com/p/Cabc123/",
+        "https://instagram.com/reel-lookalike/Cabc123/", "javascript:alert(1)"
+    ] {
+        let message = try #require(normalizer.normalize(
+            event("direct-video", try video(), json: "{\"content\":{\"external_url\":\"\(url)\"}}"),
+            roomID: "room"
+        ))
+        #expect(message.kind == .video)
+        #expect(message.attachments.first?.deepLink == nil)
+    }
+    #expect(MatrixEventNormalizer.appNativeVideoCard(json: "not JSON", id: "video") == nil)
+    #expect(MatrixEventNormalizer.appNativeVideoCard(json: "{\"content\":{}}", id: "video") == nil)
 }
 
 @Test func aFormattedCaptionIsStoredAsPlainText() {

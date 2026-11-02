@@ -30,9 +30,14 @@ public struct MatrixEventNormalizer: Sendable {
         let identifier = identifier(for: item.eventOrTransactionId)
         guard var described = describe(item.content, identifier: identifier) else { return nil }
 
-        // A shared Reel or Story reaches the bridge as plain text carrying a link; the link is the
-        // only thing that says what it really is.
-        if described.attachments.isEmpty, described.kind == .text,
+        // The bridge can fetch a shared Reel as m.video, but retains its original external_url.
+        // Drop that media before it reaches the downloader or any video player.
+        if described.kind == .video,
+           let json = item.lazyProvider.latestJson(),
+           let card = Self.appNativeVideoCard(json: json, id: "\(identifier)#link") {
+            described.kind = .appNative
+            described.attachments = [card]
+        } else if described.attachments.isEmpty, described.kind == .text,
            let card = AppNativeContentDetector.attachment(forBody: described.body, id: "\(identifier)#link") {
             described.kind = .appNative
             described.attachments = [card]
@@ -112,6 +117,18 @@ public struct MatrixEventNormalizer: Sendable {
         var kind: MessageKind
         var attachments: [MessageAttachment] = []
         var markdownBody: String?
+    }
+
+    static func appNativeVideoCard(json: String, id: String) -> MessageAttachment? {
+        struct Event: Decodable {
+            struct Content: Decodable {
+                let external_url: String?
+            }
+            let content: Content
+        }
+        guard let event = try? JSONDecoder().decode(Event.self, from: Data(json.utf8)),
+              let url = event.content.external_url else { return nil }
+        return AppNativeContentDetector.attachment(forBody: url, id: id)
     }
 
     /// Local echoes are keyed by transaction ID until the server assigns an event ID.
