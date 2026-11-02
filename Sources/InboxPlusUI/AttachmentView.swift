@@ -95,14 +95,15 @@ public struct AttachmentView: View {
     @ViewBuilder private var playableContent: some View {
         switch state {
         case let .ready(url):
-            // Inbox+ never autoplays: `VideoPlayer` presents controls and waits for the user.
-            VideoPlayer(player: AVPlayer(url: url))
-                .frame(
-                    width: 320,
-                    height: attachment.kind == .audio ? 60 : 200
-                )
-                .clipShape(.rect(cornerRadius: 10))
-                .accessibilityLabel("\(attachment.title), \(durationLabel ?? "playable")")
+            if attachment.kind == .video {
+                VideoAttachmentView(url: url, pixelSize: attachment.pixelSize)
+                    .id(url)
+            } else {
+                VideoPlayer(player: AVPlayer(url: url))
+                    .frame(width: 320, height: 60)
+                    .clipShape(.rect(cornerRadius: 10))
+                    .accessibilityLabel("\(attachment.title), \(durationLabel ?? "playable")")
+            }
         case .idle, .loading:
             MediaPlaceholder(attachment: attachment, durationLabel: durationLabel)
         case let .failed(reason):
