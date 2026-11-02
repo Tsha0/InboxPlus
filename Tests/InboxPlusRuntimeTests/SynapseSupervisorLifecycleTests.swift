@@ -671,7 +671,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
         arguments: [childLifetimeSeconds]
     ))
     let firstLaunch = Task { try await process.launch() }
-    let spawned = await Task.detached { gate.waitForFirstSpawn() }.value
+    let spawned = await gate.waitForFirstSpawn()
     try #require(spawned != nil)
     var unexpectedSecond: ManagedProcessIdentity?
 
@@ -772,7 +772,7 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
         arguments: [childLifetimeSeconds]
     ))
     let launch = Task { try await process.launch() }
-    try #require(spawn.waitForPID() != nil)
+    try #require(await spawn.waitForPID() != nil)
 
     launch.cancel()
     await #expect(throws: CancellationError.self) { try await launch.value }
@@ -1355,7 +1355,6 @@ private final class SignalRaceEvidence: @unchecked Sendable {
 
 private final class SpawnEvidence: @unchecked Sendable {
     private let lock = NSLock()
-    private let semaphore = DispatchSemaphore(value: 0)
     private var storedPID: pid_t?
 
     var pid: pid_t? {
@@ -1368,13 +1367,26 @@ private final class SpawnEvidence: @unchecked Sendable {
         lock.lock()
         storedPID = pid
         lock.unlock()
-        semaphore.signal()
     }
 
-    func waitForPID() -> pid_t? {
-        guard semaphore.wait(timeout: .now() + spawnWaitSeconds) == .success else { return nil }
-        return pid
+    func waitForPID() async -> pid_t? {
+        await waitForSpawn { pid }
     }
+}
+
+/// Waits for a child to be spawned without holding a thread.
+///
+/// The launch being waited for runs on the cooperative pool, which has about one thread per core —
+/// three on a CI runner. These waits were semaphores, and a few tests blocked on them at once took
+/// every pool thread, so the launches they were waiting for never started: the test failed after
+/// the full timeout, and unrelated tests stalled for as long.
+private func waitForSpawn<Value>(_ value: () -> Value?) async -> Value? {
+    let deadline = ContinuousClock.now + .seconds(spawnWaitSeconds)
+    while ContinuousClock.now < deadline {
+        if let found = value() { return found }
+        do { try await Task.sleep(for: .milliseconds(10)) } catch { break }
+    }
+    return value()
 }
 
 /// How long the throwaway child processes these tests spawn stay alive.
@@ -1397,7 +1409,6 @@ private let spawnWaitSeconds: Double = 30
 
 private final class ConcurrentSpawnGate: @unchecked Sendable {
     private let lock = NSLock()
-    private let firstSpawned = DispatchSemaphore(value: 0)
     private let release = DispatchSemaphore(value: 0)
     private var storedPIDs: [pid_t] = []
 
@@ -1413,13 +1424,13 @@ private final class ConcurrentSpawnGate: @unchecked Sendable {
         let isFirst = storedPIDs.count == 1
         lock.unlock()
         guard isFirst else { return }
-        firstSpawned.signal()
-        release.wait()
+        // Deliberately holds the first launch mid-spawn; the test releases it within moments, and
+        // the timeout keeps a starved thread pool from turning that into a hang.
+        _ = release.wait(timeout: .now() + spawnWaitSeconds)
     }
 
-    func waitForFirstSpawn() -> pid_t? {
-        guard firstSpawned.wait(timeout: .now() + spawnWaitSeconds) == .success else { return nil }
-        return pids.first
+    func waitForFirstSpawn() async -> pid_t? {
+        await waitForSpawn { pids.first }
     }
 
     func releaseFirst() {

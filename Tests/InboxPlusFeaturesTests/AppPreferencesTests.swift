@@ -69,14 +69,16 @@ private func temporaryFile(_ name: String) -> URL {
 }
 
 /// Events are applied on the main actor after they are published, so a sentinel marks the end.
+/// History is applied in batches on a short timer, so this waits on the clock: a fixed number of
+/// yields finishes before the timer fires on an idle machine, and only passed under load.
 @MainActor
 private func drain(_ gateway: PreferenceGateway, _ model: InboxPlusAppModel) async {
     let sentinel = Message(id: UUID().uuidString, route: direct, senderIdentityID: "sam", body: "",
                            timestamp: .distantPast, deliveryState: .acknowledged)
     await gateway.publish(.historicalMessageUpserted(sentinel))
-    for _ in 0..<1000 {
+    for _ in 0..<500 {
         if model.messagesByRoute[direct]?.contains(where: { $0.id == sentinel.id }) == true { return }
-        await Task.yield()
+        try? await Task.sleep(for: .milliseconds(10))
     }
     Issue.record("events were not applied")
 }
