@@ -15,8 +15,10 @@ private actor StubFetcher: BridgeArtifactFetching {
         self.body = body
     }
 
-    func fetch(_ url: URL) async throws -> (status: Int, body: Data) {
+    func fetch(_ url: URL, progress: @escaping @Sendable (Int64, Int64?) -> Void) async throws -> (status: Int, body: Data) {
         requestCount += 1
+        progress(Int64(body.count / 2), Int64(body.count))
+        progress(Int64(body.count), Int64(body.count))
         return (status, body)
     }
 
@@ -176,4 +178,26 @@ private func descriptor(sha256: String) -> BridgeDescriptor {
     #expect(instagram != whatsApp)
     #expect(instagram.path.hasPrefix(paths.profile.path + "/"))
     #expect(whatsApp.path.hasPrefix(paths.profile.path + "/"))
+}
+
+private final class InstallProgressLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [BridgeSetupProgress] = []
+    func record(_ value: BridgeSetupProgress) { lock.withLock { values.append(value) } }
+    var recorded: [BridgeSetupProgress] { lock.withLock { values } }
+}
+
+@Test func bridgeInstallationReportsDownloadBytesBeforeVerification() async throws {
+    let (paths, root) = try makePaths()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let body = Data("verified bridge".utf8)
+    let progress = InstallProgressLog()
+    let installer = BridgeInstaller(paths: paths, fetcher: StubFetcher(body: body))
+    try await installer.install(descriptor(sha256: BridgeInstaller.hash(body)), progress: { progress.record($0) })
+    #expect(progress.recorded == [
+        .downloading(received: 0, total: nil),
+        .downloading(received: Int64(body.count / 2), total: Int64(body.count)),
+        .downloading(received: Int64(body.count), total: Int64(body.count)),
+        .verifying
+    ])
 }

@@ -39,10 +39,12 @@ public enum InboxPlusAppModelError: Error, Equatable {
 
 public enum ReplyError: Error, Equatable, LocalizedError {
     case restartingToUpdate
+    case refreshingRuntime
 
     public var errorDescription: String? {
         switch self {
         case .restartingToUpdate: "Inbox+ is restarting to update. Send it again once it reopens."
+        case .refreshingRuntime: "Local services are restarting. Your draft is saved; try sending again when setup finishes."
         }
     }
 }
@@ -170,6 +172,7 @@ public final class InboxPlusAppModel {
     }
 
     public var isPreparingForUpdate = false
+    public private(set) var isRefreshingRuntime = false
 
     public var healthBannerMessage: String? {
         guard case let .needsAttention(message) = health else { return nil }
@@ -267,6 +270,45 @@ public final class InboxPlusAppModel {
         }
     }
 
+    public func refreshRuntime(
+        timeout: Duration = .seconds(90),
+        _ refresh: @Sendable () async throws -> Void
+    ) async throws {
+        guard !isRefreshingRuntime, !isPreparingForUpdate else { throw ReplyError.refreshingRuntime }
+        isRefreshingRuntime = true
+        defer { isRefreshingRuntime = false }
+        try await start()
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while sendsInFlight > 0 || messagesByRoute.values.contains(where: { $0.contains { $0.deliveryState == .pending } }) {
+            guard clock.now < deadline else {
+                throw NSError(domain: "InboxPlus.Setup", code: 2, userInfo: [
+                    NSLocalizedDescriptionKey: "Messages are still sending. Let them finish, then try connecting again. Your drafts and attachments are saved."
+                ])
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        stop()
+        do {
+            try await refresh()
+            try await start()
+            if let route = openRoute { try await gateway.loadRecentMessages(in: route) }
+        } catch {
+            health = .needsAttention("Setup could not reconnect the inbox: \(error.localizedDescription)")
+            throw error
+        }
+    }
+
+    public func refreshConversations() async throws {
+        let snapshot = try await gateway.loadSnapshot()
+        for account in snapshot.accounts { apply(.accountUpserted(account)) }
+        for identity in snapshot.identities { apply(.identityUpserted(identity)) }
+        for conversation in snapshot.conversations { apply(.conversationUpserted(conversation)) }
+        for messages in snapshot.messagesByRoute.values {
+            for message in messages { apply(.historicalMessageUpserted(message)) }
+        }
+    }
+
     public func reportStartupFailure(_ error: any Error) {
         health = .needsAttention("Inbox+ could not start: \(error.localizedDescription)")
     }
@@ -323,6 +365,7 @@ public final class InboxPlusAppModel {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
         guard !isPreparingForUpdate else { throw ReplyError.restartingToUpdate }
+        guard !isRefreshingRuntime else { throw ReplyError.refreshingRuntime }
         sendsInFlight += 1
         defer { sendsInFlight -= 1 }
         do {
@@ -731,6 +774,7 @@ public final class InboxPlusAppModel {
     }
 
     public func sendDraft(_ submission: DraftSubmission) async throws {
+        guard !isRefreshingRuntime else { throw ReplyError.refreshingRuntime }
         let body = submission.body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
         sendsInFlight += 1
@@ -816,6 +860,7 @@ public final class InboxPlusAppModel {
     /// A file that fails to send stays staged: dropping it would lose the user's choice with
     /// nothing to show for it.
     public func sendStagedAttachments(for submission: DraftSubmission) async throws {
+        guard !isRefreshingRuntime else { throw ReplyError.refreshingRuntime }
         let route = submission.route
         sendsInFlight += 1
         defer { sendsInFlight -= 1 }

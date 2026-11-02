@@ -26,6 +26,7 @@ public actor SynapseSupervisor {
     private let listenerChecker: any LoopbackListenerChecking
     private let healthChecker: any SynapseHealthChecking
     private let gracefulTerminationTimeout: Duration
+    private let allowsForcedTermination: Bool
     private let forcedTerminationTimeout: Duration
     private let listenerVerificationAttempts: Int
     private let listenerVerificationInterval: Duration
@@ -56,6 +57,7 @@ public actor SynapseSupervisor {
         listenerChecker: any LoopbackListenerChecking = SystemLoopbackListenerChecker(),
         healthChecker: any SynapseHealthChecking,
         initialSnapshot: RuntimeSnapshot = .stopped,
+        allowsForcedTermination: Bool = true,
         gracefulTerminationTimeout: Duration = .seconds(5),
         forcedTerminationTimeout: Duration = .seconds(1),
         listenerVerificationAttempts: Int = 20,
@@ -94,6 +96,7 @@ public actor SynapseSupervisor {
         } else {
             snapshot = initialSnapshot
         }
+        self.allowsForcedTermination = allowsForcedTermination
         self.gracefulTerminationTimeout = gracefulTerminationTimeout
         self.forcedTerminationTimeout = forcedTerminationTimeout
         self.listenerVerificationAttempts = listenerVerificationAttempts
@@ -194,11 +197,18 @@ public actor SynapseSupervisor {
                 }
                 _ = try await process.signal(.terminate, ifMatching: identity)
                 try requireCurrent(operation)
-                let exitedGracefully = try await process.waitForExit(
+                var exitedGracefully = try await process.waitForExit(
                     matching: identity,
                     timeout: gracefulTerminationTimeout
                 )
                 try requireCurrent(operation)
+                // Keep ownership while a database writer drains; releasing it would run forced cleanup.
+                while !exitedGracefully && !allowsForcedTermination {
+                    exitedGracefully = try await process.waitForExit(
+                        matching: identity, timeout: gracefulTerminationTimeout
+                    )
+                    try requireCurrent(operation)
+                }
                 if !exitedGracefully {
                     _ = try await process.signal(.kill, ifMatching: identity)
                     try requireCurrent(operation)

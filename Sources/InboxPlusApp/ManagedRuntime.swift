@@ -32,6 +32,13 @@ actor ManagedRuntime {
         }
     }
 
+    private let commandURL: URL
+
+    init(commandURL: URL = ManagedRuntime.runtimeCommandURL()) {
+        self.commandURL = commandURL
+    }
+
+    private var stopRequested = false
     private var preparation: Task<Void, Error>?
 
     private nonisolated let stoppable = StoppableChild()
@@ -65,6 +72,7 @@ actor ManagedRuntime {
         timeout: Duration = .seconds(240),
         progress: @Sendable (String) -> Void = { _ in }
     ) async throws -> RuntimeProfileState {
+        if stopRequested { try await stopForUpdate() }
         if let state = try? await servingState(paths: paths) {
             guard Self.isUnsupervised(paths: paths) else {
                 progress("attached to the runtime already serving '\(profileName)'")
@@ -77,7 +85,7 @@ actor ManagedRuntime {
                 child = nil
                 startedByThisApp = false
             }
-            reconcileStaleState(profileName: profileName)
+            reconcileStaleState(paths: paths, profileName: profileName)
             if let state = try? await servingState(paths: paths) {
                 progress("attached to the runtime already serving '\(profileName)'")
                 return state
@@ -113,9 +121,9 @@ actor ManagedRuntime {
             // is a no-op when the state is already clean.
             if phaseBeforeLaunch != nil, phaseBeforeLaunch != "stopped" {
                 progress("clearing state left by a runtime that did not shut down")
-                reconcileStaleState(profileName: profileName)
+                reconcileStaleState(paths: paths, profileName: profileName)
             }
-            try launch(profileName: profileName, progress: progress)
+            try launch(paths: paths, profileName: profileName, progress: progress)
         }
         return try await waitUntilServing(
             paths: paths,
@@ -139,17 +147,33 @@ actor ManagedRuntime {
     /// Update installation must wait for the owning CLI to finish shutting down its children.
     /// A timed-out stop cancels termination; it never force-kills a database writer.
     func stopForUpdate(timeout: Duration = .seconds(30)) async throws {
-        guard let process = stoppableChild() else { return }
-        requestStop()
-        try await RuntimeExitWaiter.wait(timeout: timeout) { process.isRunning }
+        guard startedByThisApp else { return }
+        stopRequested = true
+        if let process = stoppableChild() {
+            requestStop()
+            try await RuntimeExitWaiter.wait(timeout: timeout) { process.isRunning }
+        }
+        stopRequested = false
         child = nil
         startedByThisApp = false
     }
 
+    var canRefresh: Bool { startedByThisApp }
+
+    func refresh(paths: RuntimePaths, profileName: String) async throws {
+        guard startedByThisApp else {
+            throw NSError(domain: "InboxPlus.Setup", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Restart the runtime in the terminal that started it, then choose the platform again. Inbox+ can stay open."
+            ])
+        }
+        try await stopForUpdate()
+        _ = try await ensureRunning(paths: paths, profileName: profileName)
+    }
+
     // MARK: - Launching
 
-    private func launch(profileName: String, progress: @Sendable (String) -> Void) throws {
-        let command = Self.runtimeCommandURL()
+    private func launch(paths: RuntimePaths, profileName: String, progress: @Sendable (String) -> Void) throws {
+        let command = commandURL
         guard FileManager.default.isExecutableFile(atPath: command.path) else {
             throw StartFailure.commandMissing(command.path)
         }
@@ -160,6 +184,9 @@ actor ManagedRuntime {
         // normal way it stops; this is what covers a crash or a force quit, where nothing gets the
         // chance to send a signal at all.
         process.arguments = Self.startArguments(profileName: profileName)
+        var environment = ProcessInfo.processInfo.environment
+        environment["INBOXPLUS_RUNTIME_ROOT"] = paths.root.path
+        process.environment = environment
         // The child writes one line per supervised process. Forwarding it keeps the app's own log
         // the single place to look when a bridge fails to come up.
         let output = Pipe()
@@ -199,10 +226,13 @@ actor ManagedRuntime {
     ///
     /// Best effort by design: if a session owns the profile, or the homeserver will not stop,
     /// `stop` refuses and says so, and the caller decides what to do with what is still running.
-    private func reconcileStaleState(profileName: String) {
+    private func reconcileStaleState(paths: RuntimePaths, profileName: String) {
         let process = Process()
-        process.executableURL = Self.runtimeCommandURL()
+        process.executableURL = commandURL
         process.arguments = ["stop", "--profile", profileName]
+        var environment = ProcessInfo.processInfo.environment
+        environment["INBOXPLUS_RUNTIME_ROOT"] = paths.root.path
+        process.environment = environment
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try? process.run()
@@ -298,7 +328,7 @@ enum RuntimeExitWaiter {
         while isRunning() {
             guard clock.now < deadline else {
                 throw NSError(domain: "InboxPlus.Update", code: 1, userInfo: [
-                    NSLocalizedDescriptionKey: "The messaging runtime is still stopping. Try the update again in a moment."
+                    NSLocalizedDescriptionKey: "The messaging services are still stopping safely. Wait a moment, then try again."
                 ])
             }
             try await Task.sleep(for: .milliseconds(100))

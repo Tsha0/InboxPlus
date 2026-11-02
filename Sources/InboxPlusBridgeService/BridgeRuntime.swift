@@ -148,21 +148,23 @@ public struct BridgeRuntime: Sendable {
 
     /// Installs and configures one bridge, leaving Synapse able to load its registration.
     ///
-    /// This must complete before Synapse starts: `app_service_config_files` is read once at
-    /// homeserver startup, so a registration written afterwards is invisible until a restart.
+    /// Synapse reads `app_service_config_files` at startup. A bridge prepared during a session
+    /// becomes available after the owning runtime refreshes its services.
     @discardableResult
     public func prepare(
         _ descriptor: BridgeDescriptor,
         serverName: String,
         homeserverPort: UInt16,
-        ownerUserID: String
+        ownerUserID: String,
+        progress: @escaping BridgeSetupProgressHandler = { _ in }
     ) async throws -> PreparedBridge {
         guard descriptor.runtimeKind == .goBinary else {
             throw BridgeRuntimeError.nativeAdapterHasNoProcess(descriptor.id)
         }
         try BridgeCatalog.validate([descriptor])
 
-        let installed = try await installer.install(descriptor)
+        let installed = try await installer.install(descriptor, progress: progress)
+        progress(.configuring)
         let directory = installer.directory(for: descriptor)
         try await libolm.install(into: directory)
 
@@ -300,7 +302,9 @@ public struct BridgeRuntime: Sendable {
     }
 
     /// Builds a supervisor for a prepared bridge, reusing the Phase 2 state machine unchanged.
-    public func makeSupervisor(for record: PreparedBridge) throws -> SynapseSupervisor {
+    public func makeSupervisor(
+        for record: PreparedBridge, allowsForcedTermination: Bool = true
+    ) throws -> SynapseSupervisor {
         let directory = URL(fileURLWithPath: record.executable).deletingLastPathComponent()
         // The supervisor's captured streams go to the profile's own logs directory, which it
         // requires be a direct child of the profile root; the bridge's structured JSON log stays
@@ -329,6 +333,7 @@ public struct BridgeRuntime: Sendable {
                 provisioningSecret: record.provisioningSecret,
                 userID: record.ownerUserID
             ),
+            allowsForcedTermination: allowsForcedTermination,
             // A bridge reaching a remote network needs longer than a local homeserver before its
             // provisioning API answers.
             startupTimeout: .seconds(60)
@@ -351,6 +356,7 @@ public struct BridgeRuntime: Sendable {
     /// stopped, and one they reconnect is started again.
     @discardableResult
     public func withRunningBridges<T>(
+        allowsForcedTermination: Bool = true,
         reconcileInterval: Duration = .seconds(1),
         onBridgeReady: @escaping @Sendable (PreparedBridge, RuntimeSnapshot) -> Void = { _, _ in },
         onBridgeStopped: @escaping @Sendable (PreparedBridge) -> Void = { _ in },
@@ -360,7 +366,7 @@ public struct BridgeRuntime: Sendable {
         let fleet = BridgeFleet(
             eligible: try store.load(),
             wanted: { try bridgesToRun() },
-            launch: { try makeSupervisor(for: $0) },
+            launch: { try makeSupervisor(for: $0, allowsForcedTermination: allowsForcedTermination) },
             onReady: onBridgeReady,
             onStopped: onBridgeStopped,
             onFailed: onBridgeFailed

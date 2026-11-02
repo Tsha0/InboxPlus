@@ -299,8 +299,10 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
 
     /// Detaches every timeline listener. Sync itself keeps running for the client's lifetime.
     public func stop() async {
+        let discovery = discoveryTask
         discoveryTask?.cancel()
         discoveryTask = nil
+        await discovery?.value
         knownRoomIDs.removeAll()
         managementRoomAccountByID.removeAll()
         for handle in timelineHandles.values { handle.cancel() }
@@ -311,6 +313,11 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         for continuation in streamContinuations.values { continuation.finish() }
         streamContinuations.removeAll()
         started = false
+    }
+
+    public func disconnect() async {
+        await stop()
+        await client.disconnect()
     }
 
     // MARK: - Room discovery

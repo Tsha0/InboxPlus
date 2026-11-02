@@ -110,6 +110,7 @@ struct InboxPlusApp: App {
     @State private var launchAtLogin = LaunchAtLoginController.shared
     @State private var preferences: AppPreferences
     @State private var model: InboxPlusAppModel
+    private let runtimeGateway: DeferredRuntimeGateway?
     private let exportDiagnostics: (@Sendable (URL) async throws -> Void)?
 
     init() {
@@ -125,6 +126,7 @@ struct InboxPlusApp: App {
             accountLifecycle: services.accountLifecycle,
             composerFiles: services.composerFiles
         ))
+        runtimeGateway = services.runtimeGateway
         exportDiagnostics = services.exportDiagnostics
     }
 
@@ -146,12 +148,30 @@ struct InboxPlusApp: App {
         WindowGroup("Inbox+", id: "main") {
             RootView(
                 model: model, preferences: preferences, settings: settings,
-                makeLoginSession: BridgeSelection.makeProvider(),
+                makeLoginSession: runtimeGateway.flatMap { gateway in
+                    BridgeSelection.makeProvider(
+                        refreshRuntime: { progress in
+                            try await model.refreshRuntime {
+                                progress(.restarting)
+                                try await gateway.refreshRuntime()
+                            }
+                        },
+                        resumeInbox: {
+                            if try await gateway.runtimeChanged() {
+                                try await model.refreshRuntime {
+                                    try await gateway.refreshRuntime(restartServices: false)
+                                }
+                            } else {
+                                try await model.start()
+                            }
+                        }
+                    )
+                },
                 update: updates.presentation, onUpdate: updates.checkForUpdates
             )
                 .task {
                     updates.installationPreflight = {
-                        guard model.health != .starting, !model.hasUnfinishedMessagingWork else {
+                        guard model.health != .starting, !model.isRefreshingRuntime, !model.hasUnfinishedMessagingWork else {
                             throw NSError(domain: "InboxPlus.Update", code: 2, userInfo: [
                                 NSLocalizedDescriptionKey: "Wait for setup and pending messages to finish, and send or clear your drafts and attachments before restarting to update. Conversations with a draft are marked in the inbox."
                             ])

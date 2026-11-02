@@ -42,6 +42,14 @@ public struct PersistedSession: Codable, Sendable, Equatable {
         )
     }
 
+    func replacingHomeserverURL(_ url: URL) -> PersistedSession {
+        PersistedSession(
+            accessToken: accessToken, refreshToken: refreshToken, userID: userID,
+            deviceID: deviceID, homeserverURL: url.absoluteString, oauthData: oauthData,
+            usesNativeSlidingSync: usesNativeSlidingSync
+        )
+    }
+
     public var session: Session {
         Session(
             accessToken: accessToken,

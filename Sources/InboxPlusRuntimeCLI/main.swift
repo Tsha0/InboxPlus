@@ -79,6 +79,7 @@ func execute(_ command: RuntimeCommand) async throws -> String {
         let monitor = InterruptMonitor(exitWhenParentExits: exitWithParent)
         let runtime = BridgeRuntime(paths: service.paths)
         try await service.withRunningRuntime(
+            allowsForcedTermination: !exitWithParent,
             messageRetention: messageRetention,
             onReady: { snapshot in
                 print(describe(snapshot))
@@ -90,6 +91,7 @@ func execute(_ command: RuntimeCommand) async throws -> String {
             // config has to name the port it actually got.
             try runtime.rebindToHomeserver(port: context.port)
             try await runtime.withRunningBridges(
+                allowsForcedTermination: !exitWithParent,
                 onBridgeReady: { record, snapshot in
                     print("bridge \(record.bridgeID) \(describe(snapshot))")
                     fflush(stdout)

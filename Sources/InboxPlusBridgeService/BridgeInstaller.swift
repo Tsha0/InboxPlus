@@ -35,7 +35,9 @@ public enum BridgeInstallError: Error, Equatable, Sendable, CustomStringConverti
 
 /// Fetches bytes for the installer. Split out so tests never reach the network.
 public protocol BridgeArtifactFetching: Sendable {
-    func fetch(_ url: URL) async throws -> (status: Int, body: Data)
+    func fetch(
+        _ url: URL, progress: @escaping @Sendable (Int64, Int64?) -> Void
+    ) async throws -> (status: Int, body: Data)
 }
 
 public struct URLSessionBridgeArtifactFetcher: BridgeArtifactFetching {
@@ -45,11 +47,22 @@ public struct URLSessionBridgeArtifactFetcher: BridgeArtifactFetching {
         self.maximumBytes = maximumBytes
     }
 
-    public func fetch(_ url: URL) async throws -> (status: Int, body: Data) {
+    public func fetch(
+        _ url: URL, progress: @escaping @Sendable (Int64, Int64?) -> Void
+    ) async throws -> (status: Int, body: Data) {
         var request = URLRequest(url: url)
         request.timeoutInterval = 300
         request.httpMethod = "GET"
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let delegate = BridgeDownloadProgress(maximumBytes: maximumBytes, progress: progress)
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let (file, response) = try await session.download(for: request, delegate: delegate)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard size <= maximumBytes else {
+            throw BridgeInstallError.transport(bridge: url.lastPathComponent, reason: "download exceeded the size limit")
+        }
+        let data = try Data(contentsOf: file)
         guard data.count <= maximumBytes else {
             throw BridgeInstallError.transport(
                 bridge: url.lastPathComponent,
@@ -112,7 +125,10 @@ public struct BridgeInstaller: Sendable {
     /// An already-installed binary is re-hashed rather than trusted by path: the check is cheap
     /// next to the download, and it catches a binary that was swapped after installation.
     @discardableResult
-    public func install(_ descriptor: BridgeDescriptor) async throws -> InstalledBridge {
+    public func install(
+        _ descriptor: BridgeDescriptor,
+        progress: @escaping BridgeSetupProgressHandler = { _ in }
+    ) async throws -> InstalledBridge {
         guard let artifact = descriptor.artifact else {
             throw BridgeInstallError.nothingToInstall(descriptor.id)
         }
@@ -121,6 +137,7 @@ public struct BridgeInstaller: Sendable {
         if FileManager.default.fileExists(atPath: destination.path),
            let existing = try? Data(contentsOf: destination),
            Self.hash(existing) == artifact.sha256 {
+            progress(.verifying)
             try Self.setPermissions(Self.executablePermissions, on: destination)
             return InstalledBridge(
                 descriptor: descriptor,
@@ -131,7 +148,10 @@ public struct BridgeInstaller: Sendable {
 
         let (status, body): (Int, Data)
         do {
-            (status, body) = try await fetcher.fetch(artifact.downloadURL)
+            progress(.downloading(received: 0, total: nil))
+            (status, body) = try await fetcher.fetch(artifact.downloadURL) { received, total in
+                progress(.downloading(received: received, total: total))
+            }
         } catch let error as BridgeInstallError {
             throw error
         } catch {
@@ -147,6 +167,7 @@ public struct BridgeInstaller: Sendable {
             throw BridgeInstallError.emptyDownload(descriptor.id)
         }
 
+        progress(.verifying)
         let actual = Self.hash(body)
         guard actual == artifact.sha256 else {
             throw BridgeInstallError.checksumMismatch(
@@ -236,5 +257,28 @@ public struct BridgeInstaller: Sendable {
         guard descriptor >= 0 else { throw BridgeInstallError.cannotWrite(url) }
         defer { _ = close(descriptor) }
         guard fsync(descriptor) == 0 else { throw BridgeInstallError.cannotWrite(url) }
+    }
+}
+
+private final class BridgeDownloadProgress: NSObject, URLSessionDownloadDelegate, Sendable {
+    private let maximumBytes: Int
+    private let progress: @Sendable (Int64, Int64?) -> Void
+
+    init(maximumBytes: Int, progress: @escaping @Sendable (Int64, Int64?) -> Void) {
+        self.maximumBytes = maximumBytes
+        self.progress = progress
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
+
+    func urlSession(
+        _ session: URLSession, downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64
+    ) {
+        guard totalBytesWritten <= maximumBytes else {
+            downloadTask.cancel()
+            return
+        }
+        progress(totalBytesWritten, totalBytesExpectedToWrite > 0 ? totalBytesExpectedToWrite : nil)
     }
 }

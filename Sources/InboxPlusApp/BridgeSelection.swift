@@ -5,88 +5,93 @@ import InboxPlusCore
 import InboxPlusRuntime
 import InboxPlusUI
 
-/// Supplies the login session behind the account picker, installing the network's bridge first if
-/// this profile has never had one.
-///
-/// Preparing a bridge means downloading a checksum-pinned binary and registering an appservice with
-/// the homeserver, which only makes sense against a running developer profile. Without one the app
-/// offers no login session at all, and `RootView` says why rather than presenting a login that
-/// could never complete.
 enum BridgeSelection {
     static func makeProvider(
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        refreshRuntime: @escaping @MainActor (BridgeSetupProgressHandler) async throws -> Void,
+        resumeInbox: @escaping @MainActor () async throws -> Void
     ) -> BridgeLoginSessionProvider? {
-        // Resolved the same way the gateway resolves it, including the single-prepared-profile
-        // fallback: an app launched from Finder inherits no environment, and offering no login
-        // while the very same launch is attached to a real account is indistinguishable from a bug.
         guard let profileName = GatewaySelection.resolveProfileName(environment: environment)
         else { return nil }
 
-        return { @MainActor platform in
+        return { @MainActor platform, progress in
             guard BridgeCatalog.canConnect(platform) else {
                 throw BridgeCatalogError.unsupportedPlatform(platform)
             }
             let descriptor = try BridgeCatalog.require(platform)
             let root = try RuntimeProfileService.developerRuntimeRoot(environment: environment)
             let paths = try RuntimePaths(root: root, profileName: profileName)
-            // The picker can be opened while the inbox is still starting the homeserver.
-            // Wait for readiness instead of treating a missing or stale port as a login error.
-            let state = try await ManagedRuntime.shared.ensureRunning(
-                paths: paths, profileName: profileName
-            )
+            progress(.checkingRuntime)
+            let state = try await ManagedRuntime.shared.ensureRunning(paths: paths, profileName: profileName)
             guard let port = state.snapshot.loopbackPort
             else { throw GatewaySelectionError.profileNotRunning(profileName) }
 
             let runtime = BridgeRuntime(paths: paths)
-            guard let record = try runtime.prepared(for: platform) else {
-                // Every network in the catalog is offered, so picking one this profile has never
-                // installed is ordinary use, not a mistake — the download and registration the CLI
-                // would do is done here instead of asking for a terminal.
-                try await runtime.prepare(
-                    descriptor,
-                    serverName: state.serverName,
-                    homeserverPort: port,
-                    ownerUserID: "@inboxplus:\(state.serverName)"
-                )
-                // Synapse reads `app_service_config_files` once, at startup: the registration just
-                // written is invisible to the running homeserver, and the bridge process itself is
-                // launched by whoever supervises the profile. Neither is something the app can do
-                // from here, so the restart is handed back rather than glossed over with a login
-                // that would fail against a homeserver which has never heard of this appservice.
-                return .installedPendingRuntimeRestart(
-                    BridgeInstallOutcome(platform: platform, profile: profileName)
+            let existing = try runtime.prepared(for: platform)
+            let record: PreparedBridge
+            if let existing {
+                record = existing
+            } else {
+                record = try await runtime.prepare(
+                    descriptor, serverName: state.serverName, homeserverPort: port,
+                    ownerUserID: "@inboxplus:\(state.serverName)", progress: progress
                 )
             }
-            // Choosing a network the user disconnected is asking for it back. A disconnected
-            // network with no conversations is not listed in Settings, so this is its way back.
             try DisconnectedAccountStore(paths: paths).remove(record.bridgeID)
-            // The homeserver takes a new port each session, so the config on disk may name the
-            // previous one.
             try runtime.rebindToHomeserver(port: port)
-            return await loginPreparation(
-                for: platform,
-                profileName: profileName,
-                session: try runtime.provisioningClient(for: record)
+            let result = try await loginPreparation(
+                for: platform, profileName: profileName,
+                session: runtime.provisioningClient(for: record),
+                requiresRefresh: existing == nil,
+                canRefresh: await ManagedRuntime.shared.canRefresh,
+                refreshRuntime: { try await refreshRuntime(progress) }, progress: progress
             )
+            if case .ready = result {
+                progress(.syncing)
+                try await resumeInbox()
+            }
+            return result
         }
     }
 
-    /// A prepared record proves the bridge was installed, not that it is running.
-    ///
-    /// Bridges are launched, and their registrations loaded by Synapse, only when the runtime
-    /// starts. Choosing the network again before then reaches a port nothing listens on, so every
-    /// login request would be refused; what is actually owed is the restart the install asked for.
     @MainActor
     static func loginPreparation(
         for platform: Platform,
         profileName: String,
-        session: BridgeProvisioningClient
-    ) async -> BridgeLoginPreparation {
-        guard await session.isRunning() else {
-            return .installedPendingRuntimeRestart(
-                BridgeInstallOutcome(platform: platform, profile: profileName)
-            )
+        session: BridgeProvisioningClient,
+        requiresRefresh: Bool,
+        canRefresh: Bool,
+        readinessTimeout: Duration = .seconds(90),
+        refreshRuntime: @MainActor () async throws -> Void,
+        progress: BridgeSetupProgressHandler = { _ in }
+    ) async throws -> BridgeLoginPreparation {
+        if !requiresRefresh {
+            progress(.checkingRuntime)
+            if await waitUntilReady(session, timeout: readinessTimeout) { return .ready(session) }
+        }
+        guard canRefresh else {
+            return .waitingForExternalRuntime(BridgeInstallOutcome(platform: platform, profile: profileName))
+        }
+        progress(.waitingForSends)
+        try await refreshRuntime()
+        progress(.waitingForBridge)
+        guard await waitUntilReady(session, timeout: readinessTimeout) else {
+            throw NSError(domain: "InboxPlus.Setup", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "The \(platform.accessibilityLabel) connection did not become ready. Try connecting again. Your other connections and drafts are kept."
+            ])
         }
         return .ready(session)
+    }
+
+    private static func waitUntilReady(_ session: BridgeProvisioningClient, timeout: Duration) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        repeat {
+            if await session.isRunning() { return true }
+            if Task.isCancelled { return false }
+            guard clock.now < deadline else { return false }
+            do { try await Task.sleep(for: .milliseconds(300)) }
+            catch { return false }
+        } while true
     }
 }
