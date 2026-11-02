@@ -53,6 +53,10 @@ public enum TranscriptPresentation {
         isEmpty ? "No recent messages" : "Showing recent messages"
     }
 
+    public static func focusMessage(in messages: [Message], highlightedID: String?) -> Message? {
+        messages.first { $0.id == highlightedID } ?? messages.last
+    }
+
     public static func senderName(_ message: Message, identities: [RemoteIdentity]) -> String {
         if message.isOutgoing { return "You" }
         if let name = message.senderDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {

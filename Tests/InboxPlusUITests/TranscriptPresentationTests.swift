@@ -44,3 +44,13 @@ private func transcriptMessage(_ id: String, sender: String? = "alice", time: Ti
     #expect(TranscriptPresentation.recentHistoryNotice(isEmpty: false) == "Showing recent messages")
     #expect(TranscriptPresentation.recentHistoryNotice(isEmpty: true) == "No recent messages")
 }
+
+@Test func olderHistoryDoesNotChangeTheTranscriptScrollTarget() {
+    let latest = transcriptMessage("latest", time: 2000)
+    let earlier = transcriptMessage("earlier")
+    #expect(TranscriptPresentation.focusMessage(in: [latest], highlightedID: nil)?.id == "latest")
+    #expect(TranscriptPresentation.focusMessage(in: [earlier, latest], highlightedID: nil)?.id == "latest")
+    #expect(TranscriptPresentation.focusMessage(in: [earlier, latest], highlightedID: "earlier")?.id == "earlier")
+    #expect(TranscriptPresentation.focusMessage(in: [latest], highlightedID: "earlier")?.id == "latest")
+    #expect(TranscriptPresentation.focusMessage(in: [], highlightedID: nil) == nil)
+}

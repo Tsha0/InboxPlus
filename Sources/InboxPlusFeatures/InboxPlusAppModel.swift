@@ -126,6 +126,8 @@ public final class InboxPlusAppModel {
     public private(set) var conversations: [RemoteConversation] = []
     public private(set) var messagesByRoute: [ConversationRoute: [Message]] = [:]
     public private(set) var inboxItems: [InboxItem] = []
+    public private(set) var loadingMessageRoutes: Set<ConversationRoute> = []
+    public private(set) var failedMessageRoutes: Set<ConversationRoute> = []
     public private(set) var detailSelection: DetailSelection = .empty {
         didSet {
             if case let .conversation(closed) = oldValue, closed != openRoute { trimToRecentWindow(closed) }
@@ -216,6 +218,11 @@ public final class InboxPlusAppModel {
     private var eventTaskID: UUID?
     private var bufferingEventTaskID: UUID?
     private var bufferedStartupEvents: [GatewayEvent] = []
+    private var pendingHistoricalMessages: [Message] = []
+    private var historyFlushTask: Task<Void, Never>?
+    private var recentMessageLoads: [ConversationRoute: Task<Void, Never>] = [:]
+    private var recentMessageLoadIDs: [ConversationRoute: UUID] = [:]
+    private var recentMessageLoadRevisions: [ConversationRoute: UInt64] = [:]
 
     /// Lazy media loading for the transcript. Without a loader it simply never downloads, which is
     /// what previews and fixture runs want.
@@ -252,6 +259,15 @@ public final class InboxPlusAppModel {
     }
 
     public func stop() {
+        historyFlushTask?.cancel()
+        historyFlushTask = nil
+        pendingHistoricalMessages.removeAll()
+        recentMessageLoads.values.forEach { $0.cancel() }
+        recentMessageLoads.removeAll()
+        recentMessageLoadIDs.removeAll()
+        recentMessageLoadRevisions.removeAll()
+        loadingMessageRoutes.removeAll()
+        failedMessageRoutes.removeAll()
         let id = startupID
         startupID = nil
         startupTask?.cancel()
@@ -275,6 +291,8 @@ public final class InboxPlusAppModel {
         startupTask?.cancel()
         eventTask?.cancel()
         muteEndTask?.cancel()
+        historyFlushTask?.cancel()
+        recentMessageLoads.values.forEach { $0.cancel() }
     }
 
     /// A person is favourite when any route is saved; toggling applies to the whole current group.
@@ -470,12 +488,34 @@ public final class InboxPlusAppModel {
 
     /// A source may leave history out of its snapshot, so opening a conversation is what asks for
     /// it. The messages arrive as ordinary gateway events.
-    private func loadRecentMessages(in route: ConversationRoute) {
-        Task { [gateway] in
+    public func loadRecentMessages(in route: ConversationRoute) {
+        guard recentMessageLoads[route] == nil else { return }
+        let id = UUID()
+        recentMessageLoadIDs[route] = id
+        recentMessageLoadRevisions[route] = 0
+        loadingMessageRoutes.insert(route)
+        failedMessageRoutes.remove(route)
+        recentMessageLoads[route] = Task { [weak self, gateway] in
+            var failed = false
             do {
                 try await gateway.loadRecentMessages(in: route)
+                try Task.checkCancellation()
             } catch {
-                FileHandle.standardError.write(Data("Inbox+: could not load recent messages: \(error)\n".utf8))
+                failed = !Task.isCancelled
+            }
+            // The gateway can return while its yielded history is still being consumed.
+            while let self, self.recentMessageLoadIDs[route] == id {
+                let revision = self.recentMessageLoadRevisions[route]
+                try? await Task.sleep(for: .milliseconds(16))
+                guard self.recentMessageLoadIDs[route] == id else { return }
+                self.flushHistoricalMessages()
+                guard self.recentMessageLoadRevisions[route] == revision else { continue }
+                self.loadingMessageRoutes.remove(route)
+                if failed { self.failedMessageRoutes.insert(route) }
+                self.recentMessageLoads[route] = nil
+                self.recentMessageLoadIDs[route] = nil
+                self.recentMessageLoadRevisions[route] = nil
+                return
             }
         }
     }
@@ -990,10 +1030,11 @@ public final class InboxPlusAppModel {
 
         let events = bufferedStartupEvents
         bufferedStartupEvents.removeAll()
-        for event in events {
-            apply(event)
-        }
         bufferingEventTaskID = nil
+        for event in events {
+            receive(event, from: id)
+        }
+        flushHistoricalMessages()
     }
 
     private func beginStartup() -> UUID {
@@ -1057,9 +1098,30 @@ public final class InboxPlusAppModel {
         guard eventTaskID == id else { return }
         if bufferingEventTaskID == id {
             bufferedStartupEvents.append(event)
+        } else if case let .historicalMessageUpserted(message) = event {
+            if let revision = recentMessageLoadRevisions[message.route] {
+                recentMessageLoadRevisions[message.route] = revision &+ 1
+            }
+            pendingHistoricalMessages.append(message)
+            guard historyFlushTask == nil else { return }
+            historyFlushTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(16))
+                guard !Task.isCancelled else { return }
+                self?.flushHistoricalMessages()
+            }
         } else {
+            flushHistoricalMessages()
             apply(event)
         }
+    }
+
+    private func flushHistoricalMessages() {
+        historyFlushTask?.cancel()
+        historyFlushTask = nil
+        guard !pendingHistoricalMessages.isEmpty else { return }
+        let messages = pendingHistoricalMessages
+        pendingHistoricalMessages.removeAll(keepingCapacity: true)
+        applyMessages(messages, isLive: false)
     }
 
     private func cancelStartup(id: UUID) {
@@ -1105,41 +1167,7 @@ public final class InboxPlusAppModel {
         case let .messageUpserted(message), let .historicalMessageUpserted(message):
             let isLive: Bool
             if case .messageUpserted = event { isLive = true } else { isLive = false }
-            let isNew = !(messagesByRoute[message.route] ?? []).contains { $0.id == message.id }
-            if isLive, isNew, !message.isOutgoing, message.kind != .membership,
-               message.timestamp >= notificationsStartedAt, !isMuted(message.route) {
-                onIncomingMessage?(alert(for: message))
-            }
-            if isLive, isNew, !message.isOutgoing, message.route == openRoute {
-                saveReadState(of: message.route)
-            }
-            var messages = messagesByRoute[message.route, default: []]
-            if let index = messages.firstIndex(where: { $0.id == message.id }) {
-                messages[index] = message
-            } else {
-                let insertion = messages.firstIndex { $0.timestamp > message.timestamp }
-                messages.insert(message, at: insertion ?? messages.endIndex)
-            }
-            messagesByRoute[message.route] = messages
-            if message.route != openRoute { trimToRecentWindow(message.route) }
-            let accountID = message.route.accountID
-            if message.timestamp > lastActivityByAccount[accountID] ?? .distantPast {
-                lastActivityByAccount[accountID] = message.timestamp
-            }
-            // Writing back is what makes a stranger someone the user talks to.
-            if message.isOutgoing,
-               let index = conversations.firstIndex(where: { $0.route == message.route && $0.isFromUnknownSender }) {
-                conversations[index].isFromUnknownSender = false
-                rebuildInbox()
-            }
-            if
-                let conversationIndex = conversations.firstIndex(where: { $0.route == message.route }),
-                message.timestamp > conversations[conversationIndex].latestActivity
-            {
-                conversations[conversationIndex].latestPreview = message.body
-                conversations[conversationIndex].latestActivity = message.timestamp
-                rebuildInbox()
-            }
+            applyMessages([message], isLive: isLive)
         case let .identityUpserted(identity):
             if let index = identities.firstIndex(where: { $0.id == identity.id }) {
                 identities[index] = identity
@@ -1165,6 +1193,60 @@ public final class InboxPlusAppModel {
                 ? .healthy
                 : .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
         }
+    }
+
+    private func applyMessages(_ updates: [Message], isLive: Bool) {
+        var needsInboxRebuild = false
+        for (route, updates) in Dictionary(grouping: updates, by: \.route) {
+            let existing = messagesByRoute[route] ?? []
+            var orderedIDs = existing.map(\.id)
+            var byID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+            var changed = false
+            for message in updates {
+                let isNew = byID[message.id] == nil
+                guard byID[message.id] != message else { continue }
+                changed = true
+                if isNew { orderedIDs.append(message.id) }
+                if isLive, isNew, !message.isOutgoing, message.kind != .membership,
+                   message.timestamp >= notificationsStartedAt, !isMuted(message.route) {
+                    onIncomingMessage?(alert(for: message))
+                }
+                if isLive, isNew, !message.isOutgoing, message.route == openRoute {
+                    saveReadState(of: message.route)
+                }
+                byID[message.id] = message
+                let accountID = message.route.accountID
+                if message.timestamp > lastActivityByAccount[accountID] ?? .distantPast {
+                    lastActivityByAccount[accountID] = message.timestamp
+                }
+                // Writing back is what makes a stranger someone the user talks to.
+                if message.isOutgoing,
+                   let index = conversations.firstIndex(where: { $0.route == message.route && $0.isFromUnknownSender }) {
+                    conversations[index].isFromUnknownSender = false
+                    needsInboxRebuild = true
+                }
+                if
+                    let conversationIndex = conversations.firstIndex(where: { $0.route == message.route }),
+                    message.timestamp > conversations[conversationIndex].latestActivity
+                {
+                    conversations[conversationIndex].latestPreview = message.body
+                    conversations[conversationIndex].latestActivity = message.timestamp
+                    needsInboxRebuild = true
+                }
+            }
+            guard changed else { continue }
+            var messages = orderedIDs.compactMap { byID[$0] }.sorted { $0.timestamp < $1.timestamp }
+            if route != openRoute {
+                let cutoff = messages.count - RecentHistory.messageCount
+                if cutoff > 0 {
+                    messages = messages.enumerated()
+                        .filter { $0.offset >= cutoff || $0.element.deliveryState != .acknowledged }
+                        .map(\.element)
+                }
+            }
+            messagesByRoute[route] = messages
+        }
+        if needsInboxRebuild { rebuildInbox() }
     }
 
     /// A closed conversation keeps only its recent window, so a long session does not hold every

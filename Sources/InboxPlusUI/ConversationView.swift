@@ -136,6 +136,14 @@ public struct ConversationView: View {
         model.messagesByRoute[route] ?? []
     }
 
+    private var isLoadingMessages: Bool {
+        model.loadingMessageRoutes.contains(route)
+    }
+
+    private var scrollTargetID: String? {
+        TranscriptPresentation.focusMessage(in: messages, highlightedID: highlightedMessageID)?.id
+    }
+
     private var highlightedMessageID: String? {
         guard let highlighted = model.highlightedMessage, highlighted.route == route else { return nil }
         return highlighted.messageID
@@ -238,10 +246,27 @@ public struct ConversationView: View {
             // scrollTo(bottom) can repeatedly invalidate its estimated heights on
             // macOS when switching chats, trapping the main thread in layout.
             List {
-                RecentHistoryNotice(
-                    isEmpty: messages.isEmpty,
-                    link: model.conversations.first { $0.route == route }?.deepLink
-                )
+                Group {
+                    if isLoadingMessages {
+                        ProgressView("Loading messages…")
+                            .controlSize(.small)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("conversation-loading")
+                    } else if model.failedMessageRoutes.contains(route) {
+                        HStack {
+                            Text("Messages couldn't load.")
+                            Button("Retry") { model.loadRecentMessages(in: route) }
+                        }
+                        .font(.caption)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("conversation-load-failure")
+                    } else {
+                        RecentHistoryNotice(
+                            isEmpty: messages.isEmpty,
+                            link: model.conversations.first { $0.route == route }?.deepLink
+                        )
+                    }
+                }
                 .listRowInsets(EdgeInsets(top: 8, leading: 18, bottom: 4, trailing: 18))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
@@ -282,7 +307,10 @@ public struct ConversationView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .onChange(of: messages.count) { scrollToFocus(proxy) }
+            .onChange(of: scrollTargetID) { scrollToFocus(proxy, animated: !isLoadingMessages) }
+            .onChange(of: isLoadingMessages) { _, loading in
+                if !loading { scrollToFocus(proxy, animated: false) }
+            }
             .onChange(of: route) { scrollToFocus(proxy, animated: false) }
             .onChange(of: model.highlightedMessage) { scrollToFocus(proxy) }
             .onAppear { scrollToFocus(proxy, animated: false) }
@@ -426,9 +454,8 @@ public struct ConversationView: View {
     /// The message opened from search while there is one, so history loading around it does not
     /// pull the transcript away; otherwise the newest message.
     private func scrollToFocus(_ proxy: ScrollViewProxy, animated: Bool = true) {
-        let highlighted = messages.first { $0.id == highlightedMessageID }
-        guard let target = highlighted ?? messages.last else { return }
-        let anchor: UnitPoint = highlighted == nil ? .bottom : .center
+        guard let target = TranscriptPresentation.focusMessage(in: messages, highlightedID: highlightedMessageID) else { return }
+        let anchor: UnitPoint = target.id == highlightedMessageID ? .center : .bottom
         if animated {
             withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(target.id, anchor: anchor) }
         } else {
