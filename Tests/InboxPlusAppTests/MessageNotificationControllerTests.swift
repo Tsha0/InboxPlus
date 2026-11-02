@@ -78,3 +78,73 @@ private let alert = IncomingMessageAlert(
     #expect(LaunchAtLoginController.status(of: .requiresApproval, isAppBundle: true) == .needsApproval)
     #expect(LaunchAtLoginController.status(of: .notRegistered, isAppBundle: true) == .off)
 }
+
+@MainActor
+@Test func allowingNotificationsAfterAnInitialDenialRestoresDeliveryWithoutRelaunching() async {
+    let center = FakeMessageNotificationCenter(status: .denied)
+    let controller = MessageNotificationController(center: center)
+    controller.requestAuthorization()
+    await controller.deliver(alert, preferences: NotificationPreferences())
+    #expect(center.requests.isEmpty)
+    #expect(controller.status == .denied)
+
+    center.currentStatus = .allowed(soundEnabled: true)
+    await controller.deliver(alert, preferences: NotificationPreferences())
+    #expect(center.requests.count == 1)
+    #expect(center.requests.first?.content.sound != nil)
+    #expect(controller.status == .allowed(soundEnabled: true))
+    #expect(center.authorizationRequests == 1)
+
+    center.currentStatus = .denied
+    await controller.deliver(alert, preferences: NotificationPreferences())
+    #expect(center.requests.count == 1)
+    #expect(controller.status == .denied)
+}
+
+@MainActor
+@Test func currentSystemRestrictionsRefreshWithoutRequestingPermissionAgain() async {
+    let center = FakeMessageNotificationCenter(status: .allowed(soundEnabled: false))
+    let controller = MessageNotificationController(center: center)
+    await controller.refreshAuthorization()
+    #expect(controller.status == .allowed(soundEnabled: false))
+
+    center.currentStatus = .allowed(soundEnabled: true)
+    await controller.refreshAuthorization()
+    #expect(controller.status == .allowed(soundEnabled: true))
+    #expect(center.authorizationRequests == 0)
+}
+
+@MainActor
+@Test func deliveryPreservesTheAppsSoundPreferenceAndDisabledNotificationsAreNotPosted() async {
+    let center = FakeMessageNotificationCenter(status: .allowed(soundEnabled: true))
+    let controller = MessageNotificationController(center: center)
+    controller.requestAuthorization()
+    await controller.deliver(alert, preferences: NotificationPreferences(playsSound: false))
+    #expect(center.requests.count == 1)
+    #expect(center.requests.first?.content.sound == nil)
+
+    await controller.deliver(alert, preferences: NotificationPreferences(isEnabled: false))
+    #expect(center.requests.count == 1)
+}
+
+@MainActor
+@Test func notificationSystemSettingsDistinguishDeniedPermissionFromDisabledSound() {
+    #expect(MessageNotificationController.status(authorization: .notDetermined, sound: .notSupported) == .notDetermined)
+    #expect(MessageNotificationController.status(authorization: .denied, sound: .enabled) == .denied)
+    #expect(MessageNotificationController.status(authorization: .authorized, sound: .disabled) == .allowed(soundEnabled: false))
+    #expect(MessageNotificationController.status(authorization: .authorized, sound: .enabled) == .allowed(soundEnabled: true))
+    #expect(MessageNotificationController.status(authorization: .provisional, sound: .disabled) == .allowed(soundEnabled: false))
+}
+
+@MainActor
+private final class FakeMessageNotificationCenter: MessageNotificationCenter {
+    var currentStatus: SystemNotificationStatus
+    private(set) var authorizationRequests = 0
+    private(set) var requests: [UNNotificationRequest] = []
+
+    init(status: SystemNotificationStatus) { currentStatus = status }
+
+    func requestAuthorization() async throws { authorizationRequests += 1 }
+    func status() async -> SystemNotificationStatus { currentStatus }
+    func add(_ request: UNNotificationRequest) async throws { requests.append(request) }
+}

@@ -1,7 +1,38 @@
 import AppKit
+import Observation
 import UserNotifications
 import InboxPlusCore
 import InboxPlusFeatures
+import InboxPlusUI
+
+@MainActor
+protocol MessageNotificationCenter: AnyObject {
+    func requestAuthorization() async throws
+    func status() async -> SystemNotificationStatus
+    func add(_ request: UNNotificationRequest) async throws
+}
+
+@MainActor
+private final class SystemMessageNotificationCenter: MessageNotificationCenter {
+    let center: UNUserNotificationCenter
+
+    init(_ center: UNUserNotificationCenter) { self.center = center }
+
+    func requestAuthorization() async throws {
+        _ = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+    }
+
+    func status() async -> SystemNotificationStatus {
+        let settings = await center.notificationSettings()
+        return MessageNotificationController.status(
+            authorization: settings.authorizationStatus, sound: settings.soundSetting
+        )
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        try await center.add(request)
+    }
+}
 
 /// A reply typed into a notification, with the conversation it answers.
 struct NotificationReply: Equatable, Sendable {
@@ -18,13 +49,15 @@ enum NotificationResponse: Equatable, Sendable {
 
 /// Native notifications require an application bundle. Keep `swift run` and tests usable too.
 @MainActor
+@Observable
 final class MessageNotificationController: NSObject, UNUserNotificationCenterDelegate {
     static let shared = MessageNotificationController()
     nonisolated static let messageCategory = "message"
     nonisolated static let replyAction = "reply"
 
-    private var center: UNUserNotificationCenter?
-    private var authorizationTask: Task<Bool, Never>?
+    private(set) var status: SystemNotificationStatus = .unavailable
+    @ObservationIgnored private var center: (any MessageNotificationCenter)?
+    @ObservationIgnored private var authorizationTask: Task<Void, Never>?
     private var pendingRoute: ConversationRoute?
     private var pendingReplies: [NotificationReply] = []
     var onOpen: ((ConversationRoute) -> Void)? {
@@ -46,11 +79,17 @@ final class MessageNotificationController: NSObject, UNUserNotificationCenterDel
         }
     }
 
+    init(center: (any MessageNotificationCenter)? = nil) {
+        self.center = center
+        super.init()
+    }
+
     func install() {
         guard Bundle.main.bundleURL.pathExtension == "app", Bundle.main.bundleIdentifier != nil else { return }
-        center = UNUserNotificationCenter.current()
-        center?.delegate = self
-        center?.setNotificationCategories(Self.categories)
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.setNotificationCategories(Self.categories)
+        self.center = SystemMessageNotificationCenter(center)
     }
 
     static var categories: Set<UNNotificationCategory> {
@@ -64,39 +103,54 @@ final class MessageNotificationController: NSObject, UNUserNotificationCenterDel
     func requestAuthorization() {
         guard let center, authorizationTask == nil else { return }
         authorizationTask = Task {
-            do { return try await center.requestAuthorization(options: [.alert, .sound, .badge]) }
-            catch {
-                report(error)
-                return false
-            }
+            do { try await center.requestAuthorization() }
+            catch { report(error) }
+            await refreshAuthorization()
         }
     }
 
-    func deliver(_ alert: IncomingMessageAlert, preferences: NotificationPreferences) {
+    func refreshAuthorization() async {
+        status = await center?.status() ?? .unavailable
+    }
+
+    func openNotificationSettings() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=com.inboxplus.app")!)
+    }
+
+    static func status(authorization: UNAuthorizationStatus, sound: UNNotificationSetting) -> SystemNotificationStatus {
+        switch authorization {
+        case .notDetermined: .notDetermined
+        case .denied: .denied
+        case .authorized, .provisional: .allowed(soundEnabled: sound == .enabled)
+        @unknown default: .denied
+        }
+    }
+
+    func deliver(_ alert: IncomingMessageAlert, preferences: NotificationPreferences) async {
         guard let content = Self.content(for: alert, preferences: preferences) else { return }
         // Encoding the tuple avoids collisions across accounts, rooms, and event IDs.
         let message = alert.message
         let key = [message.route.accountID, message.route.conversationID, message.id]
-        post(content, identifier: (try? JSONEncoder().encode(key).base64EncodedString()) ?? UUID().uuidString)
+        await post(content, identifier: (try? JSONEncoder().encode(key).base64EncodedString()) ?? UUID().uuidString)
     }
 
     /// The reply is repeated in the notification, so words that did not reach anyone are not lost.
-    func deliverFailure(of reply: NotificationReply, error: any Error) {
+    func deliverFailure(of reply: NotificationReply, error: any Error) async {
         let content = UNMutableNotificationContent()
         content.title = "Your reply to \(reply.conversationTitle) was not sent"
         content.body = "“\(reply.text)” — \(error.localizedDescription)"
         content.sound = .default
         content.userInfo = Self.userInfo(for: reply.route)
-        post(content, identifier: UUID().uuidString)
+        await post(content, identifier: UUID().uuidString)
     }
 
-    private func post(_ content: UNMutableNotificationContent, identifier: String) {
+    private func post(_ content: UNMutableNotificationContent, identifier: String) async {
         guard let center else { return }
-        Task {
-            guard await authorizationTask?.value == true else { return }
-            do { try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil)) }
-            catch { report(error) }
-        }
+        await authorizationTask?.value
+        await refreshAuthorization()
+        guard case .allowed = status else { return }
+        do { try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil)) }
+        catch { report(error) }
     }
 
     /// Nil when notifications are off.

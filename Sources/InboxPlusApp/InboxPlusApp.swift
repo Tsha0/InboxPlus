@@ -49,6 +49,10 @@ final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
         LaunchAtLoginController.shared.refresh()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        Task { await MessageNotificationController.shared.refreshAuthorization() }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
@@ -108,6 +112,7 @@ struct InboxPlusApp: App {
     @Environment(\.openWindow) private var openWindow
     @State private var updates = AppUpdateController.shared
     @State private var launchAtLogin = LaunchAtLoginController.shared
+    @State private var notifications = MessageNotificationController.shared
     @State private var preferences: AppPreferences
     @State private var model: InboxPlusAppModel
     private let exportDiagnostics: (@Sendable (URL) async throws -> Void)?
@@ -134,6 +139,9 @@ struct InboxPlusApp: App {
 
     private var settings: AppSettingsServices {
         AppSettingsServices(
+            notificationStatus: notifications.status,
+            refreshNotifications: { await notifications.refreshAuthorization() },
+            openNotificationSettings: notifications.openNotificationSettings,
             launchAtLogin: launchAtLogin.status,
             setLaunchAtLogin: launchAtLogin.setEnabled,
             refreshLaunchAtLogin: { launchAtLogin.refresh() },
@@ -167,11 +175,12 @@ struct InboxPlusApp: App {
                     notifications.onReply = { reply in
                         Task {
                             do { try await model.sendReply(reply.text, to: reply.route) }
-                            catch { notifications.deliverFailure(of: reply, error: error) }
+                            catch { await notifications.deliverFailure(of: reply, error: error) }
                         }
                     }
                     model.onIncomingMessage = { alert in
-                        notifications.deliver(alert, preferences: preferences.notifications)
+                        let notificationPreferences = preferences.notifications
+                        Task { await notifications.deliver(alert, preferences: notificationPreferences) }
                     }
                     let (appModel, appPreferences) = (model, preferences)
                     DockBadgeController.shared.start {
