@@ -141,8 +141,8 @@ public struct ConversationView: View {
         model.loadingMessageRoutes.contains(route)
     }
 
-    private var scrollTargetID: String? {
-        TranscriptPresentation.focusMessage(in: messages, highlightedID: highlightedMessageID)?.id
+    private var transcriptFocus: TranscriptFocus? {
+        TranscriptPresentation.focus(in: messages, highlightedID: highlightedMessageID)
     }
 
     private var highlightedMessageID: String? {
@@ -308,7 +308,7 @@ public struct ConversationView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .onChange(of: scrollTargetID) { scrollToFocus(proxy, animated: !isLoadingMessages) }
+            .onChange(of: transcriptFocus) { scrollToFocus(proxy, animated: !isLoadingMessages) }
             .onChange(of: isLoadingMessages) { _, loading in
                 if !loading { scrollToFocus(proxy, animated: false) }
             }
@@ -454,12 +454,12 @@ public struct ConversationView: View {
     /// The message opened from search while there is one, so history loading around it does not
     /// pull the transcript away; otherwise the newest message.
     private func scrollToFocus(_ proxy: ScrollViewProxy, animated: Bool = true) {
-        guard let target = TranscriptPresentation.focusMessage(in: messages, highlightedID: highlightedMessageID) else { return }
-        let anchor: UnitPoint = target.id == highlightedMessageID ? .center : .bottom
+        guard let target = transcriptFocus else { return }
+        let anchor: UnitPoint = target.isHighlighted ? .center : .bottom
         if animated {
-            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(target.id, anchor: anchor) }
+            withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(target.messageID, anchor: anchor) }
         } else {
-            proxy.scrollTo(target.id, anchor: anchor)
+            proxy.scrollTo(target.messageID, anchor: anchor)
         }
     }
 
