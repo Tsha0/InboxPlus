@@ -11,7 +11,7 @@ struct InboxPlusLogoButton: View {
     var body: some View {
         Button(action: play) {
             Group {
-                if let logo = Bundle.module.image(forResource: "InboxPlusLogo") {
+                if let logo = UIResources.bundle?.image(forResource: "InboxPlusLogo") {
                     Image(nsImage: logo)
                         .resizable()
                         .rotationEffect(.degrees(rotation))

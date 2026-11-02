@@ -322,11 +322,11 @@
       ],
       "name" : "Inbox+",
       "type" : "application",
-      "version" : "0.6.0"
+      "version" : "0.6.1"
     },
     "timestamp" : "1970-01-01T00:00:00Z"
   },
-  "serialNumber" : "urn:uuid:C64F5E1E-C62F-4EB5-9950-0271C685058B",
+  "serialNumber" : "urn:uuid:D7BD774F-A739-449D-A8B3-8AB31FFF2BF3",
   "specVersion" : "1.5",
   "version" : 1
 }
