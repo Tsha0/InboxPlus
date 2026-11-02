@@ -90,6 +90,15 @@ public final class AppPreferences {
         (defaults.object(forKey: Key.messageRetention) as? Int).flatMap(MessageRetention.init(rawValue:)) ?? .standard
     }
 
+    /// Saves a retention the first time Inbox+ launches without one. A profile from before the
+    /// setting existed kept 90 days, and the shorter standard would purge that history on the first
+    /// launch after updating.
+    public nonisolated static func settleMessageRetention(in defaults: UserDefaults, profileExists: Bool) {
+        guard defaults.object(forKey: Key.messageRetention) == nil else { return }
+        let retention: MessageRetention = profileExists ? .quarter : .standard
+        defaults.set(retention.rawValue, forKey: Key.messageRetention)
+    }
+
     private enum Key {
         static let notificationsEnabled = "notifications.enabled"
         static let notificationPreviews = "notifications.showsPreviews"

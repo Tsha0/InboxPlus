@@ -44,7 +44,14 @@ import Testing
         .appendingPathComponent("Library/Caches/InboxPlusMediaWiring-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let paths = try RuntimePaths(root: root, profileName: "alpha")
-    let state = RuntimeProfileState(
+    let built = try GatewaySelection.makeMatrixGateway(paths: paths, state: try healthyState(paths), makeIMessage: { _ in nil })
+
+    let matrix = try #require(built.gateway as? MatrixMessagingGateway)
+    #expect(built.media.client === matrix.mediaFetcher.client)
+}
+
+private func healthyState(_ paths: RuntimePaths) throws -> RuntimeProfileState {
+    RuntimeProfileState(
         serverName: "inboxplus.localhost",
         registrationSecret: "registration-secret",
         launchExecutable: "/usr/bin/true",
@@ -65,11 +72,28 @@ import Testing
             lastError: nil
         )
     )
+}
 
-    let built = try GatewaySelection.makeMatrixGateway(paths: paths, state: state, makeIMessage: { _ in nil })
+@MainActor
+@Test func launchingAProfileFromBeforeTheRetentionSettingKeepsThreeMonths() throws {
+    // Break caught: updating from 0.6.1 dropped every existing profile from 90 days to a week, and
+    // the homeserver then purged the older history.
+    let root = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        .appendingPathComponent("Library/Caches/InboxPlusRetention-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let existing = try RuntimePaths(root: root, profileName: "existing")
+    try RuntimeProfileStore(paths: existing).save(try healthyState(existing))
 
-    let matrix = try #require(built.gateway as? MatrixMessagingGateway)
-    #expect(built.media.client === matrix.mediaFetcher.client)
+    for (profile, expected) in [("existing", MessageRetention.quarter), ("new", .week)] {
+        let suite = "InboxPlusTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        _ = GatewaySelection.makeServices(
+            environment: ["INBOXPLUS_RUNTIME_ROOT": root.path, "INBOXPLUS_PROFILE": profile],
+            defaults: defaults
+        )
+        #expect(AppPreferences.messageRetention(in: defaults) == expected)
+    }
 }
 
 private struct ServingFetcher: RemoteMediaFetching {
