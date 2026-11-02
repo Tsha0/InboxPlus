@@ -285,3 +285,19 @@ func aHistoryBurstCoalescesTranscriptUpdates(withMedia: Bool) async throws {
     #expect(await settle { model.messagesByRoute[Fixtures.telegramRoute]?.count == 3 })
     #expect(model.messagesByRoute[Fixtures.telegramRoute]?.map(\.id) == ["z-first", "a-second", "tg-1"])
 }
+
+@MainActor
+@Test func stoppingDiscardsQueuedHistoryBeforeRestart() async throws {
+    let gateway = HistoryOnOpenGateway(snapshot: Fixtures.snapshot, history: [])
+    let model = InboxPlusAppModel(gateway: gateway)
+    try await model.start()
+    await gateway.deliver(.historicalMessageUpserted(Message(
+        id: "old-subscription", route: Fixtures.telegramRoute, senderIdentityID: nil,
+        body: "fixture", timestamp: Date(timeIntervalSince1970: 50), deliveryState: .acknowledged
+    )))
+    await Task.yield()
+    model.stop()
+    try await model.start()
+    try await Task.sleep(for: .milliseconds(50))
+    #expect(model.messagesByRoute[Fixtures.telegramRoute]?.map(\.id) == ["tg-1"])
+}

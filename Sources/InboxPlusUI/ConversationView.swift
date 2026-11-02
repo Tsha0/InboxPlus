@@ -313,7 +313,6 @@ public struct ConversationView: View {
                 if !loading { scrollToFocus(proxy, animated: false) }
             }
             .onChange(of: route) { scrollToFocus(proxy, animated: false) }
-            .onChange(of: model.highlightedMessage) { scrollToFocus(proxy) }
             .onAppear { scrollToFocus(proxy, animated: false) }
         }
     }
