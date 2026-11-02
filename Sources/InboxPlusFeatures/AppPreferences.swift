@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import InboxPlusCore
 
 public struct NotificationPreferences: Equatable, Sendable {
     public var isEnabled: Bool
@@ -62,6 +63,11 @@ public final class AppPreferences {
         didSet { defaults.set(iMessageHistory.rawValue, forKey: Key.iMessageHistory) }
     }
 
+    /// Handed to the homeserver when Inbox+ starts it, so a change applies from the next launch.
+    public var messageRetention: MessageRetention {
+        didSet { defaults.set(messageRetention.rawValue, forKey: Key.messageRetention) }
+    }
+
     @ObservationIgnored private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) {
@@ -73,10 +79,15 @@ public final class AppPreferences {
         )
         showsUnreadBadge = defaults.object(forKey: Key.unreadBadge) as? Bool ?? true
         iMessageHistory = Self.iMessageHistory(in: defaults)
+        messageRetention = Self.messageRetention(in: defaults)
     }
 
     public nonisolated static func iMessageHistory(in defaults: UserDefaults) -> IMessageHistoryWindow {
         defaults.string(forKey: Key.iMessageHistory).flatMap(IMessageHistoryWindow.init(rawValue:)) ?? .year
+    }
+
+    public nonisolated static func messageRetention(in defaults: UserDefaults) -> MessageRetention {
+        (defaults.object(forKey: Key.messageRetention) as? Int).flatMap(MessageRetention.init(rawValue:)) ?? .standard
     }
 
     private enum Key {
@@ -85,5 +96,6 @@ public final class AppPreferences {
         static let notificationSound = "notifications.playsSound"
         static let unreadBadge = "unreadBadge.enabled"
         static let iMessageHistory = "imessage.historyWindow"
+        static let messageRetention = "messages.retentionDays"
     }
 }

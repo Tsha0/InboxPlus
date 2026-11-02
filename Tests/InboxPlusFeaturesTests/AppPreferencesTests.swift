@@ -91,17 +91,27 @@ private func drain(_ gateway: PreferenceGateway, _ model: InboxPlusAppModel) asy
     #expect(first.notifications == NotificationPreferences(isEnabled: true, showsPreviews: true, playsSound: true))
     #expect(first.showsUnreadBadge)
     #expect(first.iMessageHistory == .year)
+    #expect(first.messageRetention == .week)
+    #expect(AppPreferences.messageRetention(in: defaults) == .week)
 
     first.notifications.showsPreviews = false
     first.notifications.playsSound = false
     first.showsUnreadBadge = false
     first.iMessageHistory = .all
+    first.messageRetention = .quarter
 
     let relaunched = AppPreferences(defaults: defaults)
     #expect(relaunched.notifications == NotificationPreferences(isEnabled: true, showsPreviews: false, playsSound: false))
     #expect(!relaunched.showsUnreadBadge)
     #expect(relaunched.iMessageHistory == .all)
     #expect(AppPreferences.iMessageHistory(in: defaults) == .all)
+    #expect(relaunched.messageRetention == .quarter)
+    #expect(AppPreferences.messageRetention(in: defaults) == .quarter)
+}
+
+@Test func messagesAreKeptForAWeekUntilSomeoneChoosesOtherwise() {
+    #expect(MessageRetention.standard == .week)
+    #expect(MessageRetention.allCases.map(\.days) == [1, 7, 30, 90, 365])
 }
 
 @Test func theDefaultIMessageHistoryWindowIsTheYearInboxPlusAlwaysShowed() {

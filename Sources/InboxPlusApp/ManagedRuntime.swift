@@ -1,4 +1,5 @@
 import Foundation
+import InboxPlusFeatures
 import InboxPlusRuntime
 
 /// Starts and stops the local runtime the app needs, so opening Inbox+ is enough.
@@ -144,7 +145,7 @@ actor ManagedRuntime {
         // The child also watches for this process disappearing. The clean quit path below is the
         // normal way it stops; this is what covers a crash or a force quit, where nothing gets the
         // chance to send a signal at all.
-        process.arguments = ["start", "--profile", profileName, "--exit-with-parent"]
+        process.arguments = Self.startArguments(profileName: profileName)
         // The child writes one line per supervised process. Forwarding it keeps the app's own log
         // the single place to look when a bridge fails to come up.
         let output = Pipe()
@@ -160,6 +161,13 @@ actor ManagedRuntime {
         try process.run()
         child = process
         startedByThisApp = true
+    }
+
+    static func startArguments(profileName: String, defaults: UserDefaults = .standard) -> [String] {
+        [
+            "start", "--profile", profileName, "--exit-with-parent",
+            "--message-retention-days", String(AppPreferences.messageRetention(in: defaults).days),
+        ]
     }
 
     /// Runs `stop` so a profile recorded as running but serving nothing becomes stopped again.

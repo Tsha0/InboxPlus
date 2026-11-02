@@ -1,4 +1,5 @@
 import Foundation
+import InboxPlusCore
 import InboxPlusRuntime
 
 public struct BenchmarkCLIOptions: Equatable, Sendable {
@@ -53,7 +54,7 @@ public enum BridgeCLIAction: String, Equatable, Sendable, CaseIterable {
 public enum RuntimeCommand: Equatable, Sendable {
     case bridge(profile: String, action: BridgeCLIAction, network: String?)
     case bootstrap(profile: String, python: String)
-    case start(profile: String, exitWithParent: Bool)
+    case start(profile: String, exitWithParent: Bool, messageRetention: MessageRetention)
     case status(profile: String)
     case stop(profile: String)
     case benchmark(profile: String, options: BenchmarkCLIOptions)
@@ -72,7 +73,7 @@ public enum RuntimeCommand: Equatable, Sendable {
         case .sbom:
             nil
         case let .bootstrap(profile, _),
-             let .start(profile, _),
+             let .start(profile, _, _),
              let .status(profile),
              let .stop(profile),
              let .benchmark(profile, _),
@@ -100,11 +101,12 @@ public enum RuntimeCommand: Equatable, Sendable {
     Commands:
       bootstrap --profile <name> --python <path>
           Prepare the pinned profile-local Synapse runtime.
-      start --profile <name> [--exit-with-parent]
+      start --profile <name> [--exit-with-parent] [--message-retention-days <1|7|30|90|365>]
           Launch the supervised loopback-only Synapse process and every prepared bridge
           that is not disconnected, stopping and starting bridges as accounts change.
           --exit-with-parent also stops when the launching process goes away, which is how
           the app takes its runtime down with it even if the app is killed outright.
+          --message-retention-days sets how long the homeserver keeps a message (default 7).
       status --profile <name>
           Report the persisted lifecycle phase and health.
       stop --profile <name>
@@ -141,10 +143,19 @@ public enum RuntimeCommand: Equatable, Sendable {
                 python: try options.require("--python")
             )
         case "start":
-            let options = try Options(tokens, valued: ["--profile"], flags: ["--exit-with-parent"])
+            let options = try Options(
+                tokens, valued: ["--profile", "--message-retention-days"], flags: ["--exit-with-parent"]
+            )
+            let retentionDays = try options.positiveInteger(
+                "--message-retention-days", default: MessageRetention.standard.days
+            )
+            guard let messageRetention = MessageRetention(rawValue: retentionDays) else {
+                throw RuntimeCommandError.invalidValue(option: "--message-retention-days", value: String(retentionDays))
+            }
             return .start(
                 profile: try options.require("--profile"),
-                exitWithParent: options.flag("--exit-with-parent")
+                exitWithParent: options.flag("--exit-with-parent"),
+                messageRetention: messageRetention
             )
         case "status":
             let options = try Options(tokens, valued: ["--profile"], flags: [])
