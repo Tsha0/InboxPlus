@@ -12,8 +12,35 @@ public enum LaunchAtLoginStatus: Equatable, Sendable {
     case needsApproval
 }
 
+public enum SystemNotificationStatus: Equatable, Sendable {
+    case unavailable
+    case notDetermined
+    case denied
+    case allowed(soundEnabled: Bool)
+
+    var warning: String? {
+        switch self {
+        case .unavailable: "Notifications are available when Inbox+ runs as an app."
+        case .notDetermined: "Allow notifications in the macOS permission prompt."
+        case .denied: "macOS is blocking Inbox+ notifications. Enable them in System Settings."
+        case .allowed(soundEnabled: false): "Notification sounds are turned off for Inbox+ in System Settings."
+        case .allowed(soundEnabled: true): nil
+        }
+    }
+
+    var canOpenSettings: Bool {
+        switch self {
+        case .denied, .allowed(soundEnabled: false): true
+        case .unavailable, .notDetermined, .allowed(soundEnabled: true): false
+        }
+    }
+}
+
 /// What the Settings pane needs from the app that the UI cannot do itself.
 public struct AppSettingsServices {
+    public var notificationStatus: SystemNotificationStatus
+    public var refreshNotifications: @MainActor () async -> Void
+    public var openNotificationSettings: @MainActor () -> Void
     public var launchAtLogin: LaunchAtLoginStatus
     public var setLaunchAtLogin: @MainActor (Bool) throws -> Void
     public var refreshLaunchAtLogin: @MainActor () -> Void
@@ -22,12 +49,18 @@ public struct AppSettingsServices {
     public var exportDiagnostics: (@Sendable (URL) async throws -> Void)?
 
     public init(
+        notificationStatus: SystemNotificationStatus = .unavailable,
+        refreshNotifications: @escaping @MainActor () async -> Void = {},
+        openNotificationSettings: @escaping @MainActor () -> Void = {},
         launchAtLogin: LaunchAtLoginStatus = .unavailable,
         setLaunchAtLogin: @escaping @MainActor (Bool) throws -> Void = { _ in },
         refreshLaunchAtLogin: @escaping @MainActor () -> Void = {},
         openLoginItemsSettings: @escaping @MainActor () -> Void = {},
         exportDiagnostics: (@Sendable (URL) async throws -> Void)? = nil
     ) {
+        self.notificationStatus = notificationStatus
+        self.refreshNotifications = refreshNotifications
+        self.openNotificationSettings = openNotificationSettings
         self.launchAtLogin = launchAtLogin
         self.setLaunchAtLogin = setLaunchAtLogin
         self.refreshLaunchAtLogin = refreshLaunchAtLogin
@@ -89,6 +122,7 @@ struct PreferencesView: View {
         .accessibilityIdentifier("inboxplus-preferences")
         .task(id: model.health) { cacheSize = await model.media.cacheSize() }
         .onAppear { services.refreshLaunchAtLogin() }
+        .task { await services.refreshNotifications() }
         .confirmationDialog("Clear downloaded media?", isPresented: $confirmsClearingCache) {
             Button("Clear Cache", role: .destructive, action: clearCache)
             Button("Cancel", role: .cancel) {}
@@ -114,6 +148,18 @@ struct PreferencesView: View {
                 .disabled(!preferences.notifications.isEnabled)
             Toggle("Play a sound", isOn: $preferences.notifications.playsSound)
                 .disabled(!preferences.notifications.isEnabled)
+            if let warning = services.notificationStatus.warning {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(warning, systemImage: "exclamationmark.triangle")
+                        .font(.callout)
+                        .accessibilityIdentifier("notification-permission-warning")
+                    if services.notificationStatus.canOpenSettings {
+                        Button("Open Notifications Settings…") { services.openNotificationSettings() }
+                            .controlSize(.small)
+                            .accessibilityIdentifier("open-notification-settings")
+                    }
+                }
+            }
             LabeledContent("Muted conversations") {
                 if model.mutedConversations.isEmpty {
                     Text("None").foregroundStyle(.secondary)
