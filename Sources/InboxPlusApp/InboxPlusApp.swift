@@ -108,12 +108,14 @@ struct InboxPlusApp: App {
     @Environment(\.openWindow) private var openWindow
     @State private var updates = AppUpdateController.shared
     @State private var launchAtLogin = LaunchAtLoginController.shared
-    @State private var preferences = AppPreferences()
+    @State private var preferences: AppPreferences
     @State private var model: InboxPlusAppModel
     private let exportDiagnostics: (@Sendable (URL) async throws -> Void)?
 
     init() {
         let services = GatewaySelection.makeServices()
+        // After the services, which settle the message retention Settings then shows.
+        _preferences = State(initialValue: AppPreferences())
         _model = State(initialValue: InboxPlusAppModel(
             gateway: services.gateway,
             directory: services.directory,

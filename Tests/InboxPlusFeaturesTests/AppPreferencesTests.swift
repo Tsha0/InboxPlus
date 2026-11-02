@@ -114,6 +114,33 @@ private func drain(_ gateway: PreferenceGateway, _ model: InboxPlusAppModel) asy
     #expect(MessageRetention.allCases.map(\.days) == [1, 7, 30, 90, 365])
 }
 
+@Test func aProfileFromBeforeTheSettingKeepsItsNinetyDaysOfHistory() throws {
+    let suite = "InboxPlusTests-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    AppPreferences.settleMessageRetention(in: defaults, profileExists: true)
+    #expect(AppPreferences.messageRetention(in: defaults) == .quarter)
+}
+
+@MainActor
+@Test func retentionIsSettledOnceAndAChoiceIsNeverOverridden() throws {
+    let suite = "InboxPlusTests-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    // A new install gets the standard, and keeps it once its profile exists on the next launch.
+    AppPreferences.settleMessageRetention(in: defaults, profileExists: false)
+    #expect(AppPreferences.messageRetention(in: defaults) == .week)
+    AppPreferences.settleMessageRetention(in: defaults, profileExists: true)
+    #expect(AppPreferences.messageRetention(in: defaults) == .week)
+
+    defaults.removeObject(forKey: "messages.retentionDays")
+    AppPreferences(defaults: defaults).messageRetention = .day
+    AppPreferences.settleMessageRetention(in: defaults, profileExists: true)
+    #expect(AppPreferences.messageRetention(in: defaults) == .day)
+}
+
 @Test func theDefaultIMessageHistoryWindowIsTheYearInboxPlusAlwaysShowed() {
     #expect(IMessageHistoryWindow.year.interval == TimeInterval(365 * 86_400))
     #expect(IMessageHistoryWindow.all.interval == nil)

@@ -58,6 +58,9 @@ enum GatewaySelection {
         do {
             let root = try RuntimeProfileService.developerRuntimeRoot(environment: environment)
             let paths = try RuntimePaths(root: root, profileName: profileName)
+            AppPreferences.settleMessageRetention(
+                in: defaults, profileExists: (try? RuntimeProfileStore(paths: paths).load()) != nil
+            )
 
             // The media controller exists before the runtime does, so the transcript can render
             // immediately and attach its loader once there is a homeserver to fetch from.
