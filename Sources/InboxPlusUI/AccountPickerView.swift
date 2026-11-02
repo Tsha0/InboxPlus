@@ -113,6 +113,7 @@ public struct AccountPickerView: View {
         guard let descriptor else {
             return "Not supported yet"
         }
+        if platform == .whatsApp { return "Link with code from your phone" }
         return descriptor.credentialStyle.summary
     }
 }

@@ -3,10 +3,7 @@ import InboxPlusCore
 import InboxPlusFeatures
 import SwiftUI
 
-/// Renders whatever the bridge asks for next.
-///
-/// One view per step type, chosen by the protocol rather than by network. Adding a network is
-/// catalog data; it is never a new screen.
+/// Renders each bridge step with platform-specific guidance where needed.
 public struct LoginStepView: View {
     @Bindable private var controller: BridgeLoginController
     private let onFinished: (String) -> Void
@@ -52,7 +49,7 @@ public struct LoginStepView: View {
         HStack(spacing: 10) {
             PlatformBadge(platform: controller.platform)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Connect \(controller.platform.accessibilityLabel)")
+                Text(controller.platform == .whatsApp ? "Link WhatsApp with code" : "Connect \(controller.platform.accessibilityLabel)")
                     .font(.headline)
                 if let instructions = controller.currentStep?.instructions, !instructions.isEmpty {
                     Text(instructions)
@@ -111,7 +108,12 @@ public struct LoginStepView: View {
             }
 
         case .displayAndWait:
-            DisplayAndWaitStepView(parameters: step.displayAndWait, instructions: step.instructions)
+            DisplayAndWaitStepView(
+                parameters: step.displayAndWait,
+                instructions: controller.platform == .whatsApp && step.displayAndWait?.type == .code
+                    ? "On your phone, open WhatsApp → Linked devices → Link a device → Link with phone number instead, then enter this code."
+                    : step.instructions
+            )
 
         case .clientHTTP, .webAuthn:
             // Modelled so the step decodes and the user is told plainly, rather than the login
@@ -175,13 +177,17 @@ struct UserInputStepView: View {
         Form {
             ForEach(step.userInput?.fields ?? [], id: \.id) { field in
                 VStack(alignment: .leading, spacing: 4) {
-                    field.editor(
-                        value: Binding(
-                            get: { controller.values[field.id] ?? "" },
-                            set: { controller.setValue($0, for: field.id) }
+                    if field.id == controller.whatsAppPhoneField?.id {
+                        WhatsAppPhoneInputView(phoneNumber: $controller.whatsAppPhoneNumber)
+                    } else {
+                        field.editor(
+                            value: Binding(
+                                get: { controller.values[field.id] ?? "" },
+                                set: { controller.setValue($0, for: field.id) }
+                            )
                         )
-                    )
-                    if !field.description.isEmpty {
+                    }
+                    if field.id != controller.whatsAppPhoneField?.id, !field.description.isEmpty {
                         Text(field.description)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -192,6 +198,57 @@ struct UserInputStepView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
+    }
+}
+
+struct WhatsAppPhoneInputView: View {
+    @Binding var phoneNumber: WhatsAppPhoneNumber
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Enter your WhatsApp number to get a code. You’ll enter the code in Linked devices on your phone.")
+                .font(.callout)
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Country calling code").font(.caption)
+                    HStack(spacing: 6) {
+                        Text("+").accessibilityHidden(true)
+                        TextField("Country calling code", text: $phoneNumber.countryCode, prompt: Text("44"))
+                            .labelsHidden()
+                            .accessibilityLabel("Country calling code")
+                            .accessibilityIdentifier("whatsapp-country-code")
+                    }
+                    if !phoneNumber.countryCode.isEmpty || !phoneNumber.number.isEmpty,
+                       let error = phoneNumber.countryCodeValidationMessage {
+                        Text(error).font(.caption).foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(width: 170)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Phone number").font(.caption)
+                    TextField("Phone number", text: $phoneNumber.number, prompt: Text("7700 900123"))
+                        .labelsHidden()
+                        .textContentType(.telephoneNumber)
+                        .accessibilityLabel("Phone number without country calling code")
+                        .accessibilityIdentifier("whatsapp-phone-number")
+                    if !phoneNumber.countryCode.isEmpty || !phoneNumber.number.isEmpty,
+                       let error = phoneNumber.numberValidationMessage {
+                        Text(error).font(.caption).foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            Text("No need to type +. For example, enter 44 and 7700 900123.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("Use the international form of your number: UK 07700… becomes +44 7700…, while Italy +39 06… keeps its zero.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .textFieldStyle(.roundedBorder)
+        .padding(.vertical, 8)
     }
 }
 
