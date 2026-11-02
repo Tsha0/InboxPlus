@@ -26,6 +26,10 @@ public final class BridgeLoginController {
     /// What the user has entered or what the webview has captured for the current step.
     public private(set) var values: [String: String] = [:]
 
+    public var whatsAppPhoneNumber = WhatsAppPhoneNumber() {
+        didSet { failureMessage = nil }
+    }
+
     private let session: any BridgeLoginSession
     private var activeLoginID: String?
     private var waitTask: Task<Void, Never>?
@@ -52,14 +56,28 @@ public final class BridgeLoginController {
     /// The reason the current step will not accept what has been entered, or `nil` when it will.
     public var blockingValidationMessage: String? {
         guard let step = currentStep else { return nil }
-        return step.validationFailure(in: values)?.description
+        if whatsAppPhoneField != nil, let failure = whatsAppPhoneNumber.validationMessage { return failure }
+        return step.validationFailure(in: submissionValues)?.description
     }
 
     public var canSubmit: Bool {
         guard case let .step(step) = phase else { return false }
         // A waiting step advances when the bridge says so, not when the user presses anything.
         if step.type == .displayAndWait { return false }
-        return step.validationFailure(in: values) == nil
+        return blockingValidationMessage == nil
+    }
+
+    public var whatsAppPhoneField: BridgeLoginInputField? {
+        guard platform == .whatsApp else { return nil }
+        return currentStep?.userInput?.fields.first { $0.type == .phoneNumber }
+    }
+
+    private var submissionValues: [String: String] {
+        var result = values
+        if let field = whatsAppPhoneField {
+            result[field.id] = whatsAppPhoneNumber.internationalNumber ?? ""
+        }
+        return result
     }
 
     public func start() async {
@@ -116,10 +134,15 @@ public final class BridgeLoginController {
             phase = .failed("The bridge did not identify this login attempt.")
             return
         }
+        if whatsAppPhoneField != nil, let failure = whatsAppPhoneNumber.validationMessage {
+            failureMessage = failure
+            return
+        }
+        let submitted = submissionValues
         do {
             // Validate once more here, not only in the view: this is the last point before the
             // values leave the machine, and a view is not a security boundary.
-            try step.validate(values)
+            try step.validate(submitted)
         } catch {
             phase = .failed(describe(error))
             return
@@ -131,7 +154,7 @@ public final class BridgeLoginController {
                 loginID: loginID,
                 stepID: step.stepID,
                 type: step.type,
-                values: values
+                values: submitted
             ))
         } catch {
             // Return to the step so the user can correct and retry rather than restarting the flow.
@@ -193,6 +216,7 @@ public final class BridgeLoginController {
         if let loginID = step.loginID { activeLoginID = loginID }
         failureMessage = nil
         values = [:]
+        whatsAppPhoneNumber = WhatsAppPhoneNumber()
         if step.type == .complete {
             phase = .finished(userLoginID: step.complete?.userLoginID ?? "")
         } else {
@@ -210,5 +234,63 @@ public final class BridgeLoginController {
     private func describe(_ error: any Error) -> String {
         if let bridgeError = error as? BridgeLoginError { return bridgeError.description }
         return error.localizedDescription
+    }
+}
+
+public struct WhatsAppPhoneNumber: Equatable, Sendable {
+    public var countryCode: String
+    public var number: String
+
+    public init(countryCode: String = "", number: String = "") {
+        self.countryCode = countryCode
+        self.number = number
+    }
+
+    public var countryCodeValidationMessage: String? {
+        guard !countryCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "Enter your country calling code."
+        }
+        guard let code = normalizedCountryCode, (1...3).contains(code.count), code.first != "0" else {
+            return "Use a country calling code of 1–3 digits, without a leading zero."
+        }
+        return nil
+    }
+
+    public var numberValidationMessage: String? {
+        guard !number.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "Enter your phone number without the country calling code."
+        }
+        guard let digits = Self.digits(in: number), !digits.isEmpty else {
+            return "Use digits, spaces, parentheses or hyphens for your phone number."
+        }
+        if let code = normalizedCountryCode, !(7...15).contains(code.count + digits.count) {
+            return "The full international number must contain 7–15 digits."
+        }
+        return nil
+    }
+
+    public var validationMessage: String? {
+        countryCodeValidationMessage ?? numberValidationMessage
+    }
+
+    public var internationalNumber: String? {
+        guard validationMessage == nil, let code = normalizedCountryCode,
+              let digits = Self.digits(in: number) else { return nil }
+        return "+" + code + digits
+    }
+
+    private var normalizedCountryCode: String? {
+        var code = countryCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if code.hasPrefix("+") { code.removeFirst() }
+        return Self.digits(in: code)
+    }
+
+    private static func digits(in value: String) -> String? {
+        var result = ""
+        for character in value {
+            if let value = character.asciiValue, (48...57).contains(value) { result.append(character) }
+            else if !character.isWhitespace, character != "-", character != "(", character != ")" { return nil }
+        }
+        return result
     }
 }

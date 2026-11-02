@@ -43,14 +43,19 @@ private actor RecordingSession: BridgeLoginSession {
     private let flows: [BridgeLoginFlow]
     private let steps: [BridgeLoginStep]
     private let failure: (any Error)?
+    private var submissionFailure: (any Error)?
     private var index = 0
     private(set) var startedFlowIDs: [String] = []
     private(set) var submissions: [(loginID: String, stepID: String, values: [String: String])] = []
 
-    init(flows: [BridgeLoginFlow], steps: [BridgeLoginStep], failure: (any Error)? = nil) {
+    init(
+        flows: [BridgeLoginFlow], steps: [BridgeLoginStep], failure: (any Error)? = nil,
+        submissionFailure: (any Error)? = nil
+    ) {
         self.flows = flows
         self.steps = steps
         self.failure = failure
+        self.submissionFailure = submissionFailure
     }
 
     func loginFlows() async throws -> [BridgeLoginFlow] {
@@ -74,6 +79,10 @@ private actor RecordingSession: BridgeLoginSession {
         values: [String: String]
     ) async throws -> BridgeLoginStep {
         submissions.append((loginID, stepID, values))
+        if let submissionFailure {
+            self.submissionFailure = nil
+            throw submissionFailure
+        }
         if let failure { throw failure }
         index += 1
         return steps[index]
@@ -140,7 +149,7 @@ private func whatsAppPhoneStep() -> BridgeLoginStep {
     #expect(controller.phase == .step(whatsAppPhoneStep()))
     #expect(await session.startedFlowIDs == ["phone"])
 
-    controller.setValue("+15551234567", for: "phone_number")
+    controller.whatsAppPhoneNumber = WhatsAppPhoneNumber(countryCode: "1", number: "555 123 4567")
     #expect(controller.canSubmit)
     await controller.submit()
     #expect(controller.currentStep?.displayAndWait?.type == .code)
@@ -405,4 +414,85 @@ private func waitUntil(_ condition: @MainActor () -> Bool) async {
     // A phone number carried into the code step would be resubmitted as part of the next payload.
     #expect(controller.values["phone_number"] == nil)
     #expect(!controller.canSubmit)
+}
+
+@MainActor
+@Test func whatsAppSplitPhoneFieldsComposeOneBridgeValueAndValidateBeforeSubmitting() async {
+    let session = RecordingSession(flows: [whatsAppPhoneFlow], steps: [whatsAppPhoneStep(), completeStep()])
+    let controller = BridgeLoginController(platform: .whatsApp, session: session)
+    await controller.start()
+    #expect(controller.whatsAppPhoneField?.id == "phone_number")
+    #expect(!controller.canSubmit)
+    controller.whatsAppPhoneNumber = WhatsAppPhoneNumber(countryCode: "65", number: "hello")
+    await controller.submit()
+    #expect(await session.recorded().isEmpty)
+    #expect(controller.currentStep?.type == .userInput)
+    #expect(controller.failureMessage != nil)
+    controller.whatsAppPhoneNumber.number = "8123 4567"
+    #expect(controller.failureMessage == nil)
+    #expect(controller.canSubmit)
+    await controller.submit()
+    #expect(await session.recorded().first?.values == ["phone_number": "+6581234567"])
+    #expect(controller.whatsAppPhoneNumber == WhatsAppPhoneNumber())
+}
+
+@Test(arguments: [
+    ("65", "8123 4567", "+6581234567"),
+    ("+44", "7700-900123", "+447700900123"),
+    ("39", "06 69812345", "+390669812345"),
+    ("1", "(555) 123-4567", "+15551234567"),
+])
+func whatsAppPhoneFormattingKeepsSignificantZeroes(country: String, number: String, expected: String) {
+    let phone = WhatsAppPhoneNumber(countryCode: country, number: number)
+    #expect(phone.validationMessage == nil)
+    #expect(phone.internationalNumber == expected)
+}
+
+@Test(arguments: [
+    ("", "81234567"), ("0", "81234567"), ("1234", "81234567"),
+    ("++65", "81234567"), ("65", ""), ("65", "abc12345"),
+    ("65", "+6581234567"), ("65", "12"), ("65", "12345678901234"),
+    ("65", "1️⃣2345678"),
+])
+func whatsAppPhoneFormattingRejectsIncompleteOrMalformedInput(country: String, number: String) {
+    let phone = WhatsAppPhoneNumber(countryCode: country, number: number)
+    #expect(phone.validationMessage != nil)
+    #expect(phone.internationalNumber == nil)
+}
+
+@MainActor
+@Test func aRejectedWhatsAppNumberCanBeCorrectedAndRetriedWithoutLosingTheSplitInputs() async {
+    let session = RecordingSession(
+        flows: [whatsAppPhoneFlow], steps: [whatsAppPhoneStep(), completeStep()],
+        submissionFailure: BridgeLoginError.bridgeRejected(status: 400, message: "Check your phone number")
+    )
+    let controller = BridgeLoginController(platform: .whatsApp, session: session)
+    await controller.start()
+    let entered = WhatsAppPhoneNumber(countryCode: "44", number: "7700 900123")
+    controller.whatsAppPhoneNumber = entered
+    await controller.submit()
+    #expect(controller.currentStep?.type == .userInput)
+    #expect(controller.whatsAppPhoneNumber == entered)
+    #expect(controller.failureMessage != nil)
+    controller.whatsAppPhoneNumber.number = "7700 900124"
+    #expect(controller.failureMessage == nil)
+    #expect(controller.canSubmit)
+    await controller.submit()
+    #expect(await session.recorded().map(\.values) == [
+        ["phone_number": "+447700900123"], ["phone_number": "+447700900124"]
+    ])
+    #expect(controller.phase == .finished(userLoginID: "17841400000000000"))
+}
+
+@MainActor
+@Test func telegramPhoneInputRemainsTheGenericBridgeField() async {
+    let session = RecordingSession(flows: [whatsAppPhoneFlow], steps: [whatsAppPhoneStep(), completeStep()])
+    let controller = BridgeLoginController(platform: .telegram, session: session)
+    await controller.start()
+    #expect(controller.whatsAppPhoneField == nil)
+    #expect(!controller.canSubmit)
+    controller.setValue("+15551234567", for: "phone_number")
+    #expect(controller.canSubmit)
+    await controller.submit()
+    #expect(await session.recorded().first?.values == ["phone_number": "+15551234567"])
 }
