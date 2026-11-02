@@ -60,3 +60,27 @@ private func message(
     #expect(AttachmentFormatting.suggestedFilename(for: MessageAttachment(id: "b", kind: .image, mimeType: "image/jpeg")) == "Photo.jpeg")
     #expect(AttachmentFormatting.suggestedFilename(for: MessageAttachment(id: "c", kind: .video)) == "Video")
 }
+
+@Test func everyEmojiOfferedToReactWithIsOneThatSearchFindsToo() {
+    let browsed = EmojiCatalog.categories.flatMap(\.emoji)
+    let searchable = Set(EmojiCatalog.all.map(\.emoji))
+    #expect(Set(browsed).count == browsed.count)
+    #expect(browsed.allSatisfy { searchable.contains($0) })
+    #expect(TranscriptPresentation.quickReactions.allSatisfy { searchable.contains($0) })
+}
+
+@Test func searchingForAReactionMatchesEveryWordOfItsName() {
+    #expect(EmojiCatalog.search("tears JOY") == ["😂", "😹"])
+    #expect(EmojiCatalog.search("heart").contains("❤️"))
+    #expect(EmojiCatalog.search("unicorn") == ["🦄"])
+    // The usual reactions come before clock faces and moon faces.
+    #expect(EmojiCatalog.search("face").prefix(3) == ["😀", "😃", "😄"])
+    #expect(EmojiCatalog.search("  ").isEmpty)
+    #expect(EmojiCatalog.search("no such emoji").isEmpty)
+}
+
+@Test func searchLeavesOutPiecesThatAreNotEmojiOnTheirOwn() {
+    let searchable = Set(EmojiCatalog.all.map(\.emoji))
+    #expect(!searchable.contains("🏽"))
+    #expect(!searchable.contains("🇫"))
+}
