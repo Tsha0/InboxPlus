@@ -68,11 +68,8 @@ public struct InboxView: View {
         !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// A chosen network stays listed after its last conversation goes, so it can still be cleared.
     private var networks: [Platform] {
-        let present = InboxProjector.platforms(in: items)
-        guard let chosen = filter.platform, !present.contains(chosen) else { return present }
-        return present + [chosen]
+        InboxProjector.platforms(in: showsHidden ? hiddenItems : items, including: filter.platforms)
     }
 
     private var unknownSenders: [InboxItem] {
@@ -122,9 +119,10 @@ public struct InboxView: View {
             .padding(.horizontal)
 
             HStack(spacing: 6) {
-                filterButton("All", isSelected: filter.scope == .all) {
-                    filter.scope = .all
+                filterButton("All", isSelected: filter.scope == .all && filter.platforms.isEmpty) {
+                    filter = InboxFilter()
                 }
+                .accessibilityIdentifier("inbox-filter-all")
                 filterButton("Unread", isSelected: filter.scope == .unread) {
                     filter.scope = .unread
                 }
@@ -141,15 +139,20 @@ public struct InboxView: View {
             }
             .padding(.horizontal)
 
-            if networks.count > 1 || filter.platform != nil {
+            if networks.count > 1 || !filter.platforms.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(networks, id: \.self) { platform in
-                            let isSelected = filter.platform == platform
+                            let isSelected = filter.platforms.contains(platform)
                             filterButton(platform.accessibilityLabel, platform: platform, isSelected: isSelected) {
-                                filter.platform = isSelected ? nil : platform
+                                if isSelected {
+                                    filter.platforms.remove(platform)
+                                } else {
+                                    filter.platforms.insert(platform)
+                                }
                             }
-                            .help(isSelected ? "Show every network" : "Show only \(platform.accessibilityLabel)")
+                            .help(isSelected ? "Remove \(platform.accessibilityLabel) from filter" : "Include \(platform.accessibilityLabel) in filter")
+                            .accessibilityIdentifier("inbox-filter-\(platform.rawValue)")
                         }
                     }
                     .padding(.horizontal)
@@ -231,7 +234,11 @@ public struct InboxView: View {
         if isSearching { return "No matches" }
         if showsHidden { return "Nothing hidden" }
         switch filter.scope {
-        case .all: return filter.platform.map { "No \($0.accessibilityLabel) conversations" } ?? "Inbox is empty"
+        case .all:
+            if filter.platforms.count == 1, let platform = filter.platforms.first {
+                return "No \(platform.accessibilityLabel) conversations"
+            }
+            return filter.platforms.isEmpty ? "Inbox is empty" : "No conversations on selected networks"
         case .unread: return "Nothing unread"
         case .unknownSenders: return "No unknown senders"
         }

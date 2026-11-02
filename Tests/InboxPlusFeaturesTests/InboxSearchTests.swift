@@ -36,7 +36,7 @@ private var seedWithEarlierHistory: MessagingSnapshot {
     #expect(model.messageMatches(query: "gate code", filter: InboxFilter()).map(\.id) == [
         MessageReference(route: Fixtures.whatsAppRoute, messageID: "wa-0"),
     ])
-    #expect(model.messageMatches(query: "gate code", filter: InboxFilter(platform: .instagram)).isEmpty)
+    #expect(model.messageMatches(query: "gate code", filter: InboxFilter(platforms: [.instagram])).isEmpty)
     #expect(model.messageMatches(query: "", filter: InboxFilter()).isEmpty)
 }
 
@@ -89,10 +89,27 @@ private var seedWithEarlierHistory: MessagingSnapshot {
     try await model.start()
 
     // Maya is one row across WhatsApp and Instagram; on WhatsApp alone only that chat is visited.
-    model.navigateConversation(forward: true, query: "", filter: InboxFilter(platform: .whatsApp))
+    model.navigateConversation(forward: true, query: "", filter: InboxFilter(platforms: [.whatsApp]))
     #expect(model.openRoute == Fixtures.whatsAppRoute)
-    model.navigateConversation(forward: true, query: "", filter: InboxFilter(platform: .whatsApp))
+    model.navigateConversation(forward: true, query: "", filter: InboxFilter(platforms: [.whatsApp]))
     #expect(model.openRoute == Fixtures.whatsAppRoute)
-    model.navigateConversation(forward: false, query: "", filter: InboxFilter(platform: .telegram))
+    model.navigateConversation(forward: false, query: "", filter: InboxFilter(platforms: [.telegram]))
     #expect(model.openRoute == Fixtures.telegramRoute)
+}
+
+@MainActor
+@Test func searchAndConversationNavigationUseTheSelectedNetworkUnion() async throws {
+    let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: seedWithEarlierHistory), directory: Fixtures.directory)
+    try await model.start()
+    let selected = InboxFilter(platforms: [.whatsApp, .telegram])
+    #expect(model.messageMatches(query: "gate code", filter: selected).map(\.id.messageID) == ["wa-0"])
+    #expect(model.messageMatches(query: "address", filter: selected).isEmpty)
+    #expect(model.messageMatches(query: "Dinner", filter: selected).map(\.id.route) == [Fixtures.telegramRoute])
+
+    model.navigateConversation(forward: true, query: "", filter: selected)
+    #expect(model.openRoute == Fixtures.whatsAppRoute)
+    model.navigateConversation(forward: true, query: "", filter: selected)
+    #expect(model.openRoute == Fixtures.telegramRoute)
+    model.navigateConversation(forward: false, query: "", filter: selected)
+    #expect(model.openRoute == Fixtures.whatsAppRoute)
 }

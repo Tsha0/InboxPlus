@@ -77,9 +77,9 @@ public struct InboxItem: Identifiable, Hashable, Sendable {
         return conversationSummaries.contains(where: \.isFromUnknownSender)
     }
 
-    /// The same row seen through one network, or nil when it has no conversation there.
-    func narrowed(to platform: Platform) -> InboxItem? {
-        let summaries = conversationSummaries.filter { $0.platform == platform }
+    /// The same row seen through the selected networks, or nil when none match.
+    func narrowed(to platforms: Set<Platform>) -> InboxItem? {
+        let summaries = conversationSummaries.filter { platforms.contains($0.platform) }
         guard let latest = summaries.first else { return nil }
         guard summaries.count != conversationSummaries.count else { return self }
         return InboxItem(
@@ -88,7 +88,9 @@ public struct InboxItem: Identifiable, Hashable, Sendable {
             latestActivity: latest.latestActivity,
             unreadCount: summaries.reduce(0) { $0 + $1.unreadCount },
             conversationSummaries: summaries,
-            isFavourite: isFavourite
+            isFavourite: isFavourite,
+            isMuted: isMuted,
+            isHidden: isHidden
         )
     }
 }
@@ -103,12 +105,12 @@ public struct InboxFilter: Hashable, Sendable {
     }
 
     public var scope: Scope
-    /// Nil shows every network.
-    public var platform: Platform?
+    /// An empty selection shows every network.
+    public var platforms: Set<Platform>
 
-    public init(scope: Scope = .all, platform: Platform? = nil) {
+    public init(scope: Scope = .all, platforms: Set<Platform> = []) {
         self.scope = scope
-        self.platform = platform
+        self.platforms = platforms
     }
 
     func includes(_ item: InboxItem) -> Bool {
@@ -172,10 +174,9 @@ public extension InboxItem.ID {
 public enum InboxProjector {
     public static func filtered(_ items: [InboxItem], query: String, filter: InboxFilter = .init()) -> [InboxItem] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        // A person seen through one network sorts by their activity there.
-        let scoped = filter.platform.map { platform in
-            items.compactMap { $0.narrowed(to: platform) }.sorted(by: inboxOrder)
-        } ?? items
+        // A linked person sorts by their activity on the selected networks.
+        let scoped = filter.platforms.isEmpty ? items
+            : items.compactMap { $0.narrowed(to: filter.platforms) }.sorted(by: inboxOrder)
         return scoped.filter { item in
             guard filter.includes(item) else { return false }
             guard !trimmed.isEmpty else { return true }
@@ -188,8 +189,8 @@ public enum InboxProjector {
     }
 
     /// The networks the inbox has conversations on, in a fixed order so the chips never move.
-    public static func platforms(in items: [InboxItem]) -> [Platform] {
-        let present = Set(items.flatMap { $0.conversationSummaries.map(\.platform) })
+    public static func platforms(in items: [InboxItem], including selected: Set<Platform> = []) -> [Platform] {
+        let present = Set(items.flatMap { $0.conversationSummaries.map(\.platform) }).union(selected)
         return Platform.allCases.filter(present.contains)
     }
 
