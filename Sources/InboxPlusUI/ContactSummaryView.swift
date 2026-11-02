@@ -6,6 +6,7 @@ public struct ContactSummaryView: View {
     let personName: String
     let summaries: [ConversationSummary]
     let onOpen: (ConversationRoute) -> Void
+    @Environment(\.inboxPlusTheme) private var theme
 
     public init(
         personName: String,
@@ -89,8 +90,8 @@ public struct ContactSummaryView: View {
                         .font(.caption.monospacedDigit())
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .foregroundStyle(InboxPlusTheme.paper)
-                        .background(InboxPlusTheme.ink, in: .capsule)
+                        .foregroundStyle(theme.onAccent)
+                        .background(theme.accent, in: .capsule)
                         .accessibilityLabel("\(descriptor.unreadCount) unread")
                 }
                 Image(systemName: "chevron.right")
