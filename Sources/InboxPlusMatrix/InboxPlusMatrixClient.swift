@@ -63,15 +63,19 @@ public actor InboxPlusMatrixClient {
             .makeClientBuilder(homeserverURL: homeserverURL)
             .build()
 
-        if let saved = try store.loadSession() {
+        if let persisted = try store.loadSession() {
+            let saved = persisted.replacingHomeserverURL(homeserverURL)
             do {
                 try await client.restoreSession(session: saved.session)
                 connectedClient = client
-                return saved
             } catch {
                 // A rejected session means the server no longer honours the token — for example
                 // after a profile restore. Fall through to a fresh login rather than dying.
                 try store.clearSession()
+            }
+            if connectedClient != nil {
+                try store.saveSession(saved)
+                return saved
             }
         }
 

@@ -351,6 +351,19 @@ func publicConstructionRejectsInactiveSnapshotWithRuntimeMetadata(
     #expect(metrics.identityChecks >= 4)
 }
 
+@Test func appManagedShutdownKeepsOwnershipAndNeverEscalatesToKill() async throws {
+    let fixture = SupervisorFixture(exitOnTerminate: false, allowsForcedTermination: false)
+    _ = try await fixture.supervisor.start()
+    let stopping = Task { try await fixture.supervisor.stop() }
+    await waitForPhase(.stopping, supervisor: fixture.supervisor)
+    for _ in 0..<100 { await Task.yield() }
+    #expect(await fixture.process.metrics().signals == [.terminate])
+    #expect(await fixture.supervisor.status().phase == .stopping)
+    await fixture.process.finishGracefully()
+    #expect(try await stopping.value.phase == .stopped)
+    #expect(await fixture.process.metrics().signals == [.terminate])
+}
+
 @Test func identityChangeDuringGracefulWaitPreventsEscalation() async throws {
     // Break caught: forced termination targets a replacement process that appeared after SIGTERM.
     let fixture = SupervisorFixture(exitOnTerminate: false, replaceIdentityAfterFirstWait: true)
@@ -927,6 +940,7 @@ private struct SupervisorFixture {
         launchGate: AsyncGate? = nil,
         waitGate: AsyncGate? = nil,
         exitOnTerminate: Bool = true,
+        allowsForcedTermination: Bool = true,
         replaceIdentityAfterFirstWait: Bool = false,
         launchFails: Bool = false,
         listener: FakeListenerChecker = FakeListenerChecker(responses: [false]),
@@ -959,6 +973,7 @@ private struct SupervisorFixture {
             listenerChecker: listener,
             healthChecker: LifecycleHealthyChecker(),
             initialSnapshot: initialSnapshot,
+            allowsForcedTermination: allowsForcedTermination,
             gracefulTerminationTimeout: .seconds(5),
             forcedTerminationTimeout: .seconds(1),
             listenerVerificationAttempts: listenerVerificationAttempts,
@@ -1114,6 +1129,8 @@ private actor FakeManagedProcess: ManagedProcess {
     func replaceCurrentIdentity(with identity: ManagedProcessIdentity) {
         currentIdentity = identity
     }
+
+    func finishGracefully() { currentIdentity = nil }
 
     func setLaunchFailure(_ value: Bool) {
         launchFails = value

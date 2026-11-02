@@ -138,3 +138,16 @@ private func fixtureSession(accessToken: String = "syt_secret") -> PersistedSess
     #expect(FileManager.default.fileExists(atPath: store.dataDirectory.path))
     #expect(FileManager.default.fileExists(atPath: store.cacheDirectory.path))
 }
+
+@Test func reconnectingToANewRuntimePortKeepsTheSameAccountAndDevice() {
+    let original = fixtureSession()
+    let updated = original.replacingHomeserverURL(URL(string: "http://127.0.0.1:18009")!)
+    #expect(updated.homeserverURL == "http://127.0.0.1:18009")
+    #expect(updated.session.homeserverUrl == updated.homeserverURL)
+    #expect(updated.accessToken == original.accessToken)
+    #expect(updated.refreshToken == original.refreshToken)
+    #expect(updated.deviceID == original.deviceID)
+    #expect(updated.userID == original.userID)
+    #expect(updated.oauthData == original.oauthData)
+    #expect(updated.usesNativeSlidingSync == original.usesNativeSlidingSync)
+}

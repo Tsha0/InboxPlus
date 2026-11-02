@@ -14,20 +14,28 @@ import InboxPlusRuntime
 /// Everything downstream is built only once the homeserver answers, because a Matrix client
 /// constructed against a port nothing is listening on fails in ways that read as a bug in Inbox+.
 actor DeferredRuntimeGateway: ConversationStartingGateway, MessageInteractionGateway {
-    private let paths: RuntimePaths
-    private let profileName: String
-    private let build: @Sendable (RuntimeProfileState) async throws -> any MessagingGateway
+    struct Connection: Sendable {
+        let gateway: any MessagingGateway
+        let disconnect: @Sendable () async -> Void
+    }
 
-    private var resolved: (any MessagingGateway)?
-    private var resolving: Task<any MessagingGateway, any Error>?
+    private let ensureRunning: @Sendable () async throws -> RuntimeProfileState
+    private let restartRuntime: @Sendable () async throws -> Void
+    private let build: @Sendable (RuntimeProfileState) async throws -> Connection
+
+    private typealias Resolved = (state: RuntimeProfileState, connection: Connection)
+    private var resolved: Resolved?
+    private var resolving: Task<Resolved, any Error>?
+    private var refreshing: Task<Void, any Error>?
+    private var generation = 0
 
     init(
-        paths: RuntimePaths,
-        profileName: String,
-        build: @escaping @Sendable (RuntimeProfileState) async throws -> any MessagingGateway
+        ensureRunning: @escaping @Sendable () async throws -> RuntimeProfileState,
+        restartRuntime: @escaping @Sendable () async throws -> Void,
+        build: @escaping @Sendable (RuntimeProfileState) async throws -> Connection
     ) {
-        self.paths = paths
-        self.profileName = profileName
+        self.ensureRunning = ensureRunning
+        self.restartRuntime = restartRuntime
         self.build = build
     }
 
@@ -98,32 +106,58 @@ actor DeferredRuntimeGateway: ConversationStartingGateway, MessageInteractionGat
 
     // MARK: - Resolution
 
-    /// Starts the runtime once, however many callers arrive at the same moment.
-    private func gateway() async throws -> any MessagingGateway {
-        if let resolved { return resolved }
-        if let resolving { return try await resolving.value }
+    func runtimeChanged() async throws -> Bool {
+        let current = try await ensureRunning()
+        guard let resolved else { return false }
+        return resolved.state.snapshot.processIdentity != current.snapshot.processIdentity
+            || resolved.state.snapshot.loopbackPort != current.snapshot.loopbackPort
+            || resolved.state.serverName != current.serverName
+    }
 
-        let task = Task<any MessagingGateway, any Error> { [paths, profileName, build] in
-            let state = try await ManagedRuntime.shared.ensureRunning(
-                paths: paths,
-                profileName: profileName,
-                progress: { message in
-                    FileHandle.standardError.write(Data("Inbox+: \(message)\n".utf8))
-                }
-            )
-            return try await build(state)
+    func refreshRuntime(restartServices: Bool = true) async throws {
+        if let refreshing { return try await refreshing.value }
+        let previous = resolved
+        let pending = resolving
+        let task = Task { [restartRuntime] in
+            let connection = try await pending?.value ?? previous
+            await connection?.connection.disconnect()
+            if restartServices { try await restartRuntime() }
         }
+        generation += 1
+        refreshing = task
+        resolved = nil
+        resolving = nil
+        defer { refreshing = nil }
+        try await task.value
+    }
+
+    private func gateway() async throws -> any MessagingGateway {
+        if let refreshing { try await refreshing.value }
+        if let resolved { return resolved.connection.gateway }
+        if let resolving {
+            let generation = generation
+            let result = try await resolving.value
+            guard generation == self.generation else { return try await gateway() }
+            return result.connection.gateway
+        }
+
+        let task = Task<Resolved, any Error> { [ensureRunning, build] in
+            let state = try await ensureRunning()
+            return (state, try await build(state))
+        }
+        let generation = generation
         resolving = task
 
         do {
-            let gateway = try await task.value
-            resolved = gateway
+            let connection = try await task.value
+            guard generation == self.generation else { return try await gateway() }
+            resolved = connection
             resolving = nil
-            return gateway
+            return connection.connection.gateway
         } catch {
             // Cleared so a retry — the user pressing reload, or the next send — starts again rather
             // than replaying a stored failure forever.
-            resolving = nil
+            if generation == self.generation { resolving = nil }
             throw error
         }
     }

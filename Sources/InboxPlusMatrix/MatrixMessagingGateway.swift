@@ -313,6 +313,11 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         started = false
     }
 
+    public func disconnect() async {
+        await stop()
+        await client.disconnect()
+    }
+
     // MARK: - Room discovery
 
     /// Joins portal rooms a trusted bridge has invited this account to.

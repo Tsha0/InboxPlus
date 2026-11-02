@@ -125,6 +125,16 @@ public actor CompositeMessagingGateway: ConversationStartingGateway, MessageInte
         return gateway
     }
 
+    public func stopForwarding() async {
+        let tasks = forwardingTasks
+        forwardingTasks.removeAll()
+        tasks.forEach { $0.cancel() }
+        for task in tasks { await task.value }
+        for continuation in streamContinuations.values { continuation.finish() }
+        streamContinuations.removeAll()
+        startedForwarding = false
+    }
+
     private func startForwarding() {
         guard !startedForwarding else { return }
         startedForwarding = true

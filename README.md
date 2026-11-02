@@ -136,8 +136,11 @@ INBOXPLUS_PROFILE=demo swift run -c release InboxPlus
 ```
 
 Then **Settings → Add** and pick a network. Follow the bridge's login flow; web sign-ins use the
-network's own page, and Inbox+ captures only the credentials the bridge declared it needs. If adding
-a bridge asks for a runtime restart, quit and reopen Inbox+ when the app manages the runtime.
+network's own page, and Inbox+ captures only the credentials the bridge declared it needs. First-time
+setup shows download and installation progress, refreshes app-managed local services, and continues
+to sign-in without closing Inbox+. Existing connections briefly pause; drafts and staged attachments
+stay in the app, and active sends finish before services restart. If a terminal owns the runtime,
+restart it there and choose the network again; Inbox+ can stay open.
 
 For manual runtime control, run `swift run -c release InboxPlusRuntimeCLI start --profile demo` in a
 separate terminal before launching the app. Inbox+ attaches to that runtime and leaves it running

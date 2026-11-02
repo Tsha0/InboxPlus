@@ -34,6 +34,7 @@ enum GatewaySelection {
         var preferenceStore: ConversationPreferenceStore? = nil
         var accountLifecycle: (any AccountLifecycle)? = nil
         var composerFiles: ComposerFileStore = .temporary()
+        var runtimeGateway: DeferredRuntimeGateway? = nil
         /// Writes a redacted diagnostics bundle of the profile to a folder. Nil without a profile.
         var exportDiagnostics: (@Sendable (URL) async throws -> Void)? = nil
     }
@@ -71,15 +72,20 @@ enum GatewaySelection {
             composerFiles.removeAll()
 
             let gateway = DeferredRuntimeGateway(
-                paths: paths,
-                profileName: profileName,
+                ensureRunning: {
+                    try await ManagedRuntime.shared.ensureRunning(paths: paths, profileName: profileName)
+                },
+                restartRuntime: { try await ManagedRuntime.shared.refresh(paths: paths, profileName: profileName) },
                 build: { state in
                     let built = try makeMatrixGateway(
                         paths: paths, state: state, sources: sources,
-                        makeIMessage: { makeIMessageGateway(paths: $0, activityWindow: iMessageWindow) }
+                        makeIMessage: {
+                            (sources.iMessage as? IMessageGateway)
+                                ?? makeIMessageGateway(paths: $0, activityWindow: iMessageWindow)
+                        }
                     )
                     await attachMedia(media, fetcher: built.media, paths: paths)
-                    return built.gateway
+                    return DeferredRuntimeGateway.Connection(gateway: built.gateway, disconnect: built.disconnect)
                 }
             )
 
@@ -94,6 +100,7 @@ enum GatewaySelection {
                 ),
                 accountLifecycle: ProfileAccountLifecycle(paths: paths, sources: sources),
                 composerFiles: composerFiles,
+                runtimeGateway: gateway,
                 exportDiagnostics: { destination in
                     _ = try await Task.detached {
                         try DiagnosticsBundle.forProfile(paths)
@@ -125,7 +132,7 @@ extension GatewaySelection {
         state: RuntimeProfileState,
         sources: LiveSources = LiveSources(),
         makeIMessage: (RuntimePaths) -> IMessageGateway?
-    ) throws -> (gateway: any MessagingGateway, media: MatrixMediaFetcher) {
+    ) throws -> (gateway: any MessagingGateway, media: MatrixMediaFetcher, disconnect: @Sendable () async -> Void) {
         guard let port = state.snapshot.loopbackPort else {
             throw GatewaySelectionError.profileNotRunning(paths.profile.lastPathComponent)
         }
@@ -200,7 +207,10 @@ extension GatewaySelection {
         }
         let gateway: any MessagingGateway =
             gateways.count == 1 ? matrix : CompositeMessagingGateway(gateways)
-        return (gateway, matrix.mediaFetcher)
+        return (gateway, matrix.mediaFetcher, {
+            await (gateway as? CompositeMessagingGateway)?.stopForwarding()
+            await matrix.disconnect()
+        })
     }
 
     /// A disconnected iMessage is not read at all, but stays listed so it can be reconnected.

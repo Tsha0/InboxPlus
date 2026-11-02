@@ -86,3 +86,67 @@ private actor SuspendedSendGateway: TextOnlyTestGateway {
     model.removeStagedAttachment(staged, for: route)
     #expect(!model.hasUnfinishedMessagingWork)
 }
+
+@MainActor
+@Test func setupRefreshKeepsDraftsAttachmentsAndTheOpenConversation() async throws {
+    let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: Fixtures.snapshot), directory: Fixtures.directory)
+    try await model.start()
+    defer { model.stop() }
+    model.openConversation(Fixtures.instagramRoute)
+    model.setDraft("Keep this reply", for: Fixtures.instagramRoute)
+    let file = FileManager.default.temporaryDirectory.appendingPathComponent("setup-draft-\(UUID()).txt")
+    defer { try? FileManager.default.removeItem(at: file) }
+    try Data("unsent attachment".utf8).write(to: file)
+    #expect(model.stageAttachment(at: file, for: Fixtures.instagramRoute) == nil)
+    let staged = try #require(model.stagedAttachments(for: Fixtures.instagramRoute).first)
+    try await model.refreshRuntime {}
+    #expect(model.draft(for: Fixtures.instagramRoute) == "Keep this reply")
+    #expect(model.stagedAttachments(for: Fixtures.instagramRoute) == [staged])
+    #expect(FileManager.default.fileExists(atPath: staged.fileURL.path))
+    #expect(model.openRoute == Fixtures.instagramRoute)
+    #expect(!model.isRefreshingRuntime)
+    model.removeStagedAttachment(staged, for: Fixtures.instagramRoute)
+}
+
+@MainActor
+@Test func setupRefreshWaitsForAnActiveSendAndBlocksNewSends() async throws {
+    let gateway = SuspendedSendGateway()
+    let model = InboxPlusAppModel(gateway: gateway)
+    try await model.start()
+    defer { model.stop() }
+    let route = ConversationRoute(accountID: "account", conversationID: "conversation")
+    model.setDraft("Finish sending", for: route)
+    let sending = Task { try await model.sendDraft(model.captureDraft(to: route)) }
+    let deadline = ContinuousClock().now.advanced(by: .seconds(5))
+    while !(await gateway.hasStarted), ContinuousClock().now < deadline { await Task.yield() }
+    #expect(await gateway.hasStarted)
+    let refresh = Task { try await model.refreshRuntime {} }
+    while !model.isRefreshingRuntime, ContinuousClock().now < deadline { await Task.yield() }
+    await #expect(throws: ReplyError.refreshingRuntime) {
+        try await model.sendReply("Do not send during restart", to: route)
+    }
+    await gateway.finish()
+    try await sending.value
+    try await refresh.value
+    #expect(!model.isRefreshingRuntime)
+}
+
+@MainActor
+@Test func setupRefreshTimeoutLeavesTheSendAndDraftUntouched() async throws {
+    let gateway = SuspendedSendGateway()
+    let model = InboxPlusAppModel(gateway: gateway)
+    try await model.start()
+    defer { model.stop() }
+    let route = ConversationRoute(accountID: "account", conversationID: "conversation")
+    model.setDraft("Keep sending", for: route)
+    let sending = Task { try await model.sendDraft(model.captureDraft(to: route)) }
+    let deadline = ContinuousClock().now.advanced(by: .seconds(5))
+    while !(await gateway.hasStarted), ContinuousClock().now < deadline { await Task.yield() }
+    await #expect(throws: (any Error).self) {
+        try await model.refreshRuntime(timeout: .zero) { Issue.record("must not stop an active send") }
+    }
+    #expect(model.draft(for: route) == "Keep sending")
+    #expect(!model.isRefreshingRuntime)
+    await gateway.finish()
+    try await sending.value
+}

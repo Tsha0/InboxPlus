@@ -9,7 +9,7 @@ import InboxPlusFeatures
 /// Supplied by the app layer, which owns the bridge processes. `InboxPlusUI` stays ignorant of how a
 /// bridge is installed or supervised — it only renders the conversation the bridge asks for.
 public typealias BridgeLoginSessionProvider =
-    @MainActor (Platform) async throws -> BridgeLoginPreparation
+    @MainActor (Platform, @escaping BridgeSetupProgressHandler) async throws -> BridgeLoginPreparation
 
 public struct RootView: View {
     @Bindable var model: InboxPlusAppModel
@@ -24,6 +24,8 @@ public struct RootView: View {
     @State private var connectNotice: ConnectNotice?
     @State private var accountFailure: AccountFailure?
     @State private var themePicks = 0
+    @State private var setupProgress: BridgeSetupProgress = .checkingRuntime
+    @State private var setupID = UUID()
 
     private let makeLoginSession: BridgeLoginSessionProvider?
     private let update: AppUpdatePresentation?
@@ -136,7 +138,7 @@ public struct RootView: View {
             }
         }
         .frame(minWidth: 900, minHeight: 600)
-        .disabled(model.isPreparingForUpdate)
+        .disabled(model.isPreparingForUpdate || model.isRefreshingRuntime)
         .focusedSceneValue(\.inboxCommandActions, commandActions)
         .environment(\.inboxPlusTheme, theme)
         .tint(theme.highlight)
@@ -185,7 +187,7 @@ public struct RootView: View {
                 .frame(width: 440)
                 .accessibilityIdentifier("connection-warning-\(platform.rawValue)")
             case let .installing(platform):
-                BridgeInstallProgressView(platform: platform)
+                BridgeInstallProgressView(platform: platform, progress: setupProgress)
             case let .login(platform, controller):
                 LoginStepView(
                     controller: controller,
@@ -270,15 +272,23 @@ public struct RootView: View {
             return
         }
         Task { @MainActor in
+            let id = UUID()
+            setupID = id
+            setupProgress = .checkingRuntime
             accountFlow = .installing(platform)
             do {
-                switch try await makeLoginSession(platform) {
+                switch try await makeLoginSession(platform, { progress in
+                    Task { @MainActor in
+                        guard setupID == id, progress.stage >= setupProgress.stage else { return }
+                        setupProgress = progress
+                    }
+                }) {
                 case let .ready(session):
                     accountFlow = .login(
                         platform,
                         BridgeLoginController(platform: platform, session: session)
                     )
-                case let .installedPendingRuntimeRestart(outcome):
+                case let .waitingForExternalRuntime(outcome):
                     accountFlow = nil
                     connectNotice = ConnectNotice(
                         title: outcome.title,
@@ -293,22 +303,25 @@ public struct RootView: View {
     }
 
     private func finishConnecting(platform: Platform) {
-        do {
-            // The gateway files this network's conversations under its bridge, so the account
-            // recorded here has to be that same one or they are dropped from the inbox.
-            let bridge = try BridgeCatalog.require(platform)
-            try model.addAccount(
-                ConnectedAccount(id: bridge.id, platform: bridge.platform, displayName: bridge.displayName)
-            )
-        } catch {
-            connectFailure = String(describing: error)
+        Task { @MainActor in
+            setupProgress = .syncing
+            accountFlow = .installing(platform)
+            do {
+                let bridge = try BridgeCatalog.require(platform)
+                try model.addAccount(
+                    ConnectedAccount(id: bridge.id, platform: bridge.platform, displayName: bridge.displayName)
+                )
+                try await model.refreshConversations()
+            } catch {
+                connectFailure = String(describing: error)
+            }
+            accountFlow = nil
         }
-        accountFlow = nil
     }
 
     private var commandActions: InboxCommandActions? {
         guard accountFlow == nil, connectFailure == nil, connectNotice == nil, accountFailure == nil,
-              !model.isPreparingForUpdate else { return nil }
+              !model.isPreparingForUpdate, !model.isRefreshingRuntime else { return nil }
         let canNavigate = !InboxProjector.filtered(model.listedInboxItems, query: inboxQuery, filter: inboxFilter).isEmpty
         let route = model.openRoute
         return InboxCommandActions(

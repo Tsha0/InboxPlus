@@ -161,6 +161,7 @@ public struct RuntimeProfileService: Sendable {
     /// exercises) owns the full lifecycle inside one process through this entry point.
     @discardableResult
     public func withRunningRuntime<T>(
+        allowsForcedTermination: Bool = true,
         messageRetention: MessageRetention = .standard,
         onReady: @Sendable (RuntimeSnapshot) -> Void = { _ in },
         _ body: @Sendable (SynapseSupervisor, RuntimeContext) async throws -> T
@@ -175,7 +176,10 @@ public struct RuntimeProfileService: Sendable {
         )
         _ = try configuration.write()
 
-        let supervisor = try makeSupervisor(state: state, port: port, snapshot: state.snapshot)
+        let supervisor = try makeSupervisor(
+            state: state, port: port, snapshot: state.snapshot,
+            allowsForcedTermination: allowsForcedTermination
+        )
         let started = try await supervisor.start()
         try store.save(state.replacing(snapshot: started))
         onReady(started)
@@ -657,7 +661,8 @@ public struct RuntimeProfileService: Sendable {
     public func makeSupervisor(
         state: RuntimeProfileState,
         port: UInt16,
-        snapshot: RuntimeSnapshot
+        snapshot: RuntimeSnapshot,
+        allowsForcedTermination: Bool = true
     ) throws -> SynapseSupervisor {
         let healthChecker = try SynapseHealthChecker(
             baseURL: URL(string: "http://127.0.0.1:\(port)")!,
@@ -669,7 +674,8 @@ public struct RuntimeProfileService: Sendable {
             configuration: managedProcessConfiguration(state: state),
             loopbackPort: port,
             healthChecker: healthChecker,
-            initialSnapshot: snapshot
+            initialSnapshot: snapshot,
+            allowsForcedTermination: allowsForcedTermination
         )
     }
 

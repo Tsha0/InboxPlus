@@ -84,6 +84,16 @@ opt-in because they download dependencies and start processes:
 INBOXPLUS_RUNTIME_PYTHON=/opt/homebrew/opt/python@3.12/bin/python3.12 swift test
 ```
 
+To exercise first-install setup using an already built app's bundled runtime:
+
+```bash
+INBOXPLUS_SETUP_RUNTIME_PACKAGE_ROOT="/Applications/Inbox+.app/Contents/Resources" swift test --filter realBridgeFirstInstallRefreshesServicesAndRestoresTheInboxWithoutRelaunching
+```
+
+This uses an isolated profile, downloads and verifies the pinned Instagram bridge, refreshes the
+app-owned runtime, and restores the Matrix session. It checks that sign-in methods are available;
+it does not sign into Instagram or read any real account.
+
 These tests do not touch real network accounts. Passing fixture or local-runtime tests does not
 certify a network's live login or messaging behavior. Timeouts for real processes must be generous
 enough for slower CI runners: they guard against hangs, not assert developer-machine speed.

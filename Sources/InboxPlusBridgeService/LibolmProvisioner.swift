@@ -140,7 +140,7 @@ public struct LibolmProvisioner: Sendable {
         defer { try? FileManager.default.removeItem(at: workspace) }
 
         let tarball = workspace.appendingPathComponent("olm.tar.gz", isDirectory: false)
-        let (status, body) = try await fetcher.fetch(Self.sourceURL)
+        let (status, body) = try await fetcher.fetch(Self.sourceURL, progress: { _, _ in })
         guard (200..<300).contains(status) else {
             throw LibolmError.downloadFailed(status: status)
         }
