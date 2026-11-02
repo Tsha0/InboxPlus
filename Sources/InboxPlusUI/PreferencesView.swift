@@ -183,6 +183,15 @@ struct PreferencesView: View {
                     .disabled(cacheSize ?? 0 == 0 || isClearingCache)
                     .accessibilityIdentifier("clear-media-cache")
             }
+            Picker("Keep messages for", selection: $preferences.messageRetention) {
+                ForEach(MessageRetention.allCases) { retention in
+                    Text(retention.title).tag(retention)
+                }
+            }
+            .accessibilityIdentifier("message-retention")
+            Text("Older messages are deleted from this Mac and stay on the network. iMessage uses its own history below. Applies the next time Inbox+ opens.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Picker("iMessage history", selection: $preferences.iMessageHistory) {
                 ForEach(IMessageHistoryWindow.allCases) { window in
                     Text(window.title).tag(window)

@@ -75,10 +75,11 @@ func execute(_ command: RuntimeCommand) async throws -> String {
         python=\(receipt.pythonVersion) synapse=\(receipt.synapseVersion) \
         packages=\(receipt.installedPackages.count)
         """
-    case let .start(_, exitWithParent):
+    case let .start(_, exitWithParent, messageRetention):
         let monitor = InterruptMonitor(exitWhenParentExits: exitWithParent)
         let runtime = BridgeRuntime(paths: service.paths)
         try await service.withRunningRuntime(
+            messageRetention: messageRetention,
             onReady: { snapshot in
                 print(describe(snapshot))
                 // The session blocks indefinitely, so a redirected stdout must not stay buffered.

@@ -20,6 +20,7 @@ public struct SynapseConfiguration: Sendable {
     public let mediaPath: URL
     public let signingKeyPath: URL
     public let credentials: SynapseCredentials
+    public let messageRetention: MessageRetention
     /// Where bridge preparation publishes the registrations Synapse must load.
     public let appServiceDirectory: URL
 
@@ -27,12 +28,18 @@ public struct SynapseConfiguration: Sendable {
     private let configurationFilePath: URL
     private let pidFilePath: URL
 
-    public init(profile: RuntimePaths, port: UInt16, credentials: SynapseCredentials) {
+    public init(
+        profile: RuntimePaths,
+        port: UInt16,
+        credentials: SynapseCredentials,
+        messageRetention: MessageRetention = .standard
+    ) {
         self.init(
             profile: profile,
             bindAddress: "127.0.0.1",
             port: port,
-            credentials: credentials
+            credentials: credentials,
+            messageRetention: messageRetention
         )
     }
 
@@ -40,7 +47,8 @@ public struct SynapseConfiguration: Sendable {
         profile: RuntimePaths,
         bindAddress: String,
         port: UInt16,
-        credentials: SynapseCredentials
+        credentials: SynapseCredentials,
+        messageRetention: MessageRetention = .standard
     ) {
         serverName = "inboxplus.localhost"
         self.bindAddress = bindAddress
@@ -49,6 +57,7 @@ public struct SynapseConfiguration: Sendable {
         mediaPath = profile.data.appendingPathComponent("media", isDirectory: true)
         signingKeyPath = profile.configuration.appendingPathComponent("inboxplus.signing.key", isDirectory: false)
         self.credentials = credentials
+        self.messageRetention = messageRetention
         appServiceDirectory = profile.configuration.appendingPathComponent("appservices", isDirectory: true)
         self.profile = profile
         configurationFilePath = profile.configuration.appendingPathComponent("homeserver.yaml", isDirectory: false)
@@ -97,7 +106,7 @@ public struct SynapseConfiguration: Sendable {
         retention:
           enabled: true
           default_policy:
-            max_lifetime: \(RecentHistory.messageLifetimeDays)d
+            max_lifetime: \(messageRetention.days)d
           purge_jobs:
             - interval: 1d
         signing_key_path: \(yamlString(signingKeyPath.path))

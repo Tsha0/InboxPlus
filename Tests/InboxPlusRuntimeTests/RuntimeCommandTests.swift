@@ -48,17 +48,31 @@ import Testing
 }
 
 @Test(arguments: [
-    (["start", "--profile", "alpha"], RuntimeCommand.start(profile: "alpha", exitWithParent: false)),
+    (
+        ["start", "--profile", "alpha"],
+        RuntimeCommand.start(profile: "alpha", exitWithParent: false, messageRetention: .week)
+    ),
     // The app passes this so its runtime does not outlive it; a shell session leaves it off.
     (
         ["start", "--profile", "alpha", "--exit-with-parent"],
-        RuntimeCommand.start(profile: "alpha", exitWithParent: true)
+        RuntimeCommand.start(profile: "alpha", exitWithParent: true, messageRetention: .week)
+    ),
+    (
+        ["start", "--profile", "alpha", "--message-retention-days", "30"],
+        RuntimeCommand.start(profile: "alpha", exitWithParent: false, messageRetention: .month)
     ),
     (["status", "--profile", "alpha"], RuntimeCommand.status(profile: "alpha")),
     (["stop", "--profile", "alpha"], RuntimeCommand.stop(profile: "alpha")),
 ])
 func lifecycleCommandsParseTheirProfile(_ arguments: [String], _ expected: RuntimeCommand) throws {
     #expect(try RuntimeCommand.parse(arguments) == expected)
+}
+
+@Test(arguments: ["0", "14", "week"])
+func startRejectsARetentionSettingsDoesNotOffer(_ days: String) {
+    #expect(throws: RuntimeCommandError.invalidValue(option: "--message-retention-days", value: days)) {
+        try RuntimeCommand.parse(["start", "--profile", "alpha", "--message-retention-days", days])
+    }
 }
 
 @Test func benchmarkUsesRepresentativeDefaults() throws {

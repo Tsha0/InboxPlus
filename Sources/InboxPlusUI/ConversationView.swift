@@ -472,6 +472,16 @@ private struct RecentHistoryNotice: View {
     }
 }
 
+/// Lines the reaction button up with the text bubble rather than the whole message, whose
+/// reactions and timestamp sit below it. A message without text centres on its attachments.
+private extension VerticalAlignment {
+    enum MessageBody: AlignmentID {
+        static func defaultValue(in dimensions: ViewDimensions) -> CGFloat { dimensions[VerticalAlignment.center] }
+    }
+
+    static let messageBody = VerticalAlignment(MessageBody.self)
+}
+
 private struct MessageBubble: View {
     @Bindable var model: InboxPlusAppModel
     let message: Message
@@ -481,6 +491,8 @@ private struct MessageBubble: View {
     let quote: ReplyQuote?
     let onReply: () -> Void
     let onFailure: (String) -> Void
+    @State private var isHovering = false
+    @State private var showsReactionPicker = false
 
     private var failureReason: String? {
         guard case let .failed(reason) = message.deliveryState else { return nil }
@@ -507,8 +519,11 @@ private struct MessageBubble: View {
     }
 
     var body: some View {
-        HStack {
-            if message.isOutgoing { Spacer(minLength: 60) }
+        HStack(alignment: .messageBody) {
+            if message.isOutgoing {
+                Spacer(minLength: 60)
+                reactButton
+            }
             VStack(alignment: message.isOutgoing ? .trailing : .leading, spacing: 3) {
                 if showsSender {
                     Text(senderName)
@@ -537,6 +552,7 @@ private struct MessageBubble: View {
                             in: .rect(cornerRadius: 12)
                         )
                         .textSelection(.enabled)
+                        .alignmentGuide(.messageBody) { $0[VerticalAlignment.center] }
                 }
                 if !message.reactions.isEmpty {
                     reactionRow
@@ -557,14 +573,52 @@ private struct MessageBubble: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             }
-            if !message.isOutgoing { Spacer(minLength: 60) }
+            if !message.isOutgoing {
+                reactButton
+                Spacer(minLength: 60)
+            }
         }
         .frame(maxWidth: .infinity, alignment: message.isOutgoing ? .trailing : .leading)
+        .contentShape(.rect)
+        .onHover { isHovering = $0 }
         // Combining would swallow the attachment's own controls — its play button and its
         // "Open in app" action have to stay reachable.
         .accessibilityElement(children: message.attachments.isEmpty ? .combine : .contain)
         .accessibilityLabel(MessageBubble.accessibilityLabel(for: message, senderName: senderName, quote: quote))
+        .accessibilityActions {
+            if model.canReact(to: message) {
+                Button("React") { showsReactionPicker = true }
+            }
+        }
         .contextMenu { actions }
+    }
+
+    /// Appears while the pointer is over the message, as the reaction button does in other chat
+    /// apps. It keeps its place while hidden, so a long bubble does not rewrap under the pointer.
+    @ViewBuilder private var reactButton: some View {
+        if model.canReact(to: message) {
+            Button {
+                showsReactionPicker = true
+            } label: {
+                Image(systemName: "face.smiling")
+                    .font(.title3)
+                    .frame(width: 26, height: 26)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("React")
+            .opacity(isHovering || showsReactionPicker ? 1 : 0)
+            // The bubble's own React action reaches the same picker without a hidden button
+            // being announced on every message.
+            .accessibilityHidden(true)
+            .popover(isPresented: $showsReactionPicker) {
+                ReactionPicker(reactions: message.reactions) { key in
+                    showsReactionPicker = false
+                    react(key)
+                }
+            }
+        }
     }
 
     /// Each pill toggles this account's own reaction, as choosing it from the menu does.
@@ -601,6 +655,8 @@ private struct MessageBubble: View {
                 ForEach(TranscriptPresentation.reactionChoices(for: message), id: \.key) { choice in
                     Toggle(choice.key, isOn: Binding(get: { choice.includesMe }, set: { _ in react(choice.key) }))
                 }
+                Divider()
+                Button("More…") { showsReactionPicker = true }
             }
         }
         if canReply || canReact {
