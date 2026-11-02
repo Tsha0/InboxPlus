@@ -120,6 +120,7 @@ public struct ConversationView: View {
     @State private var linkError: String?
     @State private var isDropTargeted = false
     @State private var composerFocusRequest = 0
+    @Environment(\.inboxPlusTheme) private var theme
 
     public init(model: InboxPlusAppModel, route: ConversationRoute) {
         self.model = model
@@ -162,7 +163,7 @@ public struct ConversationView: View {
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(InboxPlusTheme.ink, lineWidth: 2)
+                    .strokeBorder(theme.highlight, lineWidth: 2)
                     .padding(6)
                     .allowsHitTesting(false)
             }
@@ -276,7 +277,7 @@ public struct ConversationView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18))
                     .listRowSeparator(.hidden)
                     .listRowBackground(
-                        message.id == highlightedMessageID ? InboxPlusTheme.ink.opacity(0.08) : Color.clear
+                        message.id == highlightedMessageID ? theme.highlight.opacity(0.08) : Color.clear
                     )
                 }
             }
@@ -356,7 +357,7 @@ public struct ConversationView: View {
                         .frame(height: Self.singleLineFieldHeight)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(canSend ? AnyShapeStyle(InboxPlusTheme.ink) : AnyShapeStyle(.tertiary))
+                .foregroundStyle(canSend ? AnyShapeStyle(theme.highlight) : AnyShapeStyle(.tertiary))
                 .disabled(!canSend)
                 .accessibilityLabel(
                     model.sendFailure(for: route) == nil ? "Send message" : "Retry message"
@@ -493,6 +494,7 @@ private struct MessageBubble: View {
     let onFailure: (String) -> Void
     @State private var isHovering = false
     @State private var showsReactionPicker = false
+    @Environment(\.inboxPlusTheme) private var theme
 
     private var failureReason: String? {
         guard case let .failed(reason) = message.deliveryState else { return nil }
@@ -504,7 +506,7 @@ private struct MessageBubble: View {
     }
 
     private var foreground: Color {
-        message.isOutgoing ? InboxPlusTheme.paper : InboxPlusTheme.ink
+        message.isOutgoing ? theme.onAccent : InboxPlusTheme.ink
     }
 
     /// Links are underlined and tinted to the bubble's text colour, so they stay legible on both
@@ -548,7 +550,7 @@ private struct MessageBubble: View {
                         .padding(.vertical, 8)
                         .foregroundStyle(foreground)
                         .background(
-                            message.isOutgoing ? AnyShapeStyle(InboxPlusTheme.ink) : AnyShapeStyle(.quaternary),
+                            message.isOutgoing ? AnyShapeStyle(theme.accent) : AnyShapeStyle(.quaternary),
                             in: .rect(cornerRadius: 12)
                         )
                         .textSelection(.enabled)
@@ -631,7 +633,7 @@ private struct MessageBubble: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            reaction.includesMe ? AnyShapeStyle(InboxPlusTheme.ink.opacity(0.18)) : AnyShapeStyle(.quaternary),
+                            reaction.includesMe ? AnyShapeStyle(theme.highlight.opacity(0.18)) : AnyShapeStyle(.quaternary),
                             in: .capsule
                         )
                 }

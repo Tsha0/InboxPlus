@@ -24,9 +24,33 @@ extension View {
     /// Sidebar rows are plain buttons rather than `List` selection, so they have to paint
     /// their own selected state.
     func selectedRowBackground(_ isSelected: Bool) -> some View {
-        listRowBackground(
+        modifier(SelectedRowBackground(isSelected: isSelected))
+    }
+
+    /// The window background behind a sidebar list, tinted by the theme.
+    func sidebarBackground() -> some View {
+        modifier(SidebarBackground())
+    }
+}
+
+private struct SelectedRowBackground: ViewModifier {
+    @Environment(\.inboxPlusTheme) private var theme
+    let isSelected: Bool
+
+    func body(content: Content) -> some View {
+        content.listRowBackground(
             RoundedRectangle(cornerRadius: 7)
-                .fill(isSelected ? AnyShapeStyle(InboxPlusTheme.ink.opacity(0.12)) : AnyShapeStyle(.clear))
+                .fill(isSelected ? AnyShapeStyle(theme.highlight.opacity(0.12)) : AnyShapeStyle(.clear))
         )
+    }
+}
+
+private struct SidebarBackground: ViewModifier {
+    @Environment(\.inboxPlusTheme) private var theme
+
+    func body(content: Content) -> some View {
+        content
+            .background(theme.sidebarWash)
+            .background(.background)
     }
 }

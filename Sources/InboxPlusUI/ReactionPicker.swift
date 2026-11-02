@@ -167,9 +167,10 @@ private struct EmojiButton: View {
     let isMine: Bool
     let choose: (String) -> Void
     @State private var isHovering = false
+    @Environment(\.inboxPlusTheme) private var theme
 
     private var background: AnyShapeStyle {
-        if isMine { return AnyShapeStyle(InboxPlusTheme.ink.opacity(0.18)) }
+        if isMine { return AnyShapeStyle(theme.highlight.opacity(0.18)) }
         return isHovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear)
     }
 
