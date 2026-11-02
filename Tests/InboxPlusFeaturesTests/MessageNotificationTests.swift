@@ -42,9 +42,10 @@ private actor NotificationGateway: TextOnlyTestGateway {
     await gateway.publish(.messageUpserted(edited))
     await gateway.publish(.messageUpserted(message("backfill")))
     await gateway.publish(.historicalMessageUpserted(message("sentinel")))
-    for _ in 0..<1000 {
+    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+    while ContinuousClock.now < deadline {
         if model.messagesByRoute[route]?.contains(where: { $0.id == "sentinel" }) == true { break }
-        await Task.yield()
+        try await Task.sleep(for: .milliseconds(1))
     }
     #expect(model.messagesByRoute[route]?.contains(where: { $0.id == "sentinel" }) == true)
     #expect(delivered == ["live"])

@@ -44,3 +44,24 @@ private func transcriptMessage(_ id: String, sender: String? = "alice", time: Ti
     #expect(TranscriptPresentation.recentHistoryNotice(isEmpty: false) == "Showing recent messages")
     #expect(TranscriptPresentation.recentHistoryNotice(isEmpty: true) == "No recent messages")
 }
+
+@Test func olderHistoryDoesNotChangeTheTranscriptScrollTarget() {
+    let latest = transcriptMessage("latest", time: 2000)
+    let earlier = transcriptMessage("earlier")
+    #expect(TranscriptPresentation.focus(in: [latest], highlightedID: nil)?.messageID == "latest")
+    #expect(TranscriptPresentation.focus(in: [earlier, latest], highlightedID: nil)?.messageID == "latest")
+    #expect(TranscriptPresentation.focus(in: [earlier, latest], highlightedID: "earlier")?.messageID == "earlier")
+    #expect(TranscriptPresentation.focus(in: [latest], highlightedID: "earlier")?.messageID == "latest")
+    #expect(TranscriptPresentation.focus(in: [], highlightedID: nil) == nil)
+}
+
+@Test func highlightingTheNewestMessageChangesItsScrollAnchor() {
+    let latest = transcriptMessage("latest")
+    let normal = TranscriptPresentation.focus(in: [latest], highlightedID: nil)
+    let highlighted = TranscriptPresentation.focus(in: [latest], highlightedID: "latest")
+    #expect(normal?.messageID == highlighted?.messageID)
+    #expect(normal?.isHighlighted == false)
+    #expect(highlighted?.isHighlighted == true)
+    #expect(normal != highlighted)
+    #expect(TranscriptPresentation.focus(in: [latest], highlightedID: nil) == normal)
+}

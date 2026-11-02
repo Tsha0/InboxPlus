@@ -11,6 +11,11 @@ public struct ReplyQuote: Equatable, Sendable {
     }
 }
 
+public struct TranscriptFocus: Equatable, Sendable {
+    public let messageID: String
+    public let isHighlighted: Bool
+}
+
 public enum TranscriptPresentation {
     /// Offered on every message, ahead of whatever else people have already reacted with.
     public static let quickReactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
@@ -51,6 +56,11 @@ public enum TranscriptPresentation {
     /// A transcript holds a recent window rather than the whole history, and its top says so.
     public static func recentHistoryNotice(isEmpty: Bool) -> String {
         isEmpty ? "No recent messages" : "Showing recent messages"
+    }
+
+    public static func focus(in messages: [Message], highlightedID: String?) -> TranscriptFocus? {
+        guard let message = messages.first(where: { $0.id == highlightedID }) ?? messages.last else { return nil }
+        return TranscriptFocus(messageID: message.id, isHighlighted: message.id == highlightedID)
     }
 
     public static func senderName(_ message: Message, identities: [RemoteIdentity]) -> String {
