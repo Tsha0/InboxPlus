@@ -157,7 +157,7 @@ private func mayaAndSam() throws -> [InboxItem] {
     let sam = InboxItem.ID.conversation(ConversationRoute(accountID: "wa", conversationID: "sam-wa"))
     #expect(items.map(\.id) == [.person("maya"), sam])
 
-    let whatsApp = InboxProjector.filtered(items, query: "", filter: InboxFilter(platform: .whatsApp))
+    let whatsApp = InboxProjector.filtered(items, query: "", filter: InboxFilter(platforms: [.whatsApp]))
 
     // Maya's newest message is on Instagram, so on WhatsApp alone Sam is the more recent.
     #expect(whatsApp.map(\.id) == [sam, .person("maya")])
@@ -166,9 +166,9 @@ private func mayaAndSam() throws -> [InboxItem] {
     #expect(maya.conversationSummaries.first?.latestPreview == "On WhatsApp")
     #expect(maya.unreadCount == 1)
     #expect(maya.latestActivity == Date(timeIntervalSince1970: 200))
-    #expect(InboxProjector.filtered(items, query: "", filter: InboxFilter(platform: .telegram)).isEmpty)
+    #expect(InboxProjector.filtered(items, query: "", filter: InboxFilter(platforms: [.telegram])).isEmpty)
     #expect(
-        InboxProjector.filtered(items, query: "", filter: InboxFilter(scope: .unread, platform: .whatsApp)).map(\.id)
+        InboxProjector.filtered(items, query: "", filter: InboxFilter(scope: .unread, platforms: [.whatsApp])).map(\.id)
             == [.person("maya")]
     )
 }
@@ -176,6 +176,51 @@ private func mayaAndSam() throws -> [InboxItem] {
 @Test func theNetworkChipsAreTheNetworksTheInboxHasConversationsOn() throws {
     #expect(InboxProjector.platforms(in: try mayaAndSam()) == [.whatsApp, .instagram])
     #expect(InboxProjector.platforms(in: []).isEmpty)
+    #expect(InboxProjector.platforms(in: [], including: [.instagram, .iMessage]) == [.instagram, .iMessage])
+    #expect(InboxProjector.platforms(in: try mayaAndSam(), including: [.iMessage, .whatsApp]) == [.whatsApp, .instagram, .iMessage])
+}
+
+@Test func selectedNetworksAggregateALinkedPersonOnceAndExcludeOtherActivity() throws {
+    let items = try mayaAndSam()
+    let maya = try #require(items.first)
+    let telegram = ConversationSummary(
+        route: ConversationRoute(accountID: "tg", conversationID: "maya-tg"),
+        platform: .telegram, title: "Maya", latestPreview: "On Telegram",
+        latestActivity: Date(timeIntervalSince1970: 150), unreadCount: 4
+    )
+    let linked = InboxItem(
+        id: maya.id, title: maya.title, latestActivity: maya.latestActivity,
+        unreadCount: maya.unreadCount + telegram.unreadCount,
+        conversationSummaries: maya.conversationSummaries + [telegram]
+    )
+    let selected = InboxFilter(platforms: [.whatsApp, .telegram])
+    let result = InboxProjector.filtered([linked] + items.dropFirst(), query: "", filter: selected)
+
+    #expect(result.map(\.id) == [items[1].id, .person("maya")])
+    let narrowed = try #require(result.last)
+    #expect(narrowed.conversationSummaries.map(\.platform) == [.whatsApp, .telegram])
+    #expect(narrowed.conversationSummaries.first?.latestPreview == "On WhatsApp")
+    #expect(narrowed.unreadCount == 5)
+    #expect(narrowed.latestActivity == Date(timeIntervalSince1970: 200))
+    #expect(InboxProjector.filtered([linked], query: "On Instagram", filter: selected).isEmpty)
+    #expect(InboxProjector.filtered([linked], query: "On Telegram", filter: selected).map(\.id) == [maya.id])
+    #expect(InboxProjector.filtered([linked], query: "", filter: InboxFilter()) == [linked])
+    #expect(InboxProjector.filtered(result, query: "", filter: InboxFilter(scope: .unread, platforms: selected.platforms)).map(\.id) == [maya.id])
+}
+
+@Test func narrowingPlatformsPreservesFavouriteMutedAndHiddenRows() throws {
+    let maya = try #require(mayaAndSam().first)
+    let saved = InboxItem(
+        id: maya.id, title: maya.title, latestActivity: maya.latestActivity,
+        unreadCount: maya.unreadCount, conversationSummaries: maya.conversationSummaries,
+        isFavourite: true, isMuted: true, isHidden: true
+    )
+    let result = try #require(InboxProjector.filtered(
+        [saved], query: "", filter: InboxFilter(platforms: [.whatsApp, .telegram])
+    ).first)
+    #expect(result.isFavourite)
+    #expect(result.isMuted)
+    #expect(result.isHidden)
 }
 
 @Test func unknownSendersAreKeptOutOfTheInboxAndListedOnTheirOwn() throws {
@@ -199,6 +244,8 @@ private func mayaAndSam() throws -> [InboxItem] {
     #expect(InboxProjector.filtered(items, query: "", filter: InboxFilter(scope: .unknownSenders)).map(\.id) == [stranger])
     #expect(InboxProjector.filtered(items, query: "won", filter: InboxFilter()).isEmpty)
     #expect(InboxProjector.filtered(items, query: "won", filter: InboxFilter(scope: .unknownSenders)).map(\.id) == [stranger])
+    #expect(InboxProjector.filtered(items, query: "won", filter: InboxFilter(scope: .unknownSenders, platforms: [.iMessage, .whatsApp])).map(\.id) == [stranger])
+    #expect(InboxProjector.filtered(items, query: "", filter: InboxFilter(scope: .unknownSenders, platforms: [.instagram, .whatsApp])).isEmpty)
 }
 
 // MARK: - Message search
@@ -230,7 +277,7 @@ private func mayaAndSam() throws -> [InboxItem] {
     #expect(results.last?.snippet == "The gate code is 4512")
     #expect(results.last?.timestamp == Date(timeIntervalSince1970: 150))
 
-    let whatsAppOnly = InboxProjector.filtered(items, query: "", filter: InboxFilter(platform: .whatsApp))
+    let whatsAppOnly = InboxProjector.filtered(items, query: "", filter: InboxFilter(platforms: [.whatsApp]))
     #expect(InboxProjector.messageMatches(messages, in: whatsAppOnly, query: "gate code").map(\.id.messageID) == ["wa-0"])
     #expect(InboxProjector.messageMatches(messages, in: items, query: "gate code", limit: 1).map(\.id.messageID) == ["ig-0"])
     #expect(InboxProjector.messageMatches(messages, in: items, query: " ").isEmpty)
