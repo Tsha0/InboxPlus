@@ -26,8 +26,8 @@ final class InboxPlusAppDelegate: NSObject, NSApplicationDelegate {
     /// and leaves the runtime running with nothing attached to it. Anyone stopping Inbox+ from a
     /// terminal — or any tool that does — should get the same clean shutdown as ⌘Q.
     ///
-    /// `SIGKILL` cannot be caught, so a runtime can still be orphaned by one; the next launch
-    /// attaches to it rather than failing, which is what makes that survivable.
+    /// `SIGKILL` cannot be caught, so a runtime can still be orphaned by one; the next launch finds
+    /// it unsupervised and restarts it, which is what makes that survivable.
     private func watchForTerminationSignals() {
         for number in [SIGTERM, SIGINT] {
             // The default action has to be ignored, or it fires before the source is handled.

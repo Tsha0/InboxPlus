@@ -287,6 +287,38 @@ func benchmarkRejectsNonPositiveRoomCounts(_ value: String) {
     #expect(RuntimeExitCode(for: SynapseSupervisorError.healthCheckReportedStopped) == .healthFailure)
 }
 
+@Test func theCLIOutlivesTheAppThatReadItsOutput() throws {
+    // Break caught: the app quits without waiting for the runtime it started, so the `bridge …
+    // stopped` lines of the shutdown met a pipe with no reader. SIGPIPE killed the session after it
+    // stopped the bridges and before it stopped Synapse, which then served on with none.
+    let printed = try runWithUnreadOutput(["sbom"])
+    #expect(printed.terminationReason == .exit)
+    #expect(printed.terminationStatus == RuntimeExitCode.success.rawValue)
+
+    let reported = try runWithUnreadOutput(["no-such-command"])
+    #expect(reported.terminationReason == .exit)
+    #expect(reported.terminationStatus == RuntimeExitCode.usage.rawValue)
+}
+
+private func runWithUnreadOutput(_ arguments: [String]) throws -> Process {
+    let cli = Bundle(for: RuntimeCommandTestBundle.self).bundleURL
+        .deletingLastPathComponent()
+        .appendingPathComponent("InboxPlusRuntimeCLI")
+    try #require(FileManager.default.isExecutableFile(atPath: cli.path))
+    let unread = Pipe()
+    try unread.fileHandleForReading.close()
+    let process = Process()
+    process.executableURL = cli
+    process.arguments = arguments
+    process.standardOutput = unread
+    process.standardError = unread
+    try process.run()
+    process.waitUntilExit()
+    return process
+}
+
+private final class RuntimeCommandTestBundle: NSObject {}
+
 @Test func usageTextNamesEveryCommand() {
     let usage = RuntimeCommand.usage
     for command in ["bootstrap", "start", "status", "stop", "benchmark", "backup", "restore", "verify", "remove"] {

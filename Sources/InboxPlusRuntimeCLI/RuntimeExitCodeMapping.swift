@@ -51,8 +51,10 @@ extension RuntimeExitCode {
             self = .unprepared
         case .pythonExecutableUnavailable, .keyGenerationFailed:
             self = .unavailableDependency
-        case .runtimeOwnedByForegroundSession, .profileLockedByAnotherSession:
+        case .profileLockedByAnotherSession:
             self = .invalidTransition
+        case .orphanedRuntimeDidNotStop:
+            self = .shutdownIncomplete
         case .portAllocationFailed:
             self = .processLaunchFailed
         }
