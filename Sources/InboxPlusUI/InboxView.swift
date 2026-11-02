@@ -22,6 +22,7 @@ public struct InboxView: View {
     @FocusState private var searchFocused: Bool
     @State private var showsHidden = false
     @Environment(\.openURL) private var openURL
+    @Environment(\.inboxPlusTheme) private var theme
 
     public init(
         items: [InboxItem],
@@ -89,8 +90,8 @@ public struct InboxView: View {
                         .font(.caption.monospacedDigit().weight(.semibold))
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
-                        .foregroundStyle(InboxPlusTheme.paper)
-                        .background(InboxPlusTheme.ink, in: .capsule)
+                        .foregroundStyle(theme.onAccent)
+                        .background(theme.accent, in: .capsule)
                         .accessibilityLabel("\(unreadTotal) unread in total")
                 }
             }
@@ -222,7 +223,7 @@ public struct InboxView: View {
         }
         .padding(.top, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.background)
+        .sidebarBackground()
         .accessibilityIdentifier("inboxplus-inbox")
     }
 
@@ -364,9 +365,9 @@ public struct InboxView: View {
                         .font(.caption.monospacedDigit())
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .foregroundStyle(InboxPlusTheme.paper)
+                        .foregroundStyle(item.isMuted ? InboxPlusTheme.paper : theme.onAccent)
                         // A muted conversation still counts, but should not shout.
-                        .background(item.isMuted ? AnyShapeStyle(.secondary) : AnyShapeStyle(InboxPlusTheme.ink), in: .capsule)
+                        .background(item.isMuted ? AnyShapeStyle(.secondary) : AnyShapeStyle(theme.accent), in: .capsule)
                         .accessibilityLabel("\(item.unreadCount) unread")
                 }
             }

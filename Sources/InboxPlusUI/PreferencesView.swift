@@ -62,6 +62,7 @@ struct PreferencesView: View {
     @Bindable var model: InboxPlusAppModel
     @Bindable var preferences: AppPreferences
     let services: AppSettingsServices
+    var onThemePicked: () -> Void = {}
 
     @State private var cacheSize: Int?
     @State private var confirmsClearingCache = false
@@ -79,6 +80,7 @@ struct PreferencesView: View {
     var body: some View {
         Form {
             notifications
+            AppearanceSection(preferences: preferences, onThemePicked: onThemePicked)
             general
             storage
             about

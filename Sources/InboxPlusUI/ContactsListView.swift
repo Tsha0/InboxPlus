@@ -91,7 +91,7 @@ struct ContactsListView: View {
         }
         .padding(.top, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.background)
+        .sidebarBackground()
         .accessibilityIdentifier("inboxplus-contacts")
     }
 
