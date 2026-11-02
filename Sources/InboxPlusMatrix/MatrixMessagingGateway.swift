@@ -114,7 +114,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
                 )
             }
 
-            let title = info.displayName ?? info.rawName ?? room.id()
+            let title = await conversationTitle(of: room, info: info, accountID: roomAccountID)
             // Phase 3 has no contact linking against Matrix identities yet, so a conversation
             // stands for itself when nothing has been received in it.
             let identityID = ordered.compactMap(\.senderIdentityID).first ?? room.id()
@@ -366,7 +366,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
             let messages = await observers[roomID]?
                 .messages(waitingUpTo: initialMessageWait)
                 .sorted(by: inboxplusMessageOrdering) ?? []
-            let title = info?.displayName ?? info?.rawName ?? roomID
+            let title = await conversationTitle(of: room, info: info, accountID: roomAccountID)
             let identityID = messages.compactMap(\.senderIdentityID).first ?? roomID
 
             // Order matters: the inbox drops a conversation whose account or identity it has not
@@ -473,6 +473,41 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         return others > 1
     }
 
+    /// A room the network left unnamed, such as most bridged one-to-one chats and a group nobody
+    /// named, is called after its people. Not the SDK's fallback name: that counts this account's
+    /// own network identities as people (WhatsApp has two, by phone number and by LID), so a
+    /// one-to-one chat read like a group that included the user.
+    private func conversationTitle(of room: Room, info: RoomInfo?, accountID: String) async -> String {
+        let fallback = info?.displayName ?? info?.rawName ?? room.id()
+        guard let info, info.rawName?.isEmpty ?? true,
+              let ownUserID = try? await client.requireClient().userId() else { return fallback }
+        let excluded = Set(info.serviceMembers)
+            .union(outgoingIdentifiersByAccount[accountID] ?? [])
+            .union([ownUserID])
+        let members = await joinedMembers(of: room, synchronising: true)
+            .map { (userID: $0.userId, displayName: $0.displayName) }
+        return Self.memberListTitle(members: members, excluding: excluded) ?? fallback
+    }
+
+    /// Everyone in a small room by name, otherwise the first few and how many more.
+    static func memberListTitle(
+        members: [(userID: String, displayName: String?)],
+        excluding excludedIDs: Set<String>
+    ) -> String? {
+        let people = members.filter { !excludedIDs.contains($0.userID) }
+        let names = people.compactMap(\.displayName)
+            .filter { !$0.isEmpty }
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        guard !names.isEmpty else { return nil }
+        let shown = names.prefix(3)
+        let list = shown.joined(separator: ", ")
+        return switch people.count - shown.count {
+        case 0: list
+        case 1: "\(list) and 1 other"
+        case let more: "\(list) and \(more) others"
+        }
+    }
+
     /// Leaves a bridge's own rooms out of the inbox: the spaces it files portals under, and the
     /// management room where its bot talks to this account. Neither is a conversation, and typing
     /// in the management room would send commands to the bot. Its status notices become the
@@ -498,9 +533,9 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         // Only this account and the bot are in one, so a larger room needs no member lookup.
         guard info.joinedMembersCount <= 2,
               let ownUserID = try? await client.requireClient().userId() else { return false }
-        var members = await joinedMemberIDs(of: room, synchronising: false)
-        if members.count < 2 { members = await joinedMemberIDs(of: room, synchronising: true) }
-        return Self.isManagementRoom(memberIDs: members, ownUserID: ownUserID, policy: invitePolicy)
+        var members = await joinedMembers(of: room, synchronising: false)
+        if members.count < 2 { members = await joinedMembers(of: room, synchronising: true) }
+        return Self.isManagementRoom(memberIDs: members.map(\.userId), ownUserID: ownUserID, policy: invitePolicy)
     }
 
     /// Everyone else in the room is a bridge's bot.
@@ -509,14 +544,14 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         return !others.isEmpty && others.allSatisfy(policy.isBridgeBot)
     }
 
-    private func joinedMemberIDs(of room: Room, synchronising: Bool) async -> [String] {
+    private func joinedMembers(of room: Room, synchronising: Bool) async -> [RoomMember] {
         guard let iterator = synchronising ? try? await room.members() : try? await room.membersNoSync()
         else { return [] }
-        var ids: [String] = []
+        var members: [RoomMember] = []
         while let chunk = iterator.nextChunk(chunkSize: 64), !chunk.isEmpty {
-            ids += chunk.filter { $0.membership == .join }.map(\.userId)
+            members += chunk.filter { $0.membership == .join }
         }
-        return ids
+        return members
     }
 
     /// Notices can arrive out of order while history loads, so only a newer one replaces the state.
