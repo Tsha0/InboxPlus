@@ -1,4 +1,5 @@
 import Foundation
+import InboxPlusCore
 import Testing
 @testable import InboxPlusRuntime
 
@@ -43,11 +44,19 @@ import Testing
     retention:
       enabled: true
       default_policy:
-        max_lifetime: 90d
+        max_lifetime: 7d
       purge_jobs:
         - interval: 1d
 
     """))
+}
+
+@Test(arguments: MessageRetention.allCases)
+func renderedConfigurationKeepsMessagesForTheChosenRetention(_ retention: MessageRetention) throws {
+    // Break caught: a retention chosen in Settings never reaches the homeserver's purge policy.
+    let yaml = try fixtureConfiguration(messageRetention: retention).render()
+
+    #expect(yaml.contains("\n    max_lifetime: \(retention.days)d\n"))
 }
 
 @Test func quotedScalarsPreserveApostrophesAndUnicode() throws {
@@ -160,13 +169,15 @@ func configurationRejectsControlScalarsInAdministrationSecrets(_ secret: String)
 private func fixtureConfiguration(
     bindAddress: String = "127.0.0.1",
     port: UInt16 = 18_008,
-    registrationSecret: String = "registration-secret"
+    registrationSecret: String = "registration-secret",
+    messageRetention: MessageRetention = .standard
 ) throws -> SynapseConfiguration {
     SynapseConfiguration(
         profile: try fixtureProfile(),
         bindAddress: bindAddress,
         port: port,
-        credentials: SynapseCredentials(registrationSecret: registrationSecret)
+        credentials: SynapseCredentials(registrationSecret: registrationSecret),
+        messageRetention: messageRetention
     )
 }
 

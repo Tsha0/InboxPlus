@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import InboxPlusCore
 
 /// Allocates a free loopback port by binding an ephemeral socket and reading it back.
 public struct LoopbackPortAllocator: Sendable {
@@ -160,6 +161,7 @@ public struct RuntimeProfileService: Sendable {
     /// exercises) owns the full lifecycle inside one process through this entry point.
     @discardableResult
     public func withRunningRuntime<T>(
+        messageRetention: MessageRetention = .standard,
         onReady: @Sendable (RuntimeSnapshot) -> Void = { _ in },
         _ body: @Sendable (SynapseSupervisor, RuntimeContext) async throws -> T
     ) async throws -> T {
@@ -168,7 +170,8 @@ public struct RuntimeProfileService: Sendable {
         let configuration = SynapseConfiguration(
             profile: paths,
             port: port,
-            credentials: SynapseCredentials(registrationSecret: state.registrationSecret)
+            credentials: SynapseCredentials(registrationSecret: state.registrationSecret),
+            messageRetention: messageRetention
         )
         _ = try configuration.write()
 
