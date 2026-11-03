@@ -106,6 +106,21 @@ private func senders(_ ids: String...) -> [ReactionSenderData] {
     #expect(!MatrixMessagingGateway.needsQuotedMessage(reply))
 }
 
+@Test(arguments: Platform.allCases)
+func replyNamesDropOnlyTheWhatsAppBridgeSuffix(platform: Platform) throws {
+    let normalizer = MatrixEventNormalizer(accountID: "account", platform: platform)
+    let message = try #require(normalizer.normalize(
+        event(inReplyTo: QuotedEvent("$original", .ready(
+            content: text("Keep (WA) in quoted text"), sender: "@whatsapp_15550000002:local",
+            senderProfile: .ready(displayName: "Maya (WA)", displayNameAmbiguous: false, avatarUrl: nil, status: nil, call: nil),
+            timestamp: 100, eventOrTransactionId: .eventId(eventId: "$original")
+        ))),
+        roomID: "room"
+    ))
+    #expect(message.replyTo?.senderDisplayName == (platform == .whatsApp ? "Maya" : "Maya (WA)"))
+    #expect(message.replyTo?.body == "Keep (WA) in quoted text")
+}
+
 @Test func messageIdentifiersMapBackToTheTimelineItemTheyCameFrom() {
     let normalizer = MatrixEventNormalizer(accountID: "instagram")
     for id in [EventOrTransactionId.eventId(eventId: "$event"), .transactionId(transactionId: "abc")] {
