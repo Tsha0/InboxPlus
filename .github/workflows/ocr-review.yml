@@ -1,0 +1,76 @@
+name: OCR code review
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!**/*.md'
+      - AGENTS.md
+      - CONTRIBUTING.md
+
+concurrency:
+  group: ocr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: OCR review (Economy)
+    if: >-
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check Kimi configuration
+        env:
+          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+          KIMI_MODEL: ${{ vars.KIMI_MODEL }}
+        run: |
+          if [[ -z "$KIMI_API_KEY" || -z "$KIMI_MODEL" ]]; then
+            echo "::error::Set the KIMI_API_KEY Actions secret and KIMI_MODEL Actions variable in repository settings."
+            exit 1
+          fi
+
+      # The action checks out the trusted base and reads the PR through git objects.
+      - name: Review with Kimi
+        id: ocr
+        uses: alibaba/open-code-review@76ab46ac20f08a8bd8ac38881a8a826c7cb6495f # v1.13.4
+        with:
+          ocr_version: '1.13.4'
+          llm_url: https://api.moonshot.ai/v1/chat/completions
+          llm_auth_token: ${{ secrets.KIMI_API_KEY }}
+          llm_model: ${{ vars.KIMI_MODEL }}
+          llm_use_anthropic: 'false'
+          llm_protocol: openai
+          llm_extra_body: ${{ vars.KIMI_REVIEW_EXTRA_BODY || '{"thinking":{"type":"disabled"},"temperature":0.6,"max_completion_tokens":4096}' }}
+          effort: low
+          max_tokens_budget: '50000'
+          review_concurrency: '1'
+          checkpoint_range: 'true'
+          incremental: 'true'
+          upload_artifacts: 'false'
+          background: >-
+            Review Inbox+ for concrete bugs introduced by this change. Apply AGENTS.md
+            and consult CONTRIBUTING.md for verification expectations. Cite the file,
+            line and observable failure. Avoid style-only suggestions and never repeat
+            secret values, message bodies, cookies or attachment URLs in findings.
+
+      - name: Check review completion
+        shell: python3 {0}
+        run: |
+          import json
+          import sys
+          from pathlib import Path
+
+          result = json.loads(Path('/tmp/ocr-result.json').read_text())
+          state = result['manifest']['terminal_state']
+          if state not in {'complete', 'skipped'}:
+              print('::error::OCR review is incomplete. Check the summary for budget limits or failed files; this is not a clean review.')
+              sys.exit(1)

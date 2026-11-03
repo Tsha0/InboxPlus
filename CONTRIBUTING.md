@@ -197,3 +197,41 @@ Agents must not commit or push without an explicit request, bypass hooks, or ove
 user changes. Before finishing, summarize the change and verification evidence. Update these
 instructions when a change invalidates them; document recurring, non-obvious pitfalls rather than
 adding a rule for every task.
+
+### Automatic code review
+
+[OCR code review](.github/workflows/ocr-review.yml) posts advisory reviews on non-draft pull requests
+from branches in this repository, when opened, reopened, marked ready or updated. Ordinary
+documentation-only changes are skipped; changes to `AGENTS.md` and this guide still trigger review.
+The workflow becomes active after it is merged into `main`.
+
+Configure **Settings → Secrets and variables → Actions** in `Tsha0/InboxPlus`:
+
+| Tab | Name | Value |
+| --- | --- | --- |
+| Secrets | `KIMI_API_KEY` | Your Moonshot Platform pay-as-you-go API key |
+| Variables | `KIMI_MODEL` | `kimi-k2.6` for the initial Economy setup |
+| Variables (optional) | `KIMI_REVIEW_EXTRA_BODY` | JSON overriding the model request settings described below |
+
+Store the API key only as an Actions secret. The workflow uses Moonshot's overseas OpenAI-compatible
+endpoint, `https://api.moonshot.ai/v1/chat/completions`; Kimi Code subscription keys use a different
+service and are not interchangeable.
+
+Economy uses `effort: low` (one review round), one concurrent task and a 50,000-token budget target.
+Its default request settings disable thinking, set temperature to `0.6` and limit each response to
+4,096 tokens. Changing the model may require changing `KIMI_REVIEW_EXTRA_BODY` to parameters that
+model supports. For example, a model that requires thinking cannot use the default disabled setting.
+To change review depth or the overall budget, edit `effort` or `max_tokens_budget` in the workflow.
+The token budget can overshoot by an in-flight request; it is not a hard spending limit.
+
+OCR loads the existing `AGENTS.md` rules through [.opencodereview/rule.json](.opencodereview/rule.json),
+alongside its built-in language rules, and explicitly includes Swift and packaging tests. After a
+completed review, later pushes review changes since its checkpoint and avoid duplicate inline
+comments. An incomplete review does not advance the checkpoint and fails the review job. A skipped
+review means OCR selected no applicable files, not that every changed file was checked. Read the
+summary's coverage before relying on the result. Reviews do not approve or merge pull requests;
+the three existing CI checks remain the required merge checks.
+
+The Action commit and OCR CLI version are both pinned. Update both together after checking upstream
+changes. The action uses a trusted base checkout and reads the PR from git objects; keep PR code out
+of execution steps in this job. Raw review artifacts are not uploaded.
