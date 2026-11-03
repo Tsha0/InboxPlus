@@ -37,6 +37,36 @@ import Testing
     #expect(GatewaySelection.resolveProfileName(environment: named) == "work")
 }
 
+@MainActor
+@Test func contactStorageFollowsTheProfileAcrossApplicationUpdates() throws {
+    let root = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        .appendingPathComponent("Library/Caches/InboxPlusContactStorage-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let suite = "ContactStorage-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    var environment = ["INBOXPLUS_RUNTIME_ROOT": root.path, "INBOXPLUS_PROFILE": "personal",
+                       "INBOXPLUS_RUNTIME_PACKAGE_ROOT": root.appendingPathComponent("old-app/Resources").path]
+    let first = GatewaySelection.makeServices(environment: environment, defaults: defaults)
+    let store = try #require(first.contactStore)
+    var directory = ContactDirectory()
+    try directory.createPerson(id: "person", displayName: "Maya")
+    try directory.link(remoteIdentityID: "remote", to: "person")
+    try store.save(directory)
+
+    environment["INBOXPLUS_RUNTIME_PACKAGE_ROOT"] = root.appendingPathComponent("updated-app/Resources").path
+    let updated = GatewaySelection.makeServices(environment: environment, defaults: defaults)
+    #expect(updated.contactStore?.fileURL == store.fileURL)
+    let model = InboxPlusAppModel(gateway: updated.gateway, directory: updated.directory, contactStore: updated.contactStore)
+    #expect(model.people == [InboxPlusPerson(id: "person", displayName: "Maya")])
+    #expect(try updated.contactStore?.load().personID(linkedTo: "remote") == "person")
+
+    environment["INBOXPLUS_PROFILE"] = "work"
+    let other = GatewaySelection.makeServices(environment: environment, defaults: defaults)
+    #expect(other.contactStore?.fileURL != store.fileURL)
+    #expect(try other.contactStore?.load().people.isEmpty == true)
+}
+
 @Test func theMediaFetcherSharesTheClientTheMatrixGatewayConnects() throws {
     // Break caught: media was given a second Matrix client that nothing ever connected, so every
     // image, video and shared post failed with "InboxPlusMatrixClientError error 1".

@@ -208,6 +208,9 @@ public final class InboxPlusAppModel {
     /// The message the composer is answering in each conversation.
     private var replyTargetIDByRoute: [ConversationRoute: String] = [:]
     private var directory: ContactDirectory
+    public private(set) var contactError: String?
+    private let contactStore: ContactDirectoryStore?
+    private var contactLoadFailed = false
     private let composerFiles: ComposerFileStore
     private var sendsInFlight = 0
     private var disconnectedAccountIDs: Set<String> = []
@@ -234,6 +237,7 @@ public final class InboxPlusAppModel {
     public init(
         gateway: any MessagingGateway,
         directory: ContactDirectory = .init(),
+        contactStore: ContactDirectoryStore? = nil,
         media: MediaController = MediaController(),
         favouriteStore: InboxFavouriteStore? = nil,
         preferenceStore: ConversationPreferenceStore? = nil,
@@ -242,11 +246,19 @@ public final class InboxPlusAppModel {
     ) {
         self.gateway = gateway
         self.directory = directory
+        self.contactStore = contactStore
         self.media = media
         self.favouriteStore = favouriteStore
         self.preferenceStore = preferenceStore
         self.accountLifecycle = accountLifecycle
         self.composerFiles = composerFiles
+        if let contactStore {
+            do { self.directory = try contactStore.load() }
+            catch {
+                contactLoadFailed = true
+                contactError = ContactStorageError.loadFailed.localizedDescription
+            }
+        }
         do { favouriteRoutes = try favouriteStore?.load() ?? [] }
         catch { favouriteError = "Could not load favourites: \(error.localizedDescription)" }
         do { preferences = try preferenceStore?.load() ?? ConversationPreferences() }
@@ -743,9 +755,14 @@ public final class InboxPlusAppModel {
             messagesByRoute[route] = nil
         }
         conversations.removeAll { $0.accountID == accountID }
+        var updatedDirectory = directory
         for identityID in removedIdentityIDs {
-            guard let personID = directory.personID(linkedTo: identityID) else { continue }
-            try? directory.unlink(remoteIdentityID: identityID, from: personID)
+            guard let personID = updatedDirectory.personID(linkedTo: identityID) else { continue }
+            try? updatedDirectory.unlink(remoteIdentityID: identityID, from: personID)
+        }
+        if updatedDirectory.links != directory.links {
+            do { try saveContactDirectory(updatedDirectory) }
+            catch { removal.unfinished.append("Contact links could not be removed from saved contacts.") }
         }
         disconnectedAccountIDs.remove(accountID)
         lastActivityByAccount[accountID] = nil
@@ -1003,7 +1020,7 @@ public final class InboxPlusAppModel {
         for identityID in suggestion.identityIDs {
             try updated.link(remoteIdentityID: identityID, to: personID)
         }
-        directory = updated
+        try saveContactDirectory(updated)
         rebuildInbox()
         detailSelection = .personSummary(personID)
     }
@@ -1035,14 +1052,21 @@ public final class InboxPlusAppModel {
     }
 
     public func linkOpenConversation(to personID: String) throws {
+        let identityID = try openIdentityForLinking()
+        var updated = directory
+        try updated.link(remoteIdentityID: identityID, to: personID)
+        try saveContactDirectory(updated)
+        rebuildInbox()
+        detailSelection = .personSummary(personID)
+    }
+
+    private func openIdentityForLinking() throws -> String {
         guard
             let route = openRoute,
             canLinkConversation(route),
             let identityID = conversations.first(where: { $0.route == route })?.identityID
         else { throw InboxPlusAppModelError.missingOpenConversation }
-        try directory.link(remoteIdentityID: identityID, to: personID)
-        rebuildInbox()
-        detailSelection = .personSummary(personID)
+        return identityID
     }
 
     @discardableResult
@@ -1050,14 +1074,25 @@ public final class InboxPlusAppModel {
         let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw ContactDirectoryError.missingPerson }
         let personID = UUID().uuidString
-        try directory.createPerson(id: personID, displayName: trimmed)
-        do {
-            try linkOpenConversation(to: personID)
-        } catch {
-            directory.removePerson(id: personID)
-            throw error
-        }
+        let identityID = try openIdentityForLinking()
+        var updated = directory
+        try updated.createPerson(id: personID, displayName: trimmed)
+        try updated.link(remoteIdentityID: identityID, to: personID)
+        try saveContactDirectory(updated)
+        rebuildInbox()
+        detailSelection = .personSummary(personID)
         return personID
+    }
+
+    private func saveContactDirectory(_ updated: ContactDirectory) throws {
+        guard !contactLoadFailed else { throw ContactStorageError.loadFailed }
+        do { try contactStore?.save(updated) }
+        catch {
+            contactError = ContactStorageError.saveFailed.localizedDescription
+            throw ContactStorageError.saveFailed
+        }
+        directory = updated
+        contactError = nil
     }
 
     private func apply(_ snapshot: MessagingSnapshot) {
