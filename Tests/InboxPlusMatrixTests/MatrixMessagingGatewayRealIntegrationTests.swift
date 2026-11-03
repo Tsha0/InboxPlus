@@ -52,7 +52,7 @@ func realGatewayLoadsRoomsAndRoundTripsAMessage() async throws {
             store: store,
             provisioner: provisioner
         )
-        let gateway = MatrixMessagingGateway(client: matrix)
+        let gateway = MatrixMessagingGateway(client: matrix, roomDiscoveryInterval: .milliseconds(200))
         try await gateway.start()
 
         // Create a room directly through the SDK so the gateway has something real to project.
@@ -112,6 +112,25 @@ func realGatewayLoadsRoomsAndRoundTripsAMessage() async throws {
         #expect(message.deliveryState == .acknowledged)
         #expect(message.isOutgoing)
 
+        let renames = RoomRenameEvents()
+        let events = await gateway.events()
+        let listener = Task {
+            for await event in events {
+                if case let .conversationTitleChanged(route, title) = event {
+                    await renames.record(roomID: route.conversationID, title: title)
+                }
+            }
+        }
+        let room = try #require(try sdkClient.getRoom(roomId: roomID))
+        try await room.setName(name: "Renamed acceptance group")
+        for _ in 0..<60 {
+            if await renames.contains(roomID: roomID, title: "Renamed acceptance group") { break }
+            try await Task.sleep(for: .milliseconds(500))
+        }
+        #expect(try await room.roomInfo().rawName == "Renamed acceptance group")
+        #expect(await renames.contains(roomID: roomID, title: "Renamed acceptance group"))
+        listener.cancel()
+
         await gateway.stop()
     }
 }
@@ -149,4 +168,11 @@ func realGatewayLoadsRoomsAndRoundTripsAMessage() async throws {
         .sorted(by: inboxplusMessageOrdering)
     // Equal timestamps break ties on identifier so bridged out-of-order events stay stable.
     #expect(sorted.map(\.id) == ["a", "b", "c"])
+}
+
+private actor RoomRenameEvents {
+    private var titles: [String: String] = [:]
+
+    func record(roomID: String, title: String) { titles[roomID] = title }
+    func contains(roomID: String, title: String) -> Bool { titles[roomID] == title }
 }
