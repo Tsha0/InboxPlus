@@ -113,6 +113,7 @@ public struct RootView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
                 .background(Color.secondary.opacity(0.15))
+                .background(.background)
                 .accessibilityIdentifier("startup-progress")
             }
             if let message = model.healthBannerMessage {
@@ -121,6 +122,7 @@ public struct RootView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
                     .background(Color.secondary.opacity(0.15))
+                    .background(.background)
                     .accessibilityIdentifier("health-banner")
             }
             HStack(spacing: 0) {
@@ -129,17 +131,33 @@ public struct RootView: View {
                                    onCompose: { accountFlow = .newConversation },
                                    themePicks: themePicks)
                     .fixedSize(horizontal: true, vertical: false)
-                Divider()
-                sidebar
-                    .frame(minWidth: 260, idealWidth: 320, maxWidth: 380)
-                Divider()
-                detail
-                    .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+                HStack(spacing: 0) {
+                    if theme.titleBar == nil { Divider() }
+                    sidebar
+                        .frame(minWidth: 260, idealWidth: 320, maxWidth: 380)
+                    Divider()
+                    detail
+                        .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+                }
+                // A themed window's own background is the title bar color, so panes that draw no
+                // background of their own must not show it.
+                .background(.background)
+                // Under a themed bar the panes sit in a panel framed by the bar and the rail, as
+                // Slack does, instead of running up into the title bar.
+                .clipShape(.rect(topLeadingRadius: theme.titleBar == nil ? 0 : 10))
             }
-            // A themed window's own background is the title bar color, so panes that draw no
-            // background of their own must not show it.
-            .background(.background)
+            .clipped()
         }
+        // macOS draws its own title bar material over the window's color, so the themed bar is
+        // painted here, behind the title bar area as well as the rail.
+        .background {
+            if let titleBar = theme.titleBar {
+                Color(nsColor: titleBar).ignoresSafeArea()
+            }
+        }
+        .toolbarBackground(Color(nsColor: theme.titleBar ?? .windowBackgroundColor), for: .windowToolbar)
+        .toolbarBackgroundVisibility(theme.titleBar == nil ? .automatic : .visible, for: .windowToolbar)
+        .toolbar(removing: theme.titleBar == nil ? nil : .title)
         .frame(minWidth: 900, minHeight: 600)
         .disabled(model.isPreparingForUpdate || model.isRefreshingRuntime)
         .focusedSceneValue(\.inboxCommandActions, commandActions)
