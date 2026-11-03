@@ -16,6 +16,24 @@ public final class ProfileLock: @unchecked Sendable {
         _ = Darwin.close(descriptor)
     }
 
+    public static func isHeld(at url: URL) throws -> Bool {
+        guard url.isFileURL else {
+            throw ProfileLockError.nonFileURL(url)
+        }
+        let descriptor = Darwin.open(url.standardizedFileURL.path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            if errno == ENOENT { return false }
+            throw ProfileLockError.systemError(operation: "open", code: errno)
+        }
+        defer { _ = Darwin.close(descriptor) }
+        guard inboxplus_flock(descriptor, LOCK_SH | LOCK_NB) == 0 else {
+            if errno == EWOULDBLOCK || errno == EAGAIN { return true }
+            throw ProfileLockError.systemError(operation: "flock", code: errno)
+        }
+        _ = inboxplus_flock(descriptor, LOCK_UN)
+        return false
+    }
+
     public static func acquire(at url: URL) throws -> ProfileLock {
         guard url.isFileURL else {
             throw ProfileLockError.nonFileURL(url)

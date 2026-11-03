@@ -87,6 +87,24 @@ func invalidNonLoopbackConfigurationIsRejected(_ address: String) throws {
     #expect(await SynapseHealthChecker.systemIdentityStatus(identity) == .exited)
 }
 
+@Test func statusReportsALiveHomeserverWithoutItsSupervisor() async throws {
+    let root = try faultRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let leftover = try LeftoverProcess()
+    defer { leftover.kill() }
+    let (service, store) = try recordRunning(leftover.identity, root: root)
+    let before = try store.load()
+
+    let status = try await service.status()
+
+    #expect(status.phase == .degraded)
+    #expect(status.processIdentity == leftover.identity)
+    #expect(status.lastHealthResult == "unsupervised")
+    #expect(status.lastError == "The runtime supervisor is not running; restart the runtime to restore its bridges.")
+    #expect(try store.load() == before)
+    #expect(!FileManager.default.fileExists(atPath: service.paths.state.appendingPathComponent("profile.lock").path))
+}
+
 @Test func stopShutsDownAHomeserverItsSessionLeftBehind() async throws {
     // Break caught: a session killed mid-shutdown left Synapse serving with no bridges, and `stop`
     // refused it as belonging to a session that no longer existed.

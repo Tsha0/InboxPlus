@@ -43,7 +43,7 @@ func execute(_ command: RuntimeCommand) async throws -> String {
         throw RuntimeCommandError.missingOption("--profile")
     }
     let service = try makeService(profile: profileName)
-    // `status` only observes, so it must never contend with the session that owns the profile.
+    // Observers do not take the exclusive lock used to control the profile.
     let lock: ProfileLock?
     do {
         lock = try command.observesOnly ? nil : service.acquireProfileLock()
