@@ -207,3 +207,8 @@ Agents must not commit or push without an explicit request, bypass hooks, or ove
 user changes. Before finishing, summarize the change and verification evidence. Update these
 instructions when a change invalidates them; document recurring, non-obvious pitfalls rather than
 adding a rule for every task.
+
+### Automatic code review
+
+[OCR code review](.github/workflows/ocr-review.yml) posts advisory reviews on non-draft pull requests
+from this repository's branches, using the rules in `AGENTS.md`. The existing CI checks remain required.
