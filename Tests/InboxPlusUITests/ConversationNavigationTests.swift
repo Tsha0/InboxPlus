@@ -56,14 +56,19 @@ import InboxPlusGateway
     defer { window.close() }
 
     for iteration in 0..<10 {
-        try await settle(host)
+        try await waitFor(host, "photo conversation and local image") {
+            descendants(host).contains { $0 is ComposerTextView }
+                && messages.contains { model.media.state(for: $0.attachments[0]) == .ready(photo) }
+        }
         let composer = try #require(descendants(host).compactMap { $0 as? ComposerTextView }.first)
         #expect(composer.string == "Unsent fixture draft\nSecond line")
         #expect(messages.contains { model.media.state(for: $0.attachments[0]) == .ready(photo) })
         window.makeFirstResponder(composer)
         if iteration == 0 { try capture(host, named: "photo-conversation") }
         try click(NSPoint(x: 27, y: 29), in: window)
-        try await settle(host)
+        try await waitFor(host, "Settings to detach the composer") {
+            composer.window == nil && descendants(host).allSatisfy { !($0 is ComposerTextView) }
+        }
         #expect(descendants(host).allSatisfy { !($0 is ComposerTextView) })
         #expect(composer.window == nil)
         #expect(window.firstResponder !== composer)
@@ -74,11 +79,15 @@ import InboxPlusGateway
 }
 
 @MainActor
-private func settle(_ host: NSView) async throws {
-    for _ in 0..<5 {
+private func waitFor(_ host: NSView, _ description: String, condition: () -> Bool) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(10))
+    repeat {
         host.layoutSubtreeIfNeeded()
+        if condition() { return }
         try await Task.sleep(for: .milliseconds(50))
-    }
+    } while clock.now < deadline
+    Issue.record("Timed out waiting for \(description)")
 }
 
 @MainActor
