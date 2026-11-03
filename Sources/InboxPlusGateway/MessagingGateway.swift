@@ -22,6 +22,7 @@ public enum GatewayEvent: Sendable {
     case historicalMessageUpserted(Message)
     case messagesRemoved(route: ConversationRoute, messageIDs: Set<String>)
     case conversationUpserted(RemoteConversation)
+    case conversationTitleChanged(route: ConversationRoute, title: String)
     /// Must be delivered before any conversation that names this identity.
     ///
     /// The inbox can only project a conversation whose identity it knows, so a conversation that

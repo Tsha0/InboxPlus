@@ -1101,3 +1101,26 @@ private func startAndRecord(
     #expect(!model.hasUnavailableBridge)
     #expect(model.messagesByRoute == messages)
 }
+
+@MainActor
+@Test func aRoomRenameUpdatesTheInboxAndConversationWithoutResettingMessageState() async throws {
+    let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
+    let model = InboxPlusAppModel(gateway: gateway)
+    try await model.start()
+    let original = try #require(model.conversations.first { $0.route == Fixtures.telegramRoute })
+    let messages = model.messagesByRoute[original.route]
+
+    await gateway.publish(.conversationTitleChanged(route: original.route, title: "Weekend plans"))
+
+    let updated = await eventually {
+        model.conversations.first { $0.route == original.route }?.title == "Weekend plans"
+    }
+    #expect(updated)
+    var expected = original
+    expected.title = "Weekend plans"
+    #expect(model.conversations.first { $0.route == original.route } == expected)
+    #expect(model.messagesByRoute[original.route] == messages)
+    let row = try #require(model.inboxItems.first { $0.id == .conversation(original.route) })
+    #expect(row.title == "Weekend plans")
+    #expect(row.conversationSummaries.first?.title == "Weekend plans")
+}

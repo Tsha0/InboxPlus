@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import InboxPlusFeatures
 import InboxPlusGateway
+import InboxPlusIMessage
 import InboxPlusUI
 
 /// `swift run Inbox+` produces a bare executable rather than an `.app` bundle, and macOS
@@ -125,11 +126,13 @@ struct InboxPlusApp: App {
         _model = State(initialValue: InboxPlusAppModel(
             gateway: services.gateway,
             directory: services.directory,
+            contactStore: services.contactStore,
             media: services.media,
             favouriteStore: services.favouriteStore,
             preferenceStore: services.preferenceStore,
             accountLifecycle: services.accountLifecycle,
-            composerFiles: services.composerFiles
+            composerFiles: services.composerFiles,
+            localRecipientSource: { await SystemContactSource().recipientContacts() }
         ))
         runtimeGateway = services.runtimeGateway
         exportDiagnostics = services.exportDiagnostics

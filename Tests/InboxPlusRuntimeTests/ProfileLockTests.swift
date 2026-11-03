@@ -33,6 +33,36 @@ import Testing
     withExtendedLifetime(second) {}
 }
 
+@Test func observingProfileOwnershipDoesNotCreateOrRetainALock() throws {
+    let directory = lockTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let lockURL = directory.appendingPathComponent("profile.lock")
+
+    #expect(try !ProfileLock.isHeld(at: lockURL))
+    #expect(!FileManager.default.fileExists(atPath: lockURL.path))
+    do {
+        let owner = try ProfileLock.acquire(at: lockURL)
+        #expect(try ProfileLock.isHeld(at: lockURL))
+        withExtendedLifetime(owner) {}
+    }
+    #expect(try !ProfileLock.isHeld(at: lockURL))
+    let nextOwner = try ProfileLock.acquire(at: lockURL)
+    withExtendedLifetime(nextOwner) {}
+}
+
+@Test func observingProfileOwnershipRejectsSymlinks() throws {
+    let directory = lockTestDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let lockURL = directory.appendingPathComponent("profile.lock")
+    try FileManager.default.createSymbolicLink(atPath: lockURL.path, withDestinationPath: "/dev/null")
+
+    #expect(throws: ProfileLockError.self) {
+        try ProfileLock.isHeld(at: lockURL)
+    }
+}
+
 private func lockTestDirectory() -> URL {
     URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
         .appendingPathComponent(".build/ProfileLockTests-\(UUID().uuidString)", isDirectory: true)

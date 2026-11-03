@@ -18,6 +18,14 @@ public enum SystemNotificationStatus: Equatable, Sendable {
     case denied
     case allowed(soundEnabled: Bool)
 
+    var canDeliverNotifications: Bool {
+        if case .allowed = self { true } else { false }
+    }
+
+    var dockBadgeWarning: String? {
+        self == .denied ? "Dock badges may also be blocked by macOS. The menu bar count still works." : nil
+    }
+
     var warning: String? {
         switch self {
         case .unavailable: "Notifications are available when Inbox+ runs as an app."
@@ -144,10 +152,11 @@ struct PreferencesView: View {
     private var notifications: some View {
         Section {
             Toggle("Show notifications", isOn: $preferences.notifications.isEnabled)
+                .disabled(!services.notificationStatus.canDeliverNotifications)
             Toggle("Show message previews", isOn: $preferences.notifications.showsPreviews)
-                .disabled(!preferences.notifications.isEnabled)
+                .disabled(!preferences.notifications.isEnabled || !services.notificationStatus.canDeliverNotifications)
             Toggle("Play a sound", isOn: $preferences.notifications.playsSound)
-                .disabled(!preferences.notifications.isEnabled)
+                .disabled(!preferences.notifications.isEnabled || !services.notificationStatus.canDeliverNotifications)
             if let warning = services.notificationStatus.warning {
                 VStack(alignment: .leading, spacing: 6) {
                     Label(warning, systemImage: "exclamationmark.triangle")
@@ -211,6 +220,12 @@ struct PreferencesView: View {
                 EmptyView()
             }
             Toggle("Show the unread count in the Dock and menu bar", isOn: $preferences.showsUnreadBadge)
+            if let warning = services.notificationStatus.dockBadgeWarning {
+                Label(warning, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("dock-badge-permission-warning")
+            }
         }
     }
 

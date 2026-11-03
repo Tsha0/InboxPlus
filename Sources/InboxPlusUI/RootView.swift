@@ -442,7 +442,7 @@ public struct RootView: View {
                 messageMatches: model.messageMatches(query: inboxQuery, filter: inboxFilter),
                 selectedID: selectedInboxID,
                 highlightedMessage: model.highlightedMessage,
-                favouriteError: model.favouriteError ?? model.preferenceError,
+                favouriteError: model.favouriteError ?? model.preferenceError ?? model.contactError,
                 onToggleFavourite: model.toggleFavourite,
                 onAction: { model.perform($1, on: $0) },
                 unsentRoutes: model.routesWithDrafts.union(model.stagedAttachmentsByRoute.keys),
@@ -453,6 +453,7 @@ public struct RootView: View {
             ContactsListView(
                 suggestions: model.suggestedContactLinks,
                 onLink: model.acceptSuggestedContactLink,
+                storageError: model.contactError,
                 people: model.people,
                 items: model.inboxItems,
                 selectedPersonID: selectedPersonID,

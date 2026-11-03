@@ -41,6 +41,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
     private var requestedReplyDetails: Set<String> = []
     private var started = false
     private var knownRoomIDs: Set<String> = []
+    private var roomTitles: [String: (rawName: String?, title: String)] = [:]
     private var discoveryTask: Task<Void, Never>?
     /// Which account each room belongs to, resolved once from its members.
     private var accountIDByRoomID: [String: String] = [:]
@@ -122,6 +123,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
             }
 
             let title = await conversationTitle(of: room, info: info, accountID: roomAccountID)
+            roomTitles[room.id()] = (info.rawName, title)
             // Phase 3 has no contact linking against Matrix identities yet, so a conversation
             // stands for itself when nothing has been received in it.
             let identityID = ordered.compactMap(\.senderIdentityID).first ?? room.id()
@@ -311,6 +313,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         discoveryTask = nil
         await discovery?.value
         knownRoomIDs.removeAll()
+        roomTitles.removeAll()
         managementRoomAccountByID.removeAll()
         for handle in timelineHandles.values { handle.cancel() }
         timelineHandles.removeAll()
@@ -368,6 +371,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         await refreshOutgoingIdentifiers()
         await acceptTrustedInvites()
         guard let rooms = try? await client.requireClient().rooms() else { return }
+        await refreshRoomTitles(in: rooms)
 
         for room in rooms where room.membership() == .joined {
             let roomID = room.id()
@@ -382,6 +386,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
                 .messages(waitingUpTo: initialMessageWait)
                 .sorted(by: inboxplusMessageOrdering) ?? []
             let title = await conversationTitle(of: room, info: info, accountID: roomAccountID)
+            roomTitles[roomID] = (info?.rawName, title)
             let identityID = messages.compactMap(\.senderIdentityID).first ?? roomID
 
             // Order matters: the inbox drops a conversation whose account or identity it has not
@@ -409,6 +414,24 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
                 deepLink: await deepLink(forRoom: roomID, accountID: roomAccountID)
             )))
             for message in messages { publish(.historicalMessageUpserted(message)) }
+        }
+    }
+
+    private func refreshRoomTitles(in rooms: [Room]) async {
+        for room in rooms where room.membership() == .joined {
+            let roomID = room.id()
+            guard let previous = roomTitles[roomID],
+                  let info = try? await room.roomInfo(),
+                  info.rawName != previous.rawName else { continue }
+            let roomAccountID = await resolvedAccountID(for: room)
+            let title = await conversationTitle(of: room, info: info, accountID: roomAccountID)
+            roomTitles[roomID] = (info.rawName, title)
+            if title != previous.title {
+                publish(.conversationTitleChanged(
+                    route: normalizer.route(forRoom: roomID, accountID: roomAccountID),
+                    title: title
+                ))
+            }
         }
     }
 
@@ -655,6 +678,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
             observers[roomID] = nil
             timelines[roomID] = nil
             knownRoomIDs.remove(roomID)
+            roomTitles[roomID] = nil
             managementRoomAccountByID[roomID] = nil
             if membership == .joined || membership == .invited { try await room.leave() }
             try await room.forget()
