@@ -1213,6 +1213,8 @@ public final class InboxPlusAppModel {
             let isLive: Bool
             if case .messageUpserted = event { isLive = true } else { isLive = false }
             applyMessages([message], isLive: isLive)
+        case let .messagesRemoved(route, messageIDs):
+            messagesByRoute[route]?.removeAll { messageIDs.contains($0.id) }
         case let .identityUpserted(identity):
             if let index = identities.firstIndex(where: { $0.id == identity.id }) {
                 identities[index] = identity
