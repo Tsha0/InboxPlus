@@ -223,7 +223,9 @@ public struct ConversationView: View {
                 .help(muted ? "Unmute notifications" : "Mute notifications")
                 .accessibilityLabel(muted ? "Unmute conversation" : "Mute conversation")
                 .accessibilityIdentifier("mute-conversation")
-                if model.canLinkConversation(route), model.personID(for: route) == nil {
+                if let personID = model.personID(for: route) {
+                    Button("Manage person…") { model.selectPerson(personID) }
+                } else if model.canLinkConversation(route) {
                     Button("Link to person…") {
                         linkError = nil
                         showsLinkSheet = true

@@ -1103,6 +1103,39 @@ private func startAndRecord(
 }
 
 @MainActor
+@Test func managingPeoplePreservesConversationsAndMessages() async throws {
+    let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: Fixtures.snapshot), directory: Fixtures.directory)
+    try await model.start()
+    let route = Fixtures.telegramRoute
+    model.openConversation(route)
+    let first = try model.createPersonAndLinkOpenConversation(displayName: "First")
+    let originalConversations = model.conversations
+    let originalMessages = model.messagesByRoute
+    try model.renamePerson(first, displayName: "  Renamed  ")
+    #expect(model.people.first { $0.id == first }?.displayName == "Renamed")
+    try model.changePerson(for: route, to: nil)
+    #expect(model.personID(for: route) == nil)
+    model.openConversation(route)
+    let second = try model.createPersonAndLinkOpenConversation(displayName: "Second")
+    try model.changePerson(for: route, to: first)
+    #expect(model.personID(for: route) == first)
+    #expect(model.summaries(for: second).isEmpty)
+    #expect(throws: ContactDirectoryError.missingPerson) {
+        try model.changePerson(for: route, to: "missing")
+    }
+    #expect(model.personID(for: route) == first)
+    #expect(throws: ContactDirectoryError.missingPerson) {
+        try model.renamePerson(first, displayName: "  ")
+    }
+    try model.removePerson(first)
+    #expect(model.people.contains { $0.id == first } == false)
+    #expect(model.personID(for: route) == nil)
+    #expect(model.conversations == originalConversations)
+    model.openConversation(route)
+    #expect(model.messagesByRoute == originalMessages)
+}
+
+@MainActor
 @Test func aRoomRenameUpdatesTheInboxAndConversationWithoutResettingMessageState() async throws {
     let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
     let model = InboxPlusAppModel(gateway: gateway)
