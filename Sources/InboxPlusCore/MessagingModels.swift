@@ -9,19 +9,22 @@ public struct ConnectedAccount: Identifiable, Codable, Hashable, Sendable {
     /// Who the user is signed in as on the network — a username, phone number or address. Nil
     /// when the source has not said.
     public var signedInAs: String?
+    public var bridgeAvailable: Bool?
 
     public init(
         id: String,
         platform: Platform,
         displayName: String,
         networkState: NetworkConnectionState? = nil,
-        signedInAs: String? = nil
+        signedInAs: String? = nil,
+        bridgeAvailable: Bool? = nil
     ) {
         self.id = id
         self.platform = platform
         self.displayName = displayName
         self.networkState = networkState
         self.signedInAs = signedInAs
+        self.bridgeAvailable = bridgeAvailable
     }
 }
 

@@ -225,3 +225,31 @@ func aMalformedPhoneNumberIsRejectedLocally(_ value: String) async throws {
         #expect(BridgeLoginStepType(rawValue: name) != nil, "unmodelled step type \(name)")
     }
 }
+
+private struct AvailabilityTransport: SynapseHTTPTransport {
+    let responds: Bool
+    func send(_ request: SynapseHTTPRequest) async throws -> SynapseHTTPResponse {
+        #expect(request.url.path == "/_matrix/provision/v3/login/flows")
+        #expect(request.headers["Authorization"] == "Bearer fixture-token")
+        guard responds else {
+            throw HealthTransportError.requestFailed(code: URLError.cannotConnectToHost.rawValue)
+        }
+        return SynapseHTTPResponse(statusCode: 200, body: Data(#"{"flows":[]}"#.utf8))
+    }
+}
+
+@Test func bridgeAvailabilityRequiresItsAuthenticatedProvisioningAPI() async throws {
+    for responds in [false, true] {
+        let checker = try BridgeHealthChecker(
+            provisioningBaseURL: URL(string: "http://127.0.0.1:29337")!,
+            provisioningSecret: "fixture-token", userID: "@fixture:test.local",
+            transport: AvailabilityTransport(responds: responds)
+        )
+        let result = await checker.checkAvailability()
+        if responds {
+            guard case .healthy = result else { Issue.record("Responding bridge was unavailable"); continue }
+        } else {
+            #expect(result == .degraded(.matrixTransportFailure(.requestFailed(code: URLError.cannotConnectToHost.rawValue))))
+        }
+    }
+}

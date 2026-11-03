@@ -123,6 +123,16 @@ enum GatewaySelection {
 }
 
 extension GatewaySelection {
+    @MainActor
+    static func restartRuntime(
+        gateway: DeferredRuntimeGateway,
+        model: InboxPlusAppModel,
+        runtime: ManagedRuntime = .shared
+    ) async throws {
+        try await runtime.validateRefreshOwnership()
+        try await model.refreshRuntime { try await gateway.refreshRuntime() }
+    }
+
     /// Builds the real gateway, once the homeserver behind it is answering, and the media fetcher
     /// that downloads through the client that gateway connects.
     ///
@@ -176,6 +186,29 @@ extension GatewaySelection {
             client: client,
             invitePolicy: .forBridges(ids: bridgeIDs, serverName: state.serverName),
             bridgeAccounts: bridgeAccounts,
+            bridgeAvailabilityProvider: {
+                guard let disconnected = try? DisconnectedAccountStore(paths: paths).load() else {
+                    return Dictionary(uniqueKeysWithValues: prepared.map { ($0.bridgeID, false) })
+                }
+                return await withTaskGroup(of: (String, Bool).self) { group in
+                    for record in prepared where !disconnected.contains(record.bridgeID) {
+                        group.addTask {
+                            guard let checker = try? BridgeHealthChecker(
+                                provisioningBaseURL: record.provisioningBaseURL,
+                                provisioningSecret: record.provisioningSecret,
+                                userID: record.ownerUserID
+                            ) else { return (record.bridgeID, false) }
+                            if case .healthy = await checker.checkAvailability() {
+                                return (record.bridgeID, true)
+                            }
+                            return (record.bridgeID, false)
+                        }
+                    }
+                    var availability: [String: Bool] = [:]
+                    for await (bridgeID, available) in group { availability[bridgeID] = available }
+                    return availability
+                }
+            },
             outgoingIdentifiersProvider: {
                 var identities: [String: Set<String>] = [:]
                 let runtime = BridgeRuntime(paths: paths)

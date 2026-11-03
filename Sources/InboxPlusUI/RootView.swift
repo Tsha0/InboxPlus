@@ -29,6 +29,7 @@ public struct RootView: View {
 
     private let makeLoginSession: BridgeLoginSessionProvider?
     private let update: AppUpdatePresentation?
+    private let onRestartRuntime: (@MainActor () async throws -> Void)?
     private let onUpdate: () -> Void
     private let settings: AppSettingsServices
 
@@ -75,7 +76,8 @@ public struct RootView: View {
         settings: AppSettingsServices = AppSettingsServices(),
         makeLoginSession: BridgeLoginSessionProvider? = nil,
         update: AppUpdatePresentation? = nil,
-        onUpdate: @escaping () -> Void = {}
+        onUpdate: @escaping () -> Void = {},
+        onRestartRuntime: (@MainActor () async throws -> Void)? = nil
     ) {
         self.model = model
         self.preferences = preferences
@@ -83,6 +85,7 @@ public struct RootView: View {
         self.makeLoginSession = makeLoginSession
         self.update = update
         self.onUpdate = onUpdate
+        self.onRestartRuntime = onRestartRuntime
     }
 
     private var theme: InboxPlusTheme {
@@ -117,7 +120,25 @@ public struct RootView: View {
                 .accessibilityIdentifier("startup-progress")
             }
             if let message = model.healthBannerMessage {
-                Label(message, systemImage: "exclamationmark.triangle.fill")
+                HStack {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                    Spacer()
+                    if model.hasUnavailableBridge, let onRestartRuntime {
+                        Button("Restart runtime") {
+                            Task {
+                                do { try await onRestartRuntime() }
+                                catch {
+                                    accountFailure = AccountFailure(
+                                        title: "Could not restart the runtime",
+                                        message: error.localizedDescription
+                                    )
+                                }
+                            }
+                        }
+                        .disabled(model.isRefreshingRuntime || model.isPreparingForUpdate)
+                        .accessibilityIdentifier("restart-unavailable-bridges")
+                    }
+                }
                     .font(.callout)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)

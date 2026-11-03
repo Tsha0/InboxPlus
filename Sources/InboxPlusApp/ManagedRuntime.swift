@@ -160,12 +160,16 @@ actor ManagedRuntime {
 
     var canRefresh: Bool { startedByThisApp }
 
-    func refresh(paths: RuntimePaths, profileName: String) async throws {
+    func validateRefreshOwnership() throws {
         guard startedByThisApp else {
             throw NSError(domain: "InboxPlus.Setup", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Restart the runtime in the terminal that started it, then choose the platform again. Inbox+ can stay open."
             ])
         }
+    }
+
+    func refresh(paths: RuntimePaths, profileName: String) async throws {
+        try validateRefreshOwnership()
         try await stopForUpdate()
         _ = try await ensureRunning(paths: paths, profileName: profileName)
     }
