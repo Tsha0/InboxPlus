@@ -1261,6 +1261,10 @@ public final class InboxPlusAppModel {
             conversations.removeAll { $0.id == conversation.id && $0.accountID == conversation.accountID }
             conversations.append(keepingUnreadMark(conversation))
             rebuildInbox()
+        case let .conversationTitleChanged(route, title):
+            guard let index = conversations.firstIndex(where: { $0.route == route }) else { return }
+            conversations[index].title = title
+            rebuildInbox()
         case let .accountUpserted(account):
             upsert(account)
             rebuildInbox()

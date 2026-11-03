@@ -45,6 +45,7 @@ private func next(
         switch event {
         case let .identityUpserted(identity): collected.append("identity \(identity.id)")
         case let .conversationUpserted(conversation): collected.append("conversation \(conversation.id)")
+        case let .conversationTitleChanged(route, _): collected.append("title \(route.conversationID)")
         case let .messageUpserted(message): collected.append("message \(message.id)")
         case let .historicalMessageUpserted(message): collected.append("history \(message.id)")
         case .messagesRemoved: collected.append("removed messages")
