@@ -136,15 +136,11 @@ public struct RootView: View {
                 detail
                     .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
             }
-            // A themed window's own background is the title bar color, so panes that draw no
-            // background of their own must not show it.
-            .background(.background)
         }
         .frame(minWidth: 900, minHeight: 600)
         .disabled(model.isPreparingForUpdate || model.isRefreshingRuntime)
         .focusedSceneValue(\.inboxCommandActions, commandActions)
         .environment(\.inboxPlusTheme, theme)
-        .background(WindowTitleBar(color: theme.titleBar))
         .tint(theme.highlight)
         .accentColor(theme.highlight)
         .onChange(of: preferences.appearanceMode, initial: true) { _, mode in
