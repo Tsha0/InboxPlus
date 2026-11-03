@@ -149,3 +149,49 @@ func unreadableContactsAreReportedAndNeverOverwritten(contents: String) async th
     #expect(model.people.isEmpty)
     #expect(try Data(contentsOf: store.fileURL) == original)
 }
+
+@MainActor
+@Test func contactManagementPersistsAndFailedChangesKeepTheSavedGrouping() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = ContactDirectoryStore(fileURL: root.appendingPathComponent("contacts/directory.json"))
+    let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: linkableSnapshot), contactStore: store)
+    try await model.start()
+    defer { model.stop() }
+    model.openConversation(Fixtures.whatsAppRoute)
+    let first = try model.createPersonAndLinkOpenConversation(displayName: "First")
+    model.openConversation(Fixtures.instagramRoute)
+    let second = try model.createPersonAndLinkOpenConversation(displayName: "Second")
+    try model.renamePerson(first, displayName: "Renamed")
+    #expect(try store.load().people[first]?.displayName == "Renamed")
+    try model.changePerson(for: Fixtures.whatsAppRoute, to: second)
+    #expect(try store.load().personID(linkedTo: "maya-whatsapp-identity") == second)
+    try model.changePerson(for: Fixtures.whatsAppRoute, to: nil)
+    #expect(try store.load().personID(linkedTo: "maya-whatsapp-identity") == nil)
+    try model.removePerson(first)
+    #expect(try store.load().people[first] == nil)
+
+    let saved = try Data(contentsOf: store.fileURL)
+    try FileManager.default.removeItem(at: store.fileURL)
+    try FileManager.default.createDirectory(at: store.fileURL, withIntermediateDirectories: false)
+    model.selectPerson(second)
+    #expect(throws: ContactStorageError.self) { try model.renamePerson(second, displayName: "Lost") }
+    #expect(throws: ContactStorageError.self) { try model.removePerson(second) }
+    #expect(throws: ContactStorageError.self) { try model.changePerson(for: Fixtures.instagramRoute, to: nil) }
+    #expect(throws: ContactStorageError.self) { try model.changePerson(for: Fixtures.whatsAppRoute, to: second) }
+    #expect(model.people == [InboxPlusPerson(id: second, displayName: "Second")])
+    #expect(model.personID(for: Fixtures.instagramRoute) == second)
+    #expect(model.personID(for: Fixtures.whatsAppRoute) == nil)
+    #expect(model.detailSelection == .personSummary(second))
+    #expect(model.contactError == ContactStorageError.saveFailed.localizedDescription)
+    try FileManager.default.removeItem(at: store.fileURL)
+    try saved.write(to: store.fileURL)
+    try model.renamePerson(second, displayName: "Recovered")
+    #expect(model.contactError == nil)
+    let relaunched = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: linkableSnapshot), contactStore: store)
+    try await relaunched.start()
+    defer { relaunched.stop() }
+    #expect(relaunched.people == [InboxPlusPerson(id: second, displayName: "Recovered")])
+    #expect(relaunched.personID(for: Fixtures.instagramRoute) == second)
+    #expect(relaunched.personID(for: Fixtures.whatsAppRoute) == nil)
+}

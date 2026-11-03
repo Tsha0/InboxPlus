@@ -1103,7 +1103,7 @@ private func startAndRecord(
     #expect(throws: ContactDirectoryError.missingPerson) {
         try model.renamePerson(first, displayName: "  ")
     }
-    model.removePerson(first)
+    try model.removePerson(first)
     #expect(model.people.contains { $0.id == first } == false)
     #expect(model.personID(for: route) == nil)
     #expect(model.conversations == originalConversations)

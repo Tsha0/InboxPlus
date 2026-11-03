@@ -79,7 +79,7 @@ public struct ContactSummaryView: View {
             Button("Cancel", role: .cancel) {}
         }
         .confirmationDialog("Remove this person and their Inbox+ links?", isPresented: $showsRemoval) {
-            Button("Remove person", role: .destructive) { model.removePerson(personID) }
+            Button("Remove person", role: .destructive) { attempt { try model.removePerson(personID) } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Conversations and messages stay on their networks and in Inbox+ as separate chats.")

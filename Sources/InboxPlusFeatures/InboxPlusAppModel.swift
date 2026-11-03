@@ -1028,12 +1028,16 @@ public final class InboxPlusAppModel {
     public func renamePerson(_ personID: String, displayName: String) throws {
         let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw ContactDirectoryError.missingPerson }
-        try directory.renamePerson(id: personID, displayName: name)
+        var updated = directory
+        try updated.renamePerson(id: personID, displayName: name)
+        try saveContactDirectory(updated)
         rebuildInbox()
     }
 
-    public func removePerson(_ personID: String) {
-        directory.removePerson(id: personID)
+    public func removePerson(_ personID: String) throws {
+        var updated = directory
+        updated.removePerson(id: personID)
+        try saveContactDirectory(updated)
         rebuildInbox()
         detailSelection = .empty
     }
@@ -1047,7 +1051,7 @@ public final class InboxPlusAppModel {
             try updated.unlink(remoteIdentityID: identityID, from: oldID)
         }
         if let personID { try updated.link(remoteIdentityID: identityID, to: personID) }
-        directory = updated
+        try saveContactDirectory(updated)
         rebuildInbox()
     }
 
