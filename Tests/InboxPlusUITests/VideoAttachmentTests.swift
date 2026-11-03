@@ -2,6 +2,7 @@ import AppKit
 import AVKit
 import InboxPlusCore
 import Testing
+import SwiftUI
 @testable import InboxPlusUI
 
 @MainActor
@@ -61,4 +62,60 @@ import Testing
     playback.close()
     #expect(playback.player === player)
     #expect(playback.player.rate == 0)
+}
+
+@MainActor
+@Test(arguments: [nil, PixelSize(width: 1080, height: 1920), PixelSize(width: 1920, height: 1080)])
+func videoPlaceholderAndLoadedPlayerKeepTheSameHeight(pixelSize: PixelSize?) {
+    let attachment = MessageAttachment(id: "video", kind: .video, pixelSize: pixelSize)
+    let placeholder = NSHostingView(rootView: MediaPlaceholder(attachment: attachment))
+    let loaded = NSHostingView(rootView: VideoAttachmentView(
+        url: URL(fileURLWithPath: "/tmp/inboxplus-video-fixture.mov"), pixelSize: pixelSize
+    ))
+    #expect(abs(placeholder.fittingSize.height - loaded.fittingSize.height) < 1)
+}
+
+@MainActor
+@Test(.timeLimit(.minutes(1)))
+func aPortraitVideoTrackKeepsTheSpaceReservedBeforeItsDimensionsArrive() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("TranscriptVideo-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let url = directory.appendingPathComponent("portrait.mov")
+    let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+    let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+        AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 32, AVVideoHeightKey: 64
+    ])
+    let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
+    writer.add(input)
+    #expect(writer.startWriting())
+    writer.startSession(atSourceTime: .zero)
+    var buffer: CVPixelBuffer?
+    #expect(CVPixelBufferCreate(kCFAllocatorDefault, 32, 64, kCVPixelFormatType_32ARGB, nil, &buffer) == kCVReturnSuccess)
+    let pixels = try #require(buffer)
+    CVPixelBufferLockBaseAddress(pixels, [])
+    if let bytes = CVPixelBufferGetBaseAddress(pixels) {
+        memset(bytes, 0, CVPixelBufferGetDataSize(pixels))
+    }
+    CVPixelBufferUnlockBaseAddress(pixels, [])
+    let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+    while !input.isReadyForMoreMediaData, ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    try #require(input.isReadyForMoreMediaData)
+    #expect(adaptor.append(pixels, withPresentationTime: .zero))
+    input.markAsFinished()
+    await writer.finishWriting()
+    try #require(writer.status == .completed)
+
+    let playback = VideoAttachmentPlayback(url: url, pixelSize: nil)
+    let reserved = playback.inlineBounds
+    await playback.loadPresentationSize()
+
+    #expect(playback.presentationSize == CGSize(width: 32, height: 64))
+    #expect(playback.inlineBounds == reserved)
+    #expect(playback.inlineSize.height <= reserved.height)
+    #expect(playback.inlineSize.width <= reserved.width)
+    #expect(playback.player.rate == 0)
+    playback.close()
 }
