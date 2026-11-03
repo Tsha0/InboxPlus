@@ -1008,6 +1008,32 @@ public final class InboxPlusAppModel {
         detailSelection = .personSummary(personID)
     }
 
+    public func renamePerson(_ personID: String, displayName: String) throws {
+        let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw ContactDirectoryError.missingPerson }
+        try directory.renamePerson(id: personID, displayName: name)
+        rebuildInbox()
+    }
+
+    public func removePerson(_ personID: String) {
+        directory.removePerson(id: personID)
+        rebuildInbox()
+        detailSelection = .empty
+    }
+
+    public func changePerson(for route: ConversationRoute, to personID: String?) throws {
+        guard canLinkConversation(route),
+              let identityID = conversations.first(where: { $0.route == route })?.identityID
+        else { throw InboxPlusAppModelError.missingOpenConversation }
+        var updated = directory
+        if let oldID = updated.personID(linkedTo: identityID) {
+            try updated.unlink(remoteIdentityID: identityID, from: oldID)
+        }
+        if let personID { try updated.link(remoteIdentityID: identityID, to: personID) }
+        directory = updated
+        rebuildInbox()
+    }
+
     public func linkOpenConversation(to personID: String) throws {
         guard
             let route = openRoute,
