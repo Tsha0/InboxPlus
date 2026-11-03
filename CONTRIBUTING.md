@@ -202,9 +202,3 @@ adding a rule for every task.
 
 [OCR code review](.github/workflows/ocr-review.yml) posts advisory reviews on non-draft pull requests
 from this repository's branches, using the rules in `AGENTS.md`. The existing CI checks remain required.
-
-In **Settings → Secrets and variables → Actions**, add the Moonshot Platform key as secret
-`KIMI_API_KEY` and the model as variable `KIMI_MODEL` (initially `kimi-k2.6`).
-
-Economy settings live in the workflow. Other models may need request overrides through the optional
-`KIMI_REVIEW_EXTRA_BODY` variable. Check the review summary for incomplete coverage or budget limits.
