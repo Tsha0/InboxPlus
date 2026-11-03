@@ -2,8 +2,18 @@ import Foundation
 import InboxPlusCore
 import UniformTypeIdentifiers
 
-/// Labels for attachments, kept out of the views so they can be tested without a main actor.
+/// Attachment presentation, kept out of the views so it can be tested without a main actor.
 enum AttachmentFormatting {
+    // Late media dimensions must not resize a row after the transcript has scrolled to its focus.
+    static func inlineMediaSize(for attachment: MessageAttachment) -> CGSize {
+        guard let ratio = attachment.pixelSize?.aspectRatio else {
+            return CGSize(width: 320, height: attachment.kind == .video ? 200 : 320)
+        }
+        return ratio >= 1
+            ? CGSize(width: 320, height: 320 / ratio)
+            : CGSize(width: 320 * ratio, height: 320)
+    }
+
     /// What **Save Attachment…** proposes. A photo the bridge sent without a filename still gets
     /// an extension, or Finder would not know how to open it.
     static func suggestedFilename(for attachment: MessageAttachment) -> String {

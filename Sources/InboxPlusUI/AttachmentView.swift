@@ -39,6 +39,7 @@ public struct AttachmentView: View {
         switch attachment.kind {
         case .image, .sticker, .gallery:
             imageContent
+                .frame(width: imageSize.width, height: imageSize.height)
         case .audio, .video:
             playableContent
         case .appNative:
@@ -48,6 +49,10 @@ public struct AttachmentView: View {
         default:
             UnsupportedAttachmentCard(attachment: attachment)
         }
+    }
+
+    private var imageSize: CGSize {
+        AttachmentFormatting.inlineMediaSize(for: attachment)
     }
 
     // MARK: - Images
@@ -62,8 +67,8 @@ public struct AttachmentView: View {
                     Image(nsImage: image)
                         .resizable()
                         .scaledToFit()
-                        .frame(maxWidth: 320, maxHeight: 320)
                         .clipShape(.rect(cornerRadius: 10))
+                        .frame(width: imageSize.width, height: imageSize.height, alignment: .leading)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open \(attachment.title)")
@@ -165,12 +170,31 @@ struct MediaPlaceholder: View {
     let attachment: MessageAttachment
     var durationLabel: String?
 
-    private var height: CGFloat {
-        guard let ratio = attachment.pixelSize?.aspectRatio, ratio > 0 else { return 120 }
-        return min(320, max(80, 320 / ratio))
+    private var size: CGSize {
+        switch attachment.kind {
+        case .image, .sticker, .gallery, .video:
+            AttachmentFormatting.inlineMediaSize(for: attachment)
+        case .audio:
+            CGSize(width: 320, height: 60)
+        default:
+            CGSize(width: 320, height: 120)
+        }
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            placeholder
+            if attachment.kind == .video {
+                Button("Open video", systemImage: "arrow.up.left.and.arrow.down.right") {}
+                    .controlSize(.small)
+                    .hidden()
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityLabel("Loading \(attachment.title)")
+    }
+
+    private var placeholder: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10).fill(.quaternary)
             VStack(spacing: 6) {
@@ -183,8 +207,7 @@ struct MediaPlaceholder: View {
                     .padding(.horizontal, 12)
             }
         }
-        .frame(width: 320, height: attachment.kind == .audio ? 60 : height)
-        .accessibilityLabel("Loading \(attachment.title)")
+        .frame(width: size.width, height: size.height)
     }
 }
 
