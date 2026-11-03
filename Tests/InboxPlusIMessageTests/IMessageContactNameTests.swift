@@ -200,3 +200,17 @@ func aNumberSavedInAnyCommonFormFindsItsContact(saved: String, handle: String) {
             == "Alex, Sam +2"
     )
 }
+
+@Test func recipientContactsKeepExplicitEligibleDestinationsAndSearchByName() {
+    let recipients = SystemContactSource.recipients(from: [
+        .init(name: "Grace Example", phoneNumbers: ["5551234"]),
+        .init(name: "Áda Example", phoneNumbers: ["+1 (555) 555-0123", "+15555550123", "0123"],
+              emailAddresses: ["ADA@example.com", "other@example.com", "invalid"]),
+    ])
+    #expect(recipients.count == 3)
+    #expect(Set(recipients.map(\.address)) == ["+15555550123", "ada@example.com", "other@example.com"])
+    #expect(recipients.allSatisfy { $0.matches("ada") })
+    #expect(recipients.filter { $0.matches("other@") }.map(\.address) == ["other@example.com"])
+    #expect(!recipients[0].matches("  "))
+    #expect(!recipients[0].matches("nobody"))
+}

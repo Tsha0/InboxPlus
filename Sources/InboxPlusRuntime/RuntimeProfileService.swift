@@ -236,6 +236,18 @@ public struct RuntimeProfileService: Sendable {
             throw failure
         }
 
+        guard try ProfileLock.isHeld(at: paths.state.appendingPathComponent("profile.lock")) else {
+            return try RuntimeSnapshot(
+                phase: .degraded,
+                processIdentity: identity,
+                loopbackPort: port,
+                restartCount: state.snapshot.restartCount,
+                lastHealthResult: "unsupervised",
+                diagnosticLogDirectory: paths.logs,
+                lastError: "The runtime supervisor is not running; restart the runtime to restore its bridges."
+            )
+        }
+
         // Probe health directly rather than through the supervisor: the supervisor reports any
         // process it does not own as `uncontrolledProcess`, which is a statement about control
         // authority, not about the runtime's health.

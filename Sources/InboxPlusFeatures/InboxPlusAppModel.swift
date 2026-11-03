@@ -198,6 +198,7 @@ public final class InboxPlusAppModel {
     private var notificationsStartedAt = Date.distantFuture
 
     private let gateway: any MessagingGateway
+    private let localRecipientSource: @Sendable () async -> LocalRecipientSnapshot
     public private(set) var favouriteError: String?
     private let favouriteStore: InboxFavouriteStore?
     private var favouriteRoutes: Set<ConversationRoute> = []
@@ -242,9 +243,11 @@ public final class InboxPlusAppModel {
         favouriteStore: InboxFavouriteStore? = nil,
         preferenceStore: ConversationPreferenceStore? = nil,
         accountLifecycle: (any AccountLifecycle)? = nil,
-        composerFiles: ComposerFileStore = .temporary()
+        composerFiles: ComposerFileStore = .temporary(),
+        localRecipientSource: @escaping @Sendable () async -> LocalRecipientSnapshot = { .accessUnavailable }
     ) {
         self.gateway = gateway
+        self.localRecipientSource = localRecipientSource
         self.directory = directory
         self.contactStore = contactStore
         self.media = media
@@ -515,6 +518,12 @@ public final class InboxPlusAppModel {
         detailSelection = .conversation(route)
         loadRecentMessages(in: route)
         markConversationRead(route)
+    }
+
+    public func recipientContacts(accountID: String) async -> LocalRecipientSnapshot {
+        guard accounts.first(where: { $0.id == accountID })?.platform == .iMessage,
+              await canStartConversation(accountID: accountID) else { return .available([]) }
+        return await localRecipientSource()
     }
 
     public func canStartConversation(accountID: String) async -> Bool {
@@ -1290,6 +1299,10 @@ public final class InboxPlusAppModel {
         case let .conversationUpserted(conversation):
             conversations.removeAll { $0.id == conversation.id && $0.accountID == conversation.accountID }
             conversations.append(keepingUnreadMark(conversation))
+            rebuildInbox()
+        case let .conversationTitleChanged(route, title):
+            guard let index = conversations.firstIndex(where: { $0.route == route }) else { return }
+            conversations[index].title = title
             rebuildInbox()
         case let .accountUpserted(account):
             upsert(account)
