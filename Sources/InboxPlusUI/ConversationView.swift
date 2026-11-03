@@ -509,6 +509,27 @@ private extension VerticalAlignment {
     static let messageBody = VerticalAlignment(MessageBody.self)
 }
 
+// Selectable Text consumes secondary clicks before the row's menu. Intercept only those clicks;
+// ordinary clicks and drags must still reach the text's selection and link handling.
+struct MessageContextMenuTarget: NSViewRepresentable {
+    func makeNSView(context: Context) -> SecondaryClickView { SecondaryClickView() }
+
+    func updateNSView(_ view: SecondaryClickView, context: Context) {}
+
+    final class SecondaryClickView: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            hitTest(point, for: NSApp.currentEvent)
+        }
+
+        func hitTest(_ point: NSPoint, for event: NSEvent?) -> NSView? {
+            guard let event,
+                  event.type == .rightMouseDown
+                    || (event.type == .leftMouseDown && event.modifierFlags.contains(.control)) else { return nil }
+            return super.hitTest(point)
+        }
+    }
+}
+
 private struct MessageBubble: View {
     @Bindable var model: InboxPlusAppModel
     let message: Message
@@ -580,6 +601,10 @@ private struct MessageBubble: View {
                             in: .rect(cornerRadius: 12)
                         )
                         .textSelection(.enabled)
+                        .overlay {
+                            MessageContextMenuTarget()
+                                .contextMenu { actions }
+                        }
                         .alignmentGuide(.messageBody) { $0[VerticalAlignment.center] }
                 }
                 if !message.reactions.isEmpty {
