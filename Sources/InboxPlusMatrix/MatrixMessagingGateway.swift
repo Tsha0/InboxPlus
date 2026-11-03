@@ -759,6 +759,10 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         switch event {
         case let .messageUpserted(value): message = value; historical = false
         case let .historicalMessageUpserted(value): message = value; historical = true
+        case let .messagesRemoved(route, messageIDs):
+            let removedIDs = messageIDs.filter { observers[roomID]?.message(id: $0) == nil }
+            if !removedIDs.isEmpty { publish(.messagesRemoved(route: route, messageIDs: removedIDs)) }
+            return
         default: publish(event); return
         }
         // Some bridges use event-specific attribution. Look up newly persisted native sends
@@ -768,7 +772,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         }
         // Listener callbacks hop into this actor asynchronously. If ownership changed during
         // that hop, publish the observer's current value so a stale incoming event cannot undo it.
-        let current = observers[roomID]?.message(id: message.id) ?? message
+        guard let current = observers[roomID]?.message(id: message.id) else { return }
         publish(historical ? .historicalMessageUpserted(current) : .messageUpserted(current))
 
         // The timeline quotes only a message it has already loaded. An older one has to be asked
@@ -846,6 +850,7 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
     private var outgoingIdentifiers: Set<String>
     private var events: [String: EventTimelineItem] = [:]
     private var known: [String: Message] = [:]
+    private var itemIDs: [String?] = []
     private var receivedFirstBatch = false
 
     init(
@@ -868,32 +873,52 @@ final class RoomTimelineObserver: TimelineListener, @unchecked Sendable {
         // Only tail additions after the initial batch can represent new traffic. Backward
         // pagination, resets, edits, and decryption replacements still update the transcript.
         let updates: [GatewayEvent] = lock.withLock {
-            var updates: [GatewayEvent] = []
+            let previous = known
+            var liveIDs: Set<String> = []
+            func identify(_ item: TimelineItem, live: Bool = false) -> String? {
+                guard let event = item.asEvent(), let message = normalizer.normalize(
+                    event, roomID: roomID, accountID: accountID,
+                    outgoingIdentifiers: outgoingIdentifiers, ownUserID: ownUserID
+                ) else { return nil }
+                events[message.id] = event
+                known[message.id] = message
+                if live, event.origin == .sync { liveIDs.insert(message.id) }
+                return message.id
+            }
             for change in diff {
-                let items: [TimelineItem]
-                let live: Bool
                 switch change {
-                case let .append(values): items = values; live = receivedFirstBatch
-                case let .pushBack(value): items = [value]; live = receivedFirstBatch
-                case let .reset(values): items = values; live = false
-                case let .pushFront(value), let .insert(_, value), let .set(_, value):
-                    items = [value]; live = false
-                case .clear, .popFront, .popBack, .remove, .truncate: continue
+                case let .append(values):
+                    itemIDs.append(contentsOf: values.map { identify($0, live: receivedFirstBatch) })
+                case let .pushBack(value):
+                    itemIDs.append(identify(value, live: receivedFirstBatch))
+                case let .pushFront(value): itemIDs.insert(identify(value), at: 0)
+                case let .insert(index, value): itemIDs.insert(identify(value), at: Int(index))
+                case let .set(index, value): itemIDs[Int(index)] = identify(value)
+                case let .reset(values): itemIDs = values.map { identify($0) }
+                case .clear: itemIDs.removeAll()
+                case .popFront: itemIDs.removeFirst()
+                case .popBack: itemIDs.removeLast()
+                case let .remove(index): itemIDs.remove(at: Int(index))
+                case let .truncate(length): itemIDs = Array(itemIDs.prefix(Int(length)))
                 }
-                for item in items {
-                    guard let event = item.asEvent() else { continue }
-                    let id = normalizer.identifier(for: event.eventOrTransactionId)
-                    guard let message = normalizer.normalize(
-                        event, roomID: roomID, accountID: accountID,
-                        outgoingIdentifiers: outgoingIdentifiers, ownUserID: ownUserID
-                    ) else { continue }
-                    events[id] = event
-                    guard known[id] != message else { continue }
-                    let isNew = known[id] == nil
-                    known[id] = message
-                    updates.append(live && isNew && event.origin == .sync
-                        ? .messageUpserted(message) : .historicalMessageUpserted(message))
-                }
+            }
+            // SDK indices include virtual and metadata items. Keep their empty slots so a
+            // confirmation replaces the correct local echo even when its identifier changes.
+            let retainedIDs = Set(itemIDs.compactMap { $0 })
+            known = known.filter { retainedIDs.contains($0.key) }
+            events = events.filter { retainedIDs.contains($0.key) }
+            let removedIDs = Set(previous.keys).subtracting(retainedIDs)
+            var updates: [GatewayEvent] = []
+            if !removedIDs.isEmpty {
+                updates.append(.messagesRemoved(
+                    route: normalizer.route(forRoom: roomID, accountID: accountID), messageIDs: removedIDs
+                ))
+            }
+            var publishedIDs: Set<String> = []
+            for id in itemIDs.compactMap({ $0 }) {
+                guard publishedIDs.insert(id).inserted, let message = known[id], previous[id] != message else { continue }
+                updates.append(liveIDs.contains(id) && previous[id] == nil
+                    ? .messageUpserted(message) : .historicalMessageUpserted(message))
             }
             receivedFirstBatch = true
             return updates

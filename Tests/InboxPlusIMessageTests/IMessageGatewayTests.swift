@@ -47,6 +47,7 @@ private func next(
         case let .conversationUpserted(conversation): collected.append("conversation \(conversation.id)")
         case let .messageUpserted(message): collected.append("message \(message.id)")
         case let .historicalMessageUpserted(message): collected.append("history \(message.id)")
+        case .messagesRemoved: collected.append("removed messages")
         case let .accountUpserted(account): collected.append("account \(account.id)")
         case let .connectionChanged(accountID, _): collected.append("connection \(accountID)")
         }

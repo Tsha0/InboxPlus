@@ -301,3 +301,27 @@ func aHistoryBurstCoalescesTranscriptUpdates(withMedia: Bool) async throws {
     try await Task.sleep(for: .milliseconds(50))
     #expect(model.messagesByRoute[Fixtures.telegramRoute]?.map(\.id) == ["tg-1"])
 }
+
+@MainActor
+@Test func confirmationRemovesBufferedPendingEchoOnlyFromItsOwnRoute() async throws {
+    let route = Fixtures.telegramRoute
+    let otherRoute = Fixtures.whatsAppRoute
+    let pending = Message(id: "txn:local", route: route, senderIdentityID: nil,
+                          body: "Hello", timestamp: .now, deliveryState: .pending)
+    let otherPending = Message(id: pending.id, route: otherRoute, senderIdentityID: nil,
+                               body: pending.body, timestamp: pending.timestamp, deliveryState: .pending)
+    let confirmed = Message(id: "$confirmed", route: route, senderIdentityID: nil,
+                            body: pending.body, timestamp: pending.timestamp, deliveryState: .acknowledged)
+    let gateway = HistoryOnOpenGateway(snapshot: Fixtures.snapshot, history: [])
+    let model = InboxPlusAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+    await gateway.deliver(.historicalMessageUpserted(otherPending))
+    await gateway.deliver(.historicalMessageUpserted(pending))
+    await gateway.deliver(.messagesRemoved(route: route, messageIDs: [pending.id]))
+    await gateway.deliver(.historicalMessageUpserted(confirmed))
+    #expect(await settle {
+        model.messagesByRoute[route]?.contains { $0.id == confirmed.id } == true
+    })
+    #expect(model.messagesByRoute[route]?.contains { $0.id == pending.id } == false)
+    #expect(model.messagesByRoute[otherRoute]?.contains { $0.id == pending.id } == true)
+}
