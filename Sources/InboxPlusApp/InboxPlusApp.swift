@@ -125,6 +125,7 @@ struct InboxPlusApp: App {
         _model = State(initialValue: InboxPlusAppModel(
             gateway: services.gateway,
             directory: services.directory,
+            contactStore: services.contactStore,
             media: services.media,
             favouriteStore: services.favouriteStore,
             preferenceStore: services.preferenceStore,

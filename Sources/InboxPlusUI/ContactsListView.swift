@@ -5,6 +5,7 @@ import InboxPlusFeatures
 struct ContactsListView: View {
     let suggestions: [SuggestedContactLink]
     let onLink: (SuggestedContactLink) throws -> Void
+    var storageError: String? = nil
     @State private var linkError: String?
     let people: [InboxPlusPerson]
     let items: [InboxItem]
@@ -20,6 +21,12 @@ struct ContactsListView: View {
             Text("Contacts")
                 .font(.title2.bold())
                 .padding(.horizontal)
+
+            if let storageError {
+                Label(storageError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .padding(.horizontal)
+            }
 
             if !suggestions.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
