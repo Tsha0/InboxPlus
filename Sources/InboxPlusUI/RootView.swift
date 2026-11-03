@@ -473,6 +473,8 @@ public struct RootView: View {
             )
         case let .personSummary(personID):
             ContactSummaryView(
+                model: model,
+                personID: personID,
                 personName: model.inboxItems.first { $0.id == .person(personID) }?.title
                     ?? model.people.first { $0.id == personID }?.displayName
                     ?? "Contact",

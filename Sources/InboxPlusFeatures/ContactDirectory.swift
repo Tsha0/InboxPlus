@@ -59,6 +59,11 @@ public struct ContactDirectory: Sendable {
         links[personID] = link
     }
 
+    public mutating func renamePerson(id: String, displayName: String) throws {
+        guard people[id] != nil else { throw ContactDirectoryError.missingPerson }
+        people[id] = InboxPlusPerson(id: id, displayName: displayName)
+    }
+
     mutating func removePerson(id: String) {
         people[id] = nil
         links[id] = nil
