@@ -26,7 +26,7 @@ import InboxPlusTestSupport
     #expect(try store.load() == [Fixtures.whatsAppRoute, Fixtures.instagramRoute])
     #expect(try otherStore.load().isEmpty)
 
-    // Real launches currently rebuild contact groups. Route favourites still survive.
+    // Route favourites also work without restoring contact groups.
     let relaunched = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: snapshot), favouriteStore: store)
     try await relaunched.start()
     defer { relaunched.stop() }
