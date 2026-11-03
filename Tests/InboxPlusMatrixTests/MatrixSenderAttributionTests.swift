@@ -150,3 +150,22 @@ private final class MessagesReceived: @unchecked Sendable {
     #expect(message.senderDisplayName == "Alice Chen")
     #expect(message.senderIdentityID == otherGhost)
 }
+
+@Test(arguments: Platform.allCases)
+func senderNamesDropOnlyTheWhatsAppBridgeSuffix(platform: Platform) async throws {
+    let sender = "@whatsapp_15550000002:local"
+    let normalizer = MatrixEventNormalizer(accountID: "account", platform: platform)
+    let observer = RoomTimelineObserver(roomID: "room", normalizer: normalizer, accountID: "account") { _ in }
+    let names = ["Riley (WA)", "Riley", "Riley (WA) Smith", "Riley (work)"]
+    let expected = platform == .whatsApp ? ["Riley", "Riley", "Riley (WA) Smith", "Riley (work)"] : names
+    for (index, name) in names.enumerated() {
+        let item = EventItem(bridgedEvent("named-\(index)", sender: sender, body: "Keep (WA) in message text", profile:
+            .ready(displayName: name, displayNameAmbiguous: false, avatarUrl: nil, status: nil, call: nil)))
+        observer.onUpdate(diff: index == 0 ? [.reset(values: [item])] : [.pushBack(value: item)])
+        let message = try #require(observer.message(id: "named-\(index)"))
+        #expect(message.senderDisplayName == expected[index])
+        #expect(message.senderIdentityID == sender)
+        #expect(message.body == "Keep (WA) in message text")
+    }
+    #expect(await observer.messages(waitingUpTo: .zero).count == names.count)
+}

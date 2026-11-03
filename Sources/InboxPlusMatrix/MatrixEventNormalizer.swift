@@ -8,9 +8,11 @@ import InboxPlusCore
 /// cannot render natively still get a placeholder, including unknown or undecryptable messages.
 public struct MatrixEventNormalizer: Sendable {
     public let accountID: String
+    private let platform: Platform
 
-    public init(accountID: String) {
+    public init(accountID: String, platform: Platform = .matrix) {
         self.accountID = accountID
+        self.platform = platform
     }
 
     /// The account is passed in because one Matrix connection can carry several accounts: each
@@ -45,7 +47,7 @@ public struct MatrixEventNormalizer: Sendable {
 
         let senderName: String?
         if case let .ready(displayName, _, _, _, _) = item.senderProfile {
-            senderName = displayName
+            senderName = displayName.map { Self.displayName($0, platform: platform) }
         } else {
             senderName = nil
         }
@@ -93,7 +95,7 @@ public struct MatrixEventNormalizer: Sendable {
         }
         let senderName: String
         if case let .ready(displayName?, _, _, _, _) = senderProfile {
-            senderName = displayName
+            senderName = Self.displayName(displayName, platform: platform)
         } else {
             senderName = MatrixMessagingGateway.displayName(forUserID: sender)
         }
@@ -102,6 +104,12 @@ public struct MatrixEventNormalizer: Sendable {
             senderDisplayName: senderName,
             body: describe(content, identifier: messageID)?.body
         )
+    }
+
+    static func displayName(_ name: String, platform: Platform) -> String {
+        let suffix = " (WA)"
+        guard platform == .whatsApp, name.hasSuffix(suffix), name.count > suffix.count else { return name }
+        return String(name.dropLast(suffix.count))
     }
 
     /// The reverse of `identifier(for:)`, for acting on a message the app layer names by its ID.

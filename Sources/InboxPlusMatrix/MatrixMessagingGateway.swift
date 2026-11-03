@@ -485,7 +485,10 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
     /// own network identities as people (WhatsApp has two, by phone number and by LID), so a
     /// one-to-one chat read like a group that included the user.
     private func conversationTitle(of room: Room, info: RoomInfo?, accountID: String) async -> String {
-        let fallback = info?.displayName ?? info?.rawName ?? room.id()
+        let roomPlatform = bridgeAccounts[accountID]?.platform ?? platform
+        let name = info?.displayName ?? info?.rawName ?? room.id()
+        let fallback = info.map { isGroup($0, accountID: accountID) } ?? false
+            ? name : MatrixEventNormalizer.displayName(name, platform: roomPlatform)
         guard let info, info.rawName?.isEmpty ?? true,
               let ownUserID = try? await client.requireClient().userId() else { return fallback }
         let excluded = Set(info.serviceMembers)
@@ -493,17 +496,19 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
             .union([ownUserID])
         let members = await joinedMembers(of: room, synchronising: true)
             .map { (userID: $0.userId, displayName: $0.displayName) }
-        return Self.memberListTitle(members: members, excluding: excluded) ?? fallback
+        return Self.memberListTitle(members: members, excluding: excluded, platform: roomPlatform) ?? fallback
     }
 
     /// Everyone in a small room by name, otherwise the first few and how many more.
     static func memberListTitle(
         members: [(userID: String, displayName: String?)],
-        excluding excludedIDs: Set<String>
+        excluding excludedIDs: Set<String>,
+        platform: Platform
     ) -> String? {
         let people = members.filter { !excludedIDs.contains($0.userID) }
         let names = people.compactMap(\.displayName)
             .filter { !$0.isEmpty }
+            .map { MatrixEventNormalizer.displayName($0, platform: platform) }
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
         guard !names.isEmpty else { return nil }
         let shown = names.prefix(3)
@@ -691,7 +696,10 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
               timelineHandles[roomID] == nil, observers[roomID] == nil else { return }
         let observer = RoomTimelineObserver(
             roomID: roomID,
-            normalizer: normalizer,
+            normalizer: MatrixEventNormalizer(
+                accountID: roomAccountID,
+                platform: bridgeAccounts[roomAccountID]?.platform ?? platform
+            ),
             accountID: roomAccountID,
             outgoingIdentifiers: outgoingIdentifiersByAccount[roomAccountID] ?? [],
             ownUserID: room.ownUserId()
