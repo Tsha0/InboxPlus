@@ -23,7 +23,7 @@ public enum SystemNotificationStatus: Equatable, Sendable {
     }
 
     var dockBadgeWarning: String? {
-        self == .denied ? "macOS is blocking Dock badges. The menu bar count still works." : nil
+        self == .denied ? "Dock badges may also be blocked by macOS. The menu bar count still works." : nil
     }
 
     var warning: String? {
