@@ -66,7 +66,7 @@ Document checks you could not run and why; do not present an untested path as ve
 | --- | --- |
 | Swift behavior | Relevant tests via `swift test --filter <test-name-or-pattern>`; `swift test` for the default suite |
 | Module dependencies or shared contracts | `swift build --build-tests` and `swift test` |
-| UI behavior or layout | Relevant tests plus visual inspection of affected states; include screenshots or a recording |
+| UI behavior or layout | Relevant tests plus visual inspection of affected states; include screenshots or a recording in the issue description |
 | Packaging or updates | Packaging checks below and, when bundle assembly is affected, the bundle checks |
 | Icons, brand marks or dependency inventory | Regenerate affected outputs using the commands below and inspect the diff |
 | Runtime integration | Relevant runtime tests; opt-in real-runtime tests when needed, clearly distinguished from fixture coverage |
@@ -151,13 +151,13 @@ starting a background monitor or implementing unrelated fixes.
    behavior, user impact, expected behavior or proposed outcome, evidence and acceptance criteria.
    Separate confirmed facts, suspected causes and proposed solutions. Do not invent a root cause.
 4. Open one issue per distinct new problem, grouping symptoms that belong to the same problem.
-   Use the connected GitHub issue-creation tool, or `gh issue create --repo Tsha0/InboxPlus` with
-   `--title` and `--body-file` when needed. Supply the completed template body explicitly; do not
-   assume the API applies it. Use existing labels only when applicable. The issue is the lasting
-   record; do not maintain a second repository backlog.
-5. Continue the original task. In the final report, link issues created and existing reports found,
-   and distinguish findings from fixes. If creation fails or duplicate checking is unavailable,
-   preserve the complete draft in the task report or a linked local file and explain what failed.
+   Use the connected GitHub issue-creation tool with the complete description as its body, or
+   `gh issue create --repo Tsha0/InboxPlus` with `--title` and `--body`. Do not write a body file or
+   assume the API applies the template. Use existing labels only when applicable.
+5. Continue the original task. For each filed issue, notify the user with a one-sentence summary
+   and the confirmed issue link. Do not repeat the full issue description or evidence in chat. Link
+   existing matching issues with a brief summary, clearly distinguishing them from newly filed ones.
+   If creation or duplicate checking fails, briefly report what failed and any required user action.
    Do not claim an issue was opened until its URL is confirmed.
 
 Use fixtures or sanitized descriptions and screenshots. Never publish real message bodies, contact
@@ -166,9 +166,17 @@ findings go privately to the user, not into a public issue. Reproduction must st
 authorization: do not send messages, remove accounts, delete data or alter live runtime state merely
 to confirm a finding. Record that verification was limited instead.
 
-If the active task already fixes the finding, link its existing issue or document it in the PR rather
-than opening a redundant backlog item. A new issue for an unrelated discovery does not expand the
-implementation scope.
+The GitHub issue description is the sole record of issue information: reproduction steps,
+environment, observations, investigation, acceptance criteria and sanitized evidence. Prefer
+screenshots and visual aids, with brief text explaining what they show. Embed GitHub-hosted
+screenshots and recordings, or inline diagrams, directly in the issue description, and add later
+findings there. Never create local files or directories for issue screenshots, recordings, reports,
+investigation notes or drafts, inside or outside the repository. If evidence cannot be attached
+directly, describe it and the limitation in the issue description; do not save local artifacts.
+
+If the active task already fixes the finding, record it in the relevant issue description and link
+the issue from the PR. Reuse an existing matching issue rather than opening a duplicate. A new issue
+for an unrelated discovery does not expand implementation scope.
 
 ## Generated files
 
@@ -208,7 +216,8 @@ aligned when changing that workflow.
 
 Use a short, descriptive title. The PR description should explain the problem and resulting
 behavior, list checks and results, and identify untested paths or migration concerns when relevant.
-Include screenshots or a recording for visible UI changes, using fixtures or redacted content.
+For visible UI changes, link the issue description containing screenshots or a recording, using
+fixtures or redacted content.
 Review the diff for unrelated changes, debug output and sensitive data before submitting.
 
 Agents must not commit or push without an explicit request, bypass hooks, or overwrite unrelated

@@ -21,11 +21,19 @@
 Whenever UI exploration reveals an actionable bug, usability or accessibility problem, or worthwhile
 feature gap, follow [Reporting UI findings](CONTRIBUTING.md#reporting-ui-findings). Verify the
 observation, search existing issues and related PRs, and open an issue in `Tsha0/InboxPlus` for each
-distinct new finding without requesting separate approval. Report the resulting URLs. Separate
+distinct new finding without requesting separate approval. After filing, notify the user with a
+one-sentence summary and the issue link; do not repeat the issue description or evidence in chat. Separate
 observations from hypotheses and proposals, use sanitized evidence, and keep the original task's
 scope. Filing an issue does not authorize implementing unrelated changes or taking destructive or
 externally visible actions to reproduce a finding. Report security-sensitive findings privately to
-the user; if filing fails, retain a complete draft and report the failure.
+the user; if filing fails, briefly report the failure and any required user action.
+
+Store all issue information in the GitHub issue description, including reproduction steps,
+environment, observations, investigation, acceptance criteria and sanitized evidence. Prefer
+screenshots and visual aids, with brief text explaining what they show. Embed GitHub-hosted
+screenshots and recordings, or inline diagrams, directly in the issue description. Never create local
+files or directories for issue screenshots, recordings, reports, notes or drafts, inside or outside
+the repository.
 
 ## Maintaining these instructions
 
