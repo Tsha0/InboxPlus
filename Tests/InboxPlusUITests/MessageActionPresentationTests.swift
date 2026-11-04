@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Testing
 import InboxPlusCore
 @testable import InboxPlusUI
@@ -83,4 +83,30 @@ private func message(
     let searchable = Set(EmojiCatalog.all.map(\.emoji))
     #expect(!searchable.contains("🏽"))
     #expect(!searchable.contains("🇫"))
+}
+
+@MainActor
+@Test func messageMenuInterceptsSecondaryClicksWithoutSwallowingTextSelectionOrLinks() throws {
+    let view = MessageContextMenuTarget.SecondaryClickView(frame: NSRect(x: 0, y: 0, width: 300, height: 80))
+    let point = NSPoint(x: 20, y: 20)
+    let cases: [(NSEvent.EventType, NSEvent.ModifierFlags, Bool)] = [
+        (.rightMouseDown, [], true),
+        (.leftMouseDown, .control, true),
+        (.leftMouseDown, [], false),
+        (.leftMouseDown, .shift, false),
+        (.leftMouseDown, .command, false),
+        (.leftMouseDragged, [], false),
+        (.leftMouseDragged, .control, false),
+        (.leftMouseUp, [], false),
+        (.mouseMoved, [], false),
+    ]
+    for (type, flags, intercepts) in cases {
+        let event = try #require(NSEvent.mouseEvent(
+            with: type, location: point, modifierFlags: flags, timestamp: 0,
+            windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1
+        ))
+        #expect((view.hitTest(point, for: event) === view) == intercepts)
+        #expect(view.hitTest(NSPoint(x: 301, y: 20), for: event) == nil)
+    }
+    #expect(view.hitTest(point, for: nil) == nil)
 }
