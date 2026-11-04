@@ -94,7 +94,7 @@ func togglingReelsLoadsOnlyTheChosenMediaAndStopsPlayback() async throws {
     try await waitForReel(host) { if case .ready = media.state(for: thumbnail) { true } else { false } }
     #expect(await fetcher.fetched == ["mxc://fixture/preview"])
     #expect(reelPlayers(in: host).isEmpty)
-    try captureReel(host, name: "reels-off")
+    try await captureReel(host, name: "reels-off")
 
     for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
         let click = try #require(NSEvent.mouseEvent(
@@ -128,11 +128,11 @@ func togglingReelsLoadsOnlyTheChosenMediaAndStopsPlayback() async throws {
     }
     #expect(opened == reel.deepLink?.url)
     try await Task.sleep(for: .milliseconds(250))
-    try captureReel(host, name: "reels-on")
+    try await captureReel(host, name: "reels-on")
     player.play()
     try await waitForReel(host) { player.rate > 0 }
     try await Task.sleep(for: .milliseconds(500))
-    try captureReel(host, name: "reels-playing")
+    try await captureReel(host, name: "reels-playing")
 
     #expect(playerView.onOpenPreview == nil)
     #expect(!playerView.showsFullScreenToggleButton)
@@ -145,7 +145,7 @@ func togglingReelsLoadsOnlyTheChosenMediaAndStopsPlayback() async throws {
     #expect(player.rate == 0)
     #expect(!NSApplication.shared.windows.contains { $0.title == "Video" && $0.isVisible })
     try await Task.sleep(for: .milliseconds(300))
-    try captureReel(host, name: "reels-off-again")
+    try await captureReel(host, name: "reels-off-again")
 }
 
 @MainActor
@@ -170,7 +170,7 @@ private func waitForReel(_ host: NSView, condition: () -> Bool) async throws {
 }
 
 @MainActor
-private func captureReel(_ host: NSView, name: String) throws {
+private func captureReel(_ host: NSView, name: String) async throws {
     guard let path = ProcessInfo.processInfo.environment["INBOXPLUS_REEL_SCREENSHOTS"] else { return }
     let directory = URL(fileURLWithPath: path, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -180,7 +180,12 @@ private func captureReel(_ host: NSView, name: String) throws {
     screenshot.arguments = ["-x", "-o", "-l", "\(try #require(host.window).windowNumber)",
                             directory.appendingPathComponent("\(name).png").path]
     try screenshot.run()
-    screenshot.waitUntilExit()
+    defer { if screenshot.isRunning { screenshot.terminate() } }
+    let deadline = ContinuousClock.now.advanced(by: .seconds(30))
+    while screenshot.isRunning, ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(50))
+    }
+    guard !screenshot.isRunning else { throw NSError(domain: "ReelScreenshotTimeout", code: 1) }
     #expect(screenshot.terminationStatus == 0)
 }
 
