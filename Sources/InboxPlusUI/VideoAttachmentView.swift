@@ -15,6 +15,7 @@ struct VideoAttachmentView: View {
         VStack(alignment: .leading, spacing: 6) {
             InlineVideoPlayer(playback: playback)
                 .frame(width: playback.inlineSize.width, height: playback.inlineSize.height)
+                .frame(width: playback.inlineBounds.width, height: playback.inlineBounds.height)
                 .clipShape(.rect(cornerRadius: 10))
                 .accessibilityLabel("Video")
             Button("Open video", systemImage: "arrow.up.left.and.arrow.down.right") {
@@ -32,20 +33,23 @@ struct VideoAttachmentView: View {
 @Observable
 final class VideoAttachmentPlayback: NSObject, NSWindowDelegate {
     let player: AVPlayer
+    let inlineBounds: CGSize
     private(set) var presentationSize: CGSize?
     private(set) var showsPreview = false
     @ObservationIgnored private(set) var previewWindow: NSWindow?
 
     init(url: URL, pixelSize: PixelSize?) {
         player = AVPlayer(url: url)
-        if let pixelSize, pixelSize.aspectRatio != nil {
-            presentationSize = CGSize(width: pixelSize.width, height: pixelSize.height)
+        let size = pixelSize.flatMap { size in
+            size.aspectRatio.map { _ in CGSize(width: size.width, height: size.height) }
         }
+        presentationSize = size
+        inlineBounds = Self.fittedSize(size, within: CGSize(width: 320, height: 320))
         super.init()
     }
 
     var inlineSize: CGSize {
-        Self.fittedSize(presentationSize, within: CGSize(width: 320, height: 320))
+        Self.fittedSize(presentationSize, within: inlineBounds)
     }
 
     func loadPresentationSize() async {

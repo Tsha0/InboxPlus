@@ -1,0 +1,10 @@
+{
+  "include": ["Tests/**/*.{swift,py,sh}"],
+  "rules": [
+    {
+      "path": "**/*",
+      "rule": "AGENTS.md",
+      "merge_system_rule": true
+    }
+  ]
+}
