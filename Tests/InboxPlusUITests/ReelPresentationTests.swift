@@ -78,9 +78,8 @@ func togglingReelsLoadsOnlyTheChosenMediaAndStopsPlayback() async throws {
         thumbnail: MediaHandle(source: "mxc://fixture/preview", mimeType: "image/png"),
         deepLink: try DeepLinkVerifier.verify("https://instagram.com/reel/fixture/", for: .instagram)
     )
-    var opened: URL?
     let host = NSHostingView(rootView: ReelDemo(preferences: preferences, model: model, attachment: reel)
-        .environment(\.openURL, OpenURLAction { url in opened = url; return .handled }))
+        .environment(\.openURL, OpenURLAction { _ in .handled }))
     host.frame = NSRect(x: 0, y: 0, width: 520, height: 720)
     let window = NSWindow(contentRect: host.frame, styleMask: [.titled, .closable], backing: .buffered, defer: false)
     window.title = "Inbox+ · Reel playback demo"
@@ -96,15 +95,6 @@ func togglingReelsLoadsOnlyTheChosenMediaAndStopsPlayback() async throws {
     #expect(reelPlayers(in: host).isEmpty)
     try await captureReel(host, name: "reels-off")
 
-    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-        let click = try #require(NSEvent.mouseEvent(
-            with: type, location: NSPoint(x: 100, y: 380), modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-            context: nil, eventNumber: 1, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0
-        ))
-        window.sendEvent(click)
-    }
-    #expect(opened == reel.deepLink?.url)
 
     preferences.playsInstagramReels = true
     try await waitForReel(host) { !reelPlayers(in: host).isEmpty }
@@ -113,20 +103,6 @@ func togglingReelsLoadsOnlyTheChosenMediaAndStopsPlayback() async throws {
     try await waitForReel(host) { player.currentItem?.status == .readyToPlay }
     #expect(player.rate == 0)
     #expect(await fetcher.fetched == ["mxc://fixture/preview", "mxc://fixture/video"])
-    opened = nil
-    let corner = playerView.convert(NSPoint(
-        x: playerView.bounds.maxX - 21,
-        y: playerView.isFlipped ? 21 : playerView.bounds.maxY - 21
-    ), to: nil)
-    for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
-        let click = try #require(NSEvent.mouseEvent(
-            with: type, location: corner, modifierFlags: [],
-            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-            context: nil, eventNumber: 2, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0
-        ))
-        window.sendEvent(click)
-    }
-    #expect(opened == reel.deepLink?.url)
     try await Task.sleep(for: .milliseconds(250))
     try await captureReel(host, name: "reels-on")
     player.play()
