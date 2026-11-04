@@ -47,6 +47,10 @@ public struct BridgeHealthChecker: SynapseHealthChecking {
             return .degraded(.processIdentityIndeterminate(error))
         }
 
+        return await checkAvailability()
+    }
+
+    public func checkAvailability() async -> HealthResult {
         let started = ContinuousClock.now
         do {
             let _: BridgeFlowsProbeResponse = try await client.send(

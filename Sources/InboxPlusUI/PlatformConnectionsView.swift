@@ -94,6 +94,7 @@ public struct PlatformConnectionsView: View {
 
     private func statusLine(platform: Platform, account: ConnectedAccount?) -> String {
         if let account {
+            if account.bridgeAvailable == false { return "Bridge isn't responding — open Inbox+ to restart" }
             return isAccountConnected(account.id)
                 ? "Connected as \(account.displayName)"
                 : "Disconnected — messages are kept"

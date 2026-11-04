@@ -662,6 +662,7 @@ public final class InboxPlusAppModel {
 
     public func isConnected(_ accountID: String) -> Bool {
         !disconnectedAccountIDs.contains(accountID)
+            && accounts.first(where: { $0.id == accountID })?.bridgeAvailable != false
     }
 
     // MARK: - Accounts
@@ -816,8 +817,18 @@ public final class InboxPlusAppModel {
         return account
     }
 
-    /// The banner counts disconnected accounts, so it follows every change to them.
+    public var hasUnavailableBridge: Bool {
+        userAccounts.contains { $0.bridgeAvailable == false && !disconnectedAccountIDs.contains($0.id) }
+    }
+
     private func reportDisconnections() {
+        let unavailable = userAccounts.filter {
+            $0.bridgeAvailable == false && !disconnectedAccountIDs.contains($0.id)
+        }.map { $0.platform.accessibilityLabel }.sorted()
+        if !unavailable.isEmpty {
+            health = .needsAttention("\(unavailable.joined(separator: ", ")) bridge isn't responding. Restart the runtime to reconnect.")
+            return
+        }
         health = disconnectedAccountIDs.isEmpty
             ? .healthy
             : .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
@@ -1306,6 +1317,7 @@ public final class InboxPlusAppModel {
             rebuildInbox()
         case let .accountUpserted(account):
             upsert(account)
+            reportDisconnections()
             rebuildInbox()
         case let .connectionChanged(accountID, isConnected):
             guard accounts.contains(where: { $0.id == accountID }) else { return }
@@ -1314,9 +1326,7 @@ public final class InboxPlusAppModel {
             } else {
                 disconnectedAccountIDs.insert(accountID)
             }
-            health = disconnectedAccountIDs.isEmpty
-                ? .healthy
-                : .needsAttention("\(disconnectedAccountIDs.count) account(s) disconnected")
+            reportDisconnections()
         }
     }
 

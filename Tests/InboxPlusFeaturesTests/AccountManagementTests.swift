@@ -378,3 +378,14 @@ private let iMessageAccount = ConnectedAccount(id: "imessage-local", platform: .
 
     #expect(try store.load() == [keptRoute])
 }
+
+@MainActor
+@Test func anUnavailableBridgeOverridesAnOldConnectedNotice() async throws {
+    var account = instagramAccount
+    account.networkState = .connected
+    account.bridgeAvailable = false
+    let model = try await startedModel(seed: snapshot(accounts: [account]))
+    #expect(!model.isConnected(account.id))
+    #expect(model.healthBannerMessage?.contains("Instagram") == true)
+    #expect(model.accounts.first?.networkState == .connected)
+}
