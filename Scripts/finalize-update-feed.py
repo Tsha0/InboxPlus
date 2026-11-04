@@ -33,6 +33,10 @@ def finalize(stage: Path, previous: str, build: str, prefix: str) -> None:
         return item if number == build else published.get(number, item)
 
     text = ITEM.sub(restore, text)
+    remaining = {version(item) for item in ITEM.findall(text)}
+    missing = [item for number, item in published.items() if number not in remaining]
+    if missing:
+        text = text.replace("</channel>", "\n".join(missing) + "\n    </channel>", 1)
     for delta in sorted(stage.glob("*.delta")):
         match = DELTA.fullmatch(delta.name)
         if not match or match.group(1) != build:

@@ -18,6 +18,7 @@ def load(name):
 
 configuration = load("configure-updates")
 feed_validation = load("validate-update-feed")
+feed_finalization = load("finalize-update-feed")
 
 
 class UpdatePackagingTests(unittest.TestCase):
@@ -113,6 +114,24 @@ class UpdatePackagingTests(unittest.TestCase):
             ET.ElementTree(root).write(path)
             with self.subTest(**{name.rsplit("}", 1)[-1]: value}), self.assertRaises(ValueError):
                 feed_validation.validate(path, "Tsha0/InboxPlus", "v0.6.0", "106")
+
+
+    def test_finalization_preserves_published_entries_pruned_by_sparkle(self):
+        stage = Path(self.directory.name)
+        previous_items = [
+            f'<item><sparkle:version>{build}</sparkle:version><description>Original {build}</description></item>'
+            for build in [109, 108, 107]
+        ]
+        current = '<item><sparkle:version>111</sparkle:version></item>'
+        rewritten = '<item><sparkle:version>109</sparkle:version><description>Changed</description></item>'
+        feed = stage / "appcast.xml"
+        feed.write_text('<rss><channel>' + current + rewritten + '</channel></rss>')
+        feed_finalization.finalize(stage, ''.join(previous_items), "111", "https://example.com/")
+        result = feed.read_text()
+        self.assertIn(current, result)
+        for item in previous_items:
+            self.assertEqual(result.count(item), 1)
+        self.assertNotIn("Changed", result)
 
 
 if __name__ == "__main__":
