@@ -5,7 +5,8 @@ Describe the problem and resulting behavior. Link a related issue when applicabl
 ## Verification
 
 List the checks run and their results, plus anything not tested and why.
-For visible UI changes, include screenshots or a recording using fixtures or redacted content.
+For visible UI changes, link the issue description containing screenshots or a recording made with
+fixtures or redacted content.
 
 ## Risks
 
