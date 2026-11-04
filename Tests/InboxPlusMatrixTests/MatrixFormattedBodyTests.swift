@@ -100,7 +100,7 @@ private let normalizer = MatrixEventNormalizer(accountID: "matrix-local")
         ))),
         roomID: "room"
     ))
-    #expect(message.body == "https://www.instagram.com/reel/Cabc123/")
+    #expect(message.body == "Reel")
     #expect(message.kind == .appNative)
     #expect(message.attachments.first?.deepLink?.platform == .instagram)
 }
@@ -112,7 +112,7 @@ private func video(caption: String? = nil) throws -> MessageType {
     ))
 }
 
-@Test func aBridgeFetchedReelBecomesALinkWithoutDownloadableVideo() throws {
+@Test func aBridgeFetchedReelRetainsItsMediaAndVerifiedIdentity() throws {
     for path in ["reel", "reels"] {
         let message = try #require(normalizer.normalize(
             event("shared-video", try video(caption: "An author's caption"), json:
@@ -121,12 +121,14 @@ private func video(caption: String? = nil) throws -> MessageType {
                 """
             ), roomID: "room"
         ))
-        #expect(message.kind == .appNative)
+        #expect(message.kind == .video)
+        #expect(message.body == "An author's caption")
         let attachment = try #require(message.attachments.first)
-        #expect(attachment.kind == .appNative)
+        #expect(attachment.kind == .video)
+        #expect(attachment.isInstagramReel)
         #expect(attachment.deepLink?.platform == .instagram)
-        #expect(!attachment.isDownloadable)
-        #expect(attachment.source == nil)
+        #expect(attachment.isDownloadable)
+        #expect(attachment.source?.source == "mxc://inboxplus.localhost/video")
         #expect(attachment.thumbnail == nil)
     }
 }
@@ -153,8 +155,8 @@ private func video(caption: String? = nil) throws -> MessageType {
         #expect(message.kind == .video)
         #expect(message.attachments.first?.deepLink == nil)
     }
-    #expect(MatrixEventNormalizer.appNativeVideoCard(json: "not JSON", id: "video") == nil)
-    #expect(MatrixEventNormalizer.appNativeVideoCard(json: "{\"content\":{}}", id: "video") == nil)
+    #expect(MatrixEventNormalizer.appNativeMediaCard(json: "not JSON", id: "video") == nil)
+    #expect(MatrixEventNormalizer.appNativeMediaCard(json: "{\"content\":{}}", id: "video") == nil)
 }
 
 @Test func aFormattedCaptionIsStoredAsPlainText() {
@@ -214,4 +216,46 @@ private func photo(caption: String?, formatted: FormattedBody?) throws -> Messag
     #expect(message.body == "Photo")
     #expect(message.markdownBody == nil)
     #expect(message.attachments.first?.filename == serverFilename)
+}
+
+@Test func anImageBackedReelKeepsItsPreviewAndHidesOnlyItsOwnURL() throws {
+    let link = "https://www.instagram.com/reel/Cabc123/"
+    let message = try #require(normalizer.normalize(
+        event("preview-reel", try photo(caption: "An author\n\n[instagram.com/reel/Cabc123/](\(link)?igsh=abc)",
+                                       formatted: html("<b>An author</b>")),
+              json: "{\"content\":{\"external_url\":\"\(link)\"}}"),
+        roomID: "room"
+    ))
+    let attachment = try #require(message.attachments.first)
+    #expect(attachment.kind == .image)
+    #expect(attachment.isInstagramReel)
+    #expect(attachment.title == "Reel")
+    #expect(attachment.source?.source == "mxc://inboxplus.localhost/photo")
+    #expect(message.body == "An author")
+    #expect(message.markdownBody == "An author")
+
+    let verified = try #require(attachment.deepLink)
+    #expect(MatrixEventNormalizer.reelCaption(link, link: verified) == nil)
+    let sentence = "Watch this \(link)"
+    #expect(MatrixEventNormalizer.reelCaption(sentence, link: verified) == sentence)
+    let captionLink = "[Watch my reel](\(link))"
+    #expect(MatrixEventNormalizer.reelCaption(captionLink, link: verified) == captionLink)
+    let otherReel = "https://www.instagram.com/reel/Other/"
+    #expect(MatrixEventNormalizer.reelCaption(otherReel, link: verified) == otherReel)
+}
+
+@Test func anUncaptionedReelIsLabeledReelAndStoriesRemainExternal() throws {
+    let reel = try #require(normalizer.normalize(
+        event("reel", try video(), json: "{\"content\":{\"external_url\":\"https://instagram.com/reel/Cabc123/\"}}"),
+        roomID: "room"
+    ))
+    #expect(reel.body == "Reel")
+    #expect(reel.attachments.first?.caption == nil)
+    let story = try #require(normalizer.normalize(
+        event("story", try video(), json: "{\"content\":{\"external_url\":\"https://instagram.com/stories/sample/123/\"}}"),
+        roomID: "room"
+    ))
+    #expect(story.kind == .appNative)
+    #expect(story.attachments.first?.isInstagramReel == false)
+    #expect(story.attachments.first?.source == nil)
 }

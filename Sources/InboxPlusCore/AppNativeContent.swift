@@ -1,11 +1,6 @@
 import Foundation
 
-/// Recognises content that only its original app can display.
-///
-/// Reels, Stories, TikTok posts and similar arrive through a bridge as an ordinary text message
-/// containing a link — the bridge has no way to hand over the media itself. The design's answer is
-/// a preview card with an **Open in app** action rather than a bare URL, and a card that says what
-/// the bridge reported when there is no preview to show.
+/// Recognises shared-content links when the bridge has supplied no media.
 public enum AppNativeContentDetector {
     /// Path prefixes that identify app-only content, per platform. A profile or a normal post link
     /// is deliberately absent: those are ordinary links and dressing them up as cards would be

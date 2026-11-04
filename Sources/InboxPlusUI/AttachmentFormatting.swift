@@ -41,6 +41,18 @@ enum AttachmentFormatting {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
+    static func mediaAttachment(for attachment: MessageAttachment, playsInstagramReels: Bool) -> MessageAttachment {
+        guard attachment.isInstagramReel,
+              !(playsInstagramReels && attachment.kind == .video && attachment.source != nil) else { return attachment }
+        return MessageAttachment(
+            id: "\(attachment.id)#preview",
+            kind: .image,
+            pixelSize: attachment.pixelSize,
+            source: attachment.kind == .image ? attachment.source : attachment.thumbnail,
+            deepLink: attachment.deepLink
+        )
+    }
+
     /// Whether a message's text is shown under its attachments. A caption is the text, so it reads
     /// under the media. Without one the text is only the card's title, kept for previews, and
     /// printing it again under the card would say it twice.
@@ -54,7 +66,7 @@ enum AttachmentFormatting {
     /// it. Nothing is invented — an unknown size simply goes unmentioned. The caption is not part
     /// of it: it is the message's text, read on its own under the media.
     static func accessibilityLabel(for attachment: MessageAttachment) -> String {
-        var parts = [noun(for: attachment.kind)]
+        var parts = [attachment.isInstagramReel ? "Reel" : noun(for: attachment.kind)]
         // Only a file's title says more than its noun: it is the file's name.
         if attachment.title != parts[0] { parts.append(attachment.title) }
         if let duration = durationLabel(attachment.duration) { parts.append(duration) }

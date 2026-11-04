@@ -6,23 +6,27 @@ import SwiftUI
 
 struct VideoAttachmentView: View {
     @State private var playback: VideoAttachmentPlayback
+    let allowsEnlargement: Bool
 
-    init(url: URL, pixelSize: PixelSize?) {
+    init(url: URL, pixelSize: PixelSize?, allowsEnlargement: Bool = true) {
+        self.allowsEnlargement = allowsEnlargement
         _playback = State(initialValue: VideoAttachmentPlayback(url: url, pixelSize: pixelSize))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            InlineVideoPlayer(playback: playback)
+            InlineVideoPlayer(playback: playback, allowsEnlargement: allowsEnlargement)
                 .frame(width: playback.inlineSize.width, height: playback.inlineSize.height)
                 .frame(width: playback.inlineBounds.width, height: playback.inlineBounds.height)
                 .clipShape(.rect(cornerRadius: 10))
                 .accessibilityLabel("Video")
-            Button("Open video", systemImage: "arrow.up.left.and.arrow.down.right") {
-                playback.openPreview()
+            if allowsEnlargement {
+                Button("Open video", systemImage: "arrow.up.left.and.arrow.down.right") {
+                    playback.openPreview()
+                }
+                .controlSize(.small)
+                .help("Open a larger player. You can also double-click the video.")
             }
-            .controlSize(.small)
-            .help("Open a larger player. You can also double-click the video.")
         }
         .task { await playback.loadPresentationSize() }
         .onDisappear { playback.close() }
@@ -126,10 +130,11 @@ final class VideoAttachmentPlayback: NSObject, NSWindowDelegate {
 
 private struct InlineVideoPlayer: NSViewRepresentable {
     let playback: VideoAttachmentPlayback
+    let allowsEnlargement: Bool
 
     func makeNSView(context: Context) -> InlineVideoPlayerView {
-        let view = InlineVideoPlayerView()
-        view.onOpenPreview = { playback.openPreview() }
+        let view = InlineVideoPlayerView(allowsEnlargement: allowsEnlargement)
+        if allowsEnlargement { view.onOpenPreview = { playback.openPreview() } }
         return view
     }
 
@@ -146,21 +151,25 @@ private struct InlineVideoPlayer: NSViewRepresentable {
 final class InlineVideoPlayerView: AVPlayerView {
     var onOpenPreview: (() -> Void)?
 
-    override init(frame: NSRect) {
-        super.init(frame: frame)
+    init(allowsEnlargement: Bool = true) {
+        super.init(frame: .zero)
         videoGravity = .resizeAspect
         controlsStyle = .inline
-        let doubleClick = NSClickGestureRecognizer(target: self, action: #selector(openPreview))
-        doubleClick.numberOfClicksRequired = 2
-        // Hold the first click so a double-click cannot also toggle playback in AVKit.
-        doubleClick.delaysPrimaryMouseButtonEvents = true
-        addGestureRecognizer(doubleClick)
+        showsFullScreenToggleButton = allowsEnlargement
+        if allowsEnlargement {
+            let doubleClick = NSClickGestureRecognizer(target: self, action: #selector(openPreview))
+            doubleClick.numberOfClicksRequired = 2
+            // Hold the first click so a double-click cannot also toggle playback in AVKit.
+            doubleClick.delaysPrimaryMouseButtonEvents = true
+            addGestureRecognizer(doubleClick)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     @objc func openPreview() {
+        guard let onOpenPreview else { return }
         player?.pause()
-        onOpenPreview?()
+        onOpenPreview()
     }
 }

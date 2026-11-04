@@ -119,3 +119,17 @@ func aPortraitVideoTrackKeepsTheSpaceReservedBeforeItsDimensionsArrive() async t
     #expect(playback.player.rate == 0)
     playback.close()
 }
+
+@MainActor
+@Test func reelPlaceholderDoesNotReserveSpaceForAnEnlargementButton() throws {
+    let reel = MessageAttachment(
+        id: "reel", kind: .video, pixelSize: PixelSize(width: 1080, height: 1920),
+        deepLink: try DeepLinkVerifier.verify("https://instagram.com/reel/fixture/", for: .instagram)
+    )
+    let placeholder = NSHostingView(rootView: MediaPlaceholder(attachment: reel))
+    let loaded = NSHostingView(rootView: VideoAttachmentView(
+        url: URL(fileURLWithPath: "/tmp/inboxplus-reel-fixture.mov"), pixelSize: reel.pixelSize,
+        allowsEnlargement: false
+    ))
+    #expect(abs(placeholder.fittingSize.height - loaded.fittingSize.height) < 1)
+}

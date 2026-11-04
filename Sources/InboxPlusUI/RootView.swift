@@ -161,6 +161,7 @@ public struct RootView: View {
         .frame(minWidth: 900, minHeight: 600)
         .disabled(model.isPreparingForUpdate || model.isRefreshingRuntime)
         .focusedSceneValue(\.inboxCommandActions, commandActions)
+        .environment(\.playsInstagramReels, preferences.playsInstagramReels)
         .environment(\.inboxPlusTheme, theme)
         .background(WindowTitleBar(color: theme.titleBar))
         .tint(theme.highlight)
