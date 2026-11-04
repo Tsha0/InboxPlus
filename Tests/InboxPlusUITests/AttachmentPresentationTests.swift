@@ -81,3 +81,33 @@ private func message(body: String, attachments: [MessageAttachment]) -> Message 
     )
     #expect(AttachmentFormatting.accessibilityLabel(for: attachment).contains("opens in Instagram"))
 }
+
+@Test func reelsUseOnlyPreviewMediaWhenPlaybackIsOff() throws {
+    let link = try DeepLinkVerifier.verify("https://instagram.com/reel/fixture/", for: .instagram)
+    let source = MediaHandle(source: "mxc://fixture/video", mimeType: "video/mp4")
+    let thumbnail = MediaHandle(source: "mxc://fixture/preview", mimeType: "image/png")
+    let reel = MessageAttachment(id: "reel", kind: .video, source: source, thumbnail: thumbnail, deepLink: link)
+    let off = AttachmentFormatting.mediaAttachment(for: reel, playsInstagramReels: false)
+    #expect(off.kind == .image)
+    #expect(off.source == thumbnail)
+    #expect(off.id != reel.id)
+    #expect(off.isInstagramReel)
+    #expect(AttachmentFormatting.mediaAttachment(for: reel, playsInstagramReels: true) == reel)
+
+    let previewOnly = MessageAttachment(id: "preview-only", kind: .image, source: thumbnail, deepLink: link)
+    for enabled in [true, false] {
+        #expect(AttachmentFormatting.mediaAttachment(for: previewOnly, playsInstagramReels: enabled).source == thumbnail)
+    }
+    var noPreview = reel
+    noPreview.thumbnail = nil
+    #expect(AttachmentFormatting.mediaAttachment(for: noPreview, playsInstagramReels: false).source == nil)
+    let linkOnly = MessageAttachment(id: "link", kind: .appNative, deepLink: link)
+    #expect(AttachmentFormatting.mediaAttachment(for: linkOnly, playsInstagramReels: true).source == nil)
+
+    let photo = MessageAttachment(id: "photo", kind: .image, source: thumbnail)
+    let directVideo = MessageAttachment(id: "direct", kind: .video, source: source)
+    for enabled in [true, false] {
+        #expect(AttachmentFormatting.mediaAttachment(for: photo, playsInstagramReels: enabled) == photo)
+        #expect(AttachmentFormatting.mediaAttachment(for: directVideo, playsInstagramReels: enabled) == directVideo)
+    }
+}

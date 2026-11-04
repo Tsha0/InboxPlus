@@ -4,6 +4,10 @@ import SwiftUI
 import InboxPlusCore
 import InboxPlusFeatures
 
+extension EnvironmentValues {
+    @Entry var playsInstagramReels = false
+}
+
 /// Renders one attachment, choosing its presentation from the kind the bridge reported.
 ///
 /// Every branch produces something visible. The design forbids silently dropping a message, so an
@@ -14,6 +18,8 @@ public struct AttachmentView: View {
     let accountID: String
     let messageID: String
     @State private var showsImagePreview = false
+    @Environment(\.playsInstagramReels) private var playsInstagramReels
+    @Environment(\.openURL) private var openURL
 
     public init(model: InboxPlusAppModel, attachment: MessageAttachment, accountID: String, messageID: String) {
         self.model = model
@@ -22,17 +28,29 @@ public struct AttachmentView: View {
         self.messageID = messageID
     }
 
+    private var mediaAttachment: MessageAttachment {
+        AttachmentFormatting.mediaAttachment(for: attachment, playsInstagramReels: playsInstagramReels)
+    }
+
     private var state: MediaController.State {
-        model.media.state(for: attachment)
+        model.media.state(for: mediaAttachment)
     }
 
     public var body: some View {
-        content
-            .frame(maxWidth: 320, alignment: .leading)
-            .onAppear { model.media.load(attachment, accountID: accountID, messageID: messageID) }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityIdentifier("attachment-\(attachment.id)")
+        Group {
+            if attachment.isInstagramReel {
+                reelContent
+            } else {
+                content
+            }
+        }
+        .frame(maxWidth: 320, alignment: .leading)
+        .task(id: mediaAttachment) {
+            model.media.load(mediaAttachment, accountID: accountID, messageID: messageID)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityIdentifier("attachment-\(attachment.id)")
     }
 
     @ViewBuilder private var content: some View {
@@ -53,6 +71,60 @@ public struct AttachmentView: View {
 
     private var imageSize: CGSize {
         AttachmentFormatting.inlineMediaSize(for: attachment)
+    }
+
+    @ViewBuilder private var reelContent: some View {
+        if playsInstagramReels, attachment.kind == .video, attachment.source != nil {
+            playableContent
+                .overlay(alignment: .topLeading) {
+                    ReelBadge().padding(8)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if let link = attachment.deepLink {
+                        Button {
+                            openURL(link.url)
+                        } label: {
+                            Image(systemName: "arrow.up.right")
+                                .font(.caption.weight(.semibold))
+                                .padding(8)
+                                .background(.regularMaterial, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(8)
+                        .accessibilityLabel("Open Reel in Instagram")
+                        .accessibilityIdentifier("open-reel-in-instagram")
+                        .help("Open Reel in Instagram")
+                    }
+                }
+                .accessibilityIdentifier("reel-player-\(attachment.id)")
+        } else if let link = attachment.deepLink {
+            VStack(alignment: .leading, spacing: 6) {
+                ReelThumbnail(image: previewImage, pixelSize: attachment.pixelSize,
+                              isLoading: mediaAttachment.source != nil && (state == .idle || state == .loading)) {
+                    openURL(link.url)
+                }
+                if mediaAttachment.source != nil {
+                    switch state {
+                    case let .failed(reason):
+                        Text(reason).font(.caption).foregroundStyle(.secondary)
+                        Button("Try again") {
+                            model.media.retry(mediaAttachment, accountID: accountID, messageID: messageID)
+                        }
+                        .controlSize(.small)
+                    case let .paused(reason):
+                        Text(reason).font(.caption).foregroundStyle(.secondary)
+                    default:
+                        EmptyView()
+                    }
+                }
+            }
+            .accessibilityIdentifier("reel-thumbnail-\(attachment.id)")
+        }
+    }
+
+    private var previewImage: NSImage? {
+        guard case let .ready(url) = state else { return nil }
+        return NSImage(contentsOf: url)
     }
 
     // MARK: - Images
@@ -88,7 +160,7 @@ public struct AttachmentView: View {
             MediaPlaceholder(attachment: attachment)
         case let .failed(reason):
             MediaRetryCard(attachment: attachment, reason: reason) {
-                model.media.retry(attachment, accountID: accountID, messageID: messageID)
+                model.media.retry(mediaAttachment, accountID: accountID, messageID: messageID)
             }
         case let .paused(reason):
             MediaPausedCard(attachment: attachment, reason: reason)
@@ -101,7 +173,7 @@ public struct AttachmentView: View {
         switch state {
         case let .ready(url):
             if attachment.kind == .video {
-                VideoAttachmentView(url: url, pixelSize: attachment.pixelSize)
+                VideoAttachmentView(url: url, pixelSize: attachment.pixelSize, allowsEnlargement: !attachment.isInstagramReel)
                     .id(url)
             } else {
                 VideoPlayer(player: AVPlayer(url: url))
@@ -113,7 +185,7 @@ public struct AttachmentView: View {
             MediaPlaceholder(attachment: attachment, durationLabel: durationLabel)
         case let .failed(reason):
             MediaRetryCard(attachment: attachment, reason: reason) {
-                model.media.retry(attachment, accountID: accountID, messageID: messageID)
+                model.media.retry(mediaAttachment, accountID: accountID, messageID: messageID)
             }
         case let .paused(reason):
             MediaPausedCard(attachment: attachment, reason: reason)
@@ -140,7 +212,7 @@ public struct AttachmentView: View {
             MediaPlaceholder(attachment: attachment)
         case let .failed(reason):
             MediaRetryCard(attachment: attachment, reason: reason) {
-                model.media.retry(attachment, accountID: accountID, messageID: messageID)
+                model.media.retry(mediaAttachment, accountID: accountID, messageID: messageID)
             }
         case let .paused(reason):
             MediaPausedCard(attachment: attachment, reason: reason)
@@ -158,7 +230,10 @@ public struct AttachmentView: View {
     }
 
     private var accessibilityLabel: String {
-        AttachmentFormatting.accessibilityLabel(for: attachment)
+        if attachment.isInstagramReel, playsInstagramReels, attachment.kind == .video {
+            return "Reel, video playback in Inbox+"
+        }
+        return AttachmentFormatting.accessibilityLabel(for: attachment)
     }
 }
 
@@ -184,7 +259,7 @@ struct MediaPlaceholder: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             placeholder
-            if attachment.kind == .video {
+            if attachment.kind == .video, !attachment.isInstagramReel {
                 Button("Open video", systemImage: "arrow.up.left.and.arrow.down.right") {}
                     .controlSize(.small)
                     .hidden()
@@ -312,5 +387,64 @@ struct AttachmentCardLabel: View {
                 }
             }
         }
+    }
+}
+
+struct ReelThumbnail: View {
+    let image: NSImage?
+    let pixelSize: PixelSize?
+    var isLoading = false
+    let open: () -> Void
+
+    private var size: CGSize {
+        let dimensions = image?.size ?? pixelSize.map { CGSize(width: $0.width, height: $0.height) }
+        return VideoAttachmentPlayback.fittedSize(dimensions, within: CGSize(width: 320, height: 320))
+    }
+
+    var body: some View {
+        Button(action: open) {
+            ZStack {
+                if let image {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Rectangle().fill(.quaternary)
+                    if isLoading {
+                        ProgressView("Loading preview…").controlSize(.small)
+                    } else {
+                        Label("Reel preview unavailable", systemImage: "photo")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(width: size.width, height: size.height)
+            .overlay(alignment: .topLeading) {
+                ReelBadge().padding(8)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.weight(.semibold))
+                    .padding(8)
+                    .background(.regularMaterial, in: Circle())
+                    .padding(8)
+            }
+            .clipShape(.rect(cornerRadius: 10))
+            .contentShape(.rect(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Reel, open in Instagram")
+        .help("Open Reel in Instagram")
+    }
+}
+
+private struct ReelBadge: View {
+    var body: some View {
+        Label("Reel", systemImage: "film")
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(.regularMaterial, in: Capsule())
     }
 }

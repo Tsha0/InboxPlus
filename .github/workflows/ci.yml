@@ -65,7 +65,10 @@ jobs:
       # deliberately NOT enabled here: they start a real Synapse and download real bridge binaries,
       # which makes a CI failure a report about the network rather than about the change.
       - name: Test
-        run: swift test --skip-build
+        # Native UI tests share NSApplication and windows, so they must not overlap.
+        run: |
+          swift test --skip-build --skip InboxPlusUITests
+          swift test --skip-build --filter InboxPlusUITests --no-parallel
 
       - name: Verify update packaging and feed validation
         run: |

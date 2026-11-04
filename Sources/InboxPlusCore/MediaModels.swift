@@ -107,13 +107,20 @@ public struct MessageAttachment: Identifiable, Codable, Hashable, Sendable {
     /// True when there are bytes to fetch. An app-native card has a deep link and nothing else.
     public var isDownloadable: Bool { source != nil }
 
+    public var isInstagramReel: Bool {
+        guard let deepLink, deepLink.platform == .instagram else { return false }
+        let path = deepLink.url.path.lowercased()
+        return path.hasPrefix("/reel/") || path.hasPrefix("/reels/")
+    }
+
     /// What the attachment's card is headed with, never empty.
     ///
     /// A photo's or video's filename is one the server made up, such as
     /// `462555709_902766575152919_3265496144511665546_n.jpg`, so only a file is headed by its name.
     /// `filename` stays on the attachment for saving the bytes under their own name.
     public var title: String {
-        switch kind {
+        if isInstagramReel { return "Reel" }
+        return switch kind {
         case .image: "Photo"
         case .gallery: "Photos"
         case .sticker: "Sticker"

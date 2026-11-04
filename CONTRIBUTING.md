@@ -77,6 +77,14 @@ patterns, use existing fixtures and fakes, and test observable behavior rather t
 implementation. Explain when automated coverage is impractical. For UI changes, inspect affected
 loading, empty, error and cancellation states where applicable.
 
+Native UI tests share one application and its windows. CI and release packaging run them serially
+in a separate invocation. To use the same arrangement locally:
+
+```bash
+swift test --skip InboxPlusUITests
+swift test --skip-build --filter InboxPlusUITests --no-parallel
+```
+
 The default Swift suite does not require live accounts or a homeserver. Real Synapse tests are
 opt-in because they download dependencies and start processes:
 
