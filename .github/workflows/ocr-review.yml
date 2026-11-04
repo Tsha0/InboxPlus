@@ -52,7 +52,7 @@ jobs:
           llm_extra_body: ${{ vars.KIMI_REVIEW_EXTRA_BODY || '{"max_completion_tokens":16000}' }}
           llm_reasoning_effort: low
           effort: medium
-          max_tokens_budget: '150000'
+          max_tokens_budget: '500000'
           review_concurrency: '1'
           checkpoint_range: 'true'
           incremental: 'true'
