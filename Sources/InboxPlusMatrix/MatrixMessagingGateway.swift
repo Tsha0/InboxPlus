@@ -23,6 +23,10 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
     private let backfillStep: UInt16
     private let backfillEventLimit: Int
 
+    private let bridgeAvailabilityProvider: @Sendable () async -> [String: Bool]
+    private var bridgeAvailability: [String: Bool] = [:]
+    private var exposedBridgeIDs: Set<String> = []
+    private var bridgeProbeFailures: [String: Int] = [:]
     private let outgoingIdentifiersProvider: @Sendable () async -> [String: Set<String>]
     private var outgoingIdentifiersByAccount: [String: Set<String>] = [:]
     private var identityRefreshTask: Task<[String: Set<String>], Never>?
@@ -58,8 +62,10 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         historyWindow: Int = RecentHistory.messageCount,
         backfillStep: UInt16 = 20,
         backfillEventLimit: Int = 200,
+        bridgeAvailabilityProvider: @escaping @Sendable () async -> [String: Bool] = { [:] },
         outgoingIdentifiersProvider: @escaping @Sendable () async -> [String: Set<String>] = { [:] }
     ) {
+        self.bridgeAvailabilityProvider = bridgeAvailabilityProvider
         self.outgoingIdentifiersProvider = outgoingIdentifiersProvider
         self.client = client
         self.accountID = accountID
@@ -86,6 +92,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
     public func loadSnapshot() async throws -> MessagingSnapshot {
         try await start()
         await acceptTrustedInvites()
+        await refreshBridgeAvailability()
 
         let rooms = try await client.requireClient().rooms()
         var conversations: [RemoteConversation] = []
@@ -360,6 +367,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
     }
 
     private func discoverNewRooms() async {
+        await refreshBridgeAvailability()
         await refreshOutgoingIdentifiers()
         await acceptTrustedInvites()
         guard let rooms = try? await client.requireClient().rooms() else { return }
@@ -385,6 +393,7 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
             // seen, so both have to arrive first or the room never appears. The account is new
             // whenever this is the first conversation of a network connected since launch.
             if let account = bridgeAccount(roomAccountID) {
+                exposedBridgeIDs.insert(roomAccountID)
                 publish(.accountUpserted(account))
             }
             publish(.identityUpserted(
@@ -596,7 +605,10 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         networkStateDates[accountID] = notice.timestamp
         guard networkStates[accountID] != state else { return }
         networkStates[accountID] = state
-        if publishing, let account = bridgeAccount(accountID) { publish(.accountUpserted(account)) }
+        if publishing, let account = bridgeAccount(accountID) {
+            exposedBridgeIDs.insert(accountID)
+            publish(.accountUpserted(account))
+        }
     }
 
     /// Which account a room belongs to, resolved from who is in it.
@@ -672,6 +684,15 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
             try await room.forget()
             accountIDByRoomID[roomID] = nil
         }
+        forgetBridgeAccount(removedAccountID)
+    }
+
+    func forgetBridgeAccount(_ accountID: String) {
+        exposedBridgeIDs.remove(accountID)
+        bridgeAvailability[accountID] = nil
+        bridgeProbeFailures[accountID] = nil
+        networkStates[accountID] = nil
+        networkStateDates[accountID] = nil
     }
 
     /// One line naming what each conversation was attributed to.
@@ -684,10 +705,11 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
 
     /// The accounts actually worth showing: one per bridge that owns a conversation, plus the local
     /// Matrix account. A prepared bridge with no conversations yet is not presented as connected.
-    private func accounts(owning roomAccountIDs: some Collection<String>) -> [ConnectedAccount] {
+    func accounts(owning roomAccountIDs: some Collection<String>) -> [ConnectedAccount] {
         var accounts: [ConnectedAccount] = []
         for bridgeID in Set(roomAccountIDs).sorted() {
             guard let account = bridgeAccount(bridgeID) else { continue }
+            exposedBridgeIDs.insert(bridgeID)
             accounts.append(account)
         }
         // Always present, because a room that belongs to no bridge is filed against it.
@@ -697,13 +719,36 @@ public actor MatrixMessagingGateway: MessageInteractionGateway {
         return accounts
     }
 
-    private func bridgeAccount(_ bridgeID: String) -> ConnectedAccount? {
+    func refreshBridgeAvailability() async {
+        let observed = await bridgeAvailabilityProvider()
+        guard !Task.isCancelled else { return }
+        for bridgeID in Set(bridgeAvailability.keys).subtracting(observed.keys) {
+            bridgeAvailability[bridgeID] = nil
+            bridgeProbeFailures[bridgeID] = nil
+            if exposedBridgeIDs.contains(bridgeID), let account = bridgeAccount(bridgeID) {
+                publish(.accountUpserted(account))
+            }
+        }
+        for bridgeID in observed.keys.sorted() {
+            let available = observed[bridgeID] == true
+            bridgeProbeFailures[bridgeID] = available ? 0 : min(2, bridgeProbeFailures[bridgeID, default: 0] + 1)
+            guard available || bridgeProbeFailures[bridgeID] == 2,
+                  bridgeAvailability[bridgeID] != available else { continue }
+            bridgeAvailability[bridgeID] = available
+            if exposedBridgeIDs.contains(bridgeID), let account = bridgeAccount(bridgeID) {
+                publish(.accountUpserted(account))
+            }
+        }
+    }
+
+    func bridgeAccount(_ bridgeID: String) -> ConnectedAccount? {
         guard let descriptor = bridgeAccounts[bridgeID] else { return nil }
         return ConnectedAccount(
             id: descriptor.bridgeID,
             platform: descriptor.platform,
             displayName: descriptor.displayName,
-            networkState: networkStates[bridgeID]
+            networkState: networkStates[bridgeID],
+            bridgeAvailable: bridgeAvailability[bridgeID]
         )
     }
 

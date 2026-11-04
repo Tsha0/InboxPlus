@@ -1079,6 +1079,30 @@ private func startAndRecord(
 }
 
 @MainActor
+@Test func bridgeAvailabilityUpdatesConnectionAndHealthWithoutLosingHistory() async throws {
+    let gateway = AppModelTestGateway(snapshot: Fixtures.snapshot)
+    let model = InboxPlusAppModel(gateway: gateway, directory: Fixtures.directory)
+    try await model.start()
+    defer { model.stop() }
+    let messages = model.messagesByRoute
+    var account = try #require(model.accounts.first { $0.id == Fixtures.instagramRoute.accountID })
+    account.networkState = .connected
+    account.bridgeAvailable = false
+    await gateway.publish(.accountUpserted(account))
+    #expect(await eventually { !model.isConnected(account.id) })
+    #expect(model.healthBannerMessage?.contains("Instagram") == true)
+    #expect(model.hasUnavailableBridge)
+    #expect(model.isConnected(Fixtures.telegramRoute.accountID))
+    #expect(model.messagesByRoute == messages)
+    account.bridgeAvailable = true
+    await gateway.publish(.accountUpserted(account))
+    #expect(await eventually { model.isConnected(account.id) })
+    #expect(model.health == .healthy)
+    #expect(!model.hasUnavailableBridge)
+    #expect(model.messagesByRoute == messages)
+}
+
+@MainActor
 @Test func managingPeoplePreservesConversationsAndMessages() async throws {
     let model = InboxPlusAppModel(gateway: InMemoryMessagingGateway(seed: Fixtures.snapshot), directory: Fixtures.directory)
     try await model.start()

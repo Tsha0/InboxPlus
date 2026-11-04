@@ -162,10 +162,8 @@ struct InboxPlusApp: App {
                 makeLoginSession: runtimeGateway.flatMap { gateway in
                     BridgeSelection.makeProvider(
                         refreshRuntime: { progress in
-                            try await model.refreshRuntime {
-                                progress(.restarting)
-                                try await gateway.refreshRuntime()
-                            }
+                            progress(.restarting)
+                            try await GatewaySelection.restartRuntime(gateway: gateway, model: model)
                         },
                         resumeInbox: {
                             if try await gateway.runtimeChanged() {
@@ -178,7 +176,10 @@ struct InboxPlusApp: App {
                         }
                     )
                 },
-                update: updates.presentation, onUpdate: updates.checkForUpdates
+                update: updates.presentation, onUpdate: updates.checkForUpdates,
+                onRestartRuntime: runtimeGateway.map { gateway in
+                    { try await GatewaySelection.restartRuntime(gateway: gateway, model: model) }
+                }
             )
                 .task {
                     updates.installationPreflight = {

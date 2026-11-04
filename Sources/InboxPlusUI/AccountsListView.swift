@@ -164,6 +164,7 @@ struct AccountsListView: View {
     }
 
     private func statusLine(_ account: ConnectedAccount, connected: Bool) -> String {
+        if account.bridgeAvailable == false { return "Bridge isn't responding — restart the runtime" }
         guard connected else { return "Disconnected — messages are kept" }
         if let problem = Self.networkProblem(account) { return problem }
         guard let activity = lastActivity(account.id) else { return "Connected" }

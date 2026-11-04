@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import InboxPlusCore
+import InboxPlusRuntime
 @testable import InboxPlusMatrix
 
 private let policy = BridgeInvitePolicy.forBridges(ids: ["instagram", "whatsapp"], serverName: "inboxplus.local")
@@ -56,4 +57,115 @@ private let me = "@inboxplus:inboxplus.local"
     #expect(BridgeStateNotice.state(in: "State update for Alex: SOMETHING_NEW") == nil)
     #expect(BridgeStateNotice.state(in: "State update for Alex") == nil)
     #expect(BridgeStateNotice.state(in: "") == nil)
+}
+
+private actor BridgeAvailabilityFixture {
+    var available = true
+    func setAvailable(_ value: Bool) { available = value }
+    func check() -> [String: Bool] { ["instagram": available] }
+}
+
+@Test func bridgeAvailabilityIsDebouncedAndPublishesRecoveryWithoutNewNotices() async throws {
+    let fixture = BridgeAvailabilityFixture()
+    let paths = try RuntimePaths(
+        root: URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Caches/bridge-status-test"),
+        profileName: "isolated"
+    )
+    let url = URL(string: "http://127.0.0.1:18008")!
+    let client = InboxPlusMatrixClient(
+        homeserverURL: url,
+        store: MatrixClientStore(profile: paths),
+        provisioner: try MatrixAccountProvisioner(baseURL: url, serverName: "test.local", registrationSecret: "fixture")
+    )
+    let gateway = MatrixMessagingGateway(
+        client: client,
+        bridgeAccounts: [BridgeAccountDescriptor(bridgeID: "instagram", platform: .instagram, displayName: "Instagram")],
+        bridgeAvailabilityProvider: { await fixture.check() }
+    )
+    _ = await gateway.accounts(owning: ["instagram"])
+    let stream = await gateway.events()
+    var events = stream.makeAsyncIterator()
+    await gateway.refreshBridgeAvailability()
+    guard case let .accountUpserted(initial) = await events.next() else {
+        Issue.record("Missing initial availability event"); return
+    }
+    #expect(initial.bridgeAvailable == true)
+    await fixture.setAvailable(false)
+    await gateway.refreshBridgeAvailability()
+    #expect(await gateway.bridgeAccount("instagram")?.bridgeAvailable == true)
+    await gateway.refreshBridgeAvailability()
+    guard case let .accountUpserted(unavailable) = await events.next() else {
+        Issue.record("Missing unavailable event"); return
+    }
+    #expect(unavailable.bridgeAvailable == false)
+    await fixture.setAvailable(true)
+    await gateway.refreshBridgeAvailability()
+    guard case let .accountUpserted(recovered) = await events.next() else {
+        Issue.record("Missing recovery event"); return
+    }
+    #expect(recovered.bridgeAvailable == true)
+}
+
+@Test func aRespondingPreparedBridgeDoesNotCreateAConnectedAccount() async throws {
+    let fixture = BridgeAvailabilityFixture()
+    let paths = try RuntimePaths(
+        root: URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Caches/bridge-status-test"),
+        profileName: "isolated"
+    )
+    let url = URL(string: "http://127.0.0.1:18008")!
+    let client = InboxPlusMatrixClient(
+        homeserverURL: url,
+        store: MatrixClientStore(profile: paths),
+        provisioner: try MatrixAccountProvisioner(baseURL: url, serverName: "test.local", registrationSecret: "fixture")
+    )
+    let gateway = MatrixMessagingGateway(
+        client: client,
+        bridgeAccounts: [BridgeAccountDescriptor(bridgeID: "instagram", platform: .instagram, displayName: "Instagram")],
+        bridgeAvailabilityProvider: { await fixture.check() }
+    )
+    let stream = await gateway.events()
+    let collected = Task {
+        var count = 0
+        for await _ in stream { count += 1 }
+        return count
+    }
+    await gateway.refreshBridgeAvailability()
+    #expect(await gateway.accounts(owning: [String]()).map(\.id) == [MatrixMessagingGateway.defaultAccountID])
+    await gateway.stop()
+    #expect(await collected.value == 0)
+}
+
+@Test func removingAnAccountPreventsLaterProbesFromBringingItBack() async throws {
+    let fixture = BridgeAvailabilityFixture()
+    let paths = try RuntimePaths(
+        root: URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Caches/bridge-status-test"),
+        profileName: "isolated"
+    )
+    let url = URL(string: "http://127.0.0.1:18008")!
+    let client = InboxPlusMatrixClient(
+        homeserverURL: url,
+        store: MatrixClientStore(profile: paths),
+        provisioner: try MatrixAccountProvisioner(baseURL: url, serverName: "test.local", registrationSecret: "fixture")
+    )
+    let gateway = MatrixMessagingGateway(
+        client: client,
+        bridgeAccounts: [BridgeAccountDescriptor(bridgeID: "instagram", platform: .instagram, displayName: "Instagram")],
+        bridgeAvailabilityProvider: { await fixture.check() }
+    )
+    _ = await gateway.accounts(owning: ["instagram"])
+    await gateway.refreshBridgeAvailability()
+    let stream = await gateway.events()
+    let collected = Task {
+        var count = 0
+        for await _ in stream { count += 1 }
+        return count
+    }
+    await gateway.forgetBridgeAccount("instagram")
+    await fixture.setAvailable(false)
+    await gateway.refreshBridgeAvailability()
+    await gateway.refreshBridgeAvailability()
+    await fixture.setAvailable(true)
+    await gateway.refreshBridgeAvailability()
+    await gateway.stop()
+    #expect(await collected.value == 0)
 }
