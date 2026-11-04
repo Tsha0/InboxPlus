@@ -123,6 +123,7 @@ struct PreferencesView: View {
             notifications
             AppearanceSection(preferences: preferences, onThemePicked: onThemePicked)
             general
+            ReelPlaybackSection(preferences: preferences)
             storage
             about
         }
@@ -329,5 +330,22 @@ struct PreferencesView: View {
 
     static func formatted(bytes: Int) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+}
+
+struct ReelPlaybackSection: View {
+    @Bindable var preferences: AppPreferences
+
+    var body: some View {
+        Section {
+            Toggle("Play Instagram Reels in Inbox+", isOn: $preferences.playsInstagramReels)
+                .accessibilityIdentifier("play-instagram-reels")
+        } header: {
+            Text("Instagram Reels")
+        } footer: {
+            Text("When off, Reels appear as labeled thumbnails that open in Instagram. When on, available videos play here when you press Play.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }

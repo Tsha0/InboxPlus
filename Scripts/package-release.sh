@@ -55,7 +55,8 @@ echo "==> Packaging $APP_NAME $VERSION"
 
 # 1. Test before building anything shippable. A release that was never green is not a release.
 echo "==> Running tests"
-(cd "$REPO_ROOT" && swift test)
+(cd "$REPO_ROOT" && swift test --skip InboxPlusUITests)
+(cd "$REPO_ROOT" && swift test --skip-build --filter InboxPlusUITests --no-parallel)
 
 echo "==> Building release binaries"
 (cd "$REPO_ROOT" && swift build -c release)

@@ -68,6 +68,10 @@ public final class AppPreferences {
         didSet { defaults.set(messageRetention.rawValue, forKey: Key.messageRetention) }
     }
 
+    public var playsInstagramReels: Bool {
+        didSet { defaults.set(playsInstagramReels, forKey: Key.playsInstagramReels) }
+    }
+
     public var appearanceMode: AppearanceMode {
         didSet { defaults.set(appearanceMode.rawValue, forKey: Key.appearanceMode) }
     }
@@ -97,6 +101,7 @@ public final class AppPreferences {
             showsPreviews: defaults.object(forKey: Key.notificationPreviews) as? Bool ?? true,
             playsSound: defaults.object(forKey: Key.notificationSound) as? Bool ?? true
         )
+        playsInstagramReels = defaults.bool(forKey: Key.playsInstagramReels)
         showsUnreadBadge = defaults.object(forKey: Key.unreadBadge) as? Bool ?? true
         iMessageHistory = Self.iMessageHistory(in: defaults)
         messageRetention = Self.messageRetention(in: defaults)
@@ -142,6 +147,7 @@ public final class AppPreferences {
         static let notificationsEnabled = "notifications.enabled"
         static let notificationPreviews = "notifications.showsPreviews"
         static let notificationSound = "notifications.playsSound"
+        static let playsInstagramReels = "media.playsInstagramReels"
         static let unreadBadge = "unreadBadge.enabled"
         static let iMessageHistory = "imessage.historyWindow"
         static let messageRetention = "messages.retentionDays"

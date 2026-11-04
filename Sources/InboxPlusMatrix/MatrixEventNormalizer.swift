@@ -32,17 +32,34 @@ public struct MatrixEventNormalizer: Sendable {
         let identifier = identifier(for: item.eventOrTransactionId)
         guard var described = describe(item.content, identifier: identifier) else { return nil }
 
-        // The bridge can fetch a shared Reel as m.video, but retains its original external_url.
-        // Drop that media before it reaches the downloader or any video player.
-        if described.kind == .video,
+        if [.image, .video].contains(described.kind),
            let json = item.lazyProvider.latestJson(),
-           let card = Self.appNativeVideoCard(json: json, id: "\(identifier)#link") {
-            described.kind = .appNative
-            described.attachments = [card]
+           let card = Self.appNativeMediaCard(json: json, id: "\(identifier)#link") {
+            if card.isInstagramReel {
+                if described.attachments.allSatisfy({ $0.caption == nil }) { described.body = "Reel" }
+                for index in described.attachments.indices {
+                    described.attachments[index].deepLink = card.deepLink
+                }
+            } else if described.kind == .video {
+                described.kind = .appNative
+                described.attachments = [card]
+            }
         } else if described.attachments.isEmpty, described.kind == .text,
            let card = AppNativeContentDetector.attachment(forBody: described.body, id: "\(identifier)#link") {
             described.kind = .appNative
             described.attachments = [card]
+        }
+
+        if let reel = described.attachments.first(where: \.isInstagramReel), let link = reel.deepLink {
+            if let markdown = described.markdownBody {
+                described.markdownBody = Self.reelCaption(markdown, link: link)
+                described.body = described.markdownBody.map { MessageFormatting.plainText(markdown: $0) } ?? "Reel"
+            } else {
+                described.body = Self.reelCaption(described.body, link: link) ?? "Reel"
+            }
+            for index in described.attachments.indices {
+                described.attachments[index].caption = described.body == "Reel" ? nil : described.body
+            }
         }
 
         let senderName: String?
@@ -127,7 +144,19 @@ public struct MatrixEventNormalizer: Sendable {
         var markdownBody: String?
     }
 
-    static func appNativeVideoCard(json: String, id: String) -> MessageAttachment? {
+    static func reelCaption(_ body: String, link: VerifiedDeepLink) -> String? {
+        let caption = body.components(separatedBy: "\n").filter { line in
+            let plain = MessageFormatting.plainText(markdown: line).trimmingCharacters(in: .whitespaces)
+            let address = plain.hasPrefix("instagram.com/") || plain.hasPrefix("www.instagram.com/")
+                ? "https://\(plain)" : plain
+            guard let shared = AppNativeContentDetector.attachment(forBody: address, id: "link"),
+                  let target = shared.deepLink else { return true }
+            return target.platform != link.platform || target.url.path != link.url.path
+        }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        return caption.isEmpty ? nil : caption
+    }
+
+    static func appNativeMediaCard(json: String, id: String) -> MessageAttachment? {
         struct Event: Decodable {
             struct Content: Decodable {
                 let external_url: String?

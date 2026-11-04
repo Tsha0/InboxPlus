@@ -91,6 +91,7 @@ private func drain(_ gateway: PreferenceGateway, _ model: InboxPlusAppModel) asy
 
     let first = AppPreferences(defaults: defaults)
     #expect(first.notifications == NotificationPreferences(isEnabled: true, showsPreviews: true, playsSound: true))
+    #expect(!first.playsInstagramReels)
     #expect(first.showsUnreadBadge)
     #expect(first.iMessageHistory == .year)
     #expect(first.messageRetention == .week)
@@ -98,12 +99,14 @@ private func drain(_ gateway: PreferenceGateway, _ model: InboxPlusAppModel) asy
 
     first.notifications.showsPreviews = false
     first.notifications.playsSound = false
+    first.playsInstagramReels = true
     first.showsUnreadBadge = false
     first.iMessageHistory = .all
     first.messageRetention = .quarter
 
     let relaunched = AppPreferences(defaults: defaults)
     #expect(relaunched.notifications == NotificationPreferences(isEnabled: true, showsPreviews: false, playsSound: false))
+    #expect(relaunched.playsInstagramReels)
     #expect(!relaunched.showsUnreadBadge)
     #expect(relaunched.iMessageHistory == .all)
     #expect(AppPreferences.iMessageHistory(in: defaults) == .all)
