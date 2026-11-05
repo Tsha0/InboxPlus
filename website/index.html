@@ -66,10 +66,19 @@
       <div class="atmosphere-dots"></div>
       <svg class="journey-asterisk" viewBox="0 0 100 100"><use href="#asterisk"/></svg>
     </div>
-    <div class="entrance" id="entrance" aria-hidden="true" hidden>
-      <div class="entrance-cover"></div>
-      <svg class="entrance-mark" viewBox="0 0 100 100"><use href="#asterisk"/></svg>
-      <p class="entrance-caption">a little hello.</p>
+    <div class="entrance" id="entrance" role="region" aria-label="Welcome to Inbox+" hidden>
+      <div class="entrance-cover" aria-hidden="true"></div>
+      <p class="entrance-eyebrow" aria-hidden="true">A happy little home for your conversations.</p>
+      <div class="entrance-orbit" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      <svg class="entrance-mark" viewBox="0 0 100 100" aria-hidden="true">
+        <g class="entrance-stroke" style="--stroke-x: -170px; --stroke-y: -55px; --stroke-turn: -35deg; --stroke-delay: 0s; --stroke-color: #f9d3e5"><rect x="3" y="42" width="94" height="16" rx="4"/></g>
+        <g class="entrance-stroke" style="--stroke-x: 65px; --stroke-y: -150px; --stroke-turn: 40deg; --stroke-delay: .08s; --stroke-color: #d8f3e8"><rect x="42" y="3" width="16" height="94" rx="4"/></g>
+        <g class="entrance-stroke" style="--stroke-x: 160px; --stroke-y: 65px; --stroke-turn: -40deg; --stroke-delay: .16s; --stroke-color: #d7e7f6"><rect x="42" y="3" width="16" height="94" rx="4" transform="rotate(45 50 50)"/></g>
+        <g class="entrance-stroke" style="--stroke-x: -65px; --stroke-y: 150px; --stroke-turn: 35deg; --stroke-delay: .24s; --stroke-color: #ffbd9e"><rect x="42" y="3" width="16" height="94" rx="4" transform="rotate(-45 50 50)"/></g>
+      </svg>
+      <p class="entrance-caption"><span>Your people.</span><span>All together.</span></p>
+      <p class="entrance-footnote" aria-hidden="true">Less app hopping. More hello.</p>
+      <button class="entrance-skip" type="button">Skip intro <span aria-hidden="true">↗</span></button>
     </div>
     <div class="logo-cursor" aria-hidden="true"><svg viewBox="0 0 100 100"><use href="#asterisk"/></svg></div>
     <div class="joy-particles" aria-hidden="true"></div>
@@ -83,6 +92,7 @@
         <a class="brand-name" href="#top" aria-label="Inbox+ home">Inbox+</a>
       </div>
       <nav aria-label="Main navigation">
+        <button class="replay-intro nav-replay" type="button" aria-label="Replay the entrance animation">Replay hello <span aria-hidden="true">↻</span></button>
         <a class="nav-preview" href="#peek">Take a peek <span aria-hidden="true">↓</span></a>
         <a class="button button-small" href="https://github.com/Tsha0/InboxPlus/releases/latest">Get the app <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
       </nav>

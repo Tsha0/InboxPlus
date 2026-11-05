@@ -602,44 +602,59 @@ window.addEventListener("blur", hideCursor);
 finePointer.addEventListener("change", hideCursor);
 
 const entrance = document.querySelector("#entrance");
-let entranceTimer;
+const entranceMark = entrance.querySelector(".entrance-mark");
+const entranceSkip = entrance.querySelector(".entrance-skip");
+let entranceReturnFocus;
 function finishEntrance() {
-  clearTimeout(entranceTimer);
+  const restoreFocus = entrance.contains(document.activeElement);
   entrance.hidden = true;
   document.body.classList.remove("intro-playing");
-  document.body.classList.add("has-entered");
   document.querySelector("main").inert = false;
   document.querySelector(".site-header").inert = false;
-  window.removeEventListener("pointerdown", finishEntrance);
+  document.querySelector(".skip-link").inert = false;
   window.removeEventListener("wheel", finishEntrance);
-  window.removeEventListener("keydown", finishEntrance);
+  window.removeEventListener("keydown", skipEntrance);
+  window.removeEventListener("resize", finishEntrance);
+  if (restoreFocus) (entranceReturnFocus ?? document.querySelector(".brand-name")).focus({ preventScroll: true });
 }
 
-function playEntrance() {
+function skipEntrance(event) {
+  if (event.key === "Escape") finishEntrance();
+}
+
+function playEntrance(replay = false) {
   if (reducedMotion.matches) {
     finishEntrance();
     return;
   }
+  entranceReturnFocus = replay ? document.activeElement : null;
   const target = brandMark.getBoundingClientRect();
-  const markWidth = window.innerWidth <= 600 ? 90 : 120;
+  entrance.hidden = false;
+  const markWidth = entranceMark.getBoundingClientRect().width;
   entrance.style.setProperty("--entrance-x", `${target.x + target.width / 2 - window.innerWidth / 2}px`);
   entrance.style.setProperty("--entrance-y", `${target.y + target.height / 2 - window.innerHeight / 2}px`);
   entrance.style.setProperty("--entrance-scale", target.width / markWidth);
-  entrance.hidden = false;
-  document.body.classList.remove("has-entered");
   document.body.classList.add("intro-playing");
   document.querySelector("main").inert = true;
   document.querySelector(".site-header").inert = true;
-  window.addEventListener("pointerdown", finishEntrance, { once: true });
+  document.querySelector(".skip-link").inert = true;
   window.addEventListener("wheel", finishEntrance, { once: true, passive: true });
-  window.addEventListener("keydown", finishEntrance, { once: true });
-  entranceTimer = setTimeout(finishEntrance, 1650);
+  window.addEventListener("keydown", skipEntrance);
+  window.addEventListener("resize", finishEntrance, { once: true });
+  if (replay) entranceSkip.focus({ preventScroll: true });
 }
 
-document.querySelector(".replay-intro").addEventListener("click", () => {
-  window.scrollTo({ top: 0, behavior: "instant" });
-  playEntrance();
+entranceSkip.addEventListener("click", finishEntrance);
+entranceMark.addEventListener("animationend", (event) => {
+  if (event.animationName === "entrance-dock") finishEntrance();
 });
+
+for (const button of document.querySelectorAll(".replay-intro")) {
+  button.addEventListener("click", () => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+    playEntrance(true);
+  });
+}
 
 const observer = new IntersectionObserver((entries) => {
   for (const entry of entries) {
