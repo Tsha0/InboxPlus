@@ -56,8 +56,10 @@ that palette until a visitor chooses a swatch. The theme values match
 `Sources/InboxPlusFeatures/AppTheme.swift`; update them together if the app changes.
 Surprise me cycles through all ten app presets, including Classic.
 
-The brief opening animation can be skipped by interacting with the page and replayed
-with One more hello in the footer. The logo cursor is enabled only for a mouse;
+The opening animation assembles four strokes into the Inbox+ asterisk, then docks
+the mark in the header as the homepage appears. Skip intro, Escape, or scrolling
+skips it. Replay hello in the header and One more hello in the footer replay it.
+The logo cursor is enabled only for a mouse;
 inputs keep their text cursor. Reduced Motion skips the entrance and disables
 particles, parallax, tilt, and animated reveals while retaining the scroll colors.
 

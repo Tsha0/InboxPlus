@@ -296,12 +296,28 @@ h1, h2, h3, p { margin: 0; }
 .mac-illustration { --ink: #242424; color: #242424; }
 .mac-illustration.is-winking .eye-right { animation: wink .65s both; }
 .mac-illustration.is-winking .screen-sticker { animation: sticker-spin .8s both; }
-.entrance { position: fixed; z-index: 80; inset: 0; color: #f3f3f3; pointer-events: none; }
-.entrance-cover { position: absolute; inset: 0; background: #181818 radial-gradient(circle, #ffffff1c .8px, transparent .9px) 14px 14px / 30px 30px; animation: entrance-cover 1.65s both; }
-.entrance-mark { position: absolute; left: calc(50% - 60px); top: calc(50% - 60px); width: 120px; height: 120px; animation: entrance-mark 1.65s cubic-bezier(.55,0,.2,1) both; }
-.entrance-caption { position: absolute; top: calc(50% + 88px); left: 0; right: 0; text-align: center; font-family: var(--display-font); font-size: 17px; letter-spacing: -.04em; animation: entrance-caption 1.4s both; }
+.entrance { --mark-size: clamp(100px, 13vw, 180px); position: fixed; z-index: 80; inset: 0; overflow: hidden; color: #f3f3f3; }
+.entrance-cover { position: absolute; inset: 0; background: #181818 radial-gradient(circle, #ffffff13 .8px, transparent .9px) 0 0 / 30px 30px; animation: entrance-cover 3.3s both; }
+.entrance-mark { position: absolute; left: calc(50% - var(--mark-size) / 2); top: calc(50% - var(--mark-size) / 2); width: var(--mark-size); height: var(--mark-size); overflow: visible; animation: entrance-dock 3.3s cubic-bezier(.76,0,.24,1) both; }
+.entrance-stroke { fill: currentColor; transform-origin: 50px 50px; animation: entrance-assemble 1.2s var(--stroke-delay) cubic-bezier(.22,1,.36,1) both; }
+.entrance-eyebrow { position: absolute; top: 37px; left: 36px; font-size: 11px; color: #bcbcbc; animation: entrance-details 2.4s both; }
+.entrance-caption { position: absolute; top: calc(50% + var(--mark-size) / 2 + 34px); left: 20px; right: 20px; text-align: center; font-family: var(--display-font); font-size: clamp(26px, 3vw, 42px); font-weight: 500; line-height: 1.05; letter-spacing: -.05em; }
+.entrance-caption span { display: block; animation: entrance-words 2.5s both; }
+.entrance-caption span + span { color: #bcbcbc; animation-delay: .18s; }
+.entrance-footnote { position: absolute; left: 20px; right: 20px; bottom: 34px; text-align: center; color: #bcbcbc; font-size: 11px; letter-spacing: .02em; animation: entrance-details 2.4s both; }
+.entrance-skip { position: absolute; top: 24px; right: 36px; display: inline-flex; align-items: center; gap: 17px; min-height: 44px; padding: 0 16px; border: 1px solid #ffffff30; border-radius: 30px; font-size: 12px; }
+.entrance-skip:hover { color: #181818; background: #f3f3f3; }
+.entrance-skip:focus-visible { outline-color: #f3f3f3; }
+.entrance-orbit { position: absolute; top: calc(50% - var(--mark-size) * 1.2); left: calc(50% - var(--mark-size) * 1.2); width: calc(var(--mark-size) * 2.4); aspect-ratio: 1; border: 1px solid #ffffff0d; border-radius: 50%; animation: entrance-orbit 2.4s both; }
+.entrance-orbit span { position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #bcbcbc; }
+.entrance-orbit span:nth-child(1) { top: -3px; left: calc(50% - 2px); }
+.entrance-orbit span:nth-child(2) { right: -3px; top: calc(50% - 2px); }
+.entrance-orbit span:nth-child(3) { bottom: -3px; left: calc(50% - 2px); }
+.entrance-orbit span:nth-child(4) { left: -3px; top: calc(50% - 2px); }
+.site-header .nav-replay { font-size: 12px; color: var(--scene-muted); }
 .intro-playing { overflow: hidden; }
-.intro-playing .hero-main, .intro-playing .site-header, .intro-playing .hero-drift, .intro-playing .hero-bottom, .intro-playing .journey-caption { opacity: 0; }
+.intro-playing .site-header, .intro-playing .hero-drift, .intro-playing .hero-bottom, .intro-playing .journey-caption { animation: entrance-page .9s 2.2s both; }
+.intro-playing .brand-spin svg { visibility: hidden; }
 .logo-cursor { position: fixed; z-index: 100; top: 0; left: 0; width: 24px; height: 24px; opacity: 0; color: #fff; pointer-events: none; mix-blend-mode: difference; }
 .logo-cursor svg { width: 24px; height: 24px; rotate: var(--cursor-turn, 0deg); transition: scale .2s; }
 .logo-cursor.is-visible { opacity: 1; }
@@ -318,21 +334,50 @@ h1, h2, h3, p { margin: 0; }
 }
 
 @keyframes entrance-cover {
-  0%, 52% { opacity: 1; }
+  0%, 61% { opacity: 1; }
   94%, 100% { opacity: 0; }
 }
 
-@keyframes entrance-mark {
-  0% { opacity: 0; transform: scale(.45) rotate(-90deg); }
-  24% { opacity: 1; transform: scale(1.1) rotate(0deg); }
-  48% { opacity: 1; transform: scale(1) rotate(45deg); }
+@keyframes entrance-dock {
+  0%, 42% { transform: scale(1) rotate(0deg); }
+  55% { transform: scale(1.08) rotate(45deg); }
+  65% { transform: scale(1) rotate(90deg); }
   100% { opacity: 1; transform: translate(var(--entrance-x), var(--entrance-y)) scale(var(--entrance-scale)) rotate(360deg); }
 }
 
-@keyframes entrance-caption {
-  0%, 10% { opacity: 0; transform: translateY(8px); }
-  28%, 55% { opacity: 1; transform: translateY(0); }
-  75%, 100% { opacity: 0; transform: translateY(-8px); }
+@keyframes entrance-assemble {
+  0% { opacity: 0; fill: var(--stroke-color); transform: translate(var(--stroke-x), var(--stroke-y)) rotate(var(--stroke-turn)) scale(.3); }
+  25% { opacity: 1; fill: var(--stroke-color); }
+  78% { transform: translate(0, 0) rotate(0deg) scale(1.02); }
+  100% { opacity: 1; fill: currentColor; transform: translate(0, 0) rotate(0deg) scale(1); }
+}
+
+@keyframes entrance-words {
+  0%, 24% { opacity: 0; filter: blur(7px); transform: translateY(18px); }
+  43%, 73% { opacity: 1; filter: blur(0); transform: translateY(0); }
+  100% { opacity: 0; filter: blur(5px); transform: translateY(-12px); }
+}
+
+@keyframes entrance-details {
+  0% { opacity: 0; }
+  25%, 78% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes entrance-orbit {
+  0% { opacity: 0; transform: scale(.7) rotate(-45deg); }
+  30%, 60% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.15) rotate(45deg); }
+}
+
+@keyframes entrance-page {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes entrance-arrive {
+  from { opacity: 0; filter: blur(10px); transform: translateY(32px) scale(.97); }
+  to { opacity: 1; filter: blur(0); transform: translateY(0) scale(1); }
 }
 
 @keyframes wink {
@@ -356,8 +401,8 @@ h1, h2, h3, p { margin: 0; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .has-entered .hero-name { animation: arrive .9s cubic-bezier(.2,.7,.2,1) both; }
-  .has-entered .hero-copy { animation: arrive .9s .12s cubic-bezier(.2,.7,.2,1) both; }
+  .intro-playing .hero-name { animation: entrance-arrive 1s 2.1s cubic-bezier(.22,1,.36,1) both; }
+  .intro-playing .hero-copy { animation: entrance-arrive 1s 2.25s cubic-bezier(.22,1,.36,1) both; }
   .has-motion .hero-main { translate: 0 calc(var(--hero-progress) * -45px); scale: calc(1 - var(--hero-progress) * .07); opacity: calc(1 - var(--hero-progress) * .85); }
   .has-motion .hero-drift { translate: 0 calc(var(--hero-progress) * -90px); }
   .has-motion .app-window { transform: perspective(1700px) rotateX(var(--preview-tilt, 0deg)); transform-origin: 50% 80%; }
@@ -581,8 +626,10 @@ h1, h2, h3, p { margin: 0; }
   .mac-hello { top: 52px; left: 17px; width: 245px; height: 199px; }
   .closing { padding-bottom: 35px; }
   .journey-asterisk { top: 37%; right: -40%; width: 95vw; height: 95vw; }
-  .entrance-mark { width: 90px; height: 90px; top: calc(50% - 45px); left: calc(50% - 45px); }
-  .entrance-caption { top: calc(50% + 69px); font-size: 15px; }
+  .entrance-eyebrow { top: 39px; left: 22px; max-width: 170px; font-size: 10px; line-height: 1.5; }
+  .entrance-skip { top: 25px; right: 22px; font-size: 11px; }
+  .site-header .nav-replay { width: 36px; min-height: 44px; font-size: 0; }
+  .site-header .nav-replay span { font-size: 22px; }
 }
 
 @media (max-width: 360px) {
