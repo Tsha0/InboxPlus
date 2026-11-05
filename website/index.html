@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#181818">
+    <title>Inbox+ — Your people. All together.</title>
+    <meta name="description" content="A little less app hopping. Bring your conversations together in one local-first, native Mac app. Meet Inbox+.">
+    <link rel="canonical" href="https://inboxplus.chat/">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://inboxplus.chat/">
+    <meta property="og:title" content="Inbox+ — Your people. All together.">
+    <meta property="og:description" content="Your favorite people, minus the app hopping. One local-first inbox for your Mac.">
+    <meta property="og:image" content="https://inboxplus.chat/assets/social.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+    <link rel="preload" href="assets/fonts/bricolage-grotesque-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="assets/fonts/dm-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <svg class="symbol-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <symbol id="asterisk" viewBox="0 0 100 100">
+          <g fill="currentColor">
+            <rect x="42" y="3" width="16" height="94" rx="4"/>
+            <rect x="3" y="42" width="94" height="16" rx="4"/>
+            <rect x="42" y="3" width="16" height="94" rx="4" transform="rotate(45 50 50)"/>
+            <rect x="42" y="3" width="16" height="94" rx="4" transform="rotate(-45 50 50)"/>
+          </g>
+        </symbol>
+        <symbol id="arrow-down" viewBox="0 0 24 24">
+          <path d="M12 4v15m-6-6 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="arrow-up-right" viewBox="0 0 24 24">
+          <path d="M5 19 19 5M5 5h14v14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="apple" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M16.6 12.8c0-2 1.6-3 1.7-3.1-1-1.4-2.4-1.6-2.9-1.6-1.3-.1-2.5.8-3.2.8-.6 0-1.6-.8-2.7-.8-1.4 0-2.8.9-3.5 2.1-1.5 2.6-.4 6.4 1 8.5.7 1 1.5 2.1 2.6 2.1 1 0 1.5-.7 2.8-.7s1.7.7 2.8.6c1.2 0 1.9-1 2.6-2.1.8-1.2 1.1-2.3 1.2-2.4-.1 0-2.4-.9-2.4-3.4ZM14.5 6.7c.6-.8 1.1-1.9 1-3-.9.1-2 .6-2.7 1.4-.6.7-1.2 1.9-1 3 1 .1 2-.5 2.7-1.4Z"/>
+        </symbol>
+        <symbol id="inbox" viewBox="0 0 24 24">
+          <path d="m4 5-2 9v5h20v-5l-2-9H4Zm-2 9h6l2 3h4l2-3h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="people" viewBox="0 0 24 24">
+          <path d="M15 20v-2a5 5 0 0 0-10 0v2m16 0v-2a4 4 0 0 0-3-3.9M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7-7a3.5 3.5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="compose" viewBox="0 0 24 24">
+          <path d="M11 4H4v16h16v-7M14 3l7 7m-9 2 7-9 3 3-9 8-4 1 1-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="search" viewBox="0 0 24 24">
+          <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
+          <path d="m16 16 5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="github" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.03a9.58 9.58 0 0 1 5 0c1.91-1.3 2.75-1.03 2.75-1.03.55 1.38.2 2.4.1 2.65.64.7 1.03 1.6 1.03 2.69 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.6c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/>
+        </symbol>
+      </defs>
+    </svg>
+
+    <div class="site-atmosphere" aria-hidden="true">
+      <div class="atmosphere-glow"></div>
+      <div class="atmosphere-dots"></div>
+      <svg class="journey-asterisk" viewBox="0 0 100 100"><use href="#asterisk"/></svg>
+    </div>
+    <div class="entrance" id="entrance" aria-hidden="true" hidden>
+      <div class="entrance-cover"></div>
+      <svg class="entrance-mark" viewBox="0 0 100 100"><use href="#asterisk"/></svg>
+      <p class="entrance-caption">a little hello.</p>
+    </div>
+    <div class="logo-cursor" aria-hidden="true"><svg viewBox="0 0 100 100"><use href="#asterisk"/></svg></div>
+    <div class="joy-particles" aria-hidden="true"></div>
+    <p class="joy-toast" role="status" aria-live="polite"></p>
+
+    <header class="site-header">
+      <div class="brand">
+        <button class="brand-spin" type="button" aria-label="Spin the Inbox+ logo">
+          <svg viewBox="0 0 100 100" aria-hidden="true"><use href="#asterisk"/></svg>
+        </button>
+        <a class="brand-name" href="#top" aria-label="Inbox+ home">Inbox+</a>
+      </div>
+      <nav aria-label="Main navigation">
+        <a class="nav-preview" href="#peek">Take a peek <span aria-hidden="true">↓</span></a>
+        <a class="button button-small" href="https://github.com/Tsha0/InboxPlus/releases/latest">Get the app <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
+      </nav>
+    </header>
+
+    <div class="journey-caption" aria-label="Current Inbox+ color theme">
+      <span class="journey-color" aria-hidden="true"></span>
+      <span id="journey-theme">Classic</span>
+      <span class="journey-hint">scroll for a little color ↓</span>
+    </div>
+
+    <main id="main">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="hero-drift" aria-hidden="true">
+          <span class="floater floater-instagram"><img src="assets/platforms/instagram.svg" alt="" width="28" height="28"><span>hey you!</span></span>
+          <span class="floater floater-whatsapp"><img src="assets/platforms/whatsapp.svg" alt="" width="30" height="30"></span>
+          <span class="floater floater-imessage"><img src="assets/platforms/imessage.svg" alt="" width="28" height="28"><span>coffee?</span></span>
+          <span class="floater floater-telegram"><img src="assets/platforms/telegram.svg" alt="" width="26" height="26"></span>
+          <span class="floater floater-messenger"><img src="assets/platforms/messenger.svg" alt="" width="24" height="24"><span>on my way ✳</span></span>
+          <svg class="little-star star-one"><use href="#asterisk"/></svg>
+          <svg class="little-star star-two"><use href="#asterisk"/></svg>
+          <svg class="little-star star-three"><use href="#asterisk"/></svg>
+          <svg class="hero-scribble" viewBox="0 0 160 90"><path d="M8 60c20-55 55-63 55-32 0 29-40 56-30 26C43 23 97 4 108 25s-31 60-43 42c-8-13 36-38 53-24 12 10 5 26 29 15m-12-8 15 9-15 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="hero-main">
+          <div class="hero-name">
+            <h1 id="hero-title" aria-label="Inbox+">Inbox<button class="hero-plus" type="button" aria-label="Add a little joy">+</button></h1>
+            <span class="eyebrow">A little less app hopping.</span>
+          </div>
+          <div class="hero-copy">
+            <p class="hero-tagline">Your people.<br>All together<span class="period">.</span></p>
+            <p class="hero-description">All your conversations.<br>One happy little Mac app.</p>
+            <a class="button hero-download" href="https://github.com/Tsha0/InboxPlus/releases/latest"><svg class="apple-icon" aria-hidden="true"><use href="#apple"/></svg> Get Inbox+ for Mac <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
+            <p class="requirements">macOS 15+ · Apple silicon · Early release</p>
+          </div>
+        </div>
+        <div class="hero-bottom">
+          <span class="hero-note">Good company. Fewer windows.</span>
+          <a class="scroll-cue" href="#peek" aria-label="Explore Inbox+"><svg aria-hidden="true"><use href="#arrow-down"/></svg></a>
+          <a class="text-link hero-source" href="https://github.com/Tsha0/InboxPlus">Made to be open <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
+        </div>
+      </section>
+
+      <section class="product" id="peek" aria-labelledby="product-title">
+        <div class="section-heading reveal">
+          <p class="eyebrow">01 / The gang’s all here</p>
+          <h2 id="product-title">Same people.<br>Fewer windows.</h2>
+          <p>Pick a network. Find your people. Settle in.</p>
+        </div>
+        <div class="network-picker reveal" role="group" aria-label="Preview a messaging network">
+          <button class="network-pill is-active" type="button" data-network="all" aria-pressed="true">The whole gang <span class="network-count">5</span></button>
+          <button class="network-pill" type="button" data-network="instagram" aria-pressed="false"><img src="assets/platforms/instagram.svg" alt="" width="18" height="18">Instagram</button>
+          <button class="network-pill" type="button" data-network="whatsapp" aria-pressed="false"><img src="assets/platforms/whatsapp.svg" alt="" width="18" height="18">WhatsApp</button>
+          <button class="network-pill" type="button" data-network="imessage" aria-pressed="false"><img src="assets/platforms/imessage.svg" alt="" width="18" height="18">iMessage</button>
+          <button class="network-pill" type="button" data-network="telegram" aria-pressed="false"><img src="assets/platforms/telegram.svg" alt="" width="18" height="18">Telegram</button>
+          <button class="network-pill" type="button" data-network="messenger" aria-pressed="false"><img src="assets/platforms/messenger.svg" alt="" width="18" height="18">Messenger</button>
+        </div>
+
+        <div class="demo-wrap reveal">
+          <span class="handwritten demo-note" aria-hidden="true">make yourself at home <svg viewBox="0 0 85 65"><path d="M3 9c20-10 54-6 48 17-4 15-27 21-17 29 7 6 34-8 43-19m-17 2 19-5-1 17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <div class="app-window" data-appearance="light" role="region" aria-label="Interactive Inbox+ preview with fictional conversations">
+            <div class="window-bar" aria-hidden="true">
+              <span class="traffic-lights"><i></i><i></i><i></i></span>
+              <span>Inbox+</span>
+              <span class="preview-badge">a little preview</span>
+            </div>
+            <div class="app-content">
+              <div class="app-rail" aria-hidden="true">
+                <span class="app-logo"><svg><use href="#asterisk"/></svg></span>
+                <span class="rail-icon selected"><svg><use href="#inbox"/></svg></span>
+                <span class="rail-icon"><svg><use href="#people"/></svg></span>
+                <span class="rail-icon"><svg><use href="#compose"/></svg></span>
+                <span class="rail-settings">⚙</span>
+              </div>
+              <aside class="inbox-pane" aria-label="Example conversations">
+                <div class="inbox-heading"><h3>Inbox</h3><span class="unread-count" id="inbox-count">5</span></div>
+                <label class="demo-search"><svg aria-hidden="true"><use href="#search"/></svg><input type="search" id="conversation-search" placeholder="Find your people" aria-label="Search example conversations" autocomplete="off"></label>
+                <div class="inbox-filters" role="group" aria-label="Filter example conversations"><button type="button" class="is-active" data-scope="all" aria-pressed="true">All</button><button type="button" data-scope="unread" aria-pressed="false">Unread</button></div>
+                <div class="conversation-list" id="conversation-list">
+                  <p class="demo-loading">Loading the gang…</p>
+                </div>
+              </aside>
+              <div class="chat-pane" id="chat-pane">
+                <div class="chat-heading"><span class="avatar avatar-maya">M</span><div><h3>Maya Chen</h3><span class="chat-network">Instagram</span></div><span class="chat-star" aria-hidden="true">☆</span></div>
+                <div class="chat-messages" id="chat-messages"><p class="chat-day">Today</p><div class="message received">Coffee and a very long catch-up?</div><div class="message sent">My two favorite things ☕</div><div class="message received">Saturday. Our usual spot?</div><div class="message sent">Wouldn’t miss it.</div><p class="message-receipt">Delivered <span aria-hidden="true">✓✓</span></p></div>
+                <form class="demo-composer" id="demo-composer"><label class="sr-only" for="demo-message">Try a reply in this local demo</label><span class="composer-plus" aria-hidden="true">+</span><input id="demo-message" name="message" placeholder="Try a little hello…" maxlength="300" autocomplete="off" required><button type="submit" aria-label="Send reply in the demo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form>
+              </div>
+            </div>
+          </div>
+          <div class="demo-bottom">
+            <p class="demo-disclaimer">An interactive illustration. Fictional friends, real possibilities.<br><span>Your demo replies stay in this tab.</span></p>
+            <fieldset class="theme-picker"><legend>Light or dark?</legend><button class="theme-swatch theme-light is-active" type="button" data-appearance="light" aria-label="Light appearance" aria-pressed="true"><span></span></button><button class="theme-swatch theme-dark" type="button" data-appearance="dark" aria-label="Dark appearance" aria-pressed="false"><span></span></button><output id="appearance-name">Light</output></fieldset>
+          </div>
+          <fieldset class="palette-picker"><legend>A mood for every message.</legend><div id="palette-options"></div><span id="palette-name">Classic</span><button class="surprise-theme" type="button" aria-label="Surprise me with an Inbox+ theme">Surprise me <span aria-hidden="true">↝</span></button></fieldset>
+          <details class="network-note"><summary>A quick note on connections <span aria-hidden="true">+</span></summary><p>Inbox+ is an early release. Instagram has been tested with a live account. WhatsApp, Messenger, and Telegram have working setup flows, but live messaging is still being verified. iMessage reads and sends through macOS. Unofficial clients can carry account risks; <a href="https://github.com/Tsha0/InboxPlus#networks">see network details</a>.</p></details>
+        </div>
+        <p class="sr-only" id="demo-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
+        <noscript><p class="no-script">The preview needs JavaScript. Inbox+ itself is a native Mac app. <a href="https://github.com/Tsha0/InboxPlus/releases/latest">Get it here.</a></p></noscript>
+      </section>
+
+      <section class="privacy" id="yours" aria-labelledby="privacy-title">
+        <div class="privacy-copy reveal">
+          <p class="eyebrow">02 / Close to home</p>
+          <h2 id="privacy-title">Your chats.<br>Your device.<br>Your business.</h2>
+          <p>Messages, media, credentials.<br>At home on your device, where they belong.</p>
+          <span class="privacy-footnote">No Inbox+ cloud. Just you and your networks.</span>
+        </div>
+        <div class="privacy-art reveal">
+          <svg class="privacy-spark" viewBox="0 0 100 100" aria-hidden="true"><use href="#asterisk"/></svg>
+          <div class="local-sticker" aria-hidden="true">stays with you <span>↙</span></div>
+          <div class="mac-illustration" aria-hidden="true">
+            <div class="mac-screen"><span class="camera-dot"></span><div class="screen-face"><span class="screen-eye eye-left"></span><span class="screen-eye eye-right"></span><svg class="screen-smile" viewBox="0 0 100 45"><path d="M8 8c15 35 69 35 84 0" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round"/></svg></div><span class="screen-sticker"><svg viewBox="0 0 100 100"><use href="#asterisk"/></svg></span></div>
+            <div class="mac-chin"><span></span></div>
+            <div class="mac-stand"></div>
+            <div class="mac-foot"></div>
+          </div>
+          <button class="mac-hello" type="button" aria-label="Say hello to the little device"></button>
+          <div class="little-bubble bubble-left" aria-live="polite">just between us.</div>
+          <span class="privacy-spark-small" aria-hidden="true">✳</span>
+        </div>
+      </section>
+
+      <section class="closing" id="hello" aria-labelledby="closing-title">
+        <div class="closing-top reveal">
+          <svg class="closing-star" viewBox="0 0 100 100" aria-hidden="true"><use href="#asterisk"/></svg>
+          <div><p class="eyebrow">That’s more like it.</p><h2 id="closing-title">Less app.<br>More hello.</h2></div>
+          <div class="closing-action"><a class="button" href="https://github.com/Tsha0/InboxPlus/releases/latest"><svg class="apple-icon" aria-hidden="true"><use href="#apple"/></svg> Get Inbox+ for Mac <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a><p class="requirements">macOS 15+ · Apple silicon</p><a class="setup-link" href="https://github.com/Tsha0/InboxPlus#download">Early release · First-time setup <span aria-hidden="true">↗</span></a></div>
+        </div>
+        <div class="footer-wordmark" aria-hidden="true">Inbox<span>+</span></div>
+        <footer class="site-footer"><span>A happy little home for your conversations.</span><div><a href="https://github.com/Tsha0/InboxPlus"><svg aria-hidden="true"><use href="#github"/></svg>Open source</a><button class="replay-intro" type="button">One more hello <span aria-hidden="true">↻</span></button><a href="#top">Back to top <span aria-hidden="true">↑</span></a></div><span>Made for Mac. Made for you.</span></footer>
+      </section>
+    </main>
+  </body>
+</html>
