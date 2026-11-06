@@ -649,7 +649,7 @@ void main() {
         TargetPlatform.windows,
         TargetPlatform.linux,
       }.contains(defaultTargetPlatform);
-      expect(find.text(desktop ? '1d' : 'Yesterday'), findsOneWidget);
+      expect(find.text('1d'), findsOneWidget);
       await tester.tap(find.byKey(const Key('conversation-first-empty')));
       await tester.pumpAndSettle();
       if (desktop) {
@@ -1003,7 +1003,7 @@ void main() {
     await tester.tap(find.byKey(const Key('back-to-inbox')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('conversation-first-alice')), findsNothing);
-    await tester.tap(find.byTooltip('Hidden'));
+    await tester.tap(find.text('1 hidden'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('conversation-first-alice')), findsOneWidget);
     expect(find.byKey(const Key('conversation-second-bob')), findsNothing);
@@ -1016,7 +1016,7 @@ void main() {
     expect(controller.preferencesFor(route).hiddenAt, isNull);
     await tester.tap(find.byKey(const Key('back-to-inbox')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('All'));
+    await tester.tap(find.text('Back to Inbox'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('conversation-first-alice')), findsOneWidget);
   });

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
@@ -70,13 +71,19 @@ class InboxPlusApp extends StatelessWidget {
 
   ThemeData _theme(Brightness brightness) {
     final dark = brightness == Brightness.dark;
+    final accent = _DesktopPalette.forPreferences(controller.preferences)
+        ?.accent;
     final scheme =
         ColorScheme.fromSeed(
           seedColor: dark ? Colors.white : const Color(0xff202124),
           brightness: brightness,
         ).copyWith(
-          primary: dark ? const Color(0xfff3f3f3) : const Color(0xff202124),
-          onPrimary: dark ? const Color(0xff202124) : Colors.white,
+          primary:
+              accent ??
+              (dark ? const Color(0xfff3f3f3) : const Color(0xff202124)),
+          onPrimary: accent == null
+              ? (dark ? const Color(0xff202124) : Colors.white)
+              : _legibleOn(accent),
           surface: dark ? const Color(0xff171819) : const Color(0xfffcfcfc),
           surfaceContainerLow: dark
               ? const Color(0xff1d1e20)
@@ -121,8 +128,6 @@ class InboxPlusApp extends StatelessWidget {
 
 enum _Section { inbox, contacts, settings }
 
-enum _InboxFilter { all, unread, favorites, hidden }
-
 class InboxHome extends StatefulWidget {
   const InboxHome({super.key, required this.controller});
 
@@ -134,12 +139,22 @@ class InboxHome extends StatefulWidget {
 
 class _InboxHomeState extends State<InboxHome> {
   _Section _section = _Section.inbox;
-  _InboxFilter _filter = _InboxFilter.all;
-  String? _network;
+  final _networks = <String>{};
+  bool _unreadOnly = false;
+  bool _unknownOnly = false;
+  bool _hidden = false;
+  double _logoTurns = 0;
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
 
   InboxUiController get controller => widget.controller;
+
+  int get _unreadTotal => controller.conversations.fold(0, (total, chat) {
+    final preferences = controller.preferencesFor(chat.route);
+    return preferences.hiddenAt != null || preferences.isMutedAt(DateTime.now())
+        ? total
+        : total + chat.unreadCount;
+  });
 
   @override
   void dispose() {
@@ -186,6 +201,10 @@ class _InboxHomeState extends State<InboxHome> {
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).width < 900;
     final selected = _selected;
+    final showsTabs =
+        compact && !(selected != null && _section == _Section.inbox);
+    final floatingTabs =
+        showsTabs && defaultTargetPlatform == TargetPlatform.iOS;
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
@@ -209,7 +228,13 @@ class _InboxHomeState extends State<InboxHome> {
           if (!didPop) controller.selectConversation(null);
         },
         child: Scaffold(
+          backgroundColor:
+              compact && _section == _Section.inbox && selected == null
+              ? _phoneHeaderColor(context, controller)
+              : null,
+          extendBody: floatingTabs,
           body: SafeArea(
+            bottom: !showsTabs,
             child: Column(
               children: [
                 if (controller.isLoading)
@@ -250,31 +275,20 @@ class _InboxHomeState extends State<InboxHome> {
               ],
             ),
           ),
-          bottomNavigationBar:
-              compact && !(selected != null && _section == _Section.inbox)
-              ? NavigationBar(
-                  selectedIndex: _section.index,
-                  onDestinationSelected: (value) =>
-                      _selectSection(_Section.values[value]),
-                  destinations: const [
-                    NavigationDestination(
-                      icon: Icon(Icons.inbox_outlined),
-                      selectedIcon: Icon(Icons.inbox),
-                      label: 'Inbox',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.people_outline),
-                      selectedIcon: Icon(Icons.people),
-                      label: 'Contacts',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.settings_outlined),
-                      selectedIcon: Icon(Icons.settings),
-                      label: 'Settings',
-                    ),
-                  ],
+          bottomNavigationBar: !showsTabs
+              ? null
+              : floatingTabs
+              ? _GlassTabBar(
+                  section: _section,
+                  onSelect: _selectSection,
+                  unreadCount: _unreadTotal,
                 )
-              : null,
+              : _PhoneNavigationBar(
+                  controller: controller,
+                  section: _section,
+                  onSelect: _selectSection,
+                  unreadCount: _unreadTotal,
+                ),
         ),
       ),
     );
@@ -336,158 +350,247 @@ class _InboxHomeState extends State<InboxHome> {
     }
   }
 
+  void _animateLogo() => setState(() => _logoTurns += 1);
+
   Widget _inboxList() {
+    final scheme = Theme.of(context).colorScheme;
+    final palette = _DesktopPalette.forPreferences(controller.preferences);
+    final headerInk = palette == null
+        ? scheme.onSurface
+        : _legibleOn(palette.background);
+    final sheetColor = palette == null
+        ? scheme.surface
+        : Color.alphaBlend(
+            palette.background.withValues(alpha: .08),
+            scheme.surface,
+          );
     final query = _search.text.trim().toLowerCase();
-    final conversations = controller.conversations.where((item) {
-      final preferences = controller.preferencesFor(item.route);
-      if (_filter == _InboxFilter.hidden) {
-        if (preferences.hiddenAt == null) return false;
-      } else if (preferences.hiddenAt != null) {
-        return false;
-      }
-      if (_filter == _InboxFilter.unread &&
-          item.unreadCount == 0 &&
-          !preferences.markedUnread) {
-        return false;
-      }
-      if (_filter == _InboxFilter.favorites && !preferences.isFavorite) {
-        return false;
-      }
-      if (_network != null &&
-          _accountFor(controller, item.route)?.platform != _network) {
-        return false;
-      }
-      return query.isEmpty ||
-          item.title.toLowerCase().contains(query) ||
-          controller
-              .messagesFor(item.route)
-              .any((message) => message.body.toLowerCase().contains(query));
-    }).toList()..sort((a, b) => b.latestActivity.compareTo(a.latestActivity));
-    return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerLow
-          .withValues(alpha: .45),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 22, 10, 12),
-            child: Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Inbox',
-                    style: TextStyle(
-                      fontSize: 27,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -.8,
+    final conversations =
+        controller.conversations.where((item) {
+          final preferences = controller.preferencesFor(item.route);
+          if ((preferences.hiddenAt != null) != _hidden) return false;
+          if (_networks.isNotEmpty &&
+              !_networks.contains(
+                _accountFor(controller, item.route)?.platform,
+              )) {
+            return false;
+          }
+          if ((item.isFromUnknownSender &&
+                  _personFor(controller, item) == null) !=
+              _unknownOnly) {
+            return false;
+          }
+          if (_unreadOnly &&
+              item.unreadCount == 0 &&
+              !preferences.markedUnread) {
+            return false;
+          }
+          return query.isEmpty ||
+              item.title.toLowerCase().contains(query) ||
+              controller
+                  .messagesFor(item.route)
+                  .any((message) => message.body.toLowerCase().contains(query));
+        }).toList()..sort((a, b) {
+          final favorite =
+              (controller.preferencesFor(b.route).isFavorite ? 1 : 0) -
+              (controller.preferencesFor(a.route).isFavorite ? 1 : 0);
+          return favorite != 0
+              ? favorite
+              : b.latestActivity.compareTo(a.latestActivity);
+        });
+    const networkOrder = [
+      'whatsapp',
+      'instagram',
+      'messenger',
+      'telegram',
+      'imessage',
+    ];
+    final networks =
+        <String>{
+          for (final chat in controller.conversations)
+            if ((controller.preferencesFor(chat.route).hiddenAt != null) ==
+                _hidden)
+              ?_accountFor(controller, chat.route)?.platform,
+          ..._networks,
+        }.where((platform) => platform != 'legacy').toList()..sort(
+          (a, b) => networkOrder.indexOf(a).compareTo(networkOrder.indexOf(b)),
+        );
+    final hiddenCount = controller.conversations
+        .where((chat) => controller.preferencesFor(chat.route).hiddenAt != null)
+        .length;
+    final hasUnknownSenders = controller.conversations.any(
+      (chat) =>
+          chat.isFromUnknownSender && _personFor(controller, chat) == null,
+    );
+    final unread = _unreadTotal;
+    final apple = defaultTargetPlatform == TargetPlatform.iOS;
+    final headerColor = _phoneHeaderColor(context, controller);
+    return ColoredBox(
+      color: headerColor,
+      child: RefreshIndicator(
+        onRefresh: controller.refresh,
+        child: CustomScrollView(
+          slivers: [
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _PhoneInboxHeader(
+                title: _hidden ? 'Hidden' : inboxPlusAppName,
+                unread: unread,
+                ink: headerInk,
+                background: headerColor,
+                translucent: apple,
+                leading: Semantics(
+                  label: 'Inbox+ logo',
+                  button: true,
+                  onTap: _animateLogo,
+                  excludeSemantics: true,
+                  child: GestureDetector(
+                    onTap: _animateLogo,
+                    child: Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: AnimatedRotation(
+                        turns: _logoTurns,
+                        duration: const Duration(milliseconds: 700),
+                        curve: Curves.easeInOutBack,
+                        child: _DesktopLogo(
+                          color: palette?.logo ?? scheme.onSurface,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-                IconButton(
+                trailing: IconButton(
                   tooltip: 'New message',
                   onPressed: _compose,
-                  icon: const Icon(Icons.edit_square, size: 21),
+                  color: headerInk,
+                  icon: Icon(
+                    apple ? CupertinoIcons.square_pencil : Icons.edit_square,
+                    size: 23,
+                  ),
                 ),
-                IconButton(
-                  tooltip: 'Refresh inbox',
-                  onPressed: controller.isBusy ? null : controller.refresh,
-                  icon: const Icon(Icons.refresh, size: 21),
-                ),
-                IconButton(
-                  tooltip: 'Connect an account',
-                  onPressed: _connect,
-                  icon: const Icon(Icons.add, size: 23),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
-              key: const Key('inbox-search'),
-              controller: _search,
-              focusNode: _searchFocus,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: 'Search conversations',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: query.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Clear search',
-                        icon: const Icon(Icons.close, size: 18),
-                        onPressed: () => setState(_search.clear),
-                      ),
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: SegmentedButton<_InboxFilter>(
-                    showSelectedIcon: false,
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    segments: const [
-                      ButtonSegment(
-                        value: _InboxFilter.all,
-                        label: Text('All'),
-                      ),
-                      ButtonSegment(
-                        value: _InboxFilter.unread,
-                        label: Text('Unread'),
-                      ),
-                      ButtonSegment(
-                        value: _InboxFilter.favorites,
-                        icon: Icon(Icons.star_outline, size: 18),
-                        tooltip: 'Favorites',
-                      ),
-                      ButtonSegment(
-                        value: _InboxFilter.hidden,
-                        icon: Icon(Icons.visibility_off_outlined, size: 18),
-                        tooltip: 'Hidden',
-                      ),
-                    ],
-                    selected: {_filter},
-                    onSelectionChanged: (value) =>
-                        setState(() => _filter = value.first),
+            SliverToBoxAdapter(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: sheetColor,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(18),
                   ),
                 ),
-                PopupMenuButton<String>(
-                  tooltip: 'Filter by network',
-                  icon: Icon(
-                    Icons.tune,
-                    size: 20,
-                    color: _network == null
-                        ? null
-                        : Theme.of(context).colorScheme.primary,
-                  ),
-                  onSelected: (value) =>
-                      setState(() => _network = value.isEmpty ? null : value),
-                  itemBuilder: (_) => [
-                    CheckedPopupMenuItem(
-                      value: '',
-                      checked: _network == null,
-                      child: const Text('All networks'),
-                    ),
-                    for (final network in controller.networks)
-                      CheckedPopupMenuItem(
-                        value: network.id,
-                        checked: _network == network.id,
-                        child: Text(network.name),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: SizedBox(
+                        height: 36,
+                        child: TextField(
+                          key: const Key('inbox-search'),
+                          controller: _search,
+                          focusNode: _searchFocus,
+                          onChanged: (_) => setState(() {}),
+                          style: const TextStyle(fontSize: 16),
+                          decoration: InputDecoration(
+                            hintText: 'Search',
+                            isDense: true,
+                            filled: true,
+                            fillColor: scheme.onSurface.withValues(alpha: .06),
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 8,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                            prefixIcon: const Icon(Icons.search, size: 18),
+                            prefixIconConstraints: const BoxConstraints(
+                              minWidth: 34,
+                            ),
+                            suffixIcon: query.isEmpty
+                                ? null
+                                : IconButton(
+                                    tooltip: 'Clear search',
+                                    icon: const Icon(Icons.cancel, size: 16),
+                                    onPressed: () => setState(_search.clear),
+                                  ),
+                          ),
+                        ),
                       ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                      child: Row(
+                        children: [
+                          _PhonePill(
+                            label: 'All',
+                            selected:
+                                !_unreadOnly &&
+                                !_unknownOnly &&
+                                _networks.isEmpty,
+                            onPressed: () => setState(() {
+                              _unreadOnly = false;
+                              _unknownOnly = false;
+                              _networks.clear();
+                            }),
+                          ),
+                          _PhonePill(
+                            label: 'Unread',
+                            selected: _unreadOnly,
+                            onPressed: () => setState(() {
+                              _unreadOnly = true;
+                              _unknownOnly = false;
+                            }),
+                          ),
+                          if (_unknownOnly || hasUnknownSenders)
+                            _PhonePill(
+                              label: 'Unknown senders',
+                              selected: _unknownOnly,
+                              onPressed: () => setState(() {
+                                _unknownOnly = true;
+                                _unreadOnly = false;
+                              }),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (networks.length > 1 || _networks.isNotEmpty)
+                      SizedBox(
+                        height: 36,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                          children: [
+                            for (final network in networks)
+                              _PhonePill(
+                                label: _networkName(controller, network),
+                                selected: _networks.contains(network),
+                                outlined: true,
+                                leading: NetworkBadge(
+                                  network: network,
+                                  size: 18,
+                                  labelled: false,
+                                ),
+                                onPressed: () => setState(() {
+                                  if (!_networks.remove(network)) {
+                                    _networks.add(network);
+                                  }
+                                }),
+                              ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 6),
                   ],
                 ),
-              ],
+              ),
             ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: conversations.isEmpty
-                ? _EmptyState(
+            if (conversations.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: ColoredBox(
+                  color: sheetColor,
+                  child: _EmptyState(
                     icon: query.isNotEmpty
                         ? Icons.search_off
                         : Icons.inbox_outlined,
@@ -495,158 +598,799 @@ class _InboxHomeState extends State<InboxHome> {
                         ? 'No conversations found'
                         : controller.isLoading
                         ? 'Opening your inbox…'
-                        : _filter == _InboxFilter.unread
+                        : _unreadOnly
                         ? 'All caught up'
-                        : _filter == _InboxFilter.favorites
-                        ? 'Keep your people close'
-                        : _filter == _InboxFilter.hidden
+                        : _hidden
                         ? 'No hidden conversations'
                         : 'Your inbox starts here',
                     message: query.isNotEmpty
                         ? 'Try another name or message.'
-                        : _filter == _InboxFilter.favorites
-                        ? 'Star a conversation to find it here.'
-                        : _filter == _InboxFilter.hidden
+                        : _hidden
                         ? 'Conversations you hide will appear here.'
                         : controller.accounts.isEmpty
                         ? 'Connect an account and your conversations will appear here.'
                         : 'New conversations will appear here.',
-                    action: controller.accounts.isEmpty && query.isEmpty
+                    action: _hidden
+                        ? TextButton(
+                            onPressed: () => setState(() => _hidden = false),
+                            child: const Text('Back to Inbox'),
+                          )
+                        : controller.accounts.isEmpty && query.isEmpty
                         ? TextButton.icon(
                             onPressed: _connect,
                             icon: const Icon(Icons.add),
                             label: const Text('Connect an account'),
                           )
                         : null,
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: conversations.length,
-                    itemBuilder: (context, index) {
-                      final item = conversations[index];
-                      final account = _accountFor(controller, item.route);
-                      final preferences = controller.preferencesFor(item.route);
-                      final messages = controller.messagesFor(item.route);
-                      final draft = controller.draftFor(item.route);
-                      final hasDraft =
-                          draft != null &&
-                          (draft.body.isNotEmpty ||
-                              draft.attachments.isNotEmpty);
-                      final preview = hasDraft
-                          ? 'Draft: ${draft.body.isEmpty ? 'Attachment' : draft.body}'
-                          : messages.isEmpty
-                          ? _networkName(controller, account?.platform)
-                          : messages.last.body.isEmpty
-                          ? 'Attachment'
-                          : messages.last.body;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        child: ListTile(
-                          key: Key(
-                            'conversation-${item.route.accountId}-${item.route.conversationId}',
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          selected: item.route == controller.selectedRoute,
-                          selectedTileColor: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest
-                              .withValues(alpha: .6),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 5,
-                          ),
-                          leading: _Avatar(
-                            name: item.title,
-                            network: account?.platform,
-                          ),
-                          title: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  item.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontWeight: item.unreadCount > 0
-                                        ? FontWeight.w700
-                                        : FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              if (preferences.isFavorite)
-                                const Padding(
-                                  padding: EdgeInsets.only(left: 4),
-                                  child: Icon(Icons.star, size: 13),
-                                ),
-                            ],
-                          ),
-                          subtitle: Text(
-                            preview,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: hasDraft
-                                  ? Theme.of(context).colorScheme.error
-                                  : Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                            ),
-                          ),
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                _shortDate(item.latestActivity),
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                                ),
-                              ),
-                              const SizedBox(height: 5),
-                              if (item.unreadCount > 0 ||
-                                  preferences.markedUnread)
-                                Badge(
-                                  label: Text(
-                                    item.unreadCount > 99
-                                        ? '99+'
-                                        : item.unreadCount == 0
-                                        ? ' '
-                                        : '${item.unreadCount}',
-                                  ),
-                                )
-                              else if (preferences.isMutedAt(DateTime.now()))
-                                const Icon(
-                                  Icons.notifications_off_outlined,
-                                  size: 14,
-                                )
-                              else
-                                const SizedBox(height: 14),
-                            ],
-                          ),
-                          onTap: () =>
-                              controller.selectConversation(item.route),
-                          onLongPress: () => _conversationMenu(item),
-                        ),
-                      );
-                    },
                   ),
-          ),
-        ],
+                ),
+              )
+            else ...[
+              SliverList.builder(
+                itemCount:
+                    conversations.length + (_hidden || hiddenCount > 0 ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (index == conversations.length) {
+                    return ColoredBox(
+                      color: sheetColor,
+                      child: Center(
+                        child: TextButton(
+                          onPressed: () => setState(() => _hidden = !_hidden),
+                          child: Text(
+                            _hidden ? 'Back to Inbox' : '$hiddenCount hidden',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  final item = conversations[index];
+                  return _PhoneInboxRow(
+                    key: ValueKey(item.route),
+                    controller: controller,
+                    conversation: item,
+                    background: sheetColor,
+                    selected: item.route == controller.selectedRoute,
+                    onOpen: () => controller.selectConversation(item.route),
+                    onActions: () => _conversationMenu(item),
+                  );
+                },
+              ),
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: ColoredBox(
+                  color: sheetColor,
+                  child: SizedBox(
+                    height: MediaQuery.paddingOf(context).bottom + 8,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 
   Future<void> _conversationMenu(ConversationRecord item) async {
     await _showConversationActions(context, controller, item);
+  }
+}
+
+Color _phoneHeaderColor(BuildContext context, InboxUiController controller) =>
+    _DesktopPalette.forPreferences(controller.preferences)?.background ??
+    Theme.of(context).colorScheme.surfaceContainerLow;
+
+ContactRecord? _personFor(
+  InboxUiController controller,
+  ConversationRecord conversation,
+) => controller.contacts
+    .where(
+      (person) => person.identities.any(
+        (identity) =>
+            identity.accountId == conversation.route.accountId &&
+            identity.identityId == conversation.identityId,
+      ),
+    )
+    .firstOrNull;
+
+class _PhoneInboxHeader extends SliverPersistentHeaderDelegate {
+  _PhoneInboxHeader({
+    required this.title,
+    required this.unread,
+    required this.ink,
+    required this.background,
+    required this.translucent,
+    required this.leading,
+    required this.trailing,
+  });
+
+  static const _barHeight = 52.0;
+  static const _titleHeight = 52.0;
+
+  final String title;
+  final int unread;
+  final Color ink;
+  final Color background;
+  final bool translucent;
+  final Widget leading;
+  final Widget trailing;
+
+  @override
+  double get minExtent => _barHeight;
+
+  @override
+  double get maxExtent => _barHeight + _titleHeight;
+
+  @override
+  bool shouldRebuild(_PhoneInboxHeader oldDelegate) => true;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final collapse = (shrinkOffset / _titleHeight).clamp(0.0, 1.0);
+    final bar = Row(
+      children: [
+        const SizedBox(width: 10),
+        leading,
+        Expanded(
+          child: Opacity(
+            opacity: collapse,
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                color: ink,
+              ),
+            ),
+          ),
+        ),
+        trailing,
+        const SizedBox(width: 6),
+      ],
+    );
+    return ClipRect(
+      child: Stack(
+        children: [
+          Positioned(
+            top: _barHeight - shrinkOffset,
+            left: 16,
+            right: 16,
+            height: _titleHeight,
+            child: ExcludeSemantics(
+              excluding: collapse == 1,
+              child: Opacity(
+                opacity: 1 - collapse,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 34,
+                          height: 1.2,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.4,
+                          color: ink,
+                        ),
+                      ),
+                    ),
+                    if (unread > 0) ...[
+                      const SizedBox(width: 10),
+                      Container(
+                        margin: const EdgeInsets.only(top: 9),
+                        constraints: const BoxConstraints(minWidth: 24),
+                        height: 24,
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(horizontal: 7),
+                        decoration: BoxDecoration(
+                          color: scheme.primary,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '$unread',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: _barHeight,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: collapse == 1
+                    ? Border(bottom: BorderSide(color: scheme.outlineVariant))
+                    : null,
+              ),
+              child: translucent && collapse == 1
+                  ? ClipRect(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                        child: ColoredBox(
+                          color: background.withValues(alpha: .86),
+                          child: bar,
+                        ),
+                      ),
+                    )
+                  : ColoredBox(color: background, child: bar),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PhonePill extends StatelessWidget {
+  const _PhonePill({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+    this.outlined = false,
+    this.leading,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+  final bool outlined;
+  final Widget? leading;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Semantics(
+        selected: selected,
+        child: TextButton(
+          onPressed: onPressed,
+          style: TextButton.styleFrom(
+            minimumSize: Size(0, outlined ? 28 : 30),
+            padding: EdgeInsets.fromLTRB(leading == null ? 12 : 5, 0, 12, 0),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+            foregroundColor: scheme.onSurface,
+            backgroundColor: selected
+                ? scheme.onSurface.withValues(alpha: .09)
+                : outlined
+                ? scheme.surface
+                : Colors.transparent,
+            shape: StadiumBorder(
+              side: outlined
+                  ? BorderSide(color: scheme.outlineVariant)
+                  : BorderSide.none,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (leading case final leading?) ...[
+                leading,
+                const SizedBox(width: 5),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: outlined ? 12 : 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhoneInboxRow extends StatefulWidget {
+  const _PhoneInboxRow({
+    super.key,
+    required this.controller,
+    required this.conversation,
+    required this.background,
+    required this.selected,
+    required this.onOpen,
+    required this.onActions,
+  });
+
+  final InboxUiController controller;
+  final ConversationRecord conversation;
+  final Color background;
+  final bool selected;
+  final VoidCallback onOpen;
+  final VoidCallback onActions;
+
+  @override
+  State<_PhoneInboxRow> createState() => _PhoneInboxRowState();
+}
+
+class _PhoneInboxRowState extends State<_PhoneInboxRow> {
+  static const _actionWidth = 76.0;
+  double _reveal = 0;
+
+  Future<void> _run(Future<void> Function() action) async {
+    setState(() => _reveal = 0);
+    await action();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final item = widget.conversation;
+    final scheme = Theme.of(context).colorScheme;
+    final account = _accountFor(controller, item.route);
+    final preferences = controller.preferencesFor(item.route);
+    final muted = preferences.isMutedAt(DateTime.now());
+    final favorite = preferences.isFavorite;
+    final unread = item.unreadCount > 0 || preferences.markedUnread;
+    final draft = controller.draftFor(item.route);
+    final hasDraft =
+        draft != null &&
+        (draft.body.isNotEmpty || draft.attachments.isNotEmpty);
+    final last = controller.messagesFor(item.route).lastOrNull;
+    final preview = hasDraft
+        ? 'Draft: ${draft.body.isEmpty ? 'Attachment' : draft.body}'
+        : last == null
+        ? _networkName(controller, account?.platform)
+        : '${item.isGroup && !last.isOutgoing && last.senderName != null ? '${last.senderName}: ' : ''}${last.body.isEmpty ? 'Attachment' : last.body}';
+    final muteLabel = muted ? 'Unmute' : 'Mute';
+    final hideLabel = preferences.hiddenAt == null ? 'Hide' : 'Unhide';
+    void mute() => _run(() => controller.setMuted(item.route, !muted));
+    void hide() => _run(
+      () => controller.setHidden(item.route, preferences.hiddenAt == null),
+    );
+    return Semantics(
+      customSemanticsActions: {
+        CustomSemanticsAction(label: muteLabel): mute,
+        CustomSemanticsAction(label: hideLabel): hide,
+      },
+      child: GestureDetector(
+        onHorizontalDragUpdate: (details) => setState(
+          () =>
+              _reveal = (_reveal - details.delta.dx).clamp(0, _actionWidth * 2),
+        ),
+        onHorizontalDragEnd: (_) => setState(
+          () => _reveal = _reveal > _actionWidth ? _actionWidth * 2 : 0,
+        ),
+        child: ClipRect(
+          child: SizedBox(
+            height: 64,
+            child: Stack(
+              children: [
+                if (_reveal > 0)
+                  Positioned.fill(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        _SwipeAction(
+                          label: muteLabel,
+                          icon: muted
+                              ? Icons.notifications_outlined
+                              : Icons.notifications_off_outlined,
+                          color: const Color(0xff5c5c5c),
+                          onPressed: mute,
+                        ),
+                        _SwipeAction(
+                          label: hideLabel,
+                          icon: preferences.hiddenAt == null
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                          color: Colors.black,
+                          onPressed: hide,
+                        ),
+                      ],
+                    ),
+                  ),
+                Transform.translate(
+                  offset: Offset(-_reveal, 0),
+                  child: Material(
+                    color: widget.selected
+                        ? Color.alphaBlend(
+                            scheme.onSurface.withValues(alpha: .07),
+                            widget.background,
+                          )
+                        : widget.background,
+                    child: InkWell(
+                      key: Key(
+                        'conversation-${item.route.accountId}-${item.route.conversationId}',
+                      ),
+                      onTap: _reveal > 0
+                          ? () => setState(() => _reveal = 0)
+                          : widget.onOpen,
+                      onLongPress: widget.onActions,
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 16),
+                          NetworkBadge(network: account?.platform, size: 40),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        item.title,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    if (muted)
+                                      Padding(
+                                        padding: const EdgeInsets.only(left: 4),
+                                        child: Icon(
+                                          Icons.notifications_off_outlined,
+                                          size: 13,
+                                          semanticLabel: 'Muted',
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _relativeTime(item.latestActivity),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        preview,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: unread
+                                              ? FontWeight.w500
+                                              : FontWeight.w400,
+                                          color: hasDraft
+                                              ? scheme.error
+                                              : unread
+                                              ? scheme.onSurface
+                                              : scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                    if (unread) ...[
+                                      const SizedBox(width: 6),
+                                      item.unreadCount > 0
+                                          ? _DesktopCount(item.unreadCount)
+                                          : Container(
+                                              width: 10,
+                                              height: 10,
+                                              decoration: BoxDecoration(
+                                                color: scheme.primary,
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                    ],
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip:
+                                '${favorite ? 'Unfavourite' : 'Favourite'} ${item.title}',
+                            onPressed: () =>
+                                controller.setFavorite(item.route, !favorite),
+                            icon: Icon(
+                              favorite ? Icons.star : Icons.star_border,
+                              size: 20,
+                              color: favorite
+                                  ? scheme.onSurface
+                                  : scheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SwipeAction extends StatelessWidget {
+  const _SwipeAction({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: _PhoneInboxRowState._actionWidth,
+    child: Material(
+      color: color,
+      child: InkWell(
+        onTap: onPressed,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 19, color: Colors.white),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _GlassTabBar extends StatelessWidget {
+  const _GlassTabBar({
+    required this.section,
+    required this.onSelect,
+    required this.unreadCount,
+  });
+
+  final _Section section;
+  final ValueChanged<_Section> onSelect;
+  final int unreadCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final ink = Theme.of(context).colorScheme.onSurface;
+    final inset = MediaQuery.viewPaddingOf(context).bottom;
+    const radius = BorderRadius.all(Radius.circular(31));
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, inset > 0 ? inset - 8 : 12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: dark ? .4 : .14),
+              blurRadius: 32,
+              offset: const Offset(0, 12),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: .06),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: Container(
+              height: 62,
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                borderRadius: radius,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: dark ? .14 : .85),
+                ),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: dark
+                      ? [
+                          const Color(0xff2c2c2e).withValues(alpha: .82),
+                          const Color(0xff2c2c2e).withValues(alpha: .62),
+                        ]
+                      : [
+                          Colors.white.withValues(alpha: .82),
+                          Colors.white.withValues(alpha: .55),
+                        ],
+                ),
+              ),
+              child: Row(
+                children: [
+                  for (final (value, label, icon, selectedIcon) in [
+                    (
+                      _Section.inbox,
+                      'Inbox',
+                      CupertinoIcons.tray,
+                      CupertinoIcons.tray_fill,
+                    ),
+                    (
+                      _Section.contacts,
+                      'Contacts',
+                      CupertinoIcons.person_2,
+                      CupertinoIcons.person_2_fill,
+                    ),
+                    (
+                      _Section.settings,
+                      'Settings',
+                      CupertinoIcons.gear,
+                      CupertinoIcons.gear_solid,
+                    ),
+                  ])
+                    Expanded(
+                      child: Semantics(
+                        button: true,
+                        selected: section == value,
+                        label: label,
+                        excludeSemantics: true,
+                        onTap: () => onSelect(value),
+                        child: GestureDetector(
+                          key: Key('phone-tab-${value.name}'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => onSelect(value),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            decoration: BoxDecoration(
+                              color: section == value
+                                  ? ink.withValues(alpha: dark ? .14 : .07)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(26),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Badge(
+                                  isLabelVisible:
+                                      value == _Section.inbox &&
+                                      unreadCount > 0,
+                                  label: Text('$unreadCount'),
+                                  backgroundColor: Theme.of(context)
+                                      .colorScheme
+                                      .primary,
+                                  textColor: Theme.of(context)
+                                      .colorScheme
+                                      .onPrimary,
+                                  child: Icon(
+                                    section == value ? selectedIcon : icon,
+                                    size: 24,
+                                    color: section == value
+                                        ? ink
+                                        : ink.withValues(alpha: .72),
+                                  ),
+                                ),
+                                const SizedBox(height: 1),
+                                Text(
+                                  label,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: section == value
+                                        ? FontWeight.w600
+                                        : FontWeight.w500,
+                                    color: section == value
+                                        ? ink
+                                        : ink.withValues(alpha: .72),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PhoneNavigationBar extends StatelessWidget {
+  const _PhoneNavigationBar({
+    required this.controller,
+    required this.section,
+    required this.onSelect,
+    required this.unreadCount,
+  });
+
+  final InboxUiController controller;
+  final _Section section;
+  final ValueChanged<_Section> onSelect;
+  final int unreadCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final palette = _DesktopPalette.forPreferences(controller.preferences);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: NavigationBar(
+        height: 72,
+        selectedIndex: section.index,
+        onDestinationSelected: (value) => onSelect(_Section.values[value]),
+        backgroundColor: palette == null
+            ? scheme.surfaceContainerLow
+            : Color.alphaBlend(
+                palette.background.withValues(alpha: .11),
+                scheme.surface,
+              ),
+        indicatorColor: palette == null
+            ? scheme.onSurface.withValues(alpha: .09)
+            : palette.accent.withValues(alpha: .22),
+        surfaceTintColor: Colors.transparent,
+        destinations: [
+          NavigationDestination(
+            icon: Badge(
+              isLabelVisible: unreadCount > 0,
+              label: Text('$unreadCount'),
+              backgroundColor: scheme.primary,
+              textColor: scheme.onPrimary,
+              child: const Icon(Icons.inbox_outlined),
+            ),
+            selectedIcon: Badge(
+              isLabelVisible: unreadCount > 0,
+              label: Text('$unreadCount'),
+              backgroundColor: scheme.primary,
+              textColor: scheme.onPrimary,
+              child: const Icon(Icons.inbox),
+            ),
+            label: 'Inbox',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.people_outline),
+            selectedIcon: Icon(Icons.people),
+            label: 'Contacts',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -826,7 +1570,9 @@ class _ConversationPaneState extends State<_ConversationPane> {
     final capability = controller.networks
         .where((network) => network.id == account?.platform)
         .firstOrNull;
-    final favorite = controller.preferencesFor(item.route).isFavorite;
+    final muted = controller
+        .preferencesFor(item.route)
+        .isMutedAt(DateTime.now());
     if (_messageCount != messages.length) {
       final wasNearBottom =
           !_scroll.hasClients ||
@@ -850,8 +1596,8 @@ class _ConversationPaneState extends State<_ConversationPane> {
           ),
         if (!widget.desktop)
           Container(
-            constraints: const BoxConstraints(minHeight: 80),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            constraints: const BoxConstraints(minHeight: 60),
+            padding: const EdgeInsets.fromLTRB(4, 6, 6, 6),
             child: Row(
               children: [
                 if (widget.onBack != null)
@@ -859,10 +1605,16 @@ class _ConversationPaneState extends State<_ConversationPane> {
                     key: const Key('back-to-inbox'),
                     tooltip: 'Back to inbox',
                     onPressed: widget.onBack,
-                    icon: const Icon(Icons.arrow_back),
-                  ),
-                _Avatar(name: item.title, network: account?.platform, size: 40),
-                const SizedBox(width: 12),
+                    icon: Icon(
+                      defaultTargetPlatform == TargetPlatform.iOS
+                          ? CupertinoIcons.back
+                          : Icons.arrow_back,
+                    ),
+                  )
+                else
+                  const SizedBox(width: 12),
+                NetworkBadge(network: account?.platform, size: 32),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -873,10 +1625,10 @@ class _ConversationPaneState extends State<_ConversationPane> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 1),
                       Text(
                         '${_networkName(controller, account?.platform)}${item.isGroup ? ' · Group conversation' : ''}',
                         style: TextStyle(
@@ -888,14 +1640,12 @@ class _ConversationPaneState extends State<_ConversationPane> {
                   ),
                 ),
                 IconButton(
-                  tooltip: favorite
-                      ? 'Remove from favorites'
-                      : 'Add to favorites',
-                  isSelected: favorite,
-                  onPressed: () =>
-                      controller.setFavorite(item.route, !favorite),
+                  tooltip: muted ? 'Unmute conversation' : 'Mute conversation',
+                  onPressed: () => controller.setMuted(item.route, !muted),
                   icon: Icon(
-                    favorite ? Icons.star : Icons.star_outline,
+                    muted
+                        ? Icons.notifications_off_outlined
+                        : Icons.notifications_none,
                     size: 22,
                   ),
                 ),
@@ -2281,73 +3031,6 @@ class _AttachmentTile extends StatelessWidget {
   );
 }
 
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.name, this.network, this.size = 44});
-
-  final String name;
-  final String? network;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    final letters = name
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .take(2)
-        .map((part) => part.characters.first.toUpperCase())
-        .join();
-    return ExcludeSemantics(
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            CircleAvatar(
-              radius: size / 2,
-              backgroundColor: Theme.of(context)
-                  .colorScheme
-                  .surfaceContainerHighest,
-              foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
-              child: Text(
-                letters.isEmpty ? '?' : letters,
-                style: TextStyle(
-                  fontSize: size * .32,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            if (network != null)
-              Positioned(
-                right: -2,
-                bottom: -2,
-                child: Container(
-                  width: 17,
-                  height: 17,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: _networkColor(network!),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Theme.of(context).colorScheme.surface,
-                      width: 2,
-                    ),
-                  ),
-                  child: Icon(
-                    _networkIcon(network!),
-                    size: 10,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _EmptyState extends StatelessWidget {
   const _EmptyState({
     required this.icon,
@@ -2585,22 +3268,6 @@ String _networkName(InboxUiController controller, String? platform) =>
         .firstOrNull
         ?.name ??
     (platform ?? 'Account');
-IconData _networkIcon(String platform) => switch (platform) {
-  'telegram' => Icons.send,
-  'whatsapp' => Icons.call,
-  'instagram' => Icons.camera_alt,
-  'messenger' => Icons.bolt,
-  'imessage' => Icons.chat_bubble,
-  _ => Icons.chat,
-};
-Color _networkColor(String platform) => switch (platform) {
-  'telegram' => const Color(0xff238fc7),
-  'whatsapp' => const Color(0xff188d55),
-  'instagram' => const Color(0xffbd3c7e),
-  'messenger' => const Color(0xff336fee),
-  'imessage' => const Color(0xff278c4c),
-  _ => const Color(0xff60656b),
-};
 bool _sameDay(DateTime a, DateTime b) {
   final localA = a.toLocal();
   final localB = b.toLocal();
@@ -2623,17 +3290,6 @@ bool _sameMessageRun(MessageRecord first, MessageRecord second) {
 String _time(DateTime date) {
   final local = date.toLocal();
   return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-}
-
-String _shortDate(DateTime date) {
-  if (date.microsecondsSinceEpoch <= 0) return '';
-  final now = DateTime.now();
-  final local = date.toLocal();
-  if (_sameDay(now, local)) return _time(local);
-  if (_sameDay(now.subtract(const Duration(days: 1)), local)) {
-    return 'Yesterday';
-  }
-  return '${local.day}/${local.month}';
 }
 
 String _dayLabel(DateTime date) {

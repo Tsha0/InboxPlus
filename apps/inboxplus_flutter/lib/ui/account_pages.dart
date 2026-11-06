@@ -711,32 +711,23 @@ class InboxSettingsPage extends StatelessWidget {
                 title: 'Appearance',
                 children: [
                   Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: DropdownButtonFormField<String>(
-                      initialValue: controller.preferences.appearance,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Color mode',
-                        prefixIcon: Icon(Icons.contrast),
-                        border: OutlineInputBorder(),
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'system',
-                          child: Text('Use system setting'),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Color mode',
+                            style: TextStyle(fontSize: 16),
+                          ),
                         ),
-                        DropdownMenuItem(value: 'light', child: Text('Light')),
-                        DropdownMenuItem(value: 'dark', child: Text('Dark')),
+                        _ColorModePicker(controller: controller),
                       ],
-                      onChanged: controller.isBusy
-                          ? null
-                          : (value) {
-                              if (value != null) {
-                                controller.setPreference('appearance', value);
-                              }
-                            },
                     ),
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
+                    child: _ThemeGrid(controller: controller),
                   ),
                 ],
               ),
@@ -928,6 +919,189 @@ class InboxSettingsPage extends StatelessWidget {
     if (await confirmClearMediaCache(context)) {
       await controller.clearMediaCache();
     }
+  }
+}
+
+class _ColorModePicker extends StatelessWidget {
+  const _ColorModePicker({required this.controller});
+
+  final InboxUiController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: scheme.onSurface.withValues(alpha: .07),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final (value, label) in [
+            ('system', 'System'),
+            ('light', 'Light'),
+            ('dark', 'Dark'),
+          ])
+            Semantics(
+              selected: controller.preferences.appearance == value,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: controller.preferences.appearance == value
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: .12),
+                            blurRadius: 3,
+                            offset: const Offset(0, 1),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: TextButton(
+                  onPressed: controller.isBusy
+                      ? null
+                      : () => controller.setPreference('appearance', value),
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 30),
+                    padding: const EdgeInsets.symmetric(horizontal: 13),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: scheme.onSurface,
+                    backgroundColor: controller.preferences.appearance == value
+                        ? (dark
+                              ? scheme.onSurface.withValues(alpha: .16)
+                              : Colors.white)
+                        : Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: controller.preferences.appearance == value
+                          ? FontWeight.w600
+                          : FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeGrid extends StatelessWidget {
+  const _ThemeGrid({required this.controller});
+
+  final InboxUiController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final preferences = controller.preferences;
+    final palettes = [
+      ...InboxThemePalette.presets,
+      if (preferences.themePreset == 'custom') ?preferences.palette,
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = (constraints.maxWidth / 66).floor().clamp(3, 6);
+        final width = (constraints.maxWidth - (columns - 1) * 6) / columns;
+        return Wrap(
+          spacing: 6,
+          runSpacing: 12,
+          children: [
+            for (final palette in palettes)
+              SizedBox(
+                width: width,
+                child: Semantics(
+                  label: '${palette.name} theme',
+                  selected: preferences.themePreset == palette.id,
+                  button: true,
+                  excludeSemantics: true,
+                  child: InkWell(
+                    onTap: controller.isBusy
+                        ? null
+                        : () => controller.setPreference(
+                            'themePreset',
+                            palette.id,
+                          ),
+                    borderRadius: BorderRadius.circular(13),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(13),
+                            border: Border.all(
+                              width: 2,
+                              color: preferences.themePreset == palette.id
+                                  ? scheme.onSurface
+                                  : Colors.transparent,
+                            ),
+                          ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Color(0xff000000 | palette.background),
+                              borderRadius: BorderRadius.circular(9),
+                              border: Border.all(
+                                color: scheme.onSurface.withValues(alpha: .08),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(
+                                    color: Color(0xff000000 | palette.logo),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: Color(0xff000000 | palette.accent),
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          palette.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: preferences.themePreset == palette.id
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 }
 
