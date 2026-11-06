@@ -175,4 +175,21 @@ void main() {
       throwsA(errorCode('native_library_unavailable')),
     );
   });
+
+  test('native fixture waits through an interrupted sleep', () async {
+    final executable = p.join(directory.path, 'interrupted-sleep');
+    final compiled = await Process.run('cc', [
+      '-std=c11',
+      '-DTEST_INTERRUPTED_SLEEP',
+      'test/connectors/fixture_connector.c',
+      '-o',
+      executable,
+    ]);
+    expect(compiled.exitCode, 0, reason: '${compiled.stderr}');
+    final result = await Process.run(
+      executable,
+      [],
+    ).timeout(const Duration(seconds: 10));
+    expect(result.exitCode, 0, reason: '${result.stderr}');
+  });
 }

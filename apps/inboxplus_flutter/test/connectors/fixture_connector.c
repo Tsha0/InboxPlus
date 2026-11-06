@@ -15,6 +15,30 @@ static void pause_millis(long value) {
   while (nanosleep(&delay, &delay) == -1 && errno == EINTR) {}
 }
 
+#ifdef TEST_INTERRUPTED_SLEEP
+#include <signal.h>
+#include <sys/time.h>
+
+static void interrupt_sleep(int signal_number) {
+  (void)signal_number;
+}
+
+int main(void) {
+  struct sigaction action = {.sa_handler = interrupt_sleep};
+  sigemptyset(&action.sa_mask);
+  if (sigaction(SIGALRM, &action, NULL) != 0) return 2;
+  struct itimerval timer = {.it_value = {.tv_usec = 20000}};
+  struct timespec start, end;
+  if (clock_gettime(CLOCK_MONOTONIC, &start) != 0) return 2;
+  if (setitimer(ITIMER_REAL, &timer, NULL) != 0) return 2;
+  pause_millis(100);
+  if (clock_gettime(CLOCK_MONOTONIC, &end) != 0) return 2;
+  long long elapsed = (end.tv_sec - start.tv_sec) * 1000000000LL +
+      end.tv_nsec - start.tv_nsec;
+  return elapsed >= 100000000 ? 0 : 1;
+}
+#endif
+
 #ifdef SLOW_START
 __attribute__((constructor)) static void slow_start(void) {
   pause_millis(500);
