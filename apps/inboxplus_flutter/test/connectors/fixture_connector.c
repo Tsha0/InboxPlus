@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include <errno.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +12,7 @@ static atomic_int increments;
 
 static void pause_millis(long value) {
   struct timespec delay = {.tv_sec = 0, .tv_nsec = value * 1000000};
-  nanosleep(&delay, NULL);
+  while (nanosleep(&delay, &delay) == -1 && errno == EINTR) {}
 }
 
 #ifdef SLOW_START

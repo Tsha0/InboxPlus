@@ -59,7 +59,7 @@ void main() {
       'inboxplus-storage-',
     );
     directory = Directory(await temporary.resolveSymbolicLinks());
-    file = File('${directory.path}/profile/inbox.sqlite');
+    file = File.fromUri(directory.uri.resolve('profile/inbox.sqlite'));
     key = Uint8List.fromList(List.generate(32, (index) => index + 1));
     store = await LocalStore.open(file: file, key: key);
   });
@@ -835,14 +835,16 @@ void main() {
     await seed(route);
     const other = ConversationRoute('telegram', 'chat');
     await seed(other);
-    final cache = await Directory('${directory.path}/media').create();
+    final cache = await Directory.fromUri(
+      directory.uri.resolve('media'),
+    ).create();
     final paths = <String, String>{};
     for (final (index, (target, id, downloadable)) in [
       (route, 'mine', true),
       (route, 'kept', false),
       (other, 'theirs', true),
     ].indexed) {
-      final file = await File('${cache.path}/$id').writeAsString(id);
+      final file = await File.fromUri(cache.uri.resolve(id)).writeAsString(id);
       paths[id] = file.path;
       await store!.saveMessage(
         MessageRecord(
@@ -1107,7 +1109,7 @@ void main() {
       );
       final paths = await store!.clearDownloadedMediaPaths(cache.path);
       expect(paths.length, 60);
-      expect(paths, contains('${cache.path}/0'));
+      expect(paths, contains(File.fromUri(cache.uri.resolve('0')).path));
       final old = await store!.loadMessage(route, 'download-0');
       expect(old!.attachments.single.localPath, isNull);
       expect(old.attachments.single.remoteSource, 'opaque-0');
@@ -1165,13 +1167,19 @@ void main() {
     'restored profiles rebase attachment metadata without changing payloads or files',
     () async {
       await seed(route);
-      final previous = Directory('${directory.path}/old-container/flutter');
+      final previous = Directory.fromUri(
+        directory.uri.resolve('old-container/flutter'),
+      );
       final current = file.parent;
       await previous.create(recursive: true);
-      final previousMedia = '${previous.path}/media/photo.png';
-      final previousStaged = '${previous.path}/staging/draft.pdf';
-      final media = File('${current.path}/media/photo.png');
-      final staged = File('${current.path}/staging/draft.pdf');
+      final previousMedia = File.fromUri(
+        previous.uri.resolve('media/photo.png'),
+      ).path;
+      final previousStaged = File.fromUri(
+        previous.uri.resolve('staging/draft.pdf'),
+      ).path;
+      final media = File.fromUri(current.uri.resolve('media/photo.png'));
+      final staged = File.fromUri(current.uri.resolve('staging/draft.pdf'));
       for (final entry in [media, staged]) {
         await entry.parent.create(recursive: true);
         await entry.writeAsString('Kept attachment bytes');
