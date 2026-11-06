@@ -102,6 +102,14 @@ if(NOT INBOXPLUS_MEDIA_VERIFY_RESULT EQUAL 0)
 endif()
 include(flutter/generated_plugins.cmake)
 
+foreach(INBOXPLUS_MEDIA_EXTRACT_TARGET IN ITEMS
+    media_kit_libs_windows_video_LIBMPV_EXTRACT
+    media_kit_libs_windows_video_ANGLE_EXTRACT)
+  if(TARGET ${INBOXPLUS_MEDIA_EXTRACT_TARGET})
+    add_dependencies(media_kit_video_plugin ${INBOXPLUS_MEDIA_EXTRACT_TARGET})
+  endif()
+endforeach()
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can
