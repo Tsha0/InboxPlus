@@ -20,9 +20,16 @@ Future<void> main() async {
   }
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  // A phone emulator cannot read the fixture file on the build machine, so
+  // phone previews pass the fixture's JSON itself.
+  const inlineFixture = String.fromEnvironment(
+    'INBOXPLUS_PREVIEW_FIXTURE_JSON',
+  );
   final fixture = jsonDecode(
-    await File(const String.fromEnvironment('INBOXPLUS_DESKTOP_FIXTURE'))
-        .readAsString(),
+    inlineFixture.isNotEmpty
+        ? inlineFixture
+        : await File(const String.fromEnvironment('INBOXPLUS_DESKTOP_FIXTURE'))
+              .readAsString(),
   ) as Map;
   final temporary = await Directory.systemTemp.createTemp(
     'inboxplus-desktop-preview-',
