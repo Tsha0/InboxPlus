@@ -104,10 +104,10 @@ def layout(target, bundle):
     return bundle / required[0], entrypoint, set(manifest["native-assets"]), binaries
 
 
-def binary_architectures(target, path):
+def binary_architectures(target, path, *, allow_elf=False):
     with path.open("rb") as source:
         header = source.read(64)
-        if target == "linux" and len(header) == 64 and header[:6] == b"\x7fELF\x02\x01":
+        if (target == "linux" or allow_elf) and len(header) == 64 and header[:6] == b"\x7fELF\x02\x01":
             machine = struct.unpack_from("<H", header, 18)[0]
             if machine in (62, 183):
                 return {"x64" if machine == 62 else "arm64"}
@@ -147,7 +147,8 @@ def verify_bundle(target, bundle):
                   target == "macos" and magic in MACH_MAGIC or
                   target == "linux" and magic == b"\x7fELF" or
                   target == "windows" and path.suffix.lower() in (".exe", ".dll", ".so"))
-        if native and not architectures <= binary_architectures(target, path):
+        if native and not architectures <= binary_architectures(
+                target, path, allow_elf=target == "windows" and path == bundle / "data/app.so"):
             raise RuntimeError("Runtime architecture does not match: " + str(path.relative_to(bundle)))
     return sorted(architectures), entrypoint
 

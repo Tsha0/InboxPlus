@@ -50,7 +50,7 @@ class FlutterDesktopPackagingTests(unittest.TestCase):
             assets = "data/flutter_assets"
         elif target == "windows":
             files = {"InboxPlus.exe": pe(), "inboxplus_connectors.dll": pe(),
-                     "flutter_windows.dll": pe(), "data/app.so": pe(), "sqlite3mc.dll": pe()}
+                     "flutter_windows.dll": pe(), "data/app.so": elf(), "sqlite3mc.dll": pe()}
             assets = "data/flutter_assets"
         else:
             files = {"Contents/MacOS/Inbox+v2": b"\xcf\xfa\xed\xfe",
@@ -107,10 +107,22 @@ class FlutterDesktopPackagingTests(unittest.TestCase):
         with zipfile.ZipFile(result) as archive:
             self.assertEqual(archive.read("Inbox+v2/inboxplus_connectors.dll"), pe())
             self.assertEqual(archive.read("Inbox+v2/flutter_windows.dll"), pe())
+            self.assertEqual(archive.read("Inbox+v2/data/app.so"), elf())
             self.assertIn("Inbox+v2/data/flutter_assets/assets/third_party_notices.txt", archive.namelist())
             metadata = json.loads(archive.read("Inbox+v2/build-info.json"))
             self.assertEqual(metadata["entrypoint"], "InboxPlus.exe")
             self.assertNotIn(str(self.location), json.dumps(metadata))
+
+    def test_windows_rejects_mismatched_snapshot_architecture_and_elf_dlls(self):
+        bundle = self.bundle("windows")
+        snapshot = bundle / "data/app.so"
+        snapshot.write_bytes(elf(183))
+        with self.assertRaisesRegex(RuntimeError, "architecture"):
+            packaging.package("windows", bundle, self.location / "out")
+        snapshot.write_bytes(elf())
+        (bundle / "inboxplus_connectors.dll").write_bytes(elf())
+        with self.assertRaisesRegex(RuntimeError, "Unsupported binary architecture"):
+            packaging.package("windows", bundle, self.location / "out")
 
     def test_native_asset_paths_must_remain_inside_the_bundle_on_every_host(self):
         bundle = self.bundle("windows")
