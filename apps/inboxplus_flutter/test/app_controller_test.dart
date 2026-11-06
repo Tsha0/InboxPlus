@@ -77,12 +77,21 @@ void main() {
       'inboxplus-controller-',
     );
     directory = Directory(await temporary.resolveSymbolicLinks());
-    database = File('${directory.path}/inbox.sqlite');
+    database = File.fromUri(directory.uri.resolve('inbox.sqlite'));
     key = Uint8List.fromList(List.generate(32, (index) => index + 1));
     store = await LocalStore.open(file: database, key: key);
     storeClosed = false;
     secrets = _MemorySecrets();
     native = _NativeFixture();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          AppEnvironment.native,
+          (call) async => call.method == 'protectPath' ? true : null,
+        );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(AppEnvironment.native, null),
+    );
   });
 
   tearDown(() async {
@@ -1794,8 +1803,10 @@ void main() {
     () async {
       await seed(firstRoute);
       await seed(secondRoute);
-      final media = await Directory('${directory.path}/media').create();
-      final download = await File('${media.path}/download').writeAsString('x');
+      final media = await Directory.fromUri(directory.uri.resolve('media/'))
+          .create();
+      final download = await File.fromUri(media.uri.resolve('download'))
+          .writeAsString('x');
       await store.saveMessage(
         MessageRecord(
           id: 'with-download',
