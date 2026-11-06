@@ -1,0 +1,1391 @@
+{
+  "golang:filippo.io/edwards25519@v1.2.0": {
+    "evidence": {
+      "LICENSE": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:github.com/andybalholm/brotli@v1.2.4": {
+    "evidence": {
+      "LICENSE": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/apache/thrift@v0.24.0": {
+    "evidence": {
+      "LICENSE": "89aa7b27868669299bd8a6c53b72ec4beadce42dad6c8336797cc26e1e8df98d",
+      "NOTICE": "c2534e065069887565f871f0648b013a7e5f4a422809faf4ae3c590b7c0bf561"
+    },
+    "license": "Apache-2.0 AND BSD-3-Clause"
+  },
+  "golang:github.com/armfazh/h2c-go-ref@v0.0.0-20210215173008-07e12a6f8e0d": {
+    "evidence": {
+      "LICENSE": "669d9f7734fec8a04742b07550dd19becfdcdcb602109ca72c1192e044145890"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:github.com/armfazh/tozan-ecc@v0.1.3": {
+    "evidence": {
+      "LICENSE": "669d9f7734fec8a04742b07550dd19becfdcdcb602109ca72c1192e044145890"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:github.com/beeper/argo-go@v1.1.2": {
+    "evidence": {
+      "LICENSE": "e478e56635d93255534aaee3ebc3a72495dc8ccdf745f425ea157b4424b2fb4a"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/beeper/poly1305@v0.0.0-20250815183548-d4eede7bbf3c": {
+    "evidence": {},
+    "license": "BSD-3-Clause",
+    "note": "Go BSD-licensed source headers; upstream fork omits the referenced LICENSE file."
+  },
+  "golang:github.com/beeper/req/v3@v3.0.0-20260925135712-b49593750e56": {
+    "evidence": {
+      "LICENSE": "9629b9d5b0f233bb67619a30d56bf3e49d8cc5133c6f0e3509d4a952bc9beb39"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/bytemare/cryptotools@v0.0.0-20210309005813-f9985b05742f": {
+    "evidence": {
+      "LICENSE": "b8b2ec096aba5f72a99621abaf52fb9fb52f395bf324207ff8fd98b967d04889"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/bytemare/opaque@v0.0.0-20210310201842-16a10d180656": {
+    "evidence": {
+      "LICENSE": "b8b2ec096aba5f72a99621abaf52fb9fb52f395bf324207ff8fd98b967d04889"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/bytemare/voprf@v0.0.0-20210221170502-f0af88d24d16": {
+    "evidence": {
+      "LICENSE": "b8b2ec096aba5f72a99621abaf52fb9fb52f395bf324207ff8fd98b967d04889"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/cenkalti/backoff/v4@v4.3.0": {
+    "evidence": {
+      "LICENSE": "5c0476add4c38b55d0ed5ac11b85e00c38f26e1caee20dfe3ab58190103d1fbc"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/cespare/xxhash/v2@v2.3.0": {
+    "evidence": {
+      "LICENSE.txt": "f566a9f97bacdaf00d9f21dd991e81dc11201c4e016c86b470799429a1c9a79c"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/coder/websocket@v1.8.15": {
+    "evidence": {
+      "LICENSE.txt": "cc0975a5f6305145bdd7b41ce9479632fdac3870e6ac4281f28017f18c767c4e"
+    },
+    "license": "ISC"
+  },
+  "golang:github.com/coreos/go-systemd/v22@v22.7.0": {
+    "evidence": {
+      "LICENSE": "73ba74dfaa520b49a401b5d21459a8523a146f3b7518a833eea5efa85130bf68",
+      "NOTICE": "572b159624f1898b40e9f09c9e4cfb65a595044960982aa95126bc28f7d1e6c0"
+    },
+    "license": "Apache-2.0"
+  },
+  "golang:github.com/dlclark/regexp2@v1.12.0": {
+    "evidence": {
+      "LICENSE": "9be5d04bb4d706914d5bf943710da4afeb42048f7c529902fb57c82762a991a9"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/elliotchance/orderedmap/v3@v3.1.0": {
+    "evidence": {
+      "LICENSE": "45245e9969777b5d9e6e09588087e985b8209117ecbf0e4d04080cfc36762e99"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/fatih/color@v1.19.0": {
+    "evidence": {
+      "LICENSE.md": "de95ed802d2f90e3c72cb3c9a927cca5f2aec234a3ef1250232db0f8178b2d93"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/ghodss/yaml@v1.0.0": {
+    "evidence": {
+      "LICENSE": "24653fd8a39354396da1a265d68316399edc39b1df48c5866d55f9f06484fa9a"
+    },
+    "license": "MIT AND BSD-3-Clause"
+  },
+  "golang:github.com/go-faster/errors@v0.8.0": {
+    "evidence": {
+      "LICENSE": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:github.com/go-faster/jx@v1.2.0": {
+    "evidence": {
+      "LICENSE": "3247931083f058b00760a3c32a9ca0962c05e4d562ad2ffcc1753451fa8d4486"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/go-faster/xor@v1.0.0": {
+    "evidence": {
+      "LICENSE": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:github.com/go-faster/yaml@v0.4.6": {
+    "evidence": {
+      "LICENSE-APACHE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "LICENSE-MIT": "c68096e19e91a47dacc81ff5fb1c64732b3cec55fdf70865da69f9b01cf1945c",
+      "NOTICE": "d18f6323b71b0b768bb5e9616e36da390fbd39369a81807cca352de4e4e6aa0b"
+    },
+    "license": "MIT AND Apache-2.0"
+  },
+  "golang:github.com/google/flatbuffers@v25.12.19+incompatible": {
+    "evidence": {
+      "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "license": "Apache-2.0"
+  },
+  "golang:github.com/google/go-querystring@v1.2.0": {
+    "evidence": {
+      "LICENSE": "d906c9396b6805d16bbaaa8844c58a44c46159bfe494443c1e4cfbc791103dcc"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:github.com/google/uuid@v1.6.0": {
+    "evidence": {
+      "LICENSE": "0a8d61ed3cbfd5312326e8126c31ce9c627a283adc99131b56896d29ada04b2d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:github.com/gotd/ige@v0.3.0": {
+    "evidence": {
+      "LICENSE": "0f42475dcfcc51b91f0a93c40991f5c2cc6ef1412a3fba539b92615aa1d8947e"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/gotd/log@v0.1.0": {
+    "evidence": {
+      "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "license": "Apache-2.0"
+  },
+  "golang:github.com/gotd/neo@v0.1.5": {
+    "evidence": {
+      "LICENSE": "07826e7581a2cc343e1c20f56522d52ccd61ce23556a8d390e7593b007fa3ed3"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:github.com/gotd/td@v0.163.0": {
+    "evidence": {
+      "LICENSE": "1eeb0cd3ebdaf6d391806a704a97c4b0bf3714d7b33a52398345c335821e49ad"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/gtank/ristretto255@v0.2.0": {
+    "evidence": {
+      "LICENSE": "1ad49671b401badf0e3aef1d8254a2c5856fb6365e8592c5bac38c0d332356d1"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:github.com/icholy/digest@v1.2.0": {
+    "evidence": {
+      "LICENSE": "7302bfd28f45cfefb8ebda1d36f7ba5c9c75b8d241b428084a2a9abd2a2c4e66"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/klauspost/compress@v1.20.0": {
+    "evidence": {
+      "LICENSE": "0d9e582ee4bff57bf1189c9e514e6da7ce277f9cd3bc2d488b22fbb39a6d87cf"
+    },
+    "license": "BSD-3-Clause AND Apache-2.0 AND MIT"
+  },
+  "golang:github.com/mattn/go-colorable@v0.1.15": {
+    "evidence": {
+      "LICENSE": "88a2379b3ca34bf5c57127aff9dcb802bbb60ece0805cdbda65b3bd115f971d9"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/mattn/go-isatty@v0.0.22": {
+    "evidence": {
+      "LICENSE": "08eab1118c80885fa1fa6a6dd7303f65a379fcb3733e063d20d1bbc2c76e6fa1"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/mattn/go-sqlite3@v1.14.52": {
+    "evidence": {
+      "LICENSE": "afa48e5e64dc610298d80b010ae7a3450f61a79500a9f1d1697ff6dcbbfa1f72"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/ogen-go/ogen@v1.23.0": {
+    "evidence": {
+      "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    "license": "Apache-2.0"
+  },
+  "golang:github.com/petermattis/goid@v0.0.0-20260918085751-abfca077860b": {
+    "evidence": {
+      "LICENSE": "cb5e8e7e5f4a3988e1063c142c60dc2df75605f4c46515e776e3aca6df976e14"
+    },
+    "license": "Apache-2.0"
+  },
+  "golang:github.com/quic-go/qpack@v0.6.0": {
+    "evidence": {
+      "LICENSE.md": "1b6a897efd39b20b3cdce8cd306160d115dbded39d855ceeffe21dc11e4d53df"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/quic-go/quic-go@v0.64.1": {
+    "evidence": {
+      "LICENSE": "77d0b7b53e8abb84cf4dd3f9945a7fdf27044240d2e8023966a721a9a46fe96e"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/refraction-networking/utls@v1.8.2": {
+    "evidence": {
+      "LICENSE": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:github.com/rs/xid@v1.6.0": {
+    "evidence": {
+      "LICENSE": "c480873f0ff2b7e2c539bdd84fb4da4178d8d02479c94924f7bffeafb7add358"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/rs/zerolog@v1.35.1": {
+    "evidence": {
+      "LICENSE": "1b8f6b05dd66f6eec835515706886cb01bf00358cb9312301ed6ad23d6b2d008"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/segmentio/asm@v1.2.1": {
+    "evidence": {
+      "LICENSE": "cca993712df289a5958bdef69031a5dac0f951ac15afeb313f9eeea55ed59443"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/shopspring/decimal@v1.4.0": {
+    "evidence": {
+      "LICENSE": "b92ba0f6ee02f2309628bfdadb123668a17c016e475ba477b857d33470d9d625"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/tidwall/gjson@v1.20.0": {
+    "evidence": {
+      "LICENSE": "be83ad53208d03a9fe08c7fac231cabf79422989ef5706bff217bd35104ebf07"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/tidwall/match@v1.1.1": {
+    "evidence": {
+      "LICENSE": "be83ad53208d03a9fe08c7fac231cabf79422989ef5706bff217bd35104ebf07"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/tidwall/pretty@v1.2.1": {
+    "evidence": {
+      "LICENSE": "0ca70311227fe097c662dece3f359e3317fa7f9d41f8d29eb45fc5135e216139"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/tidwall/sjson@v1.2.5": {
+    "evidence": {
+      "LICENSE": "dbf5e2aa91aee5f19a1ce2cc7891e2ac37204b6461c0adc539426636e27b208e"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/vektah/gqlparser/v2@v2.5.27": {
+    "evidence": {
+      "LICENSE": "c393f603a90a52d71fccd0df5a6b82049b7b8fdf9c120d8972bf41a6f5fb1213"
+    },
+    "license": "MIT"
+  },
+  "golang:github.com/vmihailenco/msgpack/v5@v5.2.0": {
+    "evidence": {
+      "LICENSE": "1530185dd39cdde7cb2f786a7a5fcf8bc34368b6ae73c15e72bafe88fd80b9a2"
+    },
+    "license": "BSD-2-Clause"
+  },
+  "golang:github.com/vmihailenco/tagparser/v2@v2.0.0": {
+    "evidence": {
+      "LICENSE": "0f02aac22084ef463aa5f42f566feeec6aa4c99653519744a8c25cb079da5b5d"
+    },
+    "license": "BSD-2-Clause"
+  },
+  "golang:github.com/yuin/goldmark@v1.8.6": {
+    "evidence": {
+      "LICENSE": "c1d6f653c38c80294dc7994647ba0dcc508ce64a86996303c804efa2f7982bff"
+    },
+    "license": "MIT"
+  },
+  "golang:go.mau.fi/libsignal@v0.2.3-0.20261103023201-5ce3f7a54370": {
+    "evidence": {
+      "LICENSE": "09f9333d941468c9d82ac9e2bf6b0b9085c52b50382b9fbb3806f586d502b719"
+    },
+    "license": "GPL-3.0-only"
+  },
+  "golang:go.mau.fi/mautrix-meta@v0.2610.1-0.20261103213641-69a505d69039": {
+    "evidence": {
+      "LICENSE": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "LICENSE.exceptions": "a56bcda19734125bbe29a47d1db61f662c8c3c02ce64ebaee911817faa4743de"
+    },
+    "license": "AGPL-3.0-or-later"
+  },
+  "golang:go.mau.fi/util@v0.11.1-0.20261026174803-9e6b9c87cfbc": {
+    "evidence": {
+      "LICENSE": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+    },
+    "license": "MPL-2.0"
+  },
+  "golang:go.mau.fi/whatsmeow@v0.0.0-20261102152715-54038813c47f": {
+    "evidence": {
+      "LICENSE": "32ee9dbf6196874fc9d406c54a888a6c4cbb9aa4a7f35b46befeaff43a78fe85"
+    },
+    "license": "MPL-2.0"
+  },
+  "golang:go.mau.fi/zeroconfig@v0.2.0": {
+    "evidence": {
+      "LICENSE": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+    },
+    "license": "MPL-2.0"
+  },
+  "golang:go.opentelemetry.io/otel/metric@v1.44.0": {
+    "evidence": {
+      "LICENSE": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40"
+    },
+    "license": "Apache-2.0 AND BSD-3-Clause"
+  },
+  "golang:go.opentelemetry.io/otel/trace@v1.44.0": {
+    "evidence": {
+      "LICENSE": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40"
+    },
+    "license": "Apache-2.0 AND BSD-3-Clause"
+  },
+  "golang:go.opentelemetry.io/otel@v1.44.0": {
+    "evidence": {
+      "LICENSE": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40"
+    },
+    "license": "Apache-2.0 AND BSD-3-Clause"
+  },
+  "golang:go.uber.org/atomic@v1.11.0": {
+    "evidence": {
+      "LICENSE.txt": "edbb5a4d165ac69376c765b551c0662ff42bea87e1f1eda85f42ac90c34b09d0"
+    },
+    "license": "MIT"
+  },
+  "golang:go.uber.org/multierr@v1.11.0": {
+    "evidence": {
+      "LICENSE.txt": "dcdabe03bef2382a130640d1c3a4cd5ec42aba1035095c38272fde694eb72405"
+    },
+    "license": "MIT"
+  },
+  "golang:go.uber.org/zap@v1.28.0": {
+    "evidence": {
+      "LICENSE": "c2b97b3281be272711909076c8402499b4b5a3216196af47a25b1d3674d86152"
+    },
+    "license": "MIT"
+  },
+  "golang:golang.org/x/crypto@v0.58.0": {
+    "evidence": {
+      "LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:golang.org/x/exp@v0.0.0-20261014143641-f0251eb4aa3e": {
+    "evidence": {
+      "LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:golang.org/x/mod@v0.42.0": {
+    "evidence": {
+      "LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:golang.org/x/net@v0.61.0": {
+    "evidence": {
+      "LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:golang.org/x/sync@v0.24.0": {
+    "evidence": {
+      "LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:golang.org/x/sys@v0.49.0": {
+    "evidence": {
+      "LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:golang.org/x/text@v0.43.0": {
+    "evidence": {
+      "LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:golang.org/x/tools@v0.52.0": {
+    "evidence": {
+      "LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:google.golang.org/protobuf@v1.36.12": {
+    "evidence": {
+      "LICENSE": "4835612df0098ca95f8e7d9e3bffcb02358d435dbb38057c844c99d7f725eb20"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:gopkg.in/natefinch/lumberjack.v2@v2.2.1": {
+    "evidence": {
+      "LICENSE": "9622cbfd055d92991dcf523a256840424cc6356eab93beb4a93a973dec046492"
+    },
+    "license": "MIT"
+  },
+  "golang:gopkg.in/yaml.v2@v2.4.0": {
+    "evidence": {
+      "LICENSE": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+      "LICENSE.libyaml": "a94710b55e03b5285f77d048c5ba61bb9d6ee04a06c0eb90e68821e11b0c707a",
+      "NOTICE": "f6c2dd3a67b576eafb89b80200b8b1627230bf3821a0c14cb99a22ac19107d00"
+    },
+    "license": "MIT AND Apache-2.0"
+  },
+  "golang:gopkg.in/yaml.v3@v3.0.1": {
+    "evidence": {
+      "LICENSE": "d18f6323b71b0b768bb5e9616e36da390fbd39369a81807cca352de4e4e6aa0b",
+      "NOTICE": "f6c2dd3a67b576eafb89b80200b8b1627230bf3821a0c14cb99a22ac19107d00"
+    },
+    "license": "MIT AND Apache-2.0"
+  },
+  "golang:maunium.net/go/mautrix@v0.32.1-0.20261027121747-b5763ae4f269": {
+    "evidence": {
+      "LICENSE": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+    },
+    "license": "MPL-2.0"
+  },
+  "golang:rsc.io/qr@v0.2.0": {
+    "evidence": {
+      "LICENSE": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:_fe_analyzer_shared@111.0.0": {
+    "evidence": {
+      "LICENSE": "efa31b5ac790016736fa9761642b0af16d37cd4fb483de2905adb5258cb89722"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:analyzer@14.7.0": {
+    "evidence": {
+      "LICENSE": "7e124af6a556f045cb3a20cafbdaa31602ac2c82cbcb3c3b15faaaf514b06028"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:android_file_picker@2.1.3": {
+    "evidence": {
+      "LICENSE": "12f7222de745bab3710ba88b59f33484ca423aa5e1deac9e56ed946706d5abab"
+    },
+    "license": "MIT"
+  },
+  "pub:archive@4.6.0": {
+    "evidence": {
+      "LICENSE": "32f97d332eae7453ec4079858e6f1d74be85beeb6d3881068b47d02a379cccea",
+      "LICENSE-other.md": "b8861b258b8eedd1605f5203b0f51e8022c5c156cb97da1c465e4e355672738b"
+    },
+    "license": "MIT AND BSD-3-Clause"
+  },
+  "pub:args@2.7.0": {
+    "evidence": {
+      "LICENSE": "dfb09c74e29386cd3e2719f32d4995d59526179753931d31840757c77fbf2791"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:async@2.13.1": {
+    "evidence": {
+      "LICENSE": "ff15faa32a2e638107b7789592b14426162a75ba620044ee2340a20ec6ce5e73"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:boolean_selector@2.1.2": {
+    "evidence": {
+      "LICENSE": "b71519245009a3b8f126196a5408ec031e216e8e0d985085958c6543f82a8a2a"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:build@5.0.0": {
+    "evidence": {
+      "LICENSE": "a4b5d7d31626e90b77e8696f1c47643aa31f52e17c1907c1ab60b068110e6e10"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:build_config@1.4.0": {
+    "evidence": {
+      "LICENSE": "ea97a7558a7bd7cee4e2355f7529e3cbebb0dcbb546ddb9a90f10c9eb6b08da5"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:build_daemon@4.1.7": {
+    "evidence": {
+      "LICENSE": "0371d1da6a57fb791db29d29b95333429205f51f3cb2eb3a0c12d91838a38744"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:build_runner@2.17.1": {
+    "evidence": {
+      "LICENSE": "a4b5d7d31626e90b77e8696f1c47643aa31f52e17c1907c1ab60b068110e6e10"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:built_collection@5.1.2": {
+    "evidence": {
+      "LICENSE": "4f1b0f444c862e8dc586122c00592538fb0e9dd6d81a5214882b25b8054f7dfa"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:built_value@8.13.0": {
+    "evidence": {
+      "LICENSE": "4f1b0f444c862e8dc586122c00592538fb0e9dd6d81a5214882b25b8054f7dfa"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:characters@1.4.1": {
+    "evidence": {
+      "LICENSE": "0371d1da6a57fb791db29d29b95333429205f51f3cb2eb3a0c12d91838a38744"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:charcode@1.4.0": {
+    "evidence": {
+      "LICENSE": "8a4dbe6d3ddcf937b18d1768d13f9ba718b45bcb43bc00a3b63eb160d264acf7"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:checked_yaml@2.0.4": {
+    "evidence": {
+      "LICENSE": "4771d808721f4d5f02318ab857c92f5a5dce87b14ae1c3770fe21ca7fd4a9280"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:cli_config@0.2.0": {
+    "evidence": {
+      "LICENSE": "605bcf409f2347e3bcc9905ab70a2f3218e841bae372b0cbfbf305a222f74222"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:cli_util@0.6.0": {
+    "evidence": {
+      "LICENSE": "ff15faa32a2e638107b7789592b14426162a75ba620044ee2340a20ec6ce5e73"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:clock@1.1.3": {
+    "evidence": {
+      "LICENSE": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+    },
+    "license": "Apache-2.0"
+  },
+  "pub:code_assets@2.1.0": {
+    "evidence": {
+      "LICENSE": "21ae23b0b9ff67a2dc75ab085d1e8db8ac548c5faf370af17f28dd2ef3b52b7b"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:collection@1.19.1": {
+    "evidence": {
+      "LICENSE": "ff15faa32a2e638107b7789592b14426162a75ba620044ee2340a20ec6ce5e73"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:convert@3.1.2": {
+    "evidence": {
+      "LICENSE": "ad6a71997da90924b2cfb1fb47ec46537f70faf469efe016168794ae45ed6888"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:coverage@1.16.0": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:cross_file@0.3.5+5": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:crypto@3.0.8": {
+    "evidence": {
+      "LICENSE": "ad6a71997da90924b2cfb1fb47ec46537f70faf469efe016168794ae45ed6888"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:dart_style@3.1.14": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:dbus@0.8.0": {
+    "evidence": {
+      "LICENSE": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+    },
+    "license": "MPL-2.0"
+  },
+  "pub:drift@2.35.3": {
+    "evidence": {
+      "LICENSE": "31f84e4edff98f0238a5bef1c2ce754e401fbab149782f0ff4dc9b68fd086f75"
+    },
+    "license": "MIT"
+  },
+  "pub:drift_dev@2.35.2": {
+    "evidence": {
+      "LICENSE": "31f84e4edff98f0238a5bef1c2ce754e401fbab149782f0ff4dc9b68fd086f75"
+    },
+    "license": "MIT"
+  },
+  "pub:fake_async@1.3.3": {
+    "evidence": {
+      "LICENSE": "58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd"
+    },
+    "license": "Apache-2.0"
+  },
+  "pub:ffi@2.2.0": {
+    "evidence": {
+      "LICENSE": "0371d1da6a57fb791db29d29b95333429205f51f3cb2eb3a0c12d91838a38744"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:ffi_leak_tracker@0.1.2": {
+    "evidence": {
+      "LICENSE": "332f290333e64ed007b4f59aeeebd8fd3ceaadfbfa226a6cf2a3ab1583281624"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:file@7.0.1": {
+    "evidence": {
+      "LICENSE": "f6df86b1412172537273e8e80ee2fb8a66aa7307ce0b39ea5ddab47ca41b8c49"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:file_picker@13.3.2": {
+    "evidence": {
+      "LICENSE": "6278994817bd65fa32404e53c3a62a09d824d3f9a71f7fadcaca3e4f02641d66"
+    },
+    "license": "MIT"
+  },
+  "pub:file_picker_darwin@2.4.2": {
+    "evidence": {
+      "LICENSE": "12f7222de745bab3710ba88b59f33484ca423aa5e1deac9e56ed946706d5abab"
+    },
+    "license": "MIT"
+  },
+  "pub:file_picker_linux@2.0.3": {
+    "evidence": {
+      "LICENSE": "12f7222de745bab3710ba88b59f33484ca423aa5e1deac9e56ed946706d5abab"
+    },
+    "license": "MIT"
+  },
+  "pub:file_picker_platform_interface@4.2.0": {
+    "evidence": {
+      "LICENSE": "12f7222de745bab3710ba88b59f33484ca423aa5e1deac9e56ed946706d5abab"
+    },
+    "license": "MIT"
+  },
+  "pub:file_picker_web@4.2.0": {
+    "evidence": {
+      "LICENSE": "12f7222de745bab3710ba88b59f33484ca423aa5e1deac9e56ed946706d5abab"
+    },
+    "license": "MIT"
+  },
+  "pub:fixnum@1.1.1": {
+    "evidence": {
+      "LICENSE": "ff0b91d4f3c32b25cb6ec84985e8da89b0ba2a2b2f7eef353cda5e5423a20390"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:flutter_lints@6.0.0": {
+    "evidence": {
+      "LICENSE": "89519eca6f7b9529b35bdddd623a58c3af06a88c458dbd6531ddb4675acf75a9"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:flutter_secure_storage@11.2.0": {
+    "evidence": {
+      "LICENSE": "55dafb084270616f95b9bea53654adda8bdcad95c022a83c4cf8769073f829fa"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:flutter_secure_storage_darwin@0.4.3": {
+    "evidence": {
+      "LICENSE": "3754c516086c62307896512b68024837bee5d2bea42a55cfd03f7448b92b06c8"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:flutter_secure_storage_linux@3.0.3": {
+    "evidence": {
+      "LICENSE": "55dafb084270616f95b9bea53654adda8bdcad95c022a83c4cf8769073f829fa"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:flutter_secure_storage_platform_interface@2.1.1": {
+    "evidence": {
+      "LICENSE": "55dafb084270616f95b9bea53654adda8bdcad95c022a83c4cf8769073f829fa"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:flutter_secure_storage_web@2.1.1": {
+    "evidence": {
+      "LICENSE": "55dafb084270616f95b9bea53654adda8bdcad95c022a83c4cf8769073f829fa"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:flutter_secure_storage_windows@4.2.2": {
+    "evidence": {
+      "LICENSE": "55dafb084270616f95b9bea53654adda8bdcad95c022a83c4cf8769073f829fa"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:frontend_server_client@4.2.0": {
+    "evidence": {
+      "LICENSE": "2cfa3ee8e7512e6d44c854b986510810fadc815f93f890373b3a81c1b6ccd256"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:glob@2.2.0": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:graphs@2.3.2": {
+    "evidence": {
+      "LICENSE": "ea97a7558a7bd7cee4e2355f7529e3cbebb0dcbb546ddb9a90f10c9eb6b08da5"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:hooks@2.2.0": {
+    "evidence": {
+      "LICENSE": "21ae23b0b9ff67a2dc75ab085d1e8db8ac548c5faf370af17f28dd2ef3b52b7b"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:http@1.6.0": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:http_multi_server@3.2.3": {
+    "evidence": {
+      "LICENSE": "ff0b91d4f3c32b25cb6ec84985e8da89b0ba2a2b2f7eef353cda5e5423a20390"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:http_parser@4.1.2": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:image@4.12.0": {
+    "evidence": {
+      "LICENSE": "f3c17da84e0780e1c334325c73098257c32221d62498ed55ef3c1361904925aa",
+      "LICENSE-other.md": "dea0e9e446e57c0987d241d5471e47e7b66796fb286706ec993c3fa6696cb08e"
+    },
+    "license": "MIT AND BSD-3-Clause AND Apache-2.0"
+  },
+  "pub:io@1.1.0": {
+    "evidence": {
+      "LICENSE": "ea97a7558a7bd7cee4e2355f7529e3cbebb0dcbb546ddb9a90f10c9eb6b08da5"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:jni@1.1.2": {
+    "evidence": {
+      "LICENSE": "08a004aa8956c3cf3b24f7f69c966247233953e18e6afaa61191ea47b7eb70f6"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:jni_flutter@1.0.4+1": {
+    "evidence": {
+      "LICENSE": "b1fcb475d67817411f335ac92872507011e574c4cb29cfdaaf7707b75641932c"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:jni_util@1.0.0": {
+    "evidence": {
+      "LICENSE": "b1fcb475d67817411f335ac92872507011e574c4cb29cfdaaf7707b75641932c"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:json_annotation@4.12.0": {
+    "evidence": {
+      "LICENSE": "143839f62c9b7f88143ea9f688361c27050888acde7696b34e04414bd254fafc"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:leak_tracker@11.0.2": {
+    "evidence": {
+      "LICENSE": "08a004aa8956c3cf3b24f7f69c966247233953e18e6afaa61191ea47b7eb70f6"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:leak_tracker_flutter_testing@3.0.10": {
+    "evidence": {
+      "LICENSE": "08a004aa8956c3cf3b24f7f69c966247233953e18e6afaa61191ea47b7eb70f6"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:leak_tracker_testing@3.0.2": {
+    "evidence": {
+      "LICENSE": "08a004aa8956c3cf3b24f7f69c966247233953e18e6afaa61191ea47b7eb70f6"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:lints@6.1.0": {
+    "evidence": {
+      "LICENSE": "421fe78c3b5df297f8b4ab2c74f2450a274ee6d245a113091f6b9f90570af193"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:logging@1.3.0": {
+    "evidence": {
+      "LICENSE": "dfb09c74e29386cd3e2719f32d4995d59526179753931d31840757c77fbf2791"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:matcher@0.12.20": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:material_color_utilities@0.13.0": {
+    "evidence": {
+      "LICENSE": "d103f246ef4c18dab8af0c1dcf6a8af884e5cff554da7261a48ac43c17d98f2e"
+    },
+    "license": "Apache-2.0"
+  },
+  "pub:media_kit@1.2.6": {
+    "evidence": {
+      "LICENSE": "2e3000f38718f050869d57540c288c661a446f64df1ba4ea4764df552b04a331"
+    },
+    "license": "MIT"
+  },
+  "pub:media_kit_libs_android_video@1.3.8": {
+    "evidence": {
+      "LICENSE": "2e3000f38718f050869d57540c288c661a446f64df1ba4ea4764df552b04a331"
+    },
+    "license": "MIT"
+  },
+  "pub:media_kit_libs_ios_video@1.1.4": {
+    "evidence": {
+      "LICENSE": "a78baa721ad6f5c0b2d8fb0c6cfff835ad8ed90393cac0087a90e8813490f2bd"
+    },
+    "license": "MIT"
+  },
+  "pub:media_kit_libs_linux@1.2.1": {
+    "evidence": {
+      "LICENSE": "2e3000f38718f050869d57540c288c661a446f64df1ba4ea4764df552b04a331"
+    },
+    "license": "MIT"
+  },
+  "pub:media_kit_libs_macos_video@1.1.4": {
+    "evidence": {
+      "LICENSE": "a78baa721ad6f5c0b2d8fb0c6cfff835ad8ed90393cac0087a90e8813490f2bd"
+    },
+    "license": "MIT"
+  },
+  "pub:media_kit_libs_video@1.0.7": {
+    "evidence": {
+      "LICENSE": "2e3000f38718f050869d57540c288c661a446f64df1ba4ea4764df552b04a331"
+    },
+    "license": "MIT"
+  },
+  "pub:media_kit_libs_windows_video@1.0.11": {
+    "evidence": {
+      "LICENSE": "2e3000f38718f050869d57540c288c661a446f64df1ba4ea4764df552b04a331"
+    },
+    "license": "MIT"
+  },
+  "pub:media_kit_video@2.0.1": {
+    "evidence": {
+      "LICENSE": "2e3000f38718f050869d57540c288c661a446f64df1ba4ea4764df552b04a331"
+    },
+    "license": "MIT"
+  },
+  "pub:meta@1.19.0": {
+    "evidence": {
+      "LICENSE": "b71519245009a3b8f126196a5408ec031e216e8e0d985085958c6543f82a8a2a"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:mime@2.1.0": {
+    "evidence": {
+      "LICENSE": "ff15faa32a2e638107b7789592b14426162a75ba620044ee2340a20ec6ce5e73"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:native_toolchain_c@0.19.5": {
+    "evidence": {
+      "LICENSE": "aa81abb1ac43e40d2f5a606385edd37e974a5858d4109f7f439dd43d964487a7"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:node_preamble@2.0.2": {
+    "evidence": {
+      "LICENSE": "41997ee02074e3796e539b81b4501ed7d8bc1a620d11ef32cf56494e778461a9"
+    },
+    "license": "MIT AND BSD-3-Clause"
+  },
+  "pub:objective_c@9.6.2": {
+    "evidence": {
+      "LICENSE": "1cda25a8de6880c5338de0b4a06ee89e8537c213eb1379c16a4c035bfd198b5c"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:package_config@3.0.0": {
+    "evidence": {
+      "LICENSE": "0371d1da6a57fb791db29d29b95333429205f51f3cb2eb3a0c12d91838a38744"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:package_info_plus@10.2.2": {
+    "evidence": {
+      "LICENSE": "3b38d48befd0af70b892e13d10c9e34679416c24a9277f962629951c64d71f4c"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:package_info_plus_platform_interface@4.1.0": {
+    "evidence": {
+      "LICENSE": "3b38d48befd0af70b892e13d10c9e34679416c24a9277f962629951c64d71f4c"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:path@1.9.1": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:path_provider@2.1.6": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:path_provider_android@2.3.1": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:path_provider_foundation@2.6.0": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:path_provider_linux@2.2.2": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:path_provider_platform_interface@2.1.3": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:path_provider_windows@2.3.0": {
+    "evidence": {
+      "LICENSE": "89519eca6f7b9529b35bdddd623a58c3af06a88c458dbd6531ddb4675acf75a9"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:petitparser@7.1.0": {
+    "evidence": {
+      "LICENSE": "0be767174b97278f17da4923a74169e8645631f03ea3d8482ec3523c9b1a0dd3"
+    },
+    "license": "MIT"
+  },
+  "pub:platform@3.2.0": {
+    "evidence": {
+      "LICENSE": "143839f62c9b7f88143ea9f688361c27050888acde7696b34e04414bd254fafc"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:plugin_platform_interface@2.1.8": {
+    "evidence": {
+      "LICENSE": "89519eca6f7b9529b35bdddd623a58c3af06a88c458dbd6531ddb4675acf75a9"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:pool@1.5.3": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:posix@6.5.4": {
+    "evidence": {
+      "LICENSE": "aaf6271abd048deb3125828613f1797b7556472de6c7acd7103bd43e9cb6a84b"
+    },
+    "license": "MIT"
+  },
+  "pub:process@5.0.6": {
+    "evidence": {
+      "LICENSE": "5f018bbc25a55406d7a4e1d3229135439e315210b0050ca56dbb367a4934e85d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:pub_semver@2.2.1": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:pubspec_parse@1.7.0": {
+    "evidence": {
+      "LICENSE": "479bb84361ed3d6b78f55871c9ae5d6c8f15f49c2089e59fc1d6644d8b0ed32b"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:qr@3.0.3": {
+    "evidence": {
+      "LICENSE": "1d6c0bc8208cd835577eeb9195dc646f092728b62803abd60c404d984524abf7"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:qr_flutter@4.1.0": {
+    "evidence": {
+      "LICENSE": "1bc86cb2619634e54a97f88dd9c11fd99afcacd52c25bdf6f84c2700b4174203"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:recase@4.1.0": {
+    "evidence": {
+      "LICENSE": "389acee6b73f27ef83bdd997f32acc7dc12970c68fbc505284b7bf39d6d80bde"
+    },
+    "license": "BSD-2-Clause"
+  },
+  "pub:record_use@1.1.1": {
+    "evidence": {
+      "LICENSE": "1cda25a8de6880c5338de0b4a06ee89e8537c213eb1379c16a4c035bfd198b5c"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:safe_local_storage@2.0.7": {
+    "evidence": {
+      "LICENSE": "d4cfdb498601b2872c7a09d06c62f92f5c751261bdb6fc4ce436940c7ccac78a"
+    },
+    "license": "MIT"
+  },
+  "pub:shelf@1.4.3": {
+    "evidence": {
+      "LICENSE": "ff0b91d4f3c32b25cb6ec84985e8da89b0ba2a2b2f7eef353cda5e5423a20390"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:shelf_packages_handler@3.0.2": {
+    "evidence": {
+      "LICENSE": "b71519245009a3b8f126196a5408ec031e216e8e0d985085958c6543f82a8a2a"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:shelf_static@1.2.0": {
+    "evidence": {
+      "LICENSE": "ad6a71997da90924b2cfb1fb47ec46537f70faf469efe016168794ae45ed6888"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:shelf_web_socket@3.0.0": {
+    "evidence": {
+      "LICENSE": "ff0b91d4f3c32b25cb6ec84985e8da89b0ba2a2b2f7eef353cda5e5423a20390"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:source_gen@4.3.1": {
+    "evidence": {
+      "LICENSE": "ad6a71997da90924b2cfb1fb47ec46537f70faf469efe016168794ae45ed6888"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:source_map_stack_trace@2.1.2": {
+    "evidence": {
+      "LICENSE": "ad6a71997da90924b2cfb1fb47ec46537f70faf469efe016168794ae45ed6888"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:source_maps@0.10.14": {
+    "evidence": {
+      "LICENSE": "ff0b91d4f3c32b25cb6ec84985e8da89b0ba2a2b2f7eef353cda5e5423a20390"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:source_span@1.10.2": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:sqlite3@3.8.0": {
+    "evidence": {
+      "LICENSE": "67e5d73a3a0c6e41f33d688a672b1161bf7f16e04da9ae48a7a14f1ba7436a4d"
+    },
+    "license": "MIT"
+  },
+  "pub:sqlparser@0.45.1": {
+    "evidence": {
+      "LICENSE": "bec8c7a58f3e043a40123d332260048aeff40ebdcaf33bf8d497a3fea84b8f84"
+    },
+    "license": "MIT"
+  },
+  "pub:stack_trace@1.12.2": {
+    "evidence": {
+      "LICENSE": "ff0b91d4f3c32b25cb6ec84985e8da89b0ba2a2b2f7eef353cda5e5423a20390"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:stream_channel@2.1.4": {
+    "evidence": {
+      "LICENSE": "ff15faa32a2e638107b7789592b14426162a75ba620044ee2340a20ec6ce5e73"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:stream_transform@2.1.2": {
+    "evidence": {
+      "LICENSE": "ea97a7558a7bd7cee4e2355f7529e3cbebb0dcbb546ddb9a90f10c9eb6b08da5"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:string_scanner@1.4.1": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:sync_http@0.3.1": {
+    "evidence": {
+      "LICENSE": "b9b748d4dd6f725387bf69e96df4e4ebff167ae83547954242a731504d037644"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:synchronized@3.5.0": {
+    "evidence": {
+      "LICENSE": "6d07c6bb60afb906049d507e19fcc4c6b59e35c0dd0f8a7302e87b3fb0576900"
+    },
+    "license": "MIT"
+  },
+  "pub:term_glyph@1.2.2": {
+    "evidence": {
+      "LICENSE": "ea97a7558a7bd7cee4e2355f7529e3cbebb0dcbb546ddb9a90f10c9eb6b08da5"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:test@1.33.0": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:test_api@0.7.12": {
+    "evidence": {
+      "LICENSE": "ff1b9f0df9036c04be424b1e3ce12789bea880ad5ffc3a48e069ae2d40a087a4"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:test_api@0.7.15": {
+    "evidence": {
+      "LICENSE": "ff1b9f0df9036c04be424b1e3ce12789bea880ad5ffc3a48e069ae2d40a087a4"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:test_core@0.6.21": {
+    "evidence": {
+      "LICENSE": "ff1b9f0df9036c04be424b1e3ce12789bea880ad5ffc3a48e069ae2d40a087a4"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:typed_data@1.4.0": {
+    "evidence": {
+      "LICENSE": "ff15faa32a2e638107b7789592b14426162a75ba620044ee2340a20ec6ce5e73"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:universal_platform@1.1.0": {
+    "evidence": {
+      "LICENSE": "8a135e09d6288f03171b04f07f00eb5ee04e54f2f5e9c9b952f6adbd1de48c3f"
+    },
+    "license": "MIT"
+  },
+  "pub:unorm_dart@0.3.3": {
+    "evidence": {
+      "LICENSE": "8884fc22f0944465ab8fca4e934fef3db9ab2b3b14f95874f1d833aa75f81553"
+    },
+    "license": "MIT"
+  },
+  "pub:uri_parser@3.0.2": {
+    "evidence": {
+      "LICENSE": "2e3000f38718f050869d57540c288c661a446f64df1ba4ea4764df552b04a331"
+    },
+    "license": "MIT"
+  },
+  "pub:url_launcher@6.3.3": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:url_launcher_android@6.3.33": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:url_launcher_ios@6.4.2": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:url_launcher_linux@3.2.3": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:url_launcher_macos@3.2.6": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:url_launcher_platform_interface@2.3.2": {
+    "evidence": {
+      "LICENSE": "89519eca6f7b9529b35bdddd623a58c3af06a88c458dbd6531ddb4675acf75a9"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:url_launcher_web@2.4.3": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:url_launcher_windows@3.1.6": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:uuid@4.6.0": {
+    "evidence": {
+      "LICENSE": "ad3e5523e51004e94ba9ce728805b1b4242dbccdb65e62b523800e35a8a7cfdc"
+    },
+    "license": "MIT"
+  },
+  "pub:vector_math@2.4.0": {
+    "evidence": {
+      "LICENSE": "420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:vm_service@15.4.0": {
+    "evidence": {
+      "LICENSE": "ad6a71997da90924b2cfb1fb47ec46537f70faf469efe016168794ae45ed6888"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:wakelock_plus@1.8.2": {
+    "evidence": {
+      "LICENSE": "ebff92b2e4105e903605f70bac0030c20b7a1d9d43fd73f8b8aed08ab070fcb9"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:wakelock_plus_platform_interface@1.7.0": {
+    "evidence": {
+      "LICENSE": "1a95201dd1f509289fbbf929f72be2a25fd73c799697e30f5e7782a9cabf5102"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:watcher@1.2.1": {
+    "evidence": {
+      "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:web@1.1.2": {
+    "evidence": {
+      "LICENSE": "aa913ff50d7542eb8cc35b9f48a80928ac6819ba9057f85d424655e3e8dc271c"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:web_socket@1.0.1": {
+    "evidence": {
+      "LICENSE": "cbe822ef3446af4366b2b82c48b0979d0b12865edfe74c22b9aa617fc362d6e0"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:web_socket_channel@3.0.3": {
+    "evidence": {
+      "LICENSE": "a4b5d7d31626e90b77e8696f1c47643aa31f52e17c1907c1ab60b068110e6e10"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:webdriver@3.2.0": {
+    "evidence": {
+      "LICENSE": "74cb46b123c9fa918ea8e0a0f5be736a1cd661edf145ccc723dc7ce30324ebab"
+    },
+    "license": "Apache-2.0"
+  },
+  "pub:webkit_inspection_protocol@1.2.1": {
+    "evidence": {
+      "LICENSE": "eb9a6b9672316612439514f10b5d3b24bcd140313c96a73c370bb7b07897a8cd"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:win32@6.4.0": {
+    "evidence": {
+      "LICENSE": "87ef8bccdd619f2345ba5b9026cf1d6cccb305e36ab83849a8a3af9293abde7e"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:windows_file_picker@2.0.1": {
+    "evidence": {
+      "LICENSE": "12f7222de745bab3710ba88b59f33484ca423aa5e1deac9e56ed946706d5abab"
+    },
+    "license": "MIT"
+  },
+  "pub:xdg_directories@1.1.0": {
+    "evidence": {
+      "LICENSE": "89519eca6f7b9529b35bdddd623a58c3af06a88c458dbd6531ddb4675acf75a9"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "pub:xml@7.1.0": {
+    "evidence": {
+      "LICENSE": "0be767174b97278f17da4923a74169e8645631f03ea3d8482ec3523c9b1a0dd3"
+    },
+    "license": "MIT"
+  },
+  "pub:yaml@3.1.4": {
+    "evidence": {
+      "LICENSE": "d47b93335401b052d79a2f5a3710e4cf7b5aed782faedf84d40fbdd6eb934ec7"
+    },
+    "license": "MIT"
+  },
+  "pub:yaml_edit@2.2.4": {
+    "evidence": {
+      "LICENSE": "021c41b9b081664f6ee181aaf4e03602c51591204dabe9ac8c8d736f0965b851"
+    },
+    "license": "BSD-3-Clause"
+  }
+}

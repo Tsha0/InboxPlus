@@ -6,21 +6,25 @@ security and lifecycle rules in [AGENTS.md](AGENTS.md#code-review-rules).
 
 ## Setup
 
-Use an Apple silicon Mac with macOS 15 or later and Swift 6.2 or newer. See the
-[README requirements](README.md#requirements) for the development toolchain and the additional
-Python, CMake and Rust tools used by runtime and bundle builds.
-
-Run commands from the repository root:
+The primary development app is Flutter. Install Flutter **3.47.9** (Dart **3.13.7**), Go **1.27.3**,
+and the native tools for your target in [README requirements](README.md#requirements).
+Run from the repository root:
 
 ```bash
-swift build
-swift test
-swift run InboxPlus
+cd apps/inboxplus_flutter
+flutter pub get --enforce-lockfile
+flutter run -d macos
 ```
 
-Without a bundled runtime or prepared profile, the app opens an empty inbox without connecting to
-a network. For profile setup and real-runtime development, follow [Developing](README.md#developing).
-For a double-clickable app, use [Build from source](README.md#build-from-source).
+Select a device or another desktop target with `flutter devices`. Each runner builds its embedded
+connector library; it does not start a homeserver or a separate bridge service. Keep credentials,
+drafts and test data inside isolated test profiles. Do not open a real account or the real macOS
+Messages database merely to verify a build.
+
+The previous Swift application and packaging pipeline are retained during migration. On macOS,
+`swift build` and `swift test` still verify those targets; `swift run InboxPlus` launches the old app.
+`Scripts/build-app.sh` packages that old app, not the Flutter app. Do not confuse their test or
+release results.
 
 ## Scope and architecture
 
@@ -28,8 +32,11 @@ For a double-clickable app, use [Build from source](README.md#build-from-source)
   separate unrelated cleanup or broad formatting from behavior changes.
 - Use the [module overview](README.md#how-it-fits-together) and `Package.swift` to find the owning
   target. Preserve the dependency boundaries in `AGENTS.md`.
-- UI and feature code use `MessagingGateway`. Put Matrix-specific handling in `InboxPlusMatrix`;
-  test feature behavior with the existing fake gateway and test support.
+- Flutter views use `InboxUiController`; the app controller owns state and persistence. Keep the
+  encrypted Drift schema in `packages/inboxplus_storage` and network implementations in
+  `native/connectors`. The C ABI is account-scoped; never put network secrets in UI models or logs.
+- In the retained Swift code, UI and features use `MessagingGateway`. Put Matrix-specific handling
+  in `InboxPlusMatrix`; test feature behavior with existing gateway fakes.
 - Keep bridge protocol models and catalog data in `InboxPlusBridge`. Installation, configuration
   and interaction with real bridge processes belong in `InboxPlusBridgeService`.
 - Do not add speculative compatibility shims, dependencies or abstractions for hypothetical future
@@ -38,8 +45,8 @@ For a double-clickable app, use [Build from source](README.md#build-from-source)
 
 ## Code style
 
-- Match the surrounding Swift style, including indentation, wrapping and declaration organization.
-  There is currently no repository-wide formatter configured; avoid bulk reformatting.
+- Match surrounding style. Format Dart with `dart format` and Go with `gofmt`; avoid unrelated
+  Swift formatting changes.
 - Use names that convey domain meaning, such as `pendingSend` or `profileDirectory`. Avoid unclear
   abbreviations and redundant type suffixes.
 - Prefer editing existing files. Add a file when introducing a distinct component, not just to wrap
@@ -52,9 +59,8 @@ For a double-clickable app, use [Build from source](README.md#build-from-source)
   that cannot happen. Keep sensitive values out of logs and error descriptions.
 - Add comments only when the reason or constraint is non-obvious. Remove obsolete comments and dead
   code touched by the change; do not narrate obvious assignments or control flow.
-- Reuse the existing UI controls and conventions in
-  [InboxPlusTheme.swift](Sources/InboxPlusUI/InboxPlusTheme.swift) and
-  [ViewStyling.swift](Sources/InboxPlusUI/ViewStyling.swift) before adding new styling.
+- Reuse the Flutter theme and controls in `apps/inboxplus_flutter/lib/ui`. For retained Swift UI,
+  use `InboxPlusTheme.swift` and `ViewStyling.swift` before adding styling.
 
 ## Verification
 
@@ -64,6 +70,10 @@ Document checks you could not run and why; do not present an untested path as ve
 
 | Change | Local verification |
 | --- | --- |
+| Flutter application or UI | `flutter analyze` and `flutter test` inside `apps/inboxplus_flutter`; inspect affected desktop and mobile states |
+| Encrypted storage | `dart analyze` and `dart test` inside `packages/inboxplus_storage` |
+| Embedded connectors | `go mod verify` and `go test ./...` inside `native/connectors`; `build.sh host` for the C ABI |
+| Native runners or packaging | Build the affected Flutter target on its native host; an unsigned build is not installation or signing verification |
 | Swift behavior | Relevant tests via `swift test --filter <test-name-or-pattern>`; `swift test` for the default suite |
 | Module dependencies or shared contracts | `swift build --build-tests` and `swift test` |
 | UI behavior or layout | Relevant tests plus visual inspection of affected states; include screenshots or a recording in the issue description |
@@ -71,6 +81,10 @@ Document checks you could not run and why; do not present an untested path as ve
 | Icons, brand marks or dependency inventory | Regenerate affected outputs using the commands below and inspect the diff |
 | Runtime integration | Relevant runtime tests; opt-in real-runtime tests when needed, clearly distinguished from fixture coverage |
 | Documentation only | Check links, paths and commands against the repository, and run `git diff --check` |
+
+For Flutter and storage changes, run `dart format --output=none --set-exit-if-changed lib test`.
+Run the storage package's tests separately: the Flutter app does not
+automatically run a path dependency's own suite. Native Cgo tests require a C compiler, not just Go.
 
 Add a regression test for a bug fix and tests for new behavior when practical. Follow nearby test
 patterns, use existing fixtures and fakes, and test observable behavior rather than duplicating the
@@ -84,6 +98,26 @@ in a separate invocation. To use the same arrangement locally:
 swift test --skip InboxPlusUITests
 swift test --skip-build --filter InboxPlusUITests --no-parallel
 ```
+
+For desktop visual comparisons on macOS, quit the two comparison apps and run
+`python3 Scripts/build-desktop-comparison.py` with the toolchains above on `PATH` (or set
+`FLUTTER_BINARY`). It builds `build/desktop-parity/Inbox+ reference.app` from the retained Swift UI
+and `Inbox+v2 comparison.app` from the debug-only Flutter fixture entry. Both use
+`Tests/Fixtures/desktop-parity.json`; the reference has separate preferences and the Flutter app
+uses a temporary encrypted store and fake connectors. Compare their inbox, contacts, transcript,
+Settings, light/dark themes and window sizes through computer control. The normal app entry never
+loads these fixtures. No live network account or real Messages database is needed.
+
+In the debug macOS comparison app, **F8** exercises native notification activation for the synthetic
+Weekend plans conversation. It uses the same pending-route handoff as a notification response,
+without posting a system notification or requesting permission. The native test entry accepts only
+debug comparison bundle identities. Verify navigation from Settings or Contacts and preservation of
+existing drafts; this fixture check does not establish OS notification delivery or permission behavior.
+
+When building `lib/desktop_preview.dart` directly, use
+`--dart-define=INBOXPLUS_PREVIEW_NOTIFICATION_STATUS=denied` or `not_determined` to inspect permission
+guidance, or `--dart-define=INBOXPLUS_PREVIEW_NOTIFICATION_SOUND=false` for blocked sounds. These
+fixture values do not read or change the operating system's notification permissions.
 
 The default Swift suite does not require live accounts or a homeserver. Real Synapse tests are
 opt-in because they download dependencies and start processes:
@@ -108,7 +142,30 @@ enough for slower CI runners: they guard against hangs, not assert developer-mac
 
 ### Packaging checks
 
-These commands mirror the packaging-script checks in CI:
+Build the affected Flutter target from `apps/inboxplus_flutter` with `flutter build macos`,
+`flutter build windows`, `flutter build linux`, `flutter build apk`, or
+`flutter build ios --no-codesign`. Android requires NDK **28.2.13676358**. Windows needs Git Bash,
+Python 3 and MinGW for Go/cgo in addition to Visual Studio. Linux needs the packages listed in the
+README, including GLib 2.66+, WebKitGTK 4.1 and Ayatana AppIndicator; its media plugin uses the system allocator rather than fetching
+mimalloc. Platform SDKs and signing remain target-specific even though the UI is shared.
+
+The Windows runner prepares media-kit archives with `Scripts/verify-media-artifacts.py` before
+CMake can extract them. Never replace that SHA-256 check with the dependency's MD5-only check.
+
+For Flutter desktop archives, use Python **3.12** and run
+`python3 Scripts/package-flutter-desktop.py --target macos` (or `windows` / `linux`) from the
+repository root after the native release build. `--bundle` selects a non-default release directory;
+`--output` selects the archive directory. The script rejects missing, stale, debug or incompatible
+runtime files and verifies macOS signatures before packaging. See
+[desktop development packages](README.md#desktop-development-packages) for outputs and limitations.
+
+Each desktop CI job runs `test_flutter_desktop.py`, packages its native build and uploads the
+archive plus checksum. Upload the ZIP or tar archive rather than the raw app directory: GitHub
+artifact uploads do not preserve executable permissions or framework symlinks. Extract and verify
+the full runtime when changing the archive format; fixture tests alone do not prove a native app
+launches. Signing, notarization, installers and automatic updates are separate release work.
+
+The following checks protect the retained Swift packaging pipeline and shared packaging scripts:
 
 ```bash
 python3 -m unittest discover -s Tests/Packaging -v
@@ -185,17 +242,39 @@ Edit the source and regenerate the corresponding output. Never hand-edit generat
 | Source change | Generated output |
 | --- | --- |
 | Brand icons in `Scripts/brand-icons` | `Sources/InboxPlusUI/PlatformGlyphPaths.swift` |
-| Logo at `docs/assets/inboxplus-logo.png` | `Resources/AppIcon.icns` |
-| Dependencies or runtime inventory | `docs/sbom.cdx.json` |
+| Canonical Swift brand paths | `apps/inboxplus_flutter/lib/ui/platform_glyphs.dart` |
+| `EmojiCatalog` in `Sources/InboxPlusUI/ReactionPicker.swift` | `apps/inboxplus_flutter/assets/reaction_emoji.json` |
+| Logo at `docs/assets/inboxplus-logo.png` | `Resources/AppIcon.icns` and Flutter Android/iOS/Windows/Linux launcher icons |
+| Dependency lockfiles, toolchains or license reviews | `docs/sbom.cdx.json` and `apps/inboxplus_flutter/assets/third_party_notices.txt` |
+| Drift schema | `packages/inboxplus_storage/lib/src/local_store.g.dart` |
 
 ```bash
 swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/InboxPlusUI/PlatformGlyphPaths.swift
+python3 Scripts/generate-flutter-glyphs.py
+python3 Scripts/generate-flutter-emoji.py
 swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns
-swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json
+python3 -m pip install Pillow==10.4.0
+python3 Scripts/generate-platform-icons.py
+python3 Scripts/generate-sbom.py
+python3 Scripts/generate-third-party-notices.py
+(cd packages/inboxplus_storage && dart run build_runner build --delete-conflicting-outputs)
 ```
 
 Include updated outputs with their source changes and inspect the generated diff. CI regenerates
-all three and fails if anything drifts.
+the icons, combined SBOM, bundled notices and Drift source and fails if anything drifts. Resolve
+both pub lockfiles and run `go -C native/connectors mod download` before generating notices; set
+`PUB_CACHE` and `GO_BINARY` when using custom toolchain/cache locations. Review license evidence in
+`docs/dependency-licenses.json` whenever a locked package version changes. Go's `h1:` module-content
+checksums are not raw archive SHA-256 hashes; preserve that distinction in the SBOM.
+
+`generate-flutter-glyphs.py --check` verifies the Flutter brand paths against the canonical Swift
+output. `generate-platform-icons.py --check` verifies the Flutter launcher and in-app logo assets without rewriting them.
+It compares decoded pixels and icon dimensions so PNG metadata differences do not create false
+failures. Use Python 3.9 or later with Pillow **10.4.0**; CI uses Python 3.12. The macOS icon still
+comes from the existing Swift generator above.
+
+`generate-flutter-emoji.py --check` runs on macOS and verifies the shared emoji names and categories
+against the retained Swift picker. Other platforms bundle the generated catalog without requiring Swift.
 
 ## Pull requests
 
@@ -203,16 +282,23 @@ all three and fails if anything drifts.
 Approvals are not required for this solo repository, but CI is. Use a focused branch such as
 `codex/my-change`.
 
-Three checks must pass before merging:
+Required check names depend on the protected branch configuration. CI defines:
 
 | Check | What it protects |
 | --- | --- |
-| **Build and test** | Swift build and tests, packaging-script checks and whitespace checks |
+| **Flutter / macos, linux, windows** | Shared Dart checks, encrypted storage and connector tests, native desktop build and development archive |
+| **Flutter / Android** | Deferred native Android build; manual opt-in only |
+| **Flutter / iOS** | Deferred unsigned iOS build; manual opt-in only |
+| **Build and test** | Retained Swift build and tests, packaging-script checks and whitespace checks |
 | **Generated files are current** | Brand marks, app icon and SBOM match their sources |
-| **Package the app** | The app bundle assembles, its signature verifies and its CLI runs |
+| **Package the app** | Retained Swift bundle assembles, its signature verifies and its CLI runs |
 
-The executable definitions live in [ci.yml](.github/workflows/ci.yml). Keep this guide's commands
-aligned when changing that workflow.
+The executable definitions live in [ci.yml](.github/workflows/ci.yml) and
+[flutter-ci.yml](.github/workflows/flutter-ci.yml). Keep this guide's commands aligned when changing
+those workflows.
+
+The Flutter workflow runs desktop jobs by default. Android and iOS jobs remain available only
+through manual dispatch with `mobile_builds` enabled; leave this off during the desktop milestone.
 
 Use a short, descriptive title. The PR description should explain the problem and resulting
 behavior, list checks and results, and identify untested paths or migration concerns when relevant.

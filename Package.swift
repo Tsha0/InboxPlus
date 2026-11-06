@@ -6,7 +6,9 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .executable(name: "InboxPlus", targets: ["InboxPlusApp"]),
+        .executable(name: "InboxPlusDesktopReference", targets: ["InboxPlusDesktopReference"]),
         .library(name: "InboxPlusRuntime", targets: ["InboxPlusRuntime"]),
+        .library(name: "InboxPlusIMessage", targets: ["InboxPlusIMessage"]),
         .executable(name: "InboxPlusRuntimeCLI", targets: ["InboxPlusRuntimeCLI"]),
     ],
     dependencies: [
@@ -17,6 +19,11 @@ let package = Package(
     ],
     targets: [
         .executableTarget(name: "InboxPlusRuntimeBundler", dependencies: ["InboxPlusRuntime", "InboxPlusBridgeService"]),
+        .executableTarget(
+            name: "InboxPlusDesktopReference",
+            dependencies: ["InboxPlusCore", "InboxPlusGateway", "InboxPlusFeatures", "InboxPlusUI"],
+            path: "Tests/DesktopReference"
+        ),
         .target(name: "InboxPlusCore"),
         .target(name: "InboxPlusGateway", dependencies: ["InboxPlusCore"]),
         .target(name: "InboxPlusFeatures", dependencies: ["InboxPlusCore", "InboxPlusGateway", "InboxPlusBridge"]),

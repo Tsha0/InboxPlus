@@ -57,6 +57,21 @@ private func unreadCounts(in snapshot: MessagingSnapshot) -> [String: Int] {
     #expect(try IMessageStore(url: url).unreadCounts(after: [:]) == [chatA: 2, chatB: 1])
 }
 
+@Test func savedReadMarkersStayPrivate() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let file = directory.appendingPathComponent("profile/imessage-read-markers.json")
+    let store = IMessageReadMarkerStore(fileURL: file)
+
+    try store.save([chatA: 42])
+
+    #expect(try store.load() == [chatA: 42])
+    let directoryAttributes = try FileManager.default.attributesOfItem(atPath: file.deletingLastPathComponent().path)
+    let fileAttributes = try FileManager.default.attributesOfItem(atPath: file.path)
+    #expect((directoryAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
+    #expect((fileAttributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+}
+
 @Test func unreadMessagesUpToAChatsReadMarkerAreNotCounted() throws {
     let url = try makeDatabase(fixture)
     defer { cleanUp(url) }

@@ -18,8 +18,7 @@ permissions:
 jobs:
   test:
     name: Build and test
-    # InboxPlus is macOS-only: AppKit, SwiftUI, CryptoKit, Keychain and the Messages database all are.
-    # There is no Linux job to add because there is nothing that would compile there.
+    # The retained Swift targets and macOS Messages adapter require Apple's SDKs.
     runs-on: macos-latest
     timeout-minutes: 45
 
@@ -106,7 +105,7 @@ jobs:
         run: swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns
 
       - name: Regenerate the bill of materials
-        run: swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json
+        run: python3 Scripts/generate-sbom.py
 
       - name: Fail if anything drifted
         run: |
@@ -114,7 +113,7 @@ jobs:
             echo "::error::A generated file is out of date. Regenerate and commit:"
             echo "  swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/InboxPlusUI/PlatformGlyphPaths.swift"
             echo "  swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns"
-            echo "  swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json"
+            echo "  python3 Scripts/generate-sbom.py"
             git diff --stat
             exit 1
           fi

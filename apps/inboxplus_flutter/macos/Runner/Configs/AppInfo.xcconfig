@@ -1,0 +1,4 @@
+PRODUCT_NAME = Inbox+v2
+PRODUCT_MODULE_NAME = Runner
+PRODUCT_BUNDLE_IDENTIFIER = com.inboxplus.app
+PRODUCT_COPYRIGHT = Copyright © 2026 Inbox+. All rights reserved.

@@ -4,271 +4,244 @@
   <img src="docs/assets/inboxplus-logo.png" alt="Inbox+ logo" width="320">
 </p>
 
-Inbox+ is a local-first universal messaging inbox for macOS. It brings conversations from several
-networks into one native app, and it does it without an operated cloud: the application, a
-local Matrix homeserver, the bridge processes, your credentials, the message database and the media
-cache all live on your Mac.
+Inbox+ is a local-first messaging inbox being migrated to Flutter for Android, iOS, macOS,
+Windows and Linux. Each device runs its own interface, encrypted SQLite database and network
+connectors. A phone does not need a Mac, a shared server or an Inbox+ cloud account.
 
-It is conversation-focused. There are no feeds, posts, stories or calls.
+The app focuses on conversations, attachments and contacts. There are no feeds, stories or calls.
 
 ## Status
 
-**Current version: 0.8.5 — an early release.** On a Mac with a
-prepared profile it connects a real account, loads real conversations, sends and receives, renders
-media, and supervises prepared network bridges alongside the homeserver. Opening Inbox+ starts the
-local runtime automatically; quitting stops the runtime it started. A runtime started separately
-in a terminal remains under your control.
+The Flutter app is a development build, version **0.9.0+112**. The five platform runners share Dart
+application code and an embedded Go connector library. Platform builds, fixture tests and live
+network verification are separate checks: a passing build does not establish that a real account
+can sign in or send messages. New Flutter connectors have not been certified with live accounts.
 
-Conversation settings and avatar updates are kept out of chat history, so syncing metadata does
-not appear as messages.
+Current implementation and verification focus on **macOS, Windows and Linux**. Android and iOS
+scaffolding is retained, but mobile implementation and design are deferred. Desktop and mobile
+select separate layouts while sharing application logic, encrypted storage and connector contracts.
 
-Inbox+ keeps a recent window, not the full history: each conversation opens on its latest 50
-messages, and older history stays on the network (an Instagram chat links to it). The local
-homeserver drops messages after 7 days, which Settings → Storage can change to anywhere from a
-day to a year, and media nobody has opened after 30 days.
-
-Local builds are ad-hoc signed but not notarized. Only Instagram has been exercised with a live
-account; broader live-network certification and updated performance validation remain outstanding.
-
-## Download
-
-Requires an Apple silicon Mac with macOS 15 or later.
-
-1. Download the `InboxPlus-<version>-<build>.zip` file from the
-   [latest release](https://github.com/Tsha0/InboxPlus/releases/latest). The other files are for
-   the app's updater and for verification.
-2. Unzip it and drag **Inbox+.app** into **Applications**.
-3. Open Inbox+. The first time, macOS says it could not verify the app, because Inbox+ is not
-   notarized by Apple. Click **Done**, open **System Settings → Privacy & Security**, and click
-   **Open Anyway** next to Inbox+.
-4. For iMessage, add Inbox+ to **System Settings → Privacy & Security → Full Disk Access**.
-
-On first launch Inbox+ prepares its local runtime by itself. After that it updates itself: when a
-new version is out, an update button appears above Settings, or choose
-**Inbox+ → Check for Updates…**. Updates download only what changed, and steps 3 and 4 are not
-needed again.
-
-## Development profile compatibility
-
-Inbox+ uses the app identity `com.inboxplus.app`, the runtime root
-`~/Library/Application Support/Inbox+/DeveloperRuntime`, and `INBOXPLUS_` environment variables.
-Profiles from earlier app builds are not automatically migrated. Keep earlier profile data backed
-up and grant macOS permissions to Inbox+ again.
+The [published releases](https://github.com/Tsha0/InboxPlus/releases/latest) are still the previous
+macOS application, version 0.8.5. Swift sources and the old packaging workflow remain in the
+repository while migration and existing-profile handling are verified. The Flutter app does not
+start Synapse or bridge processes.
 
 ## Requirements
 
-- Apple silicon Mac, macOS 15 or later
-- Swift 6.2 toolchain or newer (developed against Swift 6.3 / Xcode 26.5)
-- Homebrew CPython 3.12 — for manual development profiles; the installed app bundles Python
-- `cmake` (`brew install cmake`) and Rust/Cargo — for building the bundled runtime
+Use **Flutter 3.47.9** (Dart 3.13.7) and **Go 1.27.3**. The Go build refuses other toolchain versions;
+set `GO_BINARY` if the pinned executable is not called `go`. Commit both pub lockfiles and `go.sum`.
+All connectors are built from pinned source dependencies rather than downloaded bridge executables.
+
+Build each target on a supported host with its native tools:
+
+| Target | Host and additional tools |
+| --- | --- |
+| Android | macOS, Linux or Windows; Android SDK, JDK 17+, NDK **28.2.13676358**, Python 3, Bash and C compiler |
+| iOS | macOS; Xcode, iOS SDK, CocoaPods **1.16.2**; signing and a provisioning profile for installation |
+| macOS | macOS 15+; Xcode, Swift 6.2+, CocoaPods **1.16.2** and C compiler |
+| Windows (x64) | Windows; Visual Studio desktop C++ tools, CMake, Python 3, Git Bash and MinGW GCC for Go/cgo |
+| Linux | Linux; Clang/GCC, CMake, Ninja, pkg-config, GTK 3, libsecret, libmpv, WebKitGTK 4.1 and Ayatana AppIndicator development packages |
+
+On Debian/Ubuntu, install Linux native dependencies with:
+
+```bash
+sudo apt-get install clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libmpv-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+```
+
+These are build-machine requirements. A device running the packaged app does not install Flutter,
+Go, Python, Synapse or a separate connector service.
 
 ## Build from source
 
-Build a real, double-clickable `Inbox+.app` and put it in `/Applications`:
+From the repository root:
 
 ```bash
-Scripts/build-app.sh --install
+cd apps/inboxplus_flutter
+flutter pub get --enforce-lockfile
+flutter run -d macos
 ```
 
-Open `/Applications/Inbox+.app` from Finder. The app bundles Python, Synapse, libolm, and the
-supported bridge binaries. On first launch it prepares a `default` profile automatically and
-starts the local runtime; no separate runtime terminal or Homebrew Python installation is needed
-to use the installed app. Quit Inbox+ to stop the runtime it started.
+Use `-d windows`, `-d linux`, or a device ID from `flutter devices` for another target. The native
+runner builds and bundles the connector library. Go, Bash and the relevant C compiler must be on
+its environment's search path; an IDE launched before a toolchain installation may need restarting.
 
-With exactly one prepared profile, Inbox+ selects it automatically. With several, set
-`INBOXPLUS_PROFILE` to select one.
+Release build commands, run inside `apps/inboxplus_flutter`:
 
-The default build is **ad-hoc signed**. Releases are built with `Scripts/package-release.sh`, signed
-with one long-lived certificate — self-signed, or an Apple Developer ID for notarization. See
-[release and signing setup](docs/updates.md).
+```bash
+flutter build macos --release
+flutter build windows --release
+flutter build linux --release
+flutter build apk --release
+flutter build ios --release --no-codesign
+```
 
-Signed releases use Sparkle for app updates. When an update is available, a small update button
-appears directly above Settings in the left sidebar. Click it to open the update installer, or use
-**Inbox+ → Check for Updates…**. Scheduled checks and downloads run in the background; a downloaded
-update can install on quit. Update restarts wait for the app-owned messaging runtime to stop and
-are postponed while a draft, staged attachment, or pending send needs attention.
+Run only the command supported by the build host. The iOS command verifies an unsigned build;
+installation and App Store distribution still need Apple's signing setup. Android release signing,
+desktop installers, notarization, store publishing and automatic updates require release work beyond
+these development builds. The previous Swift Sparkle updater is not part of the Flutter app.
 
-Development builds do not check for updates by default. See [release and signing setup](docs/updates.md)
-for the one-time Sparkle key setup, GitHub Releases, and GitHub Pages feed publishing.
+Each desktop target has its own native runner and release artifact: a macOS `.app`, a Windows
+executable with its bundled libraries, or a Linux executable with its bundled libraries. Build and
+test each on its native host; the desktop CI matrix uses separate macOS, Windows and Linux runners.
+Installers and OS signing are additional release steps, not outputs shared between platforms.
 
-> Set `INBOXPLUS_SIGNING_IDENTITY` before building to sign with a real or self-signed certificate.
-> Worth doing: macOS ties Full Disk Access and Automation grants to a code identity, and an ad-hoc
-> signature's identity changes on every build — which is why permissions are re-requested after
-> every rebuild.
+For connector-only development, `native/connectors/build.sh host` builds a shared library without
+launching the app. `INBOXPLUS_CONNECTORS_LIBRARY` can point a development app at that library.
+
+## Desktop development packages
+
+After building a desktop release, run its packaging command from the repository root with
+Python **3.12**:
+
+```bash
+python3 Scripts/package-flutter-desktop.py --target macos
+python3 Scripts/package-flutter-desktop.py --target windows
+python3 Scripts/package-flutter-desktop.py --target linux
+```
+
+Run the command for the target you built. Packages go to `build/flutter-desktop`, with the version,
+build number, OS and architecture in their names, plus a `.sha256` checksum file. Each archive
+contains an `Inbox+v2` folder with the full runtime, bundled dependency notices, `LICENSE`,
+`sbom.cdx.json` and `build-info.json`. The desktop CI jobs also produce these archives.
+
+| Platform | Archive | After extraction |
+| --- | --- | --- |
+| macOS | `.zip` | Open `Inbox+v2/Inbox+v2.app`; Finder or `ditto -x -k` preserves its framework links |
+| Windows | `.zip` | Open `Inbox+v2/InboxPlus.exe`; keep the DLLs and data folder beside it |
+| Linux | `.tar.gz` | Extract with `tar -xzf`, then run `Inbox+v2/InboxPlus`; keep the lib and data folders beside it |
+
+The macOS development app is ad-hoc signed, without notarization. These packages do not install the
+app or provide automatic updates. Linux still requires the GTK, libsecret, libmpv, WebKitGTK and
+Ayatana AppIndicator system libraries. Windows C++ runtime prerequisites and clean-machine
+installation remain to verify. Packaging fixtures do not establish native Windows/Linux execution.
+
+## Networks
+
+| Network | Device-local implementation | Sign-in and limitations |
+| --- | --- | --- |
+| WhatsApp | whatsmeow Go library | Link a device using a QR code or pairing code |
+| Telegram | gotd MTProto client | Your Telegram API ID/hash, phone, code and optional two-step password; no secret chats |
+| Instagram | mautrix-meta's instameow library | Network-owned sign-in page in an ephemeral browser where the platform adapter supports it |
+| Facebook Messenger | mautrix-meta's messagix library | Ephemeral Facebook sign-in; protected end-to-end encrypted chats are not yet supported |
+| iMessage | Local macOS Messages adapter | macOS only; explicit Full Disk Access and Automation permission |
+
+Instagram and Messenger web sign-in is implemented on macOS, iOS and Linux. Android and Windows
+currently leave those networks unavailable because their adapters do not yet provide the required
+non-persistent sign-in environment. Windows builds currently support x64.
+
+The interface advertises only capabilities implemented by a connector and its device adapter.
+Unavailable authentication methods and unsupported operations must explain their limitation.
+Link accounts separately on each device; local storage does not synchronize Inbox+ preferences,
+drafts or contacts between devices. Existing network accounts still synchronize through their own
+network, subject to that network's history and linked-device rules.
+
+Mobile operating systems can suspend applications. This architecture does not provide an always-on
+background server or a cross-device notification relay. Local notification delivery depends on the
+app receiving events and on the device's permission and lifecycle rules.
 
 ### iMessage
 
-iMessage is read from the local Messages database rather than bridged, so it needs a permission
-rather than a password:
+Only macOS exposes the local Messages database and Apple-event sending used by Inbox+.
+Connecting iMessage explicitly asks the user to grant Full Disk Access in System Settings; sending
+may also prompt for Automation control of Messages. There is no Mac relay for other platforms.
+New message can search this Mac's Contacts when access is allowed. Choose a phone number or email
+before continuing; opening a conversation does not send a message. Manual address entry remains
+available without Contacts access.
 
-1. **System Settings → Privacy & Security → Full Disk Access**
-2. Add `/Applications/Inbox+.app`
-3. **Quit and reopen the app** — macOS only applies the grant to a newly launched process
+## Development profile compatibility
 
-Sending prompts separately for Automation control of Messages the first time. Inbox+ also asks for
-Contacts once, to show names instead of phone numbers; without it, numbers and addresses are shown.
-With Contacts, a one-to-one chat with someone who isn't in them and whom you have never replied to
-is listed under **Unknown senders** rather than in the inbox. Replying, or linking the chat to a
-person in Inbox+, moves it back.
+The application identity remains `com.inboxplus.app`. Existing macOS runtime profiles remain at
+`~/Library/Application Support/Inbox+/DeveloperRuntime`; their Keychain identifiers must not be
+changed or their data silently replaced. The encrypted Flutter store is application-owned data,
+not a new reader for Synapse or Matrix SDK database files.
+
+With one existing macOS profile, the app selects it and creates its encrypted store in that
+profile's `flutter` subdirectory. With several profiles, set `INBOXPLUS_PROFILE` explicitly; an
+ambiguous choice stops startup. `INBOXPLUS_RUNTIME_ROOT` can select an existing absolute root.
+On other systems, profiles live in the OS application-support directory.
+
+iOS keys use a stable profile identity. When the operating system relocates an app container,
+saved attachment paths move with the restored profile without replacing its database or key.
+
+On first open, saved contacts and conversation choices (favorites, unread overrides, mutes and
+hidden chats) import in one database transaction. The original files remain intact. Accounts need
+reconnecting with the new device-local connectors, and saved remote identities need relinking;
+previous Matrix message history, credentials and staged files stay in the original profile.
+A missing key, corrupt store, unsupported schema or failed import stops with an error and keeps the
+data instead of substituting an empty profile. Keep the previous app and profile until the new
+account connections and imported choices are verified.
+
+## How it fits together
+
+```text
+apps/inboxplus_flutter          shared Flutter interface and application controller
+  lib/ui                       responsive inbox, conversations, contacts and settings
+  lib/connectors               C ABI worker isolate; normalized account-scoped events
+  lib/platform                 credential store, private files and native method channel
+  android/ios/macos/windows/linux   platform permissions, authentication and lifecycle
+packages/inboxplus_storage      encrypted Drift/SQLite records, drafts and durable outbox
+native/connectors              embedded Go network clients, encrypted connector state, C ABI
+Sources/InboxPlusIMessage       reused macOS Messages adapter
+Sources/InboxPlus*              retained Swift application and runtime during migration
+```
+
+`lib/ui/inbox_app.dart` selects the desktop shell for macOS, Windows and Linux. The desktop shell
+and preferences live in `desktop_shell.dart` and `desktop_preferences.dart`; their pane widths adapt
+to the window, and menus, shortcuts and fonts adapt to the OS. Flutter draws the interface from
+these widgets: it does not automatically provide a different native design for every platform.
+The deferred mobile layout can evolve independently while reusing the controller and storage.
+
+On Windows and Linux, hold Alt to reveal menu letters: Alt+F/E/N/C/H opens
+File/Edit/Navigate/Conversation/Help. Use arrow keys and Enter to choose an item; Escape returns to
+the field you were editing with its selection intact. macOS uses the native menu bar and Command
+shortcuts.
+
+Account-scoped conversation routes keep identical network IDs from different accounts separate.
+Draft revisions and durable pending sends prevent an acknowledged send from clearing newer text.
+An uncertain send remains visible for reconciliation rather than being automatically duplicated.
+SQLite3MultipleCiphers encrypts the app database; its random key lives in the operating system's
+credential store. Connector state has separate per-account keys. Attachment files are kept inside
+private app directories.
 
 ## Developing
 
 ```bash
-swift build
-swift test
-swift run InboxPlus
+cd packages/inboxplus_storage
+dart pub get --enforce-lockfile
+dart test
+cd ../../apps/inboxplus_flutter
+flutter pub get --enforce-lockfile
+flutter analyze
+flutter test
+cd ../../native/connectors
+go mod verify
+go test ./...
 ```
 
-When running from source without a bundled runtime or prepared profile, the app starts with an
-empty inbox and contacts list.
-Nothing connects and no network is contacted.
-
-To run against a real local homeserver:
-
-```bash
-# once per profile
-swift run InboxPlusRuntimeCLI bootstrap --profile demo --python /opt/homebrew/opt/python@3.12/bin/python3.12
-swift run InboxPlusRuntimeCLI bridge --profile demo --action install --network instagram
-swift run InboxPlusRuntimeCLI bridge --profile demo --action prepare --network instagram
-
-# launch the app; it starts Synapse and every prepared bridge
-INBOXPLUS_PROFILE=demo swift run -c release InboxPlus
-```
-
-Then **Settings → Add** and pick a network. Follow the bridge's login flow; web sign-ins use the
-network's own page, and Inbox+ captures only the credentials the bridge declared it needs. First-time
-setup shows download and installation progress, refreshes app-managed local services, and continues
-to sign-in without closing Inbox+. Existing connections briefly pause; drafts and staged attachments
-stay in the app, and active sends finish before services restart. If a terminal owns the runtime,
-restart it there and choose the network again; Inbox+ can stay open.
-
-For manual runtime control, run `swift run -c release InboxPlusRuntimeCLI start --profile demo` in a
-separate terminal before launching the app. Inbox+ attaches to that runtime and leaves it running
-when you quit.
-
-`swift run` produces a bare executable rather than an `.app` bundle, and macOS starts unbundled
-processes as background-only — the window draws but never becomes key, so it takes no clicks and no
-keyboard input. `InboxPlusAppDelegate` promotes the process to a regular app at launch, which is what
-makes the window usable. It is also why macOS re-asks for permissions on every rebuild: grants bind
-to a code identity, and an ad-hoc signature's identity changes every time you build.
-
-## Networks
-
-Five networks can be connected. Two more — Google Messages and Google Voice — remain in the
-catalog so an existing profile keeps working, but are no longer offered.
-
-Seven networks are in the catalog in total. Six download a bridge binary pinned to an exact version and
-SHA-256, verified before it is ever made executable; iMessage has nothing to download, because it
-is reached through macOS itself. A bridge's own login flow is what gets rendered — Inbox+ never
-guesses what a network will ask for.
-
-| Network | Login | Verified |
-| --- | --- | --- |
-| Instagram | web sign-in | live account |
-| Facebook Messenger | web sign-in | installs and registers |
-| WhatsApp | phone number and pairing code | installs and registers |
-| Telegram | phone number | installs and registers |
-| iMessage | macOS permissions | reads and sends natively |
-
-**Only Instagram has been driven with a real account.** The rest install, register, supervise and
-serve their genuine login flows; that is not the same as proven.
-
-X, Slack, and LinkedIn appear as disabled coming-soon tiles and have no connection implementation.
-Two other networks are listed but disabled, with the reason shown in the picker: Discord (its current
-release predates the bridge protocol Inbox+ speaks) and external Matrix (needs multi-account
-support). Both are blocked on work Inbox+ could plausibly do.
-
-Four are not offered at all. IRC and Google Chat have no route — their maintained bridges publish
-no pinned macOS release, so there is nothing Inbox+ could verify before running one, and a
-permanently greyed-out entry would only suggest it was coming. Google Messages and Google Voice are
-out of scope by decision rather than obstacle; their bridges still work and stay in the catalog, so
-a profile that already runs one keeps attributing its conversations correctly.
-
-> Several of these networks ban accounts for connecting with unofficial clients, and those bans are
-> permanent. Use a throwaway account.
-
-Bluesky and Signal support has been removed.
-
-## How it fits together
-
-```
-InboxPlusApp          the executable; chooses an empty inbox or a live profile at launch
-  InboxPlusUI         SwiftUI views — inbox, conversation, login engine, account management
-  InboxPlusFeatures   app model, inbox projection, contact linking, media loading
-  InboxPlusGateway    the MessagingGateway seam, media cache, in-memory fake
-  InboxPlusCore       domain model — messages, attachments, platforms, deep links
-  InboxPlusMatrix     Matrix Rust SDK, event normalization, invite policy   (SDK stays here)
-  InboxPlusBridge     bridge catalog and login protocol, as pure data
-  InboxPlusBridgeService  installer, configuration, supervision, provisioning
-  InboxPlusIMessage   the local Messages database and Apple-event sending
-  InboxPlusRuntime    Synapse bootstrap, process supervision, backups, diagnostics, SBOM
-InboxPlusRuntimeCLI   the developer tool for everything above
-```
-
-Each network is drawn with its own mark on its own brand colour, converted from
-[Simple Icons](https://simpleicons.org) (CC0) into Swift vector paths at authoring time — no
-bundled images, no SVG parsing at runtime. The marks are trademarks of their owners and are used to
-identify networks, not to imply affiliation.
-
-`MessagingGateway` is the seam. The app layer never imports the Matrix SDK, which is why the whole
-UI runs unchanged on fixtures.
-
-## Runtime CLI
-
-```
-bootstrap    prepare the pinned profile-local Synapse runtime
-start        run Synapse and every prepared bridge, supervised
-status       report lifecycle phase and health
-stop         stop gracefully and verify the listener is gone
-bridge       install, configure, or interrogate a network bridge
-backup       checksummed offline backup of a stopped profile
-restore      restore a verified backup
-verify       verify the runtime, fixtures, or destructive recovery
-benchmark    run the representative workload and write a redacted report
-diagnostics  export a redacted bundle safe to attach to a bug report
-sbom         emit the CycloneDX software bill of materials
-remove       stop and remove exactly one profile, after confirmation
-```
+Tests use fakes and isolated files, not your real accounts or Messages database. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for generated-code checks, native builds and the retained Swift
+suite. Do not treat fixture coverage as live-network certification.
 
 ## Privacy and security
 
-- **No operated cloud.** Nothing leaves your Mac except traffic to the networks you connect.
-- **Nothing unverified is executed.** Bridges are pinned to an exact version and a SHA-256 taken
-  verbatim from upstream; bytes are hashed and compared before anything is made executable.
-- **Passwords go to the network, not to Inbox+.** Web sign-ins load the network's real page in a
-  non-persistent webview. Inbox+ captures only the declared credentials.
-- **Secrets stay out of reach.** Configs, registrations and cached media are `0600` in `0700`
-  directories; the client store passphrase lives in the Keychain.
-- **Diagnostics are redacted.** `InboxPlusRuntimeCLI diagnostics`, and **Settings → Export
-  Diagnostics…** in the app, remove tokens, cookies, message bodies and attachment URLs, and
-  pseudonymise identifiers rather than deleting them, so a bundle is still readable. Databases and
-  key material are never collected at all.
-- **Deep links are verified.** An **Open in app** action only ever follows an `https` link on a
-  domain the named platform demonstrably owns.
+- No operated Inbox+ cloud or host computer. Each device talks directly to the networks it connects.
+- Credentials and database keys belong in the OS credential store. Diagnostic messages must not
+  expose tokens, cookies, message bodies or attachment URLs.
+- Files and directories containing private app data use owner-only access. Cached media is private,
+  but the media files are not described as database-encrypted.
+- Web sign-ins use non-persistent browsing and collect only a network's declared credential cookies.
+- Binary artifacts are pinned and verified before use. Go modules and pub archives have committed
+  integrity locks. See [the dependency inventory](docs/dependencies.md) for native media artifacts.
+- An "Open in app" link may follow only HTTPS links on a domain owned by the named network.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, verification commands,
-generated-file updates and pull-request expectations. Humans and coding agents follow the same
-guide; [AGENTS.md](AGENTS.md) contains the agent workflow and critical review rules.
-
-Changes reach protected `main` through pull requests with passing CI checks.
-
-## Tests
-
-```bash
-swift test                    # default suite; no live accounts or homeserver
-```
-
-Tests that need a real Synapse are opt-in, because they are slow and download things:
-
-```bash
-INBOXPLUS_RUNTIME_PYTHON=/opt/homebrew/opt/python@3.12/bin/python3.12 swift test
-```
-
-None of them touch a real network account.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md). Changes reach protected `main`
+through pull requests with passing checks. Do not commit or push without the repository owner's
+explicit request.
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE). Every bundled dependency is compatible; see
-[`docs/dependencies.md`](docs/dependencies.md).
+[AGPL-3.0-or-later](LICENSE). The embedded Meta client is also AGPL-3.0-or-later; this migration does
+not turn those libraries into permissively licensed code. Review the
+[dependency inventory](docs/dependencies.md) and redistribution obligations before distribution.

@@ -56,6 +56,32 @@ private func next(
     return collected
 }
 
+@Test func aRecentMessageSnapshotReturnsTheBoundedHistoryWithoutSending() async throws {
+    let url = try makeDatabase("""
+    INSERT INTO handle (id, service) VALUES ('friend@example.com', 'iMessage');
+    INSERT INTO chat (guid, style, chat_identifier, service_name)
+      VALUES ('iMessage;-;friend@example.com', 45, 'friend@example.com', 'iMessage');
+    INSERT INTO message (guid, text, handle_id, date) VALUES ('m1', 'first', 1, \(appleTime(daysAgo: 3)));
+    INSERT INTO message (guid, text, handle_id, date) VALUES ('m2', 'second', 1, \(appleTime(daysAgo: 2)));
+    INSERT INTO message (guid, text, handle_id, date) VALUES ('m3', 'third', 1, \(appleTime(daysAgo: 1)));
+    INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (1, 2), (1, 3);
+    """)
+    defer { cleanUp(url) }
+    let gateway = try makeGateway(url, historyLimit: 2)
+    let snapshot = try await gateway.loadSnapshot()
+    let conversation = try #require(snapshot.conversations.first)
+    let route = ConversationRoute(accountID: IMessageGateway.accountID, conversationID: conversation.id)
+
+    let messages = try await gateway.recentMessagesSnapshot(in: route)
+    let repeated = try await gateway.recentMessagesSnapshot(in: route)
+
+    #expect(messages.map(\.id) == ["m2", "m3"])
+    #expect(messages.map(\.senderDisplayName) == ["friend@example.com", "friend@example.com"])
+    #expect(repeated == messages)
+    #expect(snapshot.messagesByRoute[route]?.map(\.id) == ["m3"])
+    await gateway.pausePolling()
+}
+
 @Test func everyListedChatShowsItsOwnLatestMessage() async throws {
     // The snapshot once read only the newest few hundred messages across every chat, so a chat
     // with nothing in that window had no preview and the date "Jan 1".

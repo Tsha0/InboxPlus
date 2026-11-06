@@ -160,6 +160,16 @@ public actor IMessageGateway: ConversationStartingGateway {
         }
     }
 
+    public func recentMessagesSnapshot(in route: ConversationRoute) throws -> [Message] {
+        guard route.accountID == Self.accountID else { throw ConversationStartError.unavailable }
+        guard let chat = chatsByGUID[route.conversationID] else { return [] }
+        return try store.recentMessages(inChat: chat.rowID, limit: historyLimit).compactMap { row in
+            guard var message = message(from: row) else { return nil }
+            message.senderDisplayName = identity(for: row)?.displayName
+            return message
+        }
+    }
+
     public func sendText(_ body: String, to route: ConversationRoute) async throws -> SendReceipt {
         guard route.accountID == Self.accountID else { throw ConversationStartError.unavailable }
         if let recipient = newRecipientsByRoute[route.conversationID] {
