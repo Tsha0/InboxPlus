@@ -176,6 +176,16 @@ void main() {
     );
   });
 
+  test('startup deadline includes worker creation', () async {
+    await expectLater(
+      NativeConnectorEngine.openForTesting(
+        libraryPath: library,
+        startupTimeout: Duration.zero,
+      ),
+      throwsA(errorCode('native_library_unavailable')),
+    );
+  });
+
   test('native fixture waits through an interrupted sleep', () async {
     final executable = p.join(directory.path, 'interrupted-sleep');
     final compiled = await Process.run('cc', [

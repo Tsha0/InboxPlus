@@ -55,6 +55,7 @@ class NativeConnectorEngine implements ConnectorEngine {
     Duration startupTimeout = const Duration(seconds: 20),
     Duration requestTimeout = const Duration(minutes: 3),
   }) async {
+    final startup = Stopwatch()..start();
     final engine = NativeConnectorEngine._(requestTimeout);
     try {
       for (final role in engine._ready.keys) {
@@ -74,8 +75,10 @@ class NativeConnectorEngine implements ConnectorEngine {
       }
       final ports = await Future.wait(
         engine._ready.values.map((ready) => ready.future),
-      ).timeout(startupTimeout);
-      if (ports.any((port) => port == null) || engine._failed) {
+      ).timeout(startupTimeout - startup.elapsed);
+      if (startup.elapsed >= startupTimeout ||
+          ports.any((port) => port == null) ||
+          engine._failed) {
         throw const ConnectorException('native_library_unavailable');
       }
       engine._ports.addAll(
