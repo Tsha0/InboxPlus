@@ -2,7 +2,7 @@ import 'dart:async' show Completer;
 import 'dart:ui' show SemanticsAction;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart' show CupertinoSwitch;
+import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/gestures.dart'
     show kSecondaryMouseButton, PointerDeviceKind;
@@ -1595,6 +1595,137 @@ void main() {
       expect(tester.takeException(), isNull);
     }, variant: TargetPlatformVariant({platform}));
   }
+
+  testWidgets(
+    'desktop logo has no themed button surface behind its rounded tile',
+    (tester) async {
+      final controller = _FakeController()
+        ..currentPreferences = const PreferencesRecord(themePreset: 'sunset');
+      await _pumpApp(tester, controller);
+      final logo = find.bySemanticsLabel('Inbox+ logo');
+      final surface = find.descendant(
+        of: logo,
+        matching: find.byType(Material),
+      );
+      expect(tester.widget<Material>(surface).color, Colors.transparent);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(logo));
+      await tester.pumpAndSettle();
+      expect(tester.widget<Material>(surface).color, Colors.transparent);
+      await tester.tap(logo);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(tester.widget<Material>(surface).color, Colors.transparent);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    }),
+  );
+
+  testWidgets(
+    'desktop logo spins only its mark and keeps the tile upright',
+    (tester) async {
+      final controller = _FakeController();
+      await _pumpApp(tester, controller);
+      final logo = find.bySemanticsLabel('Inbox+ logo');
+      final artwork = find.descendant(of: logo, matching: find.byType(Image));
+      final tile = find.descendant(of: logo, matching: find.byType(ClipRRect));
+      expect(artwork, findsOneWidget);
+      expect(tile, findsOneWidget);
+      final markTransform = find.ancestor(
+        of: artwork,
+        matching: find.byKey(const Key('desktop-logo-mark')),
+      );
+      expect(markTransform, findsOneWidget);
+      expect(find.ancestor(of: tile, matching: markTransform), findsNothing);
+      await tester.tap(logo);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      final rotation = tester.widget<Transform>(markTransform).transform;
+      expect(rotation.entry(0, 1).abs(), greaterThan(.01));
+      for (final transform in tester.widgetList<Transform>(
+        find.ancestor(of: tile, matching: find.byType(Transform)),
+      )) {
+        expect(transform.transform.entry(0, 1), 0);
+        expect(transform.transform.entry(1, 0), 0);
+      }
+      final background = tester.widget<ColoredBox>(
+        find.descendant(of: tile, matching: find.byType(ColoredBox)).first,
+      );
+      expect(background.color, Colors.black);
+      await tester.tap(logo);
+      await tester.pumpAndSettle();
+      expect(controller.sentDrafts, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    }),
+  );
+
+  testWidgets(
+    'desktop logo honors reduced motion with a glow and no rotation',
+    (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      final controller = _FakeController();
+      await _pumpApp(tester, controller);
+      final logo = find.bySemanticsLabel('Inbox+ logo');
+      await tester.tap(logo);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 140));
+      final rotation = tester
+          .widget<Transform>(find.byKey(const Key('desktop-logo-mark')))
+          .transform;
+      expect(rotation.entry(0, 0), 1);
+      expect(rotation.entry(0, 1), 0);
+      expect(find.bySemanticsLabel('Inbox+ logo'), findsOneWidget);
+      final glow =
+          tester
+                  .widget<DecoratedBox>(
+                    find.byKey(const Key('desktop-logo-glow')),
+                  )
+                  .decoration
+              as BoxDecoration;
+      expect(glow.boxShadow!.single.color.a, greaterThan(0));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    }),
+  );
+
+  testWidgets(
+    'desktop rail uses the original tray people compose and settings symbols',
+    (tester) async {
+      await _pumpApp(tester, _FakeController());
+      expect(find.byIcon(CupertinoIcons.tray_full_fill), findsOneWidget);
+      expect(find.byIcon(CupertinoIcons.person_2_fill), findsOneWidget);
+      expect(find.byIcon(CupertinoIcons.square_pencil), findsOneWidget);
+      expect(find.byIcon(CupertinoIcons.gear_alt_fill), findsOneWidget);
+      expect(find.byKey(const Key('desktop-rail-inbox')), findsOneWidget);
+      expect(find.byKey(const Key('desktop-rail-settings')), findsOneWidget);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+    }),
+  );
 
   testWidgets(
     'desktop menu accelerators open every menu and preserve editing focus',

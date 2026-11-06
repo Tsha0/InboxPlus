@@ -41,6 +41,7 @@ include both lockfiles when updating dependencies.
 | Component | License and role |
 | --- | --- |
 | Flutter / Dart | BSD-3-Clause; shared interface and application runtime |
+| cupertino_icons 2.0.0 | MIT; classic desktop tray, people, compose and settings symbols |
 | Drift | MIT; typed SQLite records and transactions |
 | sqlite3 Dart package | MIT; native SQLite bindings and verified binary build hook |
 | flutter_secure_storage | BSD-3-Clause; OS credential-store integration |

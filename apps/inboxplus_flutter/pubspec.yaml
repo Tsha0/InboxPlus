@@ -13,6 +13,7 @@ dependencies:
   inboxplus_storage:
     path: ../../packages/inboxplus_storage
   crypto: 3.0.8
+  cupertino_icons: 2.0.0
   ffi: 2.2.0
   file_picker: 13.3.2
   flutter_secure_storage: 11.2.0

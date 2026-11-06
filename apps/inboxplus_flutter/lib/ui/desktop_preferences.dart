@@ -26,43 +26,51 @@ class _DesktopPalette {
 }
 
 class _DesktopLogo extends StatelessWidget {
-  const _DesktopLogo({required this.color, this.size = 32});
+  const _DesktopLogo({required this.color, this.size = 32, this.turns = 0});
   final Color color;
   final double size;
+  final double turns;
 
   @override
   Widget build(BuildContext context) {
     final foreground = _legibleOn(color);
     final filter = <double>[
-      foreground.r - color.r,
       0,
       0,
       0,
-      color.r * 255,
       0,
-      foreground.g - color.g,
-      0,
-      0,
-      color.g * 255,
-      0,
-      0,
-      foreground.b - color.b,
-      0,
-      color.b * 255,
+      foreground.r * 255,
       0,
       0,
       0,
-      1,
+      0,
+      foreground.g * 255,
+      0,
+      0,
+      0,
+      0,
+      foreground.b * 255,
+      .2126,
+      .7152,
+      .0722,
+      0,
       0,
     ];
     return ClipRRect(
       borderRadius: BorderRadius.circular(size / 4),
-      child: ColorFiltered(
-        colorFilter: ColorFilter.matrix(filter),
-        child: Image.asset(
-          'assets/inboxplus-logo.png',
-          width: size,
-          height: size,
+      child: ColoredBox(
+        color: color,
+        child: Transform.rotate(
+          key: const Key('desktop-logo-mark'),
+          angle: turns * math.pi * 2,
+          child: ColorFiltered(
+            colorFilter: ColorFilter.matrix(filter),
+            child: Image.asset(
+              'assets/inboxplus-logo.png',
+              width: size,
+              height: size,
+            ),
+          ),
         ),
       ),
     );

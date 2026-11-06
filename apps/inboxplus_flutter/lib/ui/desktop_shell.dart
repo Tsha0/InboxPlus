@@ -138,6 +138,135 @@ ThemeData _desktopTheme(Brightness brightness, PreferencesRecord preferences) {
   );
 }
 
+class _DesktopLogoButton extends StatefulWidget {
+  const _DesktopLogoButton({required this.color, required this.glowColor});
+
+  final Color color;
+  final Color glowColor;
+
+  @override
+  State<_DesktopLogoButton> createState() => _DesktopLogoButtonState();
+}
+
+class _DesktopLogoButtonState extends State<_DesktopLogoButton>
+    with TickerProviderStateMixin {
+  late final _rotation = AnimationController.unbounded(vsync: this);
+  late final _glow = AnimationController(vsync: this);
+  late final _animation = Listenable.merge([_rotation, _glow]);
+  Timer? _fade;
+  double _turns = 0;
+  bool _hovering = false;
+  bool _reduceMotion = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduceMotion = MediaQuery.disableAnimationsOf(context);
+    if (_reduceMotion) {
+      _turns = 0;
+      _rotation.value = 0;
+    }
+  }
+
+  void _play() {
+    if (!_reduceMotion) {
+      _turns += 1;
+      _rotation.animateTo(
+        _turns,
+        duration: const Duration(milliseconds: 900),
+        curve: Curves.easeOut,
+      );
+    }
+    _glow.animateTo(
+      1,
+      duration: const Duration(milliseconds: 130),
+      curve: Curves.easeOut,
+    );
+    _fade?.cancel();
+    _fade = Timer(const Duration(milliseconds: 180), () {
+      _glow.animateTo(
+        0,
+        duration: const Duration(milliseconds: 850),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _fade?.cancel();
+    _rotation.dispose();
+    _glow.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: 'Animate the Inbox+ logo',
+    child: Semantics(
+      label: 'Inbox+ logo',
+      hint: _reduceMotion ? 'Glow the logo' : 'Spin and glow the logo',
+      button: true,
+      onTap: _play,
+      excludeSemantics: true,
+      child: TextButton(
+        onPressed: _play,
+        onHover: (value) => setState(() => _hovering = value),
+        style: TextButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          padding: EdgeInsets.zero,
+          minimumSize: const Size.square(32),
+          maximumSize: const Size.square(32),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          overlayColor: Colors.transparent,
+        ),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: _hovering ? 1 : 0),
+          duration: _reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          builder: (context, hover, _) => AnimatedBuilder(
+            animation: _animation,
+            builder: (context, _) {
+              final glow = _glow.value;
+              return Transform.scale(
+                scale: _reduceMotion ? 1 : 1 + hover * .04 + glow * .04,
+                child: DecoratedBox(
+                  key: const Key('desktop-logo-glow'),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: widget.glowColor.withValues(alpha: glow * .4),
+                        blurRadius: glow * 7,
+                      ),
+                    ],
+                  ),
+                  child: DecoratedBox(
+                    position: DecorationPosition.foreground,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _legibleOn(widget.color)
+                            .withValues(alpha: glow * .45),
+                      ),
+                    ),
+                    child: _DesktopLogo(
+                      color: widget.color,
+                      turns: _rotation.value,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 /// Whether the window is the one taking input, which macOS shows by tinting switches and selected
 /// segments with the accent and greying them otherwise.
 class _DesktopWindowActive extends InheritedWidget {
@@ -171,7 +300,6 @@ class _DesktopHomeState extends State<_DesktopHome> {
   bool _hidden = false;
   String? _personId;
   String? _highlightedMessageId;
-  double _logoTurns = 0;
   bool _windowActive =
       WidgetsBinding.instance.lifecycleState != AppLifecycleState.inactive;
   late final AppLifecycleListener _lifecycle;
@@ -810,33 +938,22 @@ class _DesktopHomeState extends State<_DesktopHome> {
     padding: const EdgeInsets.symmetric(vertical: 14),
     child: Column(
       children: [
-        Tooltip(
-          message: 'Animate the Inbox+ logo',
-          child: Semantics(
-            label: 'Inbox+ logo',
-            button: true,
-            onTap: _animateLogo,
-            excludeSemantics: true,
-            child: GestureDetector(
-              onTap: _animateLogo,
-              child: AnimatedRotation(
-                turns: _logoTurns,
-                duration: const Duration(milliseconds: 700),
-                curve: Curves.easeInOutBack,
-                child: _DesktopLogo(
-                  color:
-                      _DesktopPalette.forPreferences(controller.preferences)
-                          ?.logo ??
-                      Colors.black,
-                ),
-              ),
-            ),
-          ),
+        _DesktopLogoButton(
+          color:
+              _DesktopPalette.forPreferences(controller.preferences)?.logo ??
+              Colors.black,
+          glowColor:
+              _DesktopPalette.forPreferences(controller.preferences)?.logo ??
+              Theme.of(context).colorScheme.onSurface,
         ),
         const SizedBox(height: 18),
-        _railButton(_Section.inbox, 'Inbox', Icons.inbox_rounded),
+        _railButton(_Section.inbox, 'Inbox', CupertinoIcons.tray_full_fill),
         const SizedBox(height: 14),
-        _railButton(_Section.contacts, 'Contacts', Icons.people_alt_rounded),
+        _railButton(
+          _Section.contacts,
+          'Contacts',
+          CupertinoIcons.person_2_fill,
+        ),
         const SizedBox(height: 14),
         Semantics(
           label: 'New message',
@@ -846,15 +963,18 @@ class _DesktopHomeState extends State<_DesktopHome> {
           child: IconButton(
             tooltip: 'New message',
             onPressed: _compose,
-            icon: const Icon(Icons.edit_square, size: 17),
+            icon: const Icon(CupertinoIcons.square_pencil, size: 17),
           ),
         ),
         const Spacer(),
-        _railButton(_Section.settings, 'Settings', Icons.settings),
+        _railButton(
+          _Section.settings,
+          'Settings',
+          CupertinoIcons.gear_alt_fill,
+        ),
       ],
     ),
   );
-  void _animateLogo() => setState(() => _logoTurns += 1);
 
   Color _sidebarColor() {
     final palette = _DesktopPalette.forPreferences(controller.preferences);

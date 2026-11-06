@@ -625,6 +625,13 @@
     },
     "license": "BSD-3-Clause"
   },
+  "pub:cupertino_icons@2.0.0": {
+    "evidence": {
+      "LICENSE": "310d6ab6483280280c9db122bded0a63c09558bc5743720f61dbcbb494db370a"
+    },
+    "license": "MIT",
+    "note": "Flutter Cupertino icon font for the classic desktop navigation symbols."
+  },
   "pub:dart_style@3.1.14": {
     "evidence": {
       "LICENSE": "3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16"

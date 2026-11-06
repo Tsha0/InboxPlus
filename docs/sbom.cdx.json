@@ -785,6 +785,32 @@
       "version": "3.0.8"
     },
     {
+      "description": "Flutter Cupertino icon font for the classic desktop navigation symbols.",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/cupertino_icons/versions/2.0.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b7cc2390aac296c083bea762859413eb1cf5b630c70e0c7e4d831018f762a8b2"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "cupertino_icons",
+      "purl": "pkg:pub/cupertino_icons@2.0.0",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
       "externalReferences": [
         {
           "type": "distribution",
@@ -6163,7 +6189,7 @@
     ],
     "timestamp": "1970-01-01T00:00:00Z"
   },
-  "serialNumber": "urn:uuid:20a0fd4a-a20e-4f97-9165-3f990e5944bf",
+  "serialNumber": "urn:uuid:821a0099-ac71-4b1a-913d-bdc0f529caf6",
   "specVersion": "1.5",
   "version": 1
 }
