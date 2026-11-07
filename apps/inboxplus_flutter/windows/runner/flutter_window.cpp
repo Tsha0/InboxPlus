@@ -255,8 +255,6 @@ bool FlutterWindow::OnCreate() {
           result->Success(flutter::EncodableValue(flutter::EncodableMap{
               {flutter::EncodableValue("web_login_platforms"),
                flutter::EncodableValue(flutter::EncodableList{})},
-              {flutter::EncodableValue("imessage"),
-               flutter::EncodableValue(false)},
               {flutter::EncodableValue("launch_at_login_status"), flutter::EncodableValue(launch_at_login_status())},
           }));
         } else if (method == "setLaunchAtLogin") {
@@ -282,8 +280,6 @@ bool FlutterWindow::OnCreate() {
           result->Error("web_login_unavailable");
         } else if (method == "cancelWebLogin") {
           result->Success();
-        } else if (method == "imessageSnapshot" || method == "imessageSend") {
-          result->Error("imessage_unavailable");
         } else if (method == "legacyProfileStatus") {
           result->Success(flutter::EncodableValue(flutter::EncodableMap{
               {flutter::EncodableValue("has_legacy_profile"), flutter::EncodableValue(false)},

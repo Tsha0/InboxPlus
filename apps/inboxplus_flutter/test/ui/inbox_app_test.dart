@@ -1,5 +1,6 @@
 import 'dart:async' show Completer;
 import 'dart:ui' show SemanticsAction;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
@@ -10,7 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inboxplus_flutter/contact_suggestions.dart';
 import 'package:inboxplus_flutter/ui/account_pages.dart'
-    show ConnectAccountsDialog, formatByteCount;
+    show ConnectAccountsDialog, formatByteCount, loginQrImageBytes;
 import 'package:inboxplus_flutter/ui/inbox_app.dart';
 import 'package:inboxplus_flutter/ui/inbox_ui_controller.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
@@ -64,6 +65,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('iOS iMessage placeholder cannot start account setup', (
+    tester,
+  ) async {
+    final controller = _FakeController(
+      accounts: [],
+      conversations: [],
+      additionalNetworks: const [
+        NetworkCapability(
+          id: 'imessage',
+          name: 'iMessage',
+          available: false,
+          comingSoon: true,
+          reason: 'Coming soon · Experimental iOS integration',
+        ),
+      ],
+    );
+    await _pumpApp(tester, controller, size: const Size(390, 844));
+    await tester.tap(find.text('Connect an account').first);
+    await tester.pumpAndSettle();
+
+    final imessage = find.widgetWithText(ListTile, 'iMessage');
+    expect(imessage, findsOneWidget);
+    expect(
+      find.text('Coming soon · Experimental iOS integration'),
+      findsOneWidget,
+    );
+    expect(tester.widget<ListTile>(imessage).enabled, isFalse);
+    expect(tester.widget<ListTile>(imessage).onTap, isNull);
+    await tester.tap(imessage);
+    await tester.pumpAndSettle();
+    expect(controller.beginLoginCalls, isEmpty);
+    expect(controller.login, isNull);
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant({TargetPlatform.iOS}));
+
   testWidgets(
     'desktop account grid orders capabilities and prevents duplicate accounts',
     (tester) async {
@@ -72,14 +108,14 @@ void main() {
         conversations: [],
         additionalNetworks: const [
           NetworkCapability(
-            id: 'matrix',
-            name: 'Matrix',
+            id: 'discord',
+            name: 'Discord',
             available: false,
             reason: 'Not supported yet',
           ),
           NetworkCapability(
-            id: 'x',
-            name: 'X',
+            id: 'slack',
+            name: 'Slack',
             available: false,
             comingSoon: true,
             reason: "It's coming soon",
@@ -109,10 +145,15 @@ void main() {
         tester.getTopLeft(telegram).dx,
         lessThan(tester.getTopLeft(whatsapp).dx),
       );
-      expect(
-        tester.getTopLeft(imessage).dy,
-        greaterThan(tester.getTopLeft(messenger).dy),
-      );
+      if (defaultTargetPlatform == TargetPlatform.macOS) {
+        expect(
+          tester.getTopLeft(imessage).dy,
+          greaterThan(tester.getTopLeft(messenger).dy),
+        );
+      } else {
+        expect(imessage, findsNothing);
+        expect(find.text('iMessage'), findsNothing);
+      }
       expect(find.text('Already connected'), findsNWidgets(2));
       expect(
         tester
@@ -129,7 +170,9 @@ void main() {
         isFalse,
       );
       await tester.tap(telegram);
-      await tester.tap(imessage);
+      if (defaultTargetPlatform == TargetPlatform.macOS) {
+        await tester.tap(imessage);
+      }
       expect(controller.beginLoginCalls, isEmpty);
       tester
           .getSemantics(messenger)
@@ -678,32 +721,35 @@ void main() {
     (tester) async {
       final controller =
           _FakeController(
-              accounts: const [
-                AccountRecord(
+              accounts: [
+                const AccountRecord(
                   id: 'first',
                   platform: 'whatsapp',
                   displayName: 'Preview account',
                   isConnected: true,
                 ),
-                AccountRecord(
+                const AccountRecord(
                   id: 'second',
                   platform: 'telegram',
                   displayName: 'telegram',
                 ),
-                AccountRecord(
-                  id: 'apple',
-                  platform: 'imessage',
-                  displayName: 'iMessage',
-                  isConnected: true,
-                ),
+                if (defaultTargetPlatform == TargetPlatform.macOS)
+                  const AccountRecord(
+                    id: 'apple',
+                    platform: 'imessage',
+                    displayName: 'iMessage',
+                    isConnected: true,
+                  ),
               ],
               conversations: const [],
             )
             ..currentPreferences = const PreferencesRecord(
               disconnectedAccountIds: ['second'],
             )
-            ..networkProblems['first'] = AccountNetworkProblem.signedOut
-            ..changingAccounts.add('apple');
+            ..networkProblems['first'] = AccountNetworkProblem.signedOut;
+      if (defaultTargetPlatform == TargetPlatform.macOS) {
+        controller.changingAccounts.add('apple');
+      }
       Future<void> settle() async {
         for (var i = 0; i < 8; i++) {
           await tester.pump(const Duration(milliseconds: 100));
@@ -721,14 +767,18 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Disconnected — messages are kept'), findsOneWidget);
-      expect(
-        tester
-            .widget<CircularProgressIndicator>(
-              find.byType(CircularProgressIndicator),
-            )
-            .semanticsLabel,
-        'Updating iMessage',
-      );
+      if (defaultTargetPlatform == TargetPlatform.macOS) {
+        expect(
+          tester
+              .widget<CircularProgressIndicator>(
+                find.byType(CircularProgressIndicator),
+              )
+              .semanticsLabel,
+          'Updating iMessage',
+        );
+      } else {
+        expect(find.textContaining('iMessage'), findsNothing);
+      }
 
       await tester.tap(find.byTooltip('Manage Telegram'));
       await settle();
@@ -753,9 +803,13 @@ void main() {
       await settle();
       expect(controller.removedAccounts, ['first']);
 
-      await tester.tap(find.byTooltip('Manage iMessage'));
-      await settle();
-      expect(find.text('Remove account…'), findsNothing);
+      if (defaultTargetPlatform == TargetPlatform.macOS) {
+        await tester.tap(find.byTooltip('Manage iMessage'));
+        await settle();
+        expect(find.text('Remove account…'), findsNothing);
+      } else {
+        expect(find.byTooltip('Manage iMessage'), findsNothing);
+      }
     },
     variant: TargetPlatformVariant({
       TargetPlatform.macOS,
@@ -914,13 +968,24 @@ void main() {
   testWidgets(
     'unavailable account explains availability and cannot start login',
     (tester) async {
-      final controller = _FakeController(accounts: [], conversations: []);
+      final controller = _FakeController(
+        accounts: [],
+        conversations: [],
+        additionalNetworks: const [
+          NetworkCapability(
+            id: 'discord',
+            name: 'Discord',
+            available: false,
+            reason: 'Not supported yet',
+          ),
+        ],
+      );
       await _pumpApp(tester, controller, size: const Size(390, 844));
 
       await tester.tap(find.text('Connect an account'));
       await tester.pumpAndSettle();
-      expect(find.text('Available only on macOS'), findsOneWidget);
-      await tester.tap(find.text('iMessage'));
+      expect(find.text('Not supported yet'), findsOneWidget);
+      await tester.tap(find.text('Discord'));
       await tester.pump();
 
       expect(controller.beginLoginCalls, isEmpty);
@@ -1592,6 +1657,9 @@ void main() {
       expect(find.text('Classic'), findsOneWidget);
       expect(find.text('Night Swim'), findsOneWidget);
       expect(find.text('Background'), findsOneWidget);
+      if (platform != TargetPlatform.macOS) {
+        expect(find.textContaining('iMessage'), findsNothing);
+      }
       expect(tester.takeException(), isNull);
     }, variant: TargetPlatformVariant({platform}));
   }
@@ -2734,8 +2802,271 @@ void main() {
       find.text('Enter this code in WhatsApp on your phone.'),
       findsOneWidget,
     );
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    await tester.ensureVisible(find.text('Copy linking code'));
+    await tester.tap(find.text('Copy linking code'));
+    await tester.pump();
+    expect(copied, 'ABCD-EFGH');
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'iPhone WhatsApp phone form supports correction and a QR alternative',
+    (tester) async {
+      final controller = _FakeController(accounts: [], conversations: []);
+      controller.login = const LoginState(
+        networkId: 'whatsapp',
+        step: LoginStep.fields,
+        title: 'Link WhatsApp with a code',
+        fields: [
+          LoginField(
+            id: 'country_code',
+            label: 'Country calling code',
+            phone: true,
+          ),
+          LoginField(id: 'phone', label: 'Phone number', phone: true),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.text('Connect an account'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.enterText(
+        find.byKey(const ValueKey('whatsapp-country_code')),
+        '65',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('whatsapp-phone')),
+        '8123 4567',
+      );
+      await tester.tap(find.text('Get linking code'));
+      await tester.pump();
+      expect(controller.submittedLoginFields.single, {
+        'country_code': '65',
+        'phone': '8123 4567',
+      });
+      controller.login = const LoginState(
+        networkId: 'whatsapp',
+        step: LoginStep.fields,
+        title: 'Link WhatsApp with a code',
+        error: 'Check your number',
+        fields: [
+          LoginField(
+            id: 'country_code',
+            label: 'Country calling code',
+            phone: true,
+          ),
+          LoginField(id: 'phone', label: 'Phone number', phone: true),
+        ],
+      );
+      controller.notifyListeners();
+      await tester.pump();
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(
+                of: find.byKey(const ValueKey('whatsapp-phone')),
+                matching: find.byType(TextField),
+              ),
+            )
+            .controller!
+            .text,
+        '8123 4567',
+      );
+      await tester.ensureVisible(find.text('Use a QR code on another screen'));
+      await tester.tap(find.text('Use a QR code on another screen'));
+      await tester.pump();
+      expect(controller.qrLoginChoices.single, isTrue);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(controller.resumeLoginCalls, 1);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({TargetPlatform.iOS}),
+  );
+
+  testWidgets(
+    'iPhone WeChat QR can be saved and shared without losing the attempt',
+    (tester) async {
+      final controller = _FakeController(accounts: [], conversations: []);
+      controller.login = const LoginState(
+        networkId: 'wechat',
+        step: LoginStep.qr,
+        qrImage: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.text('Connect an account'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.ensureVisible(find.text('Save QR to Photos'));
+      await tester.tap(find.text('Save QR to Photos'));
+      await tester.pump();
+      await tester.ensureVisible(find.text('Share QR code'));
+      await tester.tap(find.text('Share QR code'));
+      await tester.pump();
+      expect(controller.exportedQrs.map((qr) => qr.share), [false, true]);
+      expect(controller.exportedQrs.first.image.take(8), [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+      ]);
+      expect(controller.cancelLoginCalls, 0);
+      expect(controller.login?.step, LoginStep.qr);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({TargetPlatform.iOS}),
+  );
+
+  test('QR export includes an opaque four-module quiet zone', () async {
+    final bytes = await loginQrImageBytes(
+      const LoginState(
+        networkId: 'whatsapp',
+        step: LoginStep.qr,
+        qrData: 'fixture-qr-data',
+      ),
+    );
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    codec.dispose();
+    final pixels = (await frame.image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    ))!.buffer.asUint8List();
+    final width = frame.image.width;
+    expect(width, 232);
+    for (var y = 0; y < width; y++) {
+      for (var x = 0; x < width; x++) {
+        if (x < 32 || y < 32 || x >= width - 32 || y >= width - 32) {
+          expect(pixels.sublist((y * width + x) * 4, (y * width + x) * 4 + 4), [
+            255,
+            255,
+            255,
+            255,
+          ]);
+        }
+      }
+    }
+    expect(pixels[(32 * width + 32) * 4], 0);
+    frame.image.dispose();
+  });
+
+  testWidgets(
+    'Discord optional email fields allow token-only sign-in',
+    (tester) async {
+      final controller = _FakeController(accounts: [], conversations: []);
+      controller.login = const LoginState(
+        networkId: 'discord',
+        step: LoginStep.fields,
+        title: 'Connect Discord',
+        fields: [
+          LoginField(id: 'username', label: 'Email', optional: true),
+          LoginField(
+            id: 'password',
+            label: 'Password',
+            secret: true,
+            optional: true,
+          ),
+          LoginField(
+            id: 'token',
+            label: 'Session token (optional)',
+            secret: true,
+            optional: true,
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: ConnectAccountsDialog(controller: controller)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final token = find.byKey(const ValueKey('discord-token'));
+      expect(
+        tester
+            .widget<TextField>(
+              find.descendant(of: token, matching: find.byType(TextField)),
+            )
+            .obscureText,
+        isTrue,
+      );
+      await tester.enterText(token, 'fixture-token');
+      await tester.ensureVisible(find.text('Continue'));
+      await tester.tap(find.text('Continue'));
+      await tester.pump();
+      expect(controller.submittedLoginFields.single, {
+        'username': '',
+        'password': '',
+        'token': 'fixture-token',
+      });
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+    }),
+  );
+
+  testWidgets(
+    'WeChat displays the server QR image without WhatsApp pairing controls',
+    (tester) async {
+      final controller = _FakeController(accounts: [], conversations: []);
+      controller.login = const LoginState(
+        networkId: 'wechat',
+        step: LoginStep.qr,
+        title: 'Connect WeChat',
+        qrImage: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+        instructions:
+            'Scan this code using WeChat on your phone, then confirm sign-in.',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: ConnectAccountsDialog(controller: controller)),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is Image && widget.image is MemoryImage,
+        ),
+        findsOneWidget,
+      );
+      expect(find.byType(QrImageView), findsNothing);
+      expect(find.byKey(const Key('whatsapp-pairing-phone')), findsNothing);
+      expect(find.text('Connect WeChat'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+    }),
+  );
 }
 
 MessageRecord _failedMessage(ConversationRoute route) => MessageRecord(
@@ -2847,6 +3178,9 @@ class _FakeController extends InboxUiController {
   final reactionCalls =
       <({ConversationRoute route, String messageId, String emoji})>[];
   final beginLoginCalls = <String>[];
+  final qrLoginChoices = <bool?>[];
+  final exportedQrs = <({Uint8List image, bool share})>[];
+  int resumeLoginCalls = 0;
   final sentDrafts = <MapEntry<ConversationRoute, String>>[];
   final List<MapEntry<String, String>> startedConversations = [];
   final Map<ConversationRoute, List<MessageRecord>> messages;
@@ -2911,13 +3245,14 @@ class _FakeController extends InboxUiController {
       available: true,
       canStartConversation: true,
     ),
-    NetworkCapability(
-      id: 'imessage',
-      name: 'iMessage',
-      available: iMessageAvailable,
-      canStartConversation: iMessageAvailable,
-      reason: 'Available only on macOS',
-    ),
+    if (defaultTargetPlatform == TargetPlatform.macOS)
+      NetworkCapability(
+        id: 'imessage',
+        name: 'iMessage',
+        available: iMessageAvailable,
+        canStartConversation: iMessageAvailable,
+        reason: 'Available only on macOS',
+      ),
   ];
 
   @override
@@ -3001,8 +3336,9 @@ class _FakeController extends InboxUiController {
   }
 
   @override
-  Future<void> beginLogin(String networkId) async {
+  Future<void> beginLogin(String networkId, {bool? useQr}) async {
     beginLoginCalls.add(networkId);
+    qrLoginChoices.add(useQr);
   }
 
   @override
@@ -3013,6 +3349,16 @@ class _FakeController extends InboxUiController {
   @override
   Future<void> cancelLogin() async {
     cancelLoginCalls++;
+  }
+
+  @override
+  Future<void> resumeLogin() async {
+    resumeLoginCalls++;
+  }
+
+  @override
+  Future<void> exportLoginQr(Uint8List image, {bool share = false}) async {
+    exportedQrs.add((image: image, share: share));
   }
 
   @override

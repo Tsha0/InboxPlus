@@ -1,5 +1,12 @@
 {
-  "include": ["Tests/**/*.{swift,py,sh}"],
+  "include": [
+    "apps/inboxplus_flutter/**",
+    "packages/inboxplus_storage/**",
+    "native/**",
+    "Scripts/**",
+    "Tests/**",
+    ".github/workflows/**"
+  ],
   "rules": [
     {
       "path": "**/*",

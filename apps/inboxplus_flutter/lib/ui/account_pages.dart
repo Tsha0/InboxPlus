@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'confirmation.dart';
@@ -18,13 +21,29 @@ class ConnectAccountsDialog extends StatefulWidget {
   State<ConnectAccountsDialog> createState() => _ConnectAccountsDialogState();
 }
 
-class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
+class _ConnectAccountsDialogState extends State<ConnectAccountsDialog>
+    with WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
   final _phoneFormKey = GlobalKey<FormState>();
   final _values = <String, TextEditingController>{};
+  bool _exportingQr = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(widget.controller.resumeLogin());
+    }
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (final value in _values.values) {
       value.dispose();
     }
@@ -98,8 +117,10 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
                   const Divider(height: 1),
                   Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         if (login.step != LoginStep.complete)
                           TextButton(
@@ -107,10 +128,13 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
                             child: const Text('Cancel'),
                           ),
                         if (login.step == LoginStep.fields) ...[
-                          const SizedBox(width: 8),
                           FilledButton(
                             onPressed: login.busy ? null : _submit,
-                            child: const Text('Continue'),
+                            child: Text(
+                              login.networkId == 'whatsapp'
+                                  ? 'Get linking code'
+                                  : 'Continue',
+                            ),
                           ),
                         ],
                         if (login.step == LoginStep.complete)
@@ -119,7 +143,6 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
                             child: const Text('Done'),
                           ),
                         if (login.step == LoginStep.failed) ...[
-                          const SizedBox(width: 8),
                           FilledButton(
                             onPressed: login.busy
                                 ? null
@@ -421,6 +444,29 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
                 style: Theme.of(context).textTheme.headlineMedium
                     ?.copyWith(letterSpacing: 3, fontFamily: 'monospace'),
               ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(
+                    ClipboardData(text: login.pairingCode!),
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Linking code copied. Switch to WhatsApp to enter it.',
+                        ),
+                      ),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.copy),
+                label: const Text('Copy linking code'),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Keep Inbox+ open in the app switcher until linking finishes. If the code expires, request a new one.',
+              ),
             ],
           ),
           LoginStep.fields => Form(
@@ -452,7 +498,8 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
                         border: const OutlineInputBorder(),
                       ),
                       validator: (value) =>
-                          value == null || value.trim().isEmpty
+                          !field.optional &&
+                              (value == null || value.trim().isEmpty)
                           ? 'Enter ${field.label.toLowerCase()}.'
                           : null,
                       onFieldSubmitted: field == login.fields.last
@@ -495,9 +542,19 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
           const SizedBox(height: 16),
           const LinearProgressIndicator(semanticsLabel: 'Signing in'),
         ],
-        if (login.error case final error?) ...[
+        if ((login.error ?? widget.controller.error) case final error?) ...[
           const SizedBox(height: 16),
           _Notice(message: error, isError: true),
+        ],
+        if (login.networkId == 'whatsapp' &&
+            login.step == LoginStep.fields) ...[
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: login.busy
+                ? null
+                : () => widget.controller.beginLogin('whatsapp', useQr: true),
+            child: const Text('Use a QR code on another screen'),
+          ),
         ],
       ],
     );
@@ -506,7 +563,19 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
   Widget _qrContent(LoginState login) {
     return Column(
       children: [
-        if (login.qrData == null || login.qrData!.isEmpty)
+        if (login.qrImage != null)
+          Semantics(
+            label: 'Sign-in QR code. Save it or display it on another screen to scan.',
+            image: true,
+            child: Image.memory(
+              base64Decode(login.qrImage!),
+              width: 240,
+              height: 240,
+              fit: BoxFit.contain,
+              excludeFromSemantics: true,
+            ),
+          )
+        else if (login.qrData == null || login.qrData!.isEmpty)
           const Padding(
             padding: EdgeInsets.all(24),
             child: Center(
@@ -517,7 +586,7 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
           )
         else
           Semantics(
-            label: 'Sign-in QR code. Scan this code with your phone.',
+            label: 'Sign-in QR code. Save it or display it on another screen to scan.',
             image: true,
             child: ExcludeSemantics(
               child: LayoutBuilder(
@@ -535,6 +604,33 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
             ),
           ),
         const SizedBox(height: 20),
+        if (login.qrImage != null || login.qrData?.isNotEmpty == true) ...[
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            alignment: WrapAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _exportingQr ? null : () => _exportQr(login),
+                icon: const Icon(Icons.save_alt),
+                label: Text(
+                  defaultTargetPlatform == TargetPlatform.iOS
+                      ? 'Save QR to Photos'
+                      : 'Save QR code',
+                ),
+              ),
+              if (defaultTargetPlatform == TargetPlatform.iOS)
+                OutlinedButton.icon(
+                  onPressed: _exportingQr
+                      ? null
+                      : () => _exportQr(login, share: true),
+                  icon: const Icon(Icons.ios_share),
+                  label: const Text('Share QR code'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
         const Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -544,10 +640,26 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             SizedBox(width: 12),
-            Flexible(child: Text('Waiting for your phone…')),
+            Flexible(child: Text('Waiting for approval…')),
           ],
         ),
+        TextButton(
+          onPressed: login.busy
+              ? null
+              : () =>
+                    widget.controller.beginLogin(login.networkId, useQr: true),
+          child: const Text('Get a new QR code'),
+        ),
         if (login.networkId == 'whatsapp') ...[
+          if (defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.android)
+            TextButton(
+              onPressed: login.busy
+                  ? null
+                  : () =>
+                        widget.controller.beginLogin('whatsapp', useQr: false),
+              child: const Text('Link with a code on this phone'),
+            ),
           const SizedBox(height: 24),
           const Divider(),
           const SizedBox(height: 16),
@@ -601,6 +713,43 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
     widget.controller.submitLogin({'phone': _values['phone']!.text.trim()});
   }
 
+  Future<void> _exportQr(LoginState login, {bool share = false}) async {
+    setState(() => _exportingQr = true);
+    try {
+      final bytes = await loginQrImageBytes(login);
+      if (!mounted) return;
+      if (widget.controller.login != login) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('The sign-in code changed. Save the new code.'),
+          ),
+        );
+        return;
+      }
+      await widget.controller.exportLoginQr(bytes, share: share);
+      if (mounted &&
+          widget.controller.error == null &&
+          !share &&
+          defaultTargetPlatform == TargetPlatform.iOS) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('QR code saved to Photos.')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'The QR code could not be exported. Try a fresh code.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exportingQr = false);
+    }
+  }
+
   void _submit() {
     final login = widget.controller.login;
     if (login == null ||
@@ -612,6 +761,45 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog> {
       for (final field in login.fields) field.id: _values[field.id]?.text ?? '',
     });
   }
+}
+
+Future<Uint8List> loginQrImageBytes(LoginState login) async {
+  final Uint8List bytes;
+  if (login.qrImage != null) {
+    bytes = base64Decode(login.qrImage!);
+  } else {
+    final qr = QrValidator.validate(
+      data: login.qrData!,
+      version: QrVersions.auto,
+    ).qrCode!;
+    const moduleSize = 8.0;
+    const quietZone = 4 * moduleSize;
+    final codeSize = qr.moduleCount * moduleSize;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder)..drawColor(Colors.white, BlendMode.src);
+    canvas.translate(quietZone, quietZone);
+    final painter = QrPainter.withQr(
+      qr: qr,
+      gapless: true,
+      eyeStyle: const QrEyeStyle(
+        eyeShape: QrEyeShape.square,
+        color: Colors.black,
+      ),
+      dataModuleStyle: const QrDataModuleStyle(
+        dataModuleShape: QrDataModuleShape.square,
+        color: Colors.black,
+      ),
+    );
+    painter.paint(canvas, Size.square(codeSize));
+    final picture = recorder.endRecording();
+    final imageSize = (codeSize + 2 * quietZone).toInt();
+    final image = await picture.toImage(imageSize, imageSize);
+    picture.dispose();
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    bytes = data!.buffer.asUint8List();
+  }
+  return bytes;
 }
 
 class InboxSettingsPage extends StatelessWidget {

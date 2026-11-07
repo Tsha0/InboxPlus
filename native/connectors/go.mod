@@ -3,9 +3,12 @@ module github.com/Tsha0/InboxPlus/native/connectors
 go 1.27.3
 
 require (
+	github.com/diamondburned/arikawa/v3 v3.6.1-0.20261031043016-e170775edee6
+	github.com/eatmoreapple/openwechat v1.4.11-0.20250102030116-635e5561f319
 	github.com/gotd/td v0.163.0
 	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/rs/zerolog v1.35.1
+	go.mau.fi/mautrix-linkedin v0.2609.1-0.20261105130905-ff697e9152a8
 	go.mau.fi/mautrix-meta v0.2610.1-0.20261103213641-69a505d69039
 	go.mau.fi/util v0.11.1-0.20261026174803-9e6b9c87cfbc
 	go.mau.fi/whatsmeow v0.0.0-20261102152715-54038813c47f
@@ -39,6 +42,8 @@ require (
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/schema v1.4.1 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/gotd/ige v0.3.0 // indirect
 	github.com/gotd/log v0.1.0 // indirect
 	github.com/gotd/neo v0.1.5 // indirect
@@ -78,6 +83,7 @@ require (
 	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

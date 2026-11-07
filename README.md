@@ -4,7 +4,7 @@
   <img src="docs/assets/inboxplus-logo.png" alt="Inbox+ logo" width="320">
 </p>
 
-Inbox+ is a local-first messaging inbox being migrated to Flutter for Android, iOS, macOS,
+Inbox+ is a local-first messaging inbox built with Flutter for Android, iOS, macOS,
 Windows and Linux. Each device runs its own interface, encrypted SQLite database and network
 connectors. A phone does not need a Mac, a shared server or an Inbox+ cloud account.
 
@@ -12,7 +12,7 @@ The app focuses on conversations, attachments and contacts. There are no feeds, 
 
 ## Status
 
-The Flutter app is a development build, version **0.9.0+113**. The five platform runners share Dart
+The Flutter app is a development build, version **0.9.0+114**. The five platform runners share Dart
 application code and an embedded Go connector library. Platform builds, fixture tests and live
 network verification are separate checks: a passing build does not establish that a real account
 can sign in or send messages. New Flutter connectors have not been certified with live accounts.
@@ -20,11 +20,6 @@ can sign in or send messages. New Flutter connectors have not been certified wit
 Current implementation and verification focus on **macOS, Windows and Linux**. Android and iOS
 scaffolding is retained, but mobile implementation and design are deferred. Desktop and mobile
 select separate layouts while sharing application logic, encrypted storage and connector contracts.
-
-The [published releases](https://github.com/Tsha0/InboxPlus/releases/latest) are still the previous
-macOS application, version 0.8.5. Swift sources and the old packaging workflow remain in the
-repository while migration and existing-profile handling are verified. The Flutter app does not
-start Synapse or bridge processes.
 
 ## Requirements
 
@@ -78,8 +73,7 @@ flutter build ios --release --no-codesign
 Run only the command supported by the build host. The iOS command verifies an unsigned build;
 tagged releases reach TestFlight through the [iOS release workflow](CONTRIBUTING.md#ios-releases).
 Android release signing, desktop installers, notarization, App Store and Play Store publishing and
-automatic updates require release work beyond these development builds. The previous Swift Sparkle
-updater is not part of the Flutter app.
+automatic updates require release work beyond these development builds.
 
 Each desktop target has its own native runner and release artifact: a macOS `.app`, a Windows
 executable with its bundled libraries, or a Linux executable with its bundled libraries. Build and
@@ -124,11 +118,29 @@ installation remain to verify. Packaging fixtures do not establish native Window
 | Telegram | gotd MTProto client | Your Telegram API ID/hash, phone, code and optional two-step password; no secret chats |
 | Instagram | mautrix-meta's instameow library | Network-owned sign-in page in an ephemeral browser where the platform adapter supports it |
 | Facebook Messenger | mautrix-meta's messagix library | Ephemeral Facebook sign-in; protected end-to-end encrypted chats are not yet supported |
+| WeChat | openwechat Go client | QR sign-in for accounts with WeChat web access; text messaging and incoming attachments; no older history import |
+| Discord | Arikawa Go client | Email/password with authenticator or backup code, or a session token; direct and group messages only |
+| LinkedIn | linkedingo Go client | Email/password with verification codes or app approval; conversation history, text messaging and attachment downloads |
 | iMessage | Local macOS Messages adapter | macOS only; explicit Full Disk Access and Automation permission |
+
+Matrix and X are not offered as connection options in the Flutter app.
 
 Instagram and Messenger web sign-in is implemented on macOS, iOS and Linux. Android and Windows
 currently leave those networks unavailable because their adapters do not yet provide the required
 non-persistent sign-in environment. Windows builds currently support x64.
+
+WeChat, Discord and LinkedIn use the shared connector library and account setup on all five
+platforms, without an external host or Matrix server. These integrations are experimental and
+have offline fixture coverage; live sign-in and messaging still require validation. WeChat depends
+on the account's web-login eligibility and receives messages available after connecting; it cannot
+import older history. Download uncached WeChat attachments during the current connection.
+Discord supports direct and group messages, replies and uploads up to 10 MiB; server channels are
+not included. Its [personal-account automation policy](https://support.discord.com/hc/en-us/articles/115002192352-Automated-User-Accounts-Self-Bots)
+may result in account restrictions. Captcha, security-key and SMS-only Discord login challenges
+are unsupported. LinkedIn supports email, SMS and authenticator codes or app approval; captcha
+and other verification challenges remain unsupported. WeChat and LinkedIn do not yet send
+attachments, replies or reactions. Signing out of these three connectors removes their encrypted
+local session; revoke remaining sessions through the original network's settings.
 
 The interface advertises only capabilities implemented by a connector and its device adapter.
 Unavailable authentication methods and unsupported operations must explain their limitation.
@@ -142,7 +154,12 @@ app receiving events and on the device's permission and lifecycle rules.
 
 ### iMessage
 
+On iOS, Add Account shows a disabled iMessage placeholder marked
+"Coming soon · Experimental iOS integration". The experimental connector is deferred;
+no Open Madrid or rustpush code is bundled.
+
 Only macOS exposes the local Messages database and Apple-event sending used by Inbox+.
+Windows and Linux builds omit the Apple adapter, iMessage connection option and iMessage settings.
 Connecting iMessage explicitly asks the user to grant Full Disk Access in System Settings; sending
 may also prompt for Automation control of Messages. There is no Mac relay for other platforms.
 New message can search this Mac's Contacts when access is allowed. Choose a phone number or email
@@ -182,8 +199,7 @@ apps/inboxplus_flutter          shared Flutter interface and application control
   android/ios/macos/windows/linux   platform permissions, authentication and lifecycle
 packages/inboxplus_storage      encrypted Drift/SQLite records, drafts and durable outbox
 native/connectors              embedded Go network clients, encrypted connector state, C ABI
-Sources/InboxPlusIMessage       reused macOS Messages adapter
-Sources/InboxPlus*              retained Swift application and runtime during migration
+native/imessage                Swift package for the local macOS Messages adapter
 ```
 
 `lib/ui/inbox_app.dart` selects the desktop shell for macOS, Windows and Linux. The desktop shell
@@ -220,8 +236,8 @@ go test ./...
 ```
 
 Tests use fakes and isolated files, not your real accounts or Messages database. See
-[CONTRIBUTING.md](CONTRIBUTING.md) for generated-code checks, native builds and the retained Swift
-suite. Do not treat fixture coverage as live-network certification.
+[CONTRIBUTING.md](CONTRIBUTING.md) for generated-code checks, native builds and iMessage adapter
+tests. Do not treat fixture coverage as live-network certification.
 
 ## Privacy and security
 
@@ -243,6 +259,5 @@ explicit request.
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE). The embedded Meta client is also AGPL-3.0-or-later; this migration does
-not turn those libraries into permissively licensed code. Review the
-[dependency inventory](docs/dependencies.md) and redistribution obligations before distribution.
+[AGPL-3.0-or-later](LICENSE). The embedded Meta and LinkedIn clients are also AGPL-3.0-or-later.
+Review the [dependency inventory](docs/dependencies.md) and redistribution obligations before distribution.

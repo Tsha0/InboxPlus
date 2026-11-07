@@ -3,11 +3,13 @@ package whatsapp
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waAdv"
 	"go.mau.fi/whatsmeow/proto/waCommon"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -20,6 +22,71 @@ import (
 type fixtureContacts struct {
 	store.NoopStore
 	values map[types.JID]types.ContactInfo
+}
+
+func TestPhonePairingNormalizesDisplayFormatsAndUsesAcceptedClientIdentity(t *testing.T) {
+	c, err := New("pairing", t.TempDir(), bytes.Repeat([]byte{29}, 32), func(map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	ready := make(chan struct{})
+	close(ready)
+	c.pairingReady = ready
+	c.pairingExpiresAt = time.Now().Add(time.Minute)
+	var phone string
+	c.pairPhone = func(_ context.Context, number string, notify bool, client whatsmeow.PairClientType, name string) (string, error) {
+		phone = number
+		if !notify || client != whatsmeow.PairClientChrome || name != "Chrome (Linux)" {
+			t.Fatal("unsupported pairing client identity")
+		}
+		return "ABCD-EFGH", nil
+	}
+	for input, expected := range map[string]string{
+		"+65 8123 4567":    "6581234567",
+		"65 (8123)-4567":   "6581234567",
+		"+39 02 1234 5678": "390212345678",
+		"6581234567":       "6581234567",
+	} {
+		result, err := c.Handle(context.Background(), map[string]any{"op": "pair_phone", "phone": input})
+		if err != nil || phone != expected {
+			t.Fatalf("formatted pairing failed: %v", err)
+		}
+		if result.(map[string]any)["code"] != "ABCD-EFGH" || result.(map[string]any)["expires_at"] != c.pairingExpiresAt.UnixMilli() {
+			t.Fatal("pairing lost its code or expiry")
+		}
+	}
+	for _, invalid := range []string{"", "+65abc81234567", "++6581234567", "06581234567", "123456", "1234567890123456", "+65 ８１２３４５６７", "+65 8123 ext 5"} {
+		if _, err := c.Handle(context.Background(), map[string]any{"op": "pair_phone", "phone": invalid}); !errors.Is(err, ErrInvalidPhone) {
+			t.Fatal("invalid number was accepted")
+		}
+	}
+	c.pairPhone = func(context.Context, string, bool, whatsmeow.PairClientType, string) (string, error) {
+		return "", errors.New("private-network-response")
+	}
+	if _, err := c.Handle(context.Background(), map[string]any{"op": "pair_phone", "phone": "6581234567"}); !errors.Is(err, ErrPhonePairing) {
+		t.Fatal("pairing error was not sanitized")
+	}
+}
+
+func TestPhonePairingRequiresReadinessAndRejectsExpiredAttempts(t *testing.T) {
+	c, err := New("pairing", t.TempDir(), bytes.Repeat([]byte{30}, 32), func(map[string]any) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.pairPhone = func(context.Context, string, bool, whatsmeow.PairClientType, string) (string, error) {
+		t.Fatal("pairing started before ready or after expiry")
+		return "", nil
+	}
+	request := map[string]any{"op": "pair_phone", "phone": "+65 8123 4567"}
+	if _, err := c.Handle(context.Background(), request); !errors.Is(err, ErrPairingNotReady) {
+		t.Fatal("pairing did not wait for its first QR event")
+	}
+	c.pairingExpiresAt = time.Now().Add(-time.Second)
+	if _, err := c.Handle(context.Background(), request); !errors.Is(err, ErrPairingExpired) {
+		t.Fatal("expired pairing was accepted")
+	}
 }
 
 func TestReactionUpdatesDoNotBecomeMessagesOrConversationActivity(t *testing.T) {

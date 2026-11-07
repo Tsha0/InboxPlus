@@ -310,7 +310,7 @@
 			);
 			mainGroup = 33CC10E42044A3C60003C045;
 			packageReferences = (
-				AABBAABB0000000000000203 /* XCLocalSwiftPackageReference ".." */,
+				AABBAABB0000000000000203 /* XCLocalSwiftPackageReference "InboxPlusIMessage" */,
 				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "FlutterGeneratedPluginSwiftPackage" */,
 			);
 			productRefGroup = 33CC10EE2044A3C60003C045 /* Products */;
@@ -838,9 +838,9 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage;
 		};
-		AABBAABB0000000000000203 /* XCLocalSwiftPackageReference ".." */ = {
+		AABBAABB0000000000000203 /* XCLocalSwiftPackageReference "InboxPlusIMessage" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../..;
+			relativePath = ../../../native/imessage;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -851,7 +851,7 @@
 		};
 		AABBAABB0000000000000202 /* InboxPlusIMessage */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AABBAABB0000000000000203 /* XCLocalSwiftPackageReference ".." */;
+			package = AABBAABB0000000000000203 /* XCLocalSwiftPackageReference "InboxPlusIMessage" */;
 			productName = InboxPlusIMessage;
 		};
 /* End XCSwiftPackageProductDependency section */

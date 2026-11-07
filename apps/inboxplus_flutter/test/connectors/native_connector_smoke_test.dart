@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inboxplus_flutter/app_controller.dart';
 import 'package:inboxplus_flutter/platform/app_environment.dart';
@@ -16,6 +16,12 @@ void main() {
   test(
     'app startup loads the real embedded capabilities into an empty encrypted inbox',
     () async {
+      debugDefaultTargetPlatformOverride = Platform.isMacOS
+          ? TargetPlatform.macOS
+          : Platform.isWindows
+          ? TargetPlatform.windows
+          : TargetPlatform.linux;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
       final temporary = await Directory.systemTemp.createTemp(
         'inboxplus-app-smoke-',
       );
@@ -34,7 +40,7 @@ void main() {
         nativeCall: (method, arguments) async => method == 'capabilities'
             ? {
                 'web_login_platforms': ['instagram', 'messenger'],
-                'imessage': true,
+                'imessage': Platform.isMacOS,
               }
             : null,
       );
@@ -46,12 +52,23 @@ void main() {
         expect(app.conversations, isEmpty);
         expect(
           app.networks.where((network) => network.available),
-          hasLength(5),
+          hasLength(Platform.isMacOS ? 8 : 7),
+        );
+        expect(
+          app.networks.any((network) => network.id == 'imessage'),
+          Platform.isMacOS,
         );
         expect(app.storageSummary.messageCount, 0);
         expect(
           app.networks
-              .where((network) => network.available && network.id != 'imessage')
+              .where(
+                (network) => {
+                  'whatsapp',
+                  'telegram',
+                  'instagram',
+                  'messenger',
+                }.contains(network.id),
+              )
               .every((network) => network.canReply && network.canReact),
           isTrue,
         );
@@ -91,7 +108,15 @@ void main() {
         expect(capabilities['abi_version'], 1);
         expect(
           capabilities['platforms'],
-          containsAll(['whatsapp', 'telegram', 'instagram', 'messenger']),
+          containsAll([
+            'whatsapp',
+            'telegram',
+            'instagram',
+            'messenger',
+            'wechat',
+            'discord',
+            'linkedIn',
+          ]),
         );
         final initialized = await engine.request({
           'op': 'initialize',

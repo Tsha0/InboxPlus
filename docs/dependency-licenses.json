@@ -90,11 +90,23 @@
     },
     "license": "Apache-2.0"
   },
+  "golang:github.com/diamondburned/arikawa/v3@v3.6.1-0.20261031043016-e170775edee6": {
+    "evidence": {
+      "LICENSE": "da515e1b177271963aedd19c8df5bf0543c768c6e7ceaa8696d5b8194e3ff393"
+    },
+    "license": "ISC"
+  },
   "golang:github.com/dlclark/regexp2@v1.12.0": {
     "evidence": {
       "LICENSE": "9be5d04bb4d706914d5bf943710da4afeb42048f7c529902fb57c82762a991a9"
     },
     "license": "MIT"
+  },
+  "golang:github.com/eatmoreapple/openwechat@v1.4.11-0.20250102030116-635e5561f319": {
+    "evidence": {
+      "LICENSE": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    "license": "Apache-2.0"
   },
   "golang:github.com/elliotchance/orderedmap/v3@v3.1.0": {
     "evidence": {
@@ -157,6 +169,18 @@
       "LICENSE": "0a8d61ed3cbfd5312326e8126c31ce9c627a283adc99131b56896d29ada04b2d"
     },
     "license": "BSD-3-Clause"
+  },
+  "golang:github.com/gorilla/schema@v1.4.1": {
+    "evidence": {
+      "LICENSE": "0b77fdea862f869ef4f201ac5649bdbd38ccb055c7f6454dffae9e2adb4941c1"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:github.com/gorilla/websocket@v1.5.3": {
+    "evidence": {
+      "LICENSE": "2be1b548b0387ca8948e1bb9434e709126904d15f622cc2d0d8e7f186e4d122d"
+    },
+    "license": "BSD-2-Clause"
   },
   "golang:github.com/gotd/ige@v0.3.0": {
     "evidence": {
@@ -326,6 +350,14 @@
     },
     "license": "GPL-3.0-only"
   },
+  "golang:go.mau.fi/mautrix-linkedin@v0.2609.1-0.20261105130905-ff697e9152a8": {
+    "evidence": {
+      "LICENSE": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+      "LICENSE.exceptions": "066076e6e72b6e1b7761363fc652f61b581fe11030905e5088e8be8287b774f9"
+    },
+    "license": "AGPL-3.0-or-later",
+    "note": "Upstream additional licensing exceptions apply only to the named third parties."
+  },
   "golang:go.mau.fi/mautrix-meta@v0.2610.1-0.20261103213641-69a505d69039": {
     "evidence": {
       "LICENSE": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
@@ -424,6 +456,12 @@
     "license": "BSD-3-Clause"
   },
   "golang:golang.org/x/text@v0.43.0": {
+    "evidence": {
+      "LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    },
+    "license": "BSD-3-Clause"
+  },
+  "golang:golang.org/x/time@v0.15.0": {
     "evidence": {
       "LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
     },

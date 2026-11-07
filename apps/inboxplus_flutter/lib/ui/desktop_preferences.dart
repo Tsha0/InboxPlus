@@ -358,7 +358,9 @@ class _DesktopPreferences extends StatelessWidget {
               ),
               _footnote(
                 context,
-                'Older messages are deleted from this device and stay on the network. iMessage uses its own history below. Applies the next time Inbox+ opens.',
+                defaultTargetPlatform == TargetPlatform.macOS
+                    ? 'Older messages are deleted from this device and stay on the network. iMessage uses its own history below. Applies the next time Inbox+ opens.'
+                    : 'Older messages are deleted from this device and stay on the network. Applies the next time Inbox+ opens.',
               ),
               if (defaultTargetPlatform == TargetPlatform.macOS) ...[
                 _row(

@@ -134,6 +134,7 @@ class LoginField {
     this.hint,
     this.secret = false,
     this.phone = false,
+    this.optional = false,
   });
 
   final String id;
@@ -141,6 +142,7 @@ class LoginField {
   final String? hint;
   final bool secret;
   final bool phone;
+  final bool optional;
 }
 
 @immutable
@@ -151,7 +153,9 @@ class LoginState {
     this.title = 'Connect account',
     this.instructions = '',
     this.qrData,
+    this.qrImage,
     this.pairingCode,
+    this.expiresAt,
     this.fields = const [],
     this.error,
     this.busy = false,
@@ -162,7 +166,9 @@ class LoginState {
   final String title;
   final String instructions;
   final String? qrData;
+  final String? qrImage;
   final String? pairingCode;
+  final DateTime? expiresAt;
   final List<LoginField> fields;
   final String? error;
   final bool busy;
@@ -361,11 +367,13 @@ abstract class InboxUiController extends ChangeNotifier {
   Future<String?> acceptContactSuggestion(ContactSuggestion suggestion);
   Future<void> linkIdentity(IdentityLink identity, ContactRecord person);
   Future<void> removeContact(String contactId);
-  Future<void> beginLogin(String networkId);
+  Future<void> beginLogin(String networkId, {bool? useQr});
   Future<void> reconnectAccount(String accountId);
   Future<void> disconnectAccount(String accountId);
   Future<void> submitLogin(Map<String, String> fields);
   Future<void> cancelLogin();
+  Future<void> resumeLogin();
+  Future<void> exportLoginQr(Uint8List image, {bool share = false});
   Future<void> removeAccount(String accountId);
   Future<void> openLoginItemsSettings();
   Future<void> refreshNotificationStatus();

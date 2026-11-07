@@ -9,10 +9,9 @@ const networkNames = {
   'messenger': 'Facebook Messenger',
   'imessage': 'iMessage',
   'discord': 'Discord',
-  'matrix': 'Matrix',
+  'wechat': 'WeChat',
   'linkedIn': 'LinkedIn',
   'slack': 'Slack',
-  'x': 'X',
 };
 
 class NetworkBadge extends StatelessWidget {

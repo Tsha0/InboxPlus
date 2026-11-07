@@ -439,6 +439,8 @@ class _NewConversationDialogState extends State<NewConversationDialog> {
   String get _recipientHint => switch (_account?.platform) {
     'whatsapp' => 'Phone number including country code',
     'telegram' => 'Username or numeric Telegram ID',
+    'wechat' => 'Existing contact ID from WeChat',
+    'discord' => 'Numeric Discord user ID',
     'imessage' => 'Name, email or international phone number (+…)',
     _ => 'Account ID or username',
   };

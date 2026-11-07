@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 import 'package:path/path.dart' as p;
@@ -58,6 +59,7 @@ class AppController extends InboxUiController {
   List<ContactRecord> _contacts = [];
   final _acceptingContactSuggestions = <String>{};
   List<NetworkCapability> _networks = [];
+  final _attachmentLimits = <String, int>{};
   PreferencesRecord _preferences = const PreferencesRecord();
   String _launchAtLoginStatus = 'unavailable';
   SystemNotificationStatus _notificationStatus =
@@ -78,6 +80,9 @@ class AppController extends InboxUiController {
   LoginState? _login;
   String? _loginAccount;
   bool _loginPhonePairing = false;
+  bool _loginQrSelected = true;
+  bool _nativeLoginActive = false;
+  Timer? _loginExpiryTimer;
   int _loginGeneration = 0;
   bool _loading = true;
   bool _closed = false;
@@ -230,12 +235,27 @@ class AppController extends InboxUiController {
             .toSet() ??
         <String>{};
     final features = capabilities['features'] as Map? ?? {};
+    for (final platform in platforms) {
+      final limit = (features[platform] as Map?)?['max_attachment_bytes'];
+      if (limit is num && limit > 0) {
+        _attachmentLimits[platform] = limit.toInt().clamp(
+          1,
+          _maxAttachmentBytes,
+        );
+      }
+    }
+    final hasIMessage =
+        defaultTargetPlatform == TargetPlatform.macOS &&
+        nativeCapabilities['imessage'] == true;
     _networks = [
       for (final entry in {
         'whatsapp': 'WhatsApp',
         'telegram': 'Telegram',
         'instagram': 'Instagram',
         'messenger': 'Messenger',
+        'wechat': 'WeChat',
+        'discord': 'Discord',
+        'linkedIn': 'LinkedIn',
       }.entries)
         NetworkCapability(
           id: entry.key,
@@ -254,6 +274,10 @@ class AppController extends InboxUiController {
               ? 'Sign in with your phone number and Telegram app credentials.'
               : entry.key == 'messenger'
               ? 'Connect Facebook chats. Encrypted chats are currently unavailable.'
+              : entry.key == 'wechat'
+              ? 'Scan with WeChat. Available history depends on WeChat web access.'
+              : entry.key == 'discord'
+              ? 'Direct and group messages. Discord restricts unofficial personal clients.'
               : 'Connect directly from this device.',
           canAttach: (features[entry.key] as Map?)?['send_attachment'] == true,
           canReply: (features[entry.key] as Map?)?['replies'] == true,
@@ -261,28 +285,23 @@ class AppController extends InboxUiController {
           canStartConversation:
               (features[entry.key] as Map?)?['start_conversation'] == true,
         ),
-      NetworkCapability(
-        id: 'imessage',
-        name: 'iMessage',
-        available: nativeCapabilities['imessage'] == true,
-        reason: nativeCapabilities['imessage'] == true
-            ? null
-            : 'iMessage is available on macOS only.',
-        description: 'Use Messages on this Mac. Requires Full Disk Access and automation permission.',
-        canStartConversation: nativeCapabilities['imessage'] == true,
-      ),
-      for (final entry in {'discord': 'Discord', 'matrix': 'Matrix'}.entries)
-        NetworkCapability(
-          id: entry.key,
-          name: entry.value,
+      if (hasIMessage)
+        const NetworkCapability(
+          id: 'imessage',
+          name: 'iMessage',
+          available: true,
+          description: 'Use Messages on this Mac. Requires Full Disk Access and automation permission.',
+          canStartConversation: true,
+        )
+      else if (defaultTargetPlatform == TargetPlatform.iOS)
+        const NetworkCapability(
+          id: 'imessage',
+          name: 'iMessage',
           available: false,
-          reason: 'Not supported yet',
+          comingSoon: true,
+          reason: 'Coming soon · Experimental iOS integration',
         ),
-      for (final entry in {
-        'linkedIn': 'LinkedIn',
-        'slack': 'Slack',
-        'x': 'X',
-      }.entries)
+      for (final entry in {'slack': 'Slack'}.entries)
         NetworkCapability(
           id: entry.key,
           name: entry.value,
@@ -300,11 +319,13 @@ class AppController extends InboxUiController {
     } else {
       unawaited(refresh());
     }
-    _imessageTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (_accounts['imessage-local']?.isConnected == true) {
-        unawaited(_perform(() => _syncIMessage()));
-      }
-    });
+    if (hasIMessage) {
+      _imessageTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+        if (_accounts['imessage-local']?.isConnected == true) {
+          unawaited(_perform(() => _syncIMessage()));
+        }
+      });
+    }
     await openPendingNotification();
   }
 
@@ -511,7 +532,7 @@ class AppController extends InboxUiController {
               'conversation_id': route.conversationId,
             });
             await _syncIMessage(route: route);
-          } else if (account.platform != 'whatsapp') {
+          } else if (!{'whatsapp', 'wechat'}.contains(account.platform)) {
             await engine!.request({
               'op': 'history',
               'account_id': route.accountId,
@@ -594,8 +615,9 @@ class AppController extends InboxUiController {
   }
 
   @override
-  Future<void> beginLogin(String networkId) => _beginLogin(
+  Future<void> beginLogin(String networkId, {bool? useQr}) => _beginLogin(
     networkId,
+    useQr: useQr ?? (_login?.networkId == networkId ? _loginQrSelected : null),
     accountId: _login?.networkId == networkId ? _loginAccount : null,
     editCredentials:
         _login?.networkId == networkId && _login?.step == LoginStep.failed,
@@ -681,6 +703,7 @@ class AppController extends InboxUiController {
     String networkId, {
     String? accountId,
     bool editCredentials = false,
+    bool? useQr,
   }) => _perform(() async {
     final capability = _networks.where((n) => n.id == networkId).firstOrNull;
     if (capability?.available != true) {
@@ -693,6 +716,10 @@ class AppController extends InboxUiController {
         accountId ?? (networkId == 'imessage' ? 'imessage-local' : _uuid.v4());
     _loginAccount = id;
     _loginPhonePairing = false;
+    _loginQrSelected =
+        useQr ??
+        (defaultTargetPlatform != TargetPlatform.iOS &&
+            defaultTargetPlatform != TargetPlatform.android);
     _login = LoginState(
       networkId: networkId,
       step: LoginStep.preparing,
@@ -760,17 +787,51 @@ class AppController extends InboxUiController {
               ],
             );
           }
-        } else if (networkId == 'whatsapp') {
-          _login = const LoginState(
-            networkId: 'whatsapp',
+        } else if (networkId == 'discord' || networkId == 'linkedIn') {
+          _login = LoginState(
+            networkId: networkId,
+            step: LoginStep.fields,
+            title: 'Connect ${capability.name}',
+            instructions: networkId == 'discord'
+                ? 'Enter your Discord email and password, or use a session token. Only the session is saved on this device. Discord prohibits unofficial personal-account automation and may restrict your account. Captcha and security-key challenges are not supported.'
+                : 'Sign in to LinkedIn. Your password is not saved. Complete any verification code or approval requested by LinkedIn.',
+            fields: [
+              LoginField(
+                id: 'username',
+                label: 'Email',
+                optional: networkId == 'discord',
+              ),
+              LoginField(
+                id: 'password',
+                label: 'Password',
+                secret: true,
+                optional: networkId == 'discord',
+              ),
+              if (networkId == 'discord')
+                const LoginField(
+                  id: 'token',
+                  label: 'Session token (optional)',
+                  secret: true,
+                  optional: true,
+                ),
+            ],
+          );
+        } else if (networkId == 'whatsapp' || networkId == 'wechat') {
+          _login = LoginState(
+            networkId: networkId,
             step: LoginStep.preparing,
-            title: 'Connect WhatsApp',
-            instructions: 'Open WhatsApp on your phone, then Linked devices → Link a device.',
+            title: 'Connect ${capability.name}',
+            instructions: networkId == 'wechat'
+                ? 'Preparing a WeChat sign-in QR code…'
+                : _loginQrSelected
+                ? 'Open WhatsApp on your phone, then Linked devices → Link a device.'
+                : 'Preparing phone-number linking. You will enter a code in WhatsApp on this phone.',
           );
           _publish();
           final result = await engine!.request({
             'op': 'connect',
             'account_id': id,
+            if (networkId == 'wechat') 'interactive': true,
           });
           if (generation != _loginGeneration) return;
           if (result['state'] == 'connected') {
@@ -799,10 +860,33 @@ class AppController extends InboxUiController {
   Future<void> submitLogin(Map<String, String> fields) => _perform(() async {
     final id = _loginAccount;
     final current = _login;
-    if (id == null || current == null || engine == null) return;
+    if (id == null ||
+        current == null ||
+        current.busy ||
+        engine == null ||
+        (current.step != LoginStep.fields && current.step != LoginStep.qr)) {
+      return;
+    }
     final generation = _loginGeneration;
     final Map<String, Object?> command;
-    if (fields.containsKey('api_id')) {
+    if ((current.networkId == 'discord' || current.networkId == 'linkedIn') &&
+        fields.containsKey('username')) {
+      final username = fields['username']?.trim() ?? '';
+      final password = fields['password'] ?? '';
+      final token = fields['token']?.trim() ?? '';
+      if (token.isEmpty && (username.isEmpty || password.isEmpty)) {
+        throw const AppStorageException(
+          'Enter your email and password, or a Discord session token.',
+        );
+      }
+      command = {
+        'op': 'login',
+        if (token.isNotEmpty) 'token': token,
+        if (token.isEmpty) ...{'username': username, 'password': password},
+      };
+    } else if (current.networkId == 'linkedIn' && current.fields.isEmpty) {
+      command = {'op': 'login_wait'};
+    } else if (fields.containsKey('api_id')) {
       final apiId = int.tryParse(fields['api_id']!.trim());
       final apiHash = fields['api_hash']?.trim() ?? '';
       if (apiId == null ||
@@ -819,10 +903,31 @@ class AppController extends InboxUiController {
       );
       command = {'op': 'connect', ...credentials};
     } else if (fields.containsKey('phone')) {
+      var phone = fields['phone']!.trim();
+      if (current.networkId == 'whatsapp') {
+        final country = fields['country_code']?.trim();
+        if (country != null) {
+          if (!RegExp(r'^\+?[1-9][0-9]{0,2}$').hasMatch(country) ||
+              phone.startsWith('+')) {
+            throw const AppStorageException(
+              'Enter the country code separately from your phone number.',
+            );
+          }
+          phone = '$country$phone';
+        }
+        phone = phone
+            .replaceAll(RegExp(r'[ ().\-\u00a0]'), '')
+            .replaceFirst(RegExp(r'^\+'), '');
+        if (!RegExp(r'^[1-9][0-9]{6,14}$').hasMatch(phone)) {
+          throw const AppStorageException(
+            'Enter a valid phone number including its country code.',
+          );
+        }
+      }
       if (current.networkId == 'whatsapp') _loginPhonePairing = true;
       command = {
         'op': current.networkId == 'whatsapp' ? 'pair_phone' : 'login_phone',
-        'phone': fields['phone']!.trim(),
+        'phone': phone,
       };
     } else if (fields.containsKey('code')) {
       command = {'op': 'login_code', 'code': fields['code']!.trim()};
@@ -836,7 +941,9 @@ class AppController extends InboxUiController {
       title: current.title,
       instructions: current.instructions,
       qrData: current.qrData,
+      qrImage: current.qrImage,
       pairingCode: current.pairingCode,
+      expiresAt: current.expiresAt,
       fields: current.fields,
       busy: true,
     );
@@ -845,18 +952,27 @@ class AppController extends InboxUiController {
     try {
       result = await engine!.request({...command, 'account_id': id});
     } catch (_) {
-      if (generation != _loginGeneration) return;
+      if (generation != _loginGeneration ||
+          _login?.step == LoginStep.complete) {
+        return;
+      }
       rethrow;
     }
     if (generation != _loginGeneration) return;
+    if (_login?.step == LoginStep.complete) return;
     if (current.networkId == 'whatsapp' && result['code'] is String) {
+      final expiresAt = result['expires_at'] is num
+          ? _timestamp(result['expires_at'])
+          : null;
       _login = LoginState(
         networkId: 'whatsapp',
         step: LoginStep.pairingCode,
         title: 'Link WhatsApp',
         pairingCode: result['code'] as String,
-        instructions: 'In WhatsApp, open Linked devices → Link a device → Link with phone number, then enter this code.',
+        expiresAt: expiresAt,
+        instructions: 'Copy this code, then switch to WhatsApp on this phone. Open Settings → Linked devices → Link a device → Link with phone number instead and enter the code. Return to Inbox+ after approving. This is a device-linking code, not an SMS code.',
       );
+      if (expiresAt != null) _expireLoginAt(expiresAt);
       _publish();
       return;
     }
@@ -865,12 +981,79 @@ class AppController extends InboxUiController {
   }, loginOperation: true);
 
   @override
+  Future<void> exportLoginQr(Uint8List image, {bool share = false}) => _perform(
+    () async {
+      if (_login?.step != LoginStep.qr) return;
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await _nativeCall(share ? 'shareLoginQr' : 'saveLoginQr', {
+          'image': image,
+        });
+      } else {
+        final jpeg = image.length >= 2 && image[0] == 0xff && image[1] == 0xd8;
+        await _prepareFilePicker();
+        await FilePicker.saveFile(
+          fileName: 'Inbox+ sign-in QR.${jpeg ? 'jpg' : 'png'}',
+          dialogTitle: 'Save sign-in QR code',
+          mimeType: jpeg ? 'image/jpeg' : 'image/png',
+          bytes: image,
+        );
+      }
+    },
+  );
+
+  @override
+  Future<void> resumeLogin() => _perform(() async {
+    final generation = _loginGeneration;
+    final status = defaultTargetPlatform == TargetPlatform.iOS
+        ? await _optionalNative('loginBackgroundStatus')
+        : const <String, Object?>{};
+    await _eventQueue;
+    if (generation != _loginGeneration) return;
+    final current = _login;
+    if (current == null ||
+        current.step == LoginStep.complete ||
+        current.step == LoginStep.failed) {
+      return;
+    }
+    if (status['expired'] == true ||
+        (current.expiresAt != null && !_now().isBefore(current.expiresAt!))) {
+      _expireLogin();
+    }
+  });
+
+  void _expireLoginAt(DateTime expiresAt) {
+    _loginExpiryTimer?.cancel();
+    final generation = _loginGeneration;
+    _loginExpiryTimer = Timer(expiresAt.difference(_now()), () {
+      if (generation == _loginGeneration) _expireLogin();
+    });
+  }
+
+  void _expireLogin() {
+    final current = _login;
+    if (current == null ||
+        current.step == LoginStep.complete ||
+        current.step == LoginStep.failed) {
+      return;
+    }
+    _loginExpiryTimer?.cancel();
+    _login = LoginState(
+      networkId: current.networkId,
+      step: LoginStep.failed,
+      title: 'Get a fresh sign-in code',
+      error: 'This sign-in attempt expired. Try again to get a fresh code.',
+    );
+    _publish();
+  }
+
+  @override
   Future<void> cancelLogin() {
     _loginGeneration++;
     return _cancelCurrentLogin();
   }
 
   Future<void> _cancelCurrentLogin() async {
+    _loginExpiryTimer?.cancel();
     final id = _loginAccount;
     _loginAccount = null;
     _loginPhonePairing = false;
@@ -936,6 +1119,7 @@ class AppController extends InboxUiController {
     switch (state) {
       case 'connected':
       case 'success':
+        _loginExpiryTimer?.cancel();
         _login = LoginState(
           networkId: network,
           step: LoginStep.complete,
@@ -960,8 +1144,19 @@ class AppController extends InboxUiController {
           networkId: network,
           step: LoginStep.fields,
           title: 'Verification code',
-          instructions: 'Enter the code Telegram sent you.',
+          instructions: network == 'discord'
+              ? 'Enter your authenticator or backup code.'
+              : network == 'linkedIn'
+              ? 'Enter the verification code LinkedIn requested.'
+              : 'Enter the code Telegram sent you.',
           fields: const [LoginField(id: 'code', label: 'Code')],
+        );
+      case 'approval':
+        _login = LoginState(
+          networkId: network,
+          step: LoginStep.fields,
+          title: 'Approve LinkedIn sign-in',
+          instructions: 'Approve this sign-in in your LinkedIn app, then select Continue.',
         );
       case 'password':
         _login = LoginState(
@@ -980,11 +1175,14 @@ class AppController extends InboxUiController {
       case 'error':
       case 'logged_out':
       case 'needs_login':
+        _loginExpiryTimer?.cancel();
         _login = LoginState(
           networkId: network,
           step: LoginStep.failed,
           title: 'Account needs sign-in',
-          error: 'Sign-in did not complete. Try again.',
+          error: state == 'timeout'
+              ? 'This sign-in code expired. Try again to get a fresh code.'
+              : 'Sign-in did not complete. Try again.',
         );
       default:
         final current = _login;
@@ -996,7 +1194,10 @@ class AppController extends InboxUiController {
             instructions: current.instructions,
             fields: current.fields,
             qrData: current.qrData,
+            qrImage: current.qrImage,
             pairingCode: current.pairingCode,
+            expiresAt: current.expiresAt,
+            busy: current.busy,
           );
         }
     }
@@ -1063,8 +1264,11 @@ class AppController extends InboxUiController {
     final source = await FilePicker.pickFile();
     if (source?.path == null) return;
     final file = File(source!.path!);
-    if (await file.length() > _maxAttachmentBytes) {
-      throw const AppStorageException('Attachments must be 32 MiB or smaller.');
+    final limit = _attachmentLimit(route);
+    if (await file.length() > limit) {
+      throw AppStorageException(
+        'Attachments must be ${limit ~/ (1024 * 1024)} MiB or smaller.',
+      );
     }
     final id = _uuid.v4();
     final target = File(
@@ -1205,7 +1409,7 @@ class AppController extends InboxUiController {
           );
         }
         final file = File(path);
-        if (await file.length() > _maxAttachmentBytes) {
+        if (await file.length() > _attachmentLimit(send.route)) {
           throw const AppStorageException(
             'The attachment exceeds the size limit.',
           );
@@ -1316,7 +1520,9 @@ class AppController extends InboxUiController {
   @override
   Future<LocalRecipientSnapshot> recipientContacts(String accountId) async {
     final account = _accounts[accountId];
-    if (account?.platform != 'imessage' || account?.isConnected != true) {
+    if (defaultTargetPlatform != TargetPlatform.macOS ||
+        account?.platform != 'imessage' ||
+        account?.isConnected != true) {
       return const LocalRecipientSnapshot.available();
     }
     try {
@@ -1982,14 +2188,51 @@ class AppController extends InboxUiController {
       case 'qr':
         if (_loginAccount == id &&
             !_loginPhonePairing &&
-            event['code'] is String) {
+            _login?.step != LoginStep.complete &&
+            (event['code'] is String || event['image'] is String)) {
+          final network = _accounts[id]!.platform;
+          if (network == 'whatsapp' && !_loginQrSelected) {
+            if (_login?.step != LoginStep.fields) {
+              _login = const LoginState(
+                networkId: 'whatsapp',
+                step: LoginStep.fields,
+                title: 'Link WhatsApp with a code',
+                instructions: 'Use the number registered with WhatsApp. You will enter the linking code in WhatsApp on this phone.',
+                fields: [
+                  LoginField(
+                    id: 'country_code',
+                    label: 'Country calling code',
+                    hint: 'For example, 65. No + needed.',
+                    phone: true,
+                  ),
+                  LoginField(
+                    id: 'phone',
+                    label: 'Phone number',
+                    hint: 'For example, 8123 4567. Omit a domestic dialling prefix; keep zeroes that are part of your number.',
+                    phone: true,
+                  ),
+                ],
+              );
+            }
+            break;
+          }
+          final expiresAt = event['expires_in'] is num
+              ? _now().add(
+                  Duration(seconds: (event['expires_in'] as num).toInt()),
+                )
+              : null;
           _login = LoginState(
-            networkId: 'whatsapp',
+            networkId: network,
             step: LoginStep.qr,
-            title: 'Link WhatsApp',
-            instructions: 'Scan this code using WhatsApp → Linked devices → Link a device.',
-            qrData: event['code'] as String,
+            title: network == 'wechat' ? 'Connect WeChat' : 'Link WhatsApp',
+            instructions: network == 'wechat'
+                ? 'Save the code, then open WeChat → + → Scan → Album and select it. Confirm sign-in, then return here. If WeChat rejects image-based login, share the code to another screen and scan it there. Requires WeChat web access.'
+                : 'Scan this code using WhatsApp → Linked devices → Link a device.',
+            qrData: event['code'] as String?,
+            qrImage: event['image'] as String?,
+            expiresAt: expiresAt,
           );
+          if (expiresAt != null) _expireLoginAt(expiresAt);
         }
       case 'chat':
         await _saveChat(event);
@@ -2346,11 +2589,16 @@ class AppController extends InboxUiController {
   Future<Object?> _imessage(
     String method, [
     Map<String, Object?> arguments = const {},
-  ]) => _nativeCall(method, {
-    ...arguments,
-    'profile_name': environment.profileName,
-    'history_window': _preferences.iMessageHistory,
-  });
+  ]) async {
+    if (defaultTargetPlatform != TargetPlatform.macOS) {
+      throw const ConnectorException('platform_unavailable');
+    }
+    return _nativeCall(method, {
+      ...arguments,
+      'profile_name': environment.profileName,
+      'history_window': _preferences.iMessageHistory,
+    });
+  }
 
   Future<void> _applySnapshot(Object? snapshot) async {
     final data = Map<String, Object?>.from(snapshot as Map);
@@ -2373,6 +2621,10 @@ class AppController extends InboxUiController {
   NetworkCapability? _capabilityFor(ConversationRoute route) => _networks
       .where((n) => n.id == _accounts[route.accountId]?.platform)
       .firstOrNull;
+
+  int _attachmentLimit(ConversationRoute route) =>
+      _attachmentLimits[_accounts[route.accountId]?.platform] ??
+      _maxAttachmentBytes;
 
   Future<Map<String, Object?>> _optionalNative(
     String method, [
@@ -2457,14 +2709,25 @@ class AppController extends InboxUiController {
       _error = _safeError(error);
       if (loginOperation && _login != null) {
         final old = _login!;
+        final expired =
+            error is ConnectorException &&
+            error.code == 'whatsapp_pairing_expired';
         _login = LoginState(
           networkId: old.networkId,
-          step: old.fields.isEmpty ? LoginStep.failed : LoginStep.fields,
+          step: expired
+              ? LoginStep.failed
+              : old.networkId == 'whatsapp' && old.step == LoginStep.qr
+              ? LoginStep.qr
+              : old.fields.isEmpty
+              ? LoginStep.failed
+              : LoginStep.fields,
           title: old.title,
           instructions: old.instructions,
           fields: old.fields,
           qrData: old.qrData,
+          qrImage: old.qrImage,
           pairingCode: old.pairingCode,
+          expiresAt: old.expiresAt,
           error: _error,
         );
       }
@@ -2475,6 +2738,19 @@ class AppController extends InboxUiController {
   }
 
   String _safeError(Object error) {
+    if (error is ConnectorException) {
+      final message = switch (error.code) {
+        'whatsapp_invalid_phone' =>
+          'Enter a valid phone number including its country code.',
+        'whatsapp_pairing_not_ready' =>
+          'WhatsApp is still preparing sign-in. Wait a moment and try again.',
+        'whatsapp_pairing_expired' =>
+          'This sign-in attempt expired. Try again to get a fresh code.',
+        'whatsapp_phone_pairing_failed' => 'WhatsApp could not create a linking code. Check your number and connection, then try again.',
+        _ => null,
+      };
+      if (message != null) return message;
+    }
     if (error is AppStorageException) return error.message;
     if (error is StorageException) {
       return 'Local data could not be saved or opened. Your existing profile has been kept.';
@@ -2486,11 +2762,31 @@ class AppController extends InboxUiController {
     if (error is PlatformException && error.code == 'cancelled') {
       return 'Sign-in was cancelled.';
     }
+    if (error is PlatformException && error.code == 'photos_denied') {
+      return 'Allow Inbox+ to add photos in iOS Settings, or use Share QR code to display the code on another screen.';
+    }
     return 'This operation could not finish. Your saved conversations and drafts have been kept.';
   }
 
   void _publish() {
     if (_closed) return;
+    final loginActive =
+        !_isClosing &&
+        _login != null &&
+        _login!.step != LoginStep.complete &&
+        _login!.step != LoginStep.failed;
+    if (defaultTargetPlatform == TargetPlatform.iOS &&
+        loginActive != _nativeLoginActive) {
+      _nativeLoginActive = loginActive;
+      unawaited(
+        _optionalNative('setLoginActive', {'active': loginActive}).catchError((
+          Object error,
+        ) {
+          _error = _safeError(error);
+          return <String, Object?>{};
+        }),
+      );
+    }
     final unread = _preferences.showsUnreadBadge
         ? conversations.fold<int>(
             0,
@@ -2517,6 +2813,11 @@ class AppController extends InboxUiController {
 
   Future<void> _close() async {
     _isClosing = true;
+    _loginExpiryTimer?.cancel();
+    if (_nativeLoginActive) {
+      await _optionalNative('setLoginActive', {'active': false});
+      _nativeLoginActive = false;
+    }
     _imessageTimer?.cancel();
     _statisticsTimer?.cancel();
     await _statisticsFuture;

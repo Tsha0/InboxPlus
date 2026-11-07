@@ -10,7 +10,7 @@ import AppKit
 import Foundation
 
 let arguments = CommandLine.arguments
-let sourcePath = arguments.count > 1 ? arguments[1] : "Sources/InboxPlusUI/Resources/InboxPlusLogo.png"
+let sourcePath = arguments.count > 1 ? arguments[1] : "docs/assets/inboxplus-logo.png"
 let outputPath = arguments.count > 2 ? arguments[2] : "Resources/AppIcon.icns"
 
 // macOS icon geometry: a 1024 canvas whose artwork occupies the middle 824, leaving the margin

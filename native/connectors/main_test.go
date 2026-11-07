@@ -11,6 +11,35 @@ import (
 	"time"
 )
 
+func TestNewNetworksInitializeAndCloseOfflineOnEveryPlatform(t *testing.T) {
+	for _, platform := range []string{"wechat", "discord", "linkedIn"} {
+		t.Run(platform, func(t *testing.T) {
+			r := &runtime{accounts: map[string]*account{}}
+			defer r.request([]byte(`{"op":"shutdown"}`))
+			request := func(value map[string]any) map[string]any {
+				encoded, _ := json.Marshal(value)
+				var result map[string]any
+				if json.Unmarshal(r.request(encoded), &result) != nil || result["ok"] != true {
+					t.Fatal("offline account operation failed")
+				}
+				return result["data"].(map[string]any)
+			}
+			capabilities := request(map[string]any{"op": "capabilities"})
+			if capabilities["features"].(map[string]any)[platform].(map[string]any)["send_text"] != true {
+				t.Fatal("network missing from shared runtime")
+			}
+			request(map[string]any{"op": "initialize", "account_id": "fixture", "platform": platform, "directory": t.TempDir(), "key": base64.StdEncoding.EncodeToString(make([]byte, 32))})
+			result := request(map[string]any{"op": "connect", "account_id": "fixture"})
+			if result["state"] != "needs_login" {
+				t.Fatal("offline account tried to connect")
+			}
+			if request(map[string]any{"op": "close", "account_id": "fixture"})["has_session"] != false {
+				t.Fatal("empty session was not safe to discard")
+			}
+		})
+	}
+}
+
 func TestDispatcherAccountIsolationAndOfflineLifecycle(t *testing.T) {
 	r := &runtime{accounts: map[string]*account{}}
 	defer r.request([]byte(`{"op":"shutdown"}`))
@@ -49,6 +78,12 @@ func TestDispatcherAccountIsolationAndOfflineLifecycle(t *testing.T) {
 	}
 	if response := request(map[string]any{"op": "capabilities", "account_id": "a"}); response["ok"] != true {
 		t.Fatal("account capabilities failed")
+	}
+	for phone, code := range map[string]string{"+65 8123 4567": "whatsapp_pairing_not_ready", "+65 unsafe": "whatsapp_invalid_phone"} {
+		response := request(map[string]any{"op": "pair_phone", "account_id": "a", "phone": phone})
+		if response["ok"] != false || response["error"].(map[string]any)["code"] != code {
+			t.Fatal("pairing input or safe error code was lost at the public boundary")
+		}
 	}
 	if response := request(map[string]any{"op": "close", "account_id": "a"}); response["ok"] != true {
 		t.Fatal("close failed")

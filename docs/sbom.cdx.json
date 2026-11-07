@@ -102,36 +102,6 @@
       "version": "10.4.0"
     },
     {
-      "description": "Checksum-verified update framework and installer helpers; pinned through SwiftPM.",
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/sparkle-project/Sparkle"
-        },
-        {
-          "type": "distribution",
-          "url": "https://github.com/sparkle-project/Sparkle/releases/download/2.10.0/Sparkle-for-Swift-Package-Manager.zip"
-        }
-      ],
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "17e28312b8e18ab7cdbbe09a6fb28cc55a5479ec6c371dbc07cdecd2a14fd959"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "MIT"
-          }
-        }
-      ],
-      "name": "Sparkle",
-      "purl": "pkg:github/sparkle-project/Sparkle@2.10.0",
-      "type": "framework",
-      "version": "2.10.0"
-    },
-    {
       "externalReferences": [
         {
           "type": "distribution",
@@ -703,36 +673,6 @@
       "purl": "pkg:pub/coverage@1.16.0",
       "type": "library",
       "version": "1.16.0"
-    },
-    {
-      "description": "Portable Apple Silicon interpreter shipped inside the app; upstream distribution 20260929.",
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/astral-sh/python-build-standalone"
-        },
-        {
-          "type": "distribution",
-          "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260929/cpython-3.12.14%2B20260929-aarch64-apple-darwin-install_only_stripped.tar.gz"
-        }
-      ],
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "1bb3e53d231ee2c8881e8daf6426f4dd95bff0dda496af0f3af300357aa998d0"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "PSF-2.0"
-          }
-        }
-      ],
-      "name": "cpython",
-      "purl": "pkg:generic/cpython@3.12.14",
-      "type": "application",
-      "version": "3.12.14"
     },
     {
       "externalReferences": [
@@ -1742,6 +1682,31 @@
       "externalReferences": [
         {
           "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/diamondburned/arikawa/v3@v3.6.1-0.20261031043016-e170775edee6"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "ISC"
+          }
+        }
+      ],
+      "name": "github.com/diamondburned/arikawa/v3",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:6ZCXZQLdaQyeeZ2qiFywxhGOqc4YZ732Ohwf4dHezPU="
+        }
+      ],
+      "purl": "pkg:golang/github.com/diamondburned/arikawa/v3@v3.6.1-0.20261031043016-e170775edee6",
+      "type": "library",
+      "version": "v3.6.1-0.20261031043016-e170775edee6"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
           "url": "https://pkg.go.dev/github.com/dlclark/regexp2@v1.12.0"
         }
       ],
@@ -1762,6 +1727,31 @@
       "purl": "pkg:golang/github.com/dlclark/regexp2@v1.12.0",
       "type": "library",
       "version": "v1.12.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/eatmoreapple/openwechat@v1.4.11-0.20250102030116-635e5561f319"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "github.com/eatmoreapple/openwechat",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:COzCpr30Ppptt36gd+xQnP8HPWl6Ka9uVnupUgcBjvw="
+        }
+      ],
+      "purl": "pkg:golang/github.com/eatmoreapple/openwechat@v1.4.11-0.20250102030116-635e5561f319",
+      "type": "library",
+      "version": "v1.4.11-0.20250102030116-635e5561f319"
     },
     {
       "externalReferences": [
@@ -2008,6 +1998,56 @@
       "purl": "pkg:golang/github.com/google/uuid@v1.6.0",
       "type": "library",
       "version": "v1.6.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/gorilla/schema@v1.4.1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/gorilla/schema",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:jUg5hUjCSDZpNGLuXQOgIWGdlgrIdYvgQ0wZtdK1M3E="
+        }
+      ],
+      "purl": "pkg:golang/github.com/gorilla/schema@v1.4.1",
+      "type": "library",
+      "version": "v1.4.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/gorilla/websocket@v1.5.3"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "name": "github.com/gorilla/websocket",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg="
+        }
+      ],
+      "purl": "pkg:golang/github.com/gorilla/websocket@v1.5.3",
+      "type": "library",
+      "version": "v1.5.3"
     },
     {
       "externalReferences": [
@@ -2733,6 +2773,32 @@
       "version": "v0.2.3-0.20261103023201-5ce3f7a54370"
     },
     {
+      "description": "Upstream additional licensing exceptions apply only to the named third parties.",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.mau.fi/mautrix-linkedin@v0.2609.1-0.20261105130905-ff697e9152a8"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "AGPL-3.0-or-later"
+          }
+        }
+      ],
+      "name": "go.mau.fi/mautrix-linkedin",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:qLgQCJhBTkH91GQXsvMrd9y1BSdXbJWLzqcmTRXPRAo="
+        }
+      ],
+      "purl": "pkg:golang/go.mau.fi/mautrix-linkedin@v0.2609.1-0.20261105130905-ff697e9152a8",
+      "type": "library",
+      "version": "v0.2609.1-0.20261105130905-ff697e9152a8"
+    },
+    {
       "externalReferences": [
         {
           "type": "distribution",
@@ -3150,6 +3216,31 @@
       "purl": "pkg:golang/golang.org/x/text@v0.43.0",
       "type": "library",
       "version": "v0.43.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/golang.org/x/time@v0.15.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/time",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:bbrp8t3bGUeFOx08pvsMYRTCVSMk89u4tKbNOZbp88U="
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/time@v0.15.0",
+      "type": "library",
+      "version": "v0.15.0"
     },
     {
       "externalReferences": [
@@ -3621,35 +3712,6 @@
       "version": "3.0.2"
     },
     {
-      "description": "Built from a checksum-verified tarball with a pinned one-line patch; upstream is archived and does not compile with a current clang.",
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://gitlab.matrix.org/matrix-org/olm"
-        },
-        {
-          "type": "distribution",
-          "url": "https://gitlab.matrix.org/matrix-org/olm/-/archive/3.2.16/olm-3.2.16.tar.gz"
-        }
-      ],
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "1e90f9891009965fd064be747616da46b232086fe270b77605ec9bda34272a68"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "Apache-2.0"
-          }
-        }
-      ],
-      "name": "libolm",
-      "type": "library",
-      "version": "3.2.16"
-    },
-    {
       "externalReferences": [
         {
           "type": "distribution",
@@ -3750,26 +3812,6 @@
       "version": "0.13.0"
     },
     {
-      "description": "Checksum-verified binary xcframework, pinned exactly so protocol drift cannot arrive through a version range.",
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/matrix-org/matrix-rust-components-swift"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "Apache-2.0"
-          }
-        }
-      ],
-      "name": "matrix-rust-components-swift",
-      "purl": "pkg:swift/github.com/matrix-org/matrix-rust-components-swift@26.08.11",
-      "type": "framework",
-      "version": "26.08.11"
-    },
-    {
       "externalReferences": [
         {
           "type": "distribution",
@@ -3793,186 +3835,6 @@
       "purl": "pkg:golang/maunium.net/go/mautrix@v0.32.1-0.20261027121747-b5763ae4f269",
       "type": "library",
       "version": "v0.32.1-0.20261027121747-b5763ae4f269"
-    },
-    {
-      "description": "Downloaded on demand and verified before it is made executable.",
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/mautrix/gmessages"
-        },
-        {
-          "type": "distribution",
-          "url": "https://github.com/mautrix/gmessages/releases/download/v0.2605.0/mautrix-gmessages-darwin-arm64"
-        }
-      ],
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "d45c1a5e4ce317f0288930f71ecb32375b1a755567469eaac581d17d6b1777b9"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "AGPL-3.0-or-later"
-          }
-        }
-      ],
-      "name": "mautrix-gmessages-darwin-arm64",
-      "purl": "pkg:github/mautrix/gmessages@v0.2605.0",
-      "type": "application",
-      "version": "v0.2605.0"
-    },
-    {
-      "description": "Downloaded on demand and verified before it is made executable.",
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/mautrix/gvoice"
-        },
-        {
-          "type": "distribution",
-          "url": "https://github.com/mautrix/gvoice/releases/download/v0.2605.0/mautrix-gvoice-darwin-arm64"
-        }
-      ],
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "a259d45000dd34c144a71b017d0a193bf13b414d1321d7f2113736cbae0df4da"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "AGPL-3.0-or-later"
-          }
-        }
-      ],
-      "name": "mautrix-gvoice-darwin-arm64",
-      "purl": "pkg:github/mautrix/gvoice@v0.2605.0",
-      "type": "application",
-      "version": "v0.2605.0"
-    },
-    {
-      "description": "Downloaded on demand and verified before it is made executable.",
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/mautrix/meta"
-        },
-        {
-          "type": "distribution",
-          "url": "https://github.com/mautrix/meta/releases/download/v0.2607.0/mautrix-instagram-darwin-arm64"
-        }
-      ],
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "c7bc6e81def6a23f0f2e8359d7079e86b82723dfb9082b22ad642a9a8912173b"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "AGPL-3.0-or-later"
-          }
-        }
-      ],
-      "name": "mautrix-instagram-darwin-arm64",
-      "purl": "pkg:github/mautrix/meta@v0.2607.0",
-      "type": "application",
-      "version": "v0.2607.0"
-    },
-    {
-      "description": "Downloaded on demand and verified before it is made executable.",
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/mautrix/meta"
-        },
-        {
-          "type": "distribution",
-          "url": "https://github.com/mautrix/meta/releases/download/v0.2607.0/mautrix-meta-darwin-arm64"
-        }
-      ],
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "a468cca261034f1a93efc927113ab3d07411836e7c5dd68b7c71e59bdfb17dfb"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "AGPL-3.0-or-later"
-          }
-        }
-      ],
-      "name": "mautrix-meta-darwin-arm64",
-      "purl": "pkg:github/mautrix/meta@v0.2607.0",
-      "type": "application",
-      "version": "v0.2607.0"
-    },
-    {
-      "description": "Downloaded on demand and verified before it is made executable.",
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/mautrix/telegram"
-        },
-        {
-          "type": "distribution",
-          "url": "https://github.com/mautrix/telegram/releases/download/v0.2607.0/mautrix-telegram-darwin-arm64"
-        }
-      ],
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "0e2c2ded1773533c691b902b3d0fc4ec87a2f5d3170cd714f7e9e3e494481dd3"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "AGPL-3.0-or-later"
-          }
-        }
-      ],
-      "name": "mautrix-telegram-darwin-arm64",
-      "purl": "pkg:github/mautrix/telegram@v0.2607.0",
-      "type": "application",
-      "version": "v0.2607.0"
-    },
-    {
-      "description": "Downloaded on demand and verified before it is made executable.",
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/mautrix/whatsapp"
-        },
-        {
-          "type": "distribution",
-          "url": "https://github.com/mautrix/whatsapp/releases/download/v0.2607.0/mautrix-whatsapp-darwin-arm64"
-        }
-      ],
-      "hashes": [
-        {
-          "alg": "SHA-256",
-          "content": "f5c0291e4315a8cf70e836b7707f4e6503353b021a115eebb3a6b18f1b9acfbc"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "AGPL-3.0-or-later"
-          }
-        }
-      ],
-      "name": "mautrix-whatsapp-darwin-arm64",
-      "purl": "pkg:github/mautrix/whatsapp@v0.2607.0",
-      "type": "application",
-      "version": "v0.2607.0"
     },
     {
       "externalReferences": [
@@ -5248,26 +5110,6 @@
       "version": "1.4.1"
     },
     {
-      "description": "Bundled with locked Python dependencies, then copied to a private profile at first launch.",
-      "externalReferences": [
-        {
-          "type": "vcs",
-          "url": "https://github.com/element-hq/synapse"
-        }
-      ],
-      "licenses": [
-        {
-          "license": {
-            "id": "AGPL-3.0-or-later"
-          }
-        }
-      ],
-      "name": "synapse",
-      "purl": "pkg:pypi/matrix-synapse@1.158.0",
-      "type": "application",
-      "version": "1.158.0"
-    },
-    {
       "externalReferences": [
         {
           "type": "distribution",
@@ -6179,17 +6021,16 @@
       ],
       "name": "Inbox+",
       "type": "application",
-      "version": "0.9.0+113"
+      "version": "0.9.0+114"
     },
     "properties": [
       {
         "name": "inboxplus:inventory-scope",
-        "value": "Repository inventory: Flutter app and build tools, embedded connectors, retained Swift app/runtime. Not every component is distributed in every app."
+        "value": "Repository inventory: Flutter app and build tools, embedded connectors. Not every component is distributed in every app."
       }
-    ],
-    "timestamp": "1970-01-01T00:00:00Z"
+    ]
   },
-  "serialNumber": "urn:uuid:48c75f49-5a6d-49a9-8f9f-02512093c506",
+  "serialNumber": "urn:uuid:52aa1210-d4f4-4366-bf16-b07d6ee0a0a0",
   "specVersion": "1.5",
   "version": 1
 }

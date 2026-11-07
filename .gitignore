@@ -6,9 +6,9 @@ __pycache__/
 *.pyc
 docs/superpowers/
 
-# Local app bundle produced by Scripts/build-app.sh
+# Local native build and desktop packaging outputs
 build/
 
-# Release signing certificate backup from Scripts/create-signing-certificate.sh. Never commit it.
+# Private signing certificates and backups. Never commit them.
 .signing/
 *.p12

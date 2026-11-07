@@ -5,11 +5,11 @@ import UserNotifications
 import Cocoa
 import ServiceManagement
 import FlutterMacOS
-import InboxPlusCore
 import InboxPlusIMessage
 #else
 import Flutter
 import UIKit
+import Photos
 import UniformTypeIdentifiers
 #endif
 
@@ -30,6 +30,9 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
     #else
     private var documentController: UIDocumentInteractionController?
     private var documentPresenter: UIViewController?
+    private var loginActive = false
+    private var loginBackgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private var loginBackgroundExpired = false
     #endif
 
     init(messenger: FlutterBinaryMessenger) {
@@ -41,6 +44,10 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             self.handle(call, result: result)
         }
         UNUserNotificationCenter.current().delegate = self
+        #if !os(macOS)
+        NotificationCenter.default.addObserver(self, selector: #selector(loginDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(loginWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+        #endif
     }
 
     private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -125,16 +132,6 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             let route = pendingNotificationRoute
             pendingNotificationRoute = nil
             result(route)
-        #if DEBUG
-        case "previewNotification":
-            guard Bundle.main.bundleIdentifier?.hasPrefix("com.inboxplus.desktop-") == true,
-                  let route = arguments["route"] as? [String: String],
-                  let account = route["account_id"], let conversation = route["conversation_id"] else {
-                return result(Self.failure("invalid_request"))
-            }
-            activateNotification(account: account, conversation: conversation)
-            result(nil)
-        #endif
         #endif
         case "legacyProfileStatus":
             result(Self.legacyProfileStatus())
@@ -159,6 +156,20 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             }
             result(values)
         #if !os(macOS)
+        case "setLoginActive":
+            loginActive = arguments["active"] as? Bool == true
+            if !loginActive { endLoginBackgroundTask() }
+            else { loginBackgroundExpired = false }
+            result(nil)
+        case "loginBackgroundStatus":
+            result(["expired": loginBackgroundExpired])
+            loginBackgroundExpired = false
+        case "saveLoginQr", "shareLoginQr":
+            guard let data = arguments["image"] as? FlutterStandardTypedData,
+                  data.data.count <= 1024 * 1024,
+                  let image = UIImage(data: data.data) else { return result(Self.failure("invalid_request")) }
+            if call.method == "saveLoginQr" { saveLoginQr(image, result: result) }
+            else { shareLoginQr(image, result: result) }
         case "openFile":
             openFile(arguments, result: result)
         #endif
@@ -346,6 +357,48 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             documentPresenter = nil
             result(Self.failure("file_open_failed"))
         }
+    }
+
+    @objc private func loginDidEnterBackground() {
+        guard loginActive, loginBackgroundTask == .invalid else { return }
+        loginBackgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Finish account sign-in") { [weak self] in
+            self?.loginBackgroundExpired = true
+            self?.endLoginBackgroundTask()
+        }
+    }
+
+    @objc private func loginWillEnterForeground() {
+        endLoginBackgroundTask()
+    }
+
+    private func endLoginBackgroundTask() {
+        guard loginBackgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(loginBackgroundTask)
+        loginBackgroundTask = .invalid
+    }
+
+    private func saveLoginQr(_ image: UIImage, result: @escaping FlutterResult) {
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            guard status == .authorized || status == .limited else {
+                return DispatchQueue.main.async { result(Self.failure("photos_denied")) }
+            }
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }) { saved, _ in
+                DispatchQueue.main.async { result(saved ? true : Self.failure("photo_save_failed")) }
+            }
+        }
+    }
+
+    private func shareLoginQr(_ image: UIImage, result: @escaping FlutterResult) {
+        guard let presenter = Self.presenter() else { return result(Self.failure("share_unavailable")) }
+        let controller = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+        controller.popoverPresentationController?.sourceView = presenter.view
+        controller.popoverPresentationController?.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+        controller.completionWithItemsHandler = { _, _, _, error in
+            result(error == nil ? true : Self.failure("share_failed"))
+        }
+        presenter.present(controller, animated: true)
     }
 
     private static func presenter() -> UIViewController? {

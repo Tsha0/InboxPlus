@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Generate the repository inventory from Swift, pub and Go dependency pins."""
+"""Generate the repository inventory from pub and Go dependency pins."""
 
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import re
-import subprocess
 import uuid
 from urllib.parse import quote
 
@@ -82,11 +81,25 @@ def go_components(reviews):
     return components
 
 
-def generate(legacy):
+def generate():
     reviews = json.loads((ROOT / "docs/dependency-licenses.json").read_text())
-    document = json.loads(legacy)
-    document["components"].extend(pub_components(reviews))
-    document["components"].extend(go_components(reviews))
+    application_version = re.search(r"^version: (\S+)$", (ROOT / "apps/inboxplus_flutter/pubspec.yaml").read_text(), re.M).group(1)
+    document = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "version": 1,
+        "metadata": {
+            "component": {
+                "type": "application", "name": "Inbox+", "version": application_version,
+                "licenses": [{"license": {"id": "AGPL-3.0-or-later"}}],
+            },
+            "properties": [{
+                "name": "inboxplus:inventory-scope",
+                "value": "Repository inventory: Flutter app and build tools, embedded connectors. Not every component is distributed in every app.",
+            }],
+        },
+        "components": pub_components(reviews) + go_components(reviews),
+    }
     for name, version, source, license_id in (
         ("Flutter", "3.47.9", "https://github.com/flutter/flutter/tree/3.47.9", "BSD-3-Clause"),
         ("Dart", "3.13.7", "https://github.com/dart-lang/sdk/tree/3.13.7", "BSD-3-Clause"),
@@ -101,14 +114,8 @@ def generate(legacy):
             "externalReferences": [{"type": "vcs", "url": source}],
             "properties": [{"name": "inboxplus:usage", "value": "build-toolchain"}],
         })
-    version = re.search(r"^version: (\S+)$", (ROOT / "apps/inboxplus_flutter/pubspec.yaml").read_text(), re.M).group(1)
-    document["metadata"]["component"]["version"] = version
-    document["metadata"]["properties"] = [{
-        "name": "inboxplus:inventory-scope",
-        "value": "Repository inventory: Flutter app and build tools, embedded connectors, retained Swift app/runtime. Not every component is distributed in every app.",
-    }]
     document["components"].sort(key=lambda component: (component["name"], component["version"]))
-    payload = json.dumps({"components": document["components"], "version": version}, sort_keys=True).encode()
+    payload = json.dumps({"components": document["components"], "version": application_version}, sort_keys=True).encode()
     digest = hashlib.sha256(payload).digest()[:16]
     document["serialNumber"] = "urn:uuid:" + str(uuid.UUID(bytes=digest, version=4))
     return json.dumps(document, indent=2, sort_keys=True) + "\n"
@@ -118,7 +125,4 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=ROOT / "docs/sbom.cdx.json")
     arguments = parser.parse_args()
-    legacy = subprocess.run(
-        ["swift", "run", "InboxPlusRuntimeCLI", "sbom"], cwd=ROOT, check=True, stdout=subprocess.PIPE
-    ).stdout
-    arguments.output.write_text(generate(legacy))
+    arguments.output.write_text(generate())

@@ -1,18 +1,16 @@
 # Third-party inventory
 
-The generated [CycloneDX SBOM](sbom.cdx.json) records the repository's retained Swift runtime,
-Flutter dependencies and embedded Go connectors. It includes build/test dependencies as well as
-runtime dependencies; it is not a statement that every listed component ships on every platform.
-Regenerate it from the repository root on macOS:
+The generated [CycloneDX SBOM](sbom.cdx.json) records Flutter dependencies, embedded Go connectors
+and build toolchains. It includes build/test dependencies as well as runtime dependencies; it is not a statement that every listed component ships on every platform.
+Regenerate it from the repository root:
 
 ```bash
 python3 Scripts/generate-sbom.py
 python3 Scripts/generate-third-party-notices.py
 ```
 
-The generator invokes the existing Swift CLI for its inventory, reads both committed pub lockfiles
-and `native/connectors/go.mod` / `go.sum`, then applies the reviewed licenses in
-[`dependency-licenses.json`](dependency-licenses.json). The content-derived serial is deterministic.
+The generator reads both committed pub lockfiles and `native/connectors/go.mod` / `go.sum`, then
+applies the reviewed licenses in [`dependency-licenses.json`](dependency-licenses.json). The content-derived serial is deterministic.
 Bundled [third-party notices](../apps/inboxplus_flutter/assets/third_party_notices.txt) are generated
 from the reviewed package license and NOTICE files and exposed through Settings → Open source
 licenses. Resolve both pub lockfiles and run `go -C native/connectors mod download` before
@@ -65,14 +63,19 @@ builds compile the same source for their native SDKs; no bridge server is downlo
 | whatsmeow | `v0.0.0-20261102152715-54038813c47f` | MPL-2.0 |
 | gotd/td | `v0.163.0` | MIT |
 | mautrix-meta | `v0.2610.1-0.20261103213641-69a505d69039` | AGPL-3.0-or-later |
+| openwechat | `v1.4.11-0.20250102030116-635e5561f319` | Apache-2.0 |
+| Arikawa | `v3.6.1-0.20261031043016-e170775edee6` | ISC |
+| mautrix-linkedin (linkedingo package) | `v0.2609.1-0.20261105130905-ff697e9152a8` | AGPL-3.0-or-later |
 | go-sqlite3 | `v1.14.52` | MIT; SQLite source has its upstream public-domain terms |
 
-The root project is [AGPL-3.0-or-later](../LICENSE). Meta client code is now linked into the app,
+The root project is [AGPL-3.0-or-later](../LICENSE). Meta and LinkedIn client code is linked into the app,
 rather than kept only in a separate bridge executable. Distributing the combined app requires the
 corresponding AGPL source and notices; its use does not become MIT because some neighboring
 libraries are MIT. Preserve other copyleft notices, including MPL source obligations and the
 transitive libsignal GPL license. Store distribution terms, signing and redistribution obligations
 must be checked for an actual release rather than inferred from a successful development build.
+The LinkedIn repository's additional licensing exceptions name specific third parties; Inbox+
+uses its AGPL terms. Only the network clients are embedded, without the Matrix bridge runtime.
 
 ## Native media artifacts
 
@@ -96,19 +99,7 @@ wrapper does not cover those binaries. A release must include the matching nativ
 license texts and required source/relinking information, using the exact build's configuration.
 The current development inventory does not certify that release obligation as complete.
 
-## Retained Swift application
-
-The previous macOS app still uses these independent pins during migration:
-
-- [`Package.swift`](../Package.swift)
-- [`Runtime/Synapse/runtime-manifest.json`](../Runtime/Synapse/runtime-manifest.json)
-- [`Runtime/Synapse/requirements.lock`](../Runtime/Synapse/requirements.lock)
-- [`BridgeCatalog.swift`](../Sources/InboxPlusBridge/BridgeCatalog.swift)
-- [`LibolmProvisioner.swift`](../Sources/InboxPlusBridgeService/LibolmProvisioner.swift)
-
-Its bundled CPython is PSF-2.0. Sparkle 2.10.0 and its installer helpers are MIT and upstream
-component licenses. The old app's `ThirdPartyNotices` directory contains Sparkle's full license;
-that does not provide the new Flutter app's native media notices.
+## Brand marks
 
 Brand-mark SVGs in [`Scripts/brand-icons`](../Scripts/brand-icons) are from
 [Simple Icons](https://simpleicons.org), version 13.20.0, under CC0-1.0. The marks remain trademarks

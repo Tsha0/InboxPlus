@@ -21,6 +21,13 @@ import (
 
 const maxAttachmentBytes = 32 * 1024 * 1024
 
+var (
+	ErrInvalidPhone    = errors.New("invalid WhatsApp phone number")
+	ErrPairingNotReady = errors.New("WhatsApp pairing is not ready")
+	ErrPairingExpired  = errors.New("WhatsApp pairing expired")
+	ErrPhonePairing    = errors.New("WhatsApp phone pairing failed")
+)
+
 type Connector struct {
 	accountID        string
 	db               *sql.DB
@@ -32,6 +39,9 @@ type Connector struct {
 	closedSignal     chan struct{}
 	closed           bool
 	hasSession       bool
+	pairingReady     <-chan struct{}
+	pairingExpiresAt time.Time
+	pairPhone        func(context.Context, string, bool, whatsmeow.PairClientType, string) (string, error)
 }
 
 func New(accountID, directory string, key []byte, emit func(map[string]any)) (*Connector, error) {
@@ -65,6 +75,7 @@ func New(accountID, directory string, key []byte, emit func(map[string]any)) (*C
 	}
 	c := &Connector{accountID: accountID, db: db, emit: emit, closedSignal: make(chan struct{}), hasSession: device.ID != nil}
 	c.client = whatsmeow.NewClient(device, waLog.Noop)
+	c.pairPhone = c.client.PairPhone
 	c.client.EnableAutoReconnect = true
 	c.client.AddEventHandler(c.handleEvent)
 	go func() {
@@ -104,14 +115,20 @@ func (c *Connector) Handle(ctx context.Context, req map[string]any) (any, error)
 				c.cancelQR()
 			}
 			c.cancelQR = cancel
+			ready := make(chan struct{})
+			c.pairingReady = ready
+			// The SDK closes the pairing socket after its 160-second QR sequence.
+			c.pairingExpiresAt = time.Now().Add(160 * time.Second)
 			channel, err := c.client.GetQRChannel(qrCtx)
 			if err != nil {
 				cancel()
 				return nil, errors.New("Cannot begin WhatsApp pairing")
 			}
 			go func() {
+				var firstCode sync.Once
 				for item := range channel {
 					if item.Event == "code" {
+						firstCode.Do(func() { close(ready) })
 						c.event(map[string]any{"type": "qr", "code": item.Code, "expires_in": int(item.Timeout.Seconds())})
 					} else {
 						c.event(map[string]any{"type": "login", "state": item.Event})
@@ -134,15 +151,26 @@ func (c *Connector) Handle(ctx context.Context, req map[string]any) (any, error)
 		c.cancelConnection = cancelConnection
 		return map[string]any{"started": true}, nil
 	case "pair_phone":
-		phone := text(req, "phone")
-		if !validPhone(phone) {
-			return nil, errors.New("Enter a phone number with its country code and digits only")
-		}
-		code, err := c.client.PairPhone(ctx, phone, true, whatsmeow.PairClientChrome, "Chrome (Inbox+)")
+		phone, err := pairingPhone(text(req, "phone"))
 		if err != nil {
-			return nil, errors.New("WhatsApp phone pairing failed")
+			return nil, err
 		}
-		return map[string]any{"code": code}, nil
+		if c.client.IsLoggedIn() {
+			return map[string]any{"state": "connected"}, nil
+		}
+		if !c.pairingExpiresAt.IsZero() && !time.Now().Before(c.pairingExpiresAt) {
+			return nil, ErrPairingExpired
+		}
+		select {
+		case <-c.pairingReady:
+		default:
+			return nil, ErrPairingNotReady
+		}
+		code, err := c.pairPhone(ctx, phone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+		if err != nil {
+			return nil, ErrPhonePairing
+		}
+		return map[string]any{"code": code, "expires_at": c.pairingExpiresAt.UnixMilli()}, nil
 	case "start_conversation":
 		phone := strings.TrimPrefix(text(req, "recipient"), "+")
 		if !validPhone(phone) {
@@ -262,6 +290,8 @@ func (c *Connector) HasSession() bool {
 }
 
 func (c *Connector) disconnect() {
+	c.pairingReady = nil
+	c.pairingExpiresAt = time.Time{}
 	if c.cancelConnection != nil {
 		c.cancelConnection()
 		c.cancelConnection = nil
@@ -661,4 +691,23 @@ func validPhone(phone string) bool {
 		}
 	}
 	return true
+}
+
+func pairingPhone(value string) (string, error) {
+	value = strings.TrimPrefix(strings.TrimSpace(value), "+")
+	var digits strings.Builder
+	for _, char := range value {
+		switch {
+		case char >= '0' && char <= '9':
+			digits.WriteRune(char)
+		case char == ' ' || char == '-' || char == '(' || char == ')' || char == '.' || char == '\u00a0':
+		default:
+			return "", ErrInvalidPhone
+		}
+	}
+	phone := digits.String()
+	if len(phone) < 7 || !validPhone(phone) || phone[0] == '0' {
+		return "", ErrInvalidPhone
+	}
+	return phone, nil
 }

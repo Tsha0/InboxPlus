@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:inboxplus_flutter/app_controller.dart';
@@ -49,6 +50,7 @@ void main() {
   Future<AppController> start({
     _FakeEngine? engine,
     String profileName = 'default',
+    DateTime Function()? now,
   }) async {
     final value = AppController(
       store: store,
@@ -59,7 +61,7 @@ void main() {
       ),
       engine: engine,
       nativeCall: native.call,
-      now: () => instant,
+      now: now ?? () => instant,
     );
     controller = value;
     await value.initialize();
@@ -73,6 +75,8 @@ void main() {
   }
 
   setUp(() async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final temporary = await Directory.systemTemp.createTemp(
       'inboxplus-controller-',
     );
@@ -102,6 +106,433 @@ void main() {
     }
     await directory.delete(recursive: true);
   });
+
+  test('WhatsApp mobile linking validates and normalizes phone inputs without losing the form', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final engine = _FakeEngine(connectState: 'started');
+    final app = await start(engine: engine);
+    await app.beginLogin('whatsapp');
+    final id = engine.platforms.keys.single;
+    engine.emit({'type': 'qr', 'account_id': id, 'code': 'fixture-qr'});
+    await _eventually(() => app.login?.step == LoginStep.fields);
+    expect(app.login?.fields.map((field) => field.id), [
+      'country_code',
+      'phone',
+    ]);
+    await app.submitLogin({'country_code': '65', 'phone': 'unsafe-number'});
+    expect(app.login?.step, LoginStep.fields);
+    expect(app.login?.error, contains('valid phone number'));
+    expect(engine.commands.where((c) => c['op'] == 'pair_phone'), isEmpty);
+    engine.emit({'type': 'qr', 'account_id': id, 'code': 'refreshed-qr'});
+    await Future<void>.delayed(Duration.zero);
+    expect(app.login?.error, contains('valid phone number'));
+    await app.submitLogin({'country_code': '65', 'phone': '8123 4567'});
+    expect(
+      engine.commands.singleWhere((c) => c['op'] == 'pair_phone')['phone'],
+      '6581234567',
+    );
+    expect(app.login?.step, LoginStep.pairingCode);
+    engine.emit({'type': 'qr', 'account_id': id, 'code': 'late-qr'});
+    await Future<void>.delayed(Duration.zero);
+    expect(app.login?.pairingCode, 'ABCD-EFGH');
+    expect(
+      native.calls
+          .where((c) => c['method'] == 'setLoginActive')
+          .first['arguments'],
+      {'active': true},
+    );
+    engine.emit({'type': 'connection', 'account_id': id, 'state': 'connected'});
+    await _eventually(() => app.login?.step == LoginStep.complete);
+    expect(
+      native.calls
+          .where((c) => c['method'] == 'setLoginActive')
+          .last['arguments'],
+      {'active': false},
+    );
+    engine.emit({'type': 'qr', 'account_id': id, 'code': 'after-success'});
+    await Future<void>.delayed(Duration.zero);
+    expect(app.login?.step, LoginStep.complete);
+  });
+
+  test('WhatsApp phone pairing keeps significant zeroes and rejects duplicate requests', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final response = Completer<Map<String, Object?>>();
+    final engine = _FakeEngine(
+      connectState: 'started',
+      onPairPhone: (_) => response.future,
+    );
+    final app = await start(engine: engine);
+    await app.beginLogin('whatsapp');
+    engine.emit({
+      'type': 'qr',
+      'account_id': engine.platforms.keys.single,
+      'code': 'fixture',
+    });
+    await _eventually(() => app.login?.step == LoginStep.fields);
+    final pending = app.submitLogin({
+      'country_code': '39',
+      'phone': '02 1234 5678',
+    });
+    await _eventually(() => app.login?.busy == true);
+    engine.emit({
+      'type': 'connection',
+      'account_id': engine.platforms.keys.single,
+      'state': 'connecting',
+    });
+    await Future<void>.delayed(Duration.zero);
+    expect(app.login?.busy, isTrue);
+    await app.submitLogin({'country_code': '39', 'phone': '02 1234 5678'});
+    expect(engine.commands.where((c) => c['op'] == 'pair_phone').length, 1);
+    expect(
+      engine.commands.singleWhere((c) => c['op'] == 'pair_phone')['phone'],
+      '390212345678',
+    );
+    response.complete({'code': 'ABCD-EFGH'});
+    await pending;
+  });
+
+  test(
+    'WhatsApp confirmation wins over a late phone-pairing failure',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final response = Completer<Map<String, Object?>>();
+      final engine = _FakeEngine(
+        connectState: 'started',
+        onPairPhone: (_) => response.future,
+      );
+      final app = await start(engine: engine);
+      await app.beginLogin('whatsapp');
+      final id = engine.platforms.keys.single;
+      engine.emit({'type': 'qr', 'account_id': id, 'code': 'fixture'});
+      await _eventually(() => app.login?.step == LoginStep.fields);
+      final pending = app.submitLogin({
+        'country_code': '65',
+        'phone': '81234567',
+      });
+      await _eventually(() => app.login?.busy == true);
+      engine.emit({
+        'type': 'connection',
+        'account_id': id,
+        'state': 'connected',
+      });
+      await _eventually(() => app.login?.step == LoginStep.complete);
+      response.completeError(
+        const ConnectorException('whatsapp_phone_pairing_failed'),
+      );
+      await pending;
+      expect(app.login?.step, LoginStep.complete);
+      expect(app.login?.error, isNull);
+    },
+  );
+
+  test('WhatsApp QR mode accepts formatted full numbers and pairing failures can be corrected', () async {
+    var rejected = true;
+    final engine = _FakeEngine(
+      connectState: 'started',
+      onPairPhone: (_) async {
+        if (rejected) {
+          throw const ConnectorException('whatsapp_phone_pairing_failed');
+        }
+        return {'code': 'ABCD-EFGH'};
+      },
+    );
+    final app = await start(engine: engine);
+    await app.beginLogin('whatsapp', useQr: true);
+    engine.emit({
+      'type': 'qr',
+      'account_id': engine.platforms.keys.single,
+      'code': 'fixture',
+    });
+    await _eventually(() => app.login?.step == LoginStep.qr);
+    await app.submitLogin({'phone': '+65 8123 4567'});
+    expect(app.login?.step, LoginStep.qr);
+    expect(app.login?.error, contains('Check your number'));
+    rejected = false;
+    await app.submitLogin({'phone': '+65 (8123)-4567'});
+    expect(app.login?.step, LoginStep.pairingCode);
+    expect(
+      engine.commands
+          .where((c) => c['op'] == 'pair_phone')
+          .every((c) => c['phone'] == '6581234567'),
+      isTrue,
+    );
+  });
+
+  test('WhatsApp code expiry on resume clears the code and retry starts a new connection', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    var clock = instant;
+    final engine = _FakeEngine(
+      connectState: 'started',
+      onPairPhone: (_) async => {
+        'code': 'ABCD-EFGH',
+        'expires_at': instant
+            .add(const Duration(seconds: 160))
+            .millisecondsSinceEpoch,
+      },
+    );
+    final app = await start(engine: engine, now: () => clock);
+    await app.beginLogin('whatsapp');
+    engine.emit({
+      'type': 'qr',
+      'account_id': engine.platforms.keys.single,
+      'code': 'fixture',
+    });
+    await _eventually(() => app.login?.step == LoginStep.fields);
+    await app.submitLogin({'country_code': '65', 'phone': '81234567'});
+    await app.resumeLogin();
+    expect(app.login?.step, LoginStep.pairingCode);
+    clock = instant.add(const Duration(minutes: 3));
+    await app.resumeLogin();
+    expect(app.login?.step, LoginStep.failed);
+    expect(app.login?.pairingCode, isNull);
+    expect(app.login?.error, contains('fresh code'));
+    await app.beginLogin('whatsapp');
+    expect(engine.commands.where((c) => c['op'] == 'connect').length, 2);
+    expect(app.login?.step, LoginStep.preparing);
+  });
+
+  test('WeChat QR export uses native in-memory images and background expiry remains recoverable', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final engine = _FakeEngine(
+      connectState: 'started',
+      additionalPlatforms: ['wechat'],
+    );
+    final app = await start(engine: engine);
+    await app.beginLogin('wechat');
+    final id = engine.platforms.keys.single;
+    engine.emit({'type': 'qr', 'account_id': id, 'image': 'fixture-image'});
+    await _eventually(() => app.login?.step == LoginStep.qr);
+    final bytes = Uint8List.fromList([1, 2, 3]);
+    await app.exportLoginQr(bytes);
+    await app.exportLoginQr(bytes, share: true);
+    expect(
+      native.calls
+          .where((c) => c['method'] == 'saveLoginQr')
+          .single['arguments'],
+      {'image': bytes},
+    );
+    expect(
+      native.calls
+          .where((c) => c['method'] == 'shareLoginQr')
+          .single['arguments'],
+      {'image': bytes},
+    );
+    expect(app.login?.step, LoginStep.qr);
+    native.photosDenied = true;
+    await app.exportLoginQr(bytes);
+    expect(app.login?.step, LoginStep.qr);
+    expect(app.error, contains('Allow Inbox+ to add photos'));
+    native.photosDenied = false;
+    await app.exportLoginQr(bytes, share: true);
+    expect(app.error, isNull);
+    native.loginBackgroundExpired = true;
+    await app.resumeLogin();
+    expect(app.login?.step, LoginStep.failed);
+    expect(app.login?.qrImage, isNull);
+    await app.cancelLogin();
+    expect(app.login, isNull);
+  });
+
+  for (final platform in [
+    TargetPlatform.macOS,
+    TargetPlatform.windows,
+    TargetPlatform.linux,
+    TargetPlatform.android,
+    TargetPlatform.iOS,
+  ]) {
+    test('iMessage integration is macOS-only on $platform', () async {
+      debugDefaultTargetPlatformOverride = platform;
+      native.imessageAvailable = true;
+      final app = await start(engine: _FakeEngine());
+      final imessage = app.networks.where(
+        (network) => network.id == 'imessage',
+      );
+      if (platform == TargetPlatform.macOS) {
+        expect(imessage.single.available, isTrue);
+        expect(imessage.single.canStartConversation, isTrue);
+      } else {
+        if (platform == TargetPlatform.iOS) {
+          expect(imessage.single.available, isFalse);
+          expect(imessage.single.comingSoon, isTrue);
+          expect(imessage.single.canStartConversation, isFalse);
+          expect(
+            imessage.single.reason,
+            'Coming soon · Experimental iOS integration',
+          );
+        } else {
+          expect(imessage, isEmpty);
+        }
+        await app.beginLogin('imessage');
+        expect(app.error, isNotNull);
+        expect(app.login, isNull);
+        expect(await store.loadAccounts(), isEmpty);
+        expect(
+          native.calls.where(
+            (call) => (call['method'] as String).startsWith('imessage'),
+          ),
+          isEmpty,
+        );
+      }
+    });
+  }
+
+  for (final platform in [
+    TargetPlatform.macOS,
+    TargetPlatform.windows,
+    TargetPlatform.linux,
+    TargetPlatform.android,
+    TargetPlatform.iOS,
+  ]) {
+    test(
+      'new device-local networks are available on $platform without web sign-in',
+      () async {
+        debugDefaultTargetPlatformOverride = platform;
+        final app = await start(
+          engine: _FakeEngine(
+            additionalPlatforms: ['wechat', 'discord', 'linkedIn'],
+          ),
+        );
+        for (final id in ['wechat', 'discord', 'linkedIn']) {
+          final network = app.networks.singleWhere(
+            (network) => network.id == id,
+          );
+          expect(network.available, isTrue);
+          expect(network.canReact, isFalse);
+          expect(network.canAttach, id == 'discord');
+          expect(network.canReply, id == 'discord');
+        }
+        expect(
+          app.networks.any((network) => network.id == 'imessage'),
+          platform == TargetPlatform.iOS,
+        );
+        await app.beginLogin('linkedIn');
+        expect(app.login?.fields.map((field) => field.id), [
+          'username',
+          'password',
+        ]);
+        expect(
+          native.calls.where((call) => call['method'] == 'webLogin'),
+          isEmpty,
+        );
+      },
+    );
+  }
+
+  for (final network in ['discord', 'linkedIn']) {
+    test(
+      '$network setup accepts credentials and verification without persisting passwords',
+      () async {
+        final engine = _FakeEngine(
+          additionalPlatforms: [network],
+          connectState: 'code',
+        );
+        final app = await start(engine: engine);
+        await app.beginLogin(network);
+        await app.submitLogin({
+          'username': 'fixture@example.test',
+          'password': 'fixture-password',
+        });
+        expect(app.login?.fields.single.id, 'code');
+        expect(app.login?.instructions.contains('Telegram'), isFalse);
+        await app.submitLogin({'code': '123456'});
+        expect(app.login?.step, LoginStep.complete);
+        expect(app.accounts.single.isConnected, isTrue);
+        expect(
+          engine.commands.singleWhere(
+            (command) => command['op'] == 'login',
+          )['username'],
+          'fixture@example.test',
+        );
+        expect(jsonEncode(secrets.values), isNot(contains('fixture-password')));
+        expect(app.diagnosticsJson(), isNot(contains('fixture-password')));
+      },
+    );
+  }
+
+  test('Discord token sign-in omits email and password', () async {
+    final engine = _FakeEngine(additionalPlatforms: ['discord']);
+    final app = await start(engine: engine);
+    await app.beginLogin('discord');
+    await app.submitLogin({
+      'username': '',
+      'password': '',
+      'token': 'fixture-token',
+    });
+    final command = engine.commands.singleWhere(
+      (command) => command['op'] == 'login',
+    );
+    expect(command['token'], 'fixture-token');
+    expect(command.containsKey('password'), isFalse);
+    expect(command.containsKey('username'), isFalse);
+    expect(app.login?.step, LoginStep.complete);
+  });
+
+  test(
+    'WeChat QR image retains its network and skips unavailable history',
+    () async {
+      final started = Completer<void>();
+      final complete = Completer<Map<String, Object?>>();
+      final engine = _FakeEngine(
+        additionalPlatforms: ['wechat'],
+        onConnect: (_) {
+          started.complete();
+          return complete.future;
+        },
+      );
+      final app = await start(engine: engine);
+      final connecting = app.beginLogin('wechat');
+      await started.future;
+      final id = engine.platforms.keys.single;
+      engine.emit({'type': 'qr', 'account_id': id, 'image': 'fixture-image'});
+      await _eventually(() => app.login?.step == LoginStep.qr);
+      expect(app.login?.networkId, 'wechat');
+      expect(app.login?.qrImage, 'fixture-image');
+      expect(app.login?.qrData, isNull);
+      complete.complete({'state': 'connected'});
+      await connecting;
+      final route = ConversationRoute(id, '@friend');
+      engine.emit({
+        'type': 'chat',
+        'account_id': id,
+        'id': '@friend',
+        'title': 'Friend',
+      });
+      await _eventually(() => app.conversations.isNotEmpty);
+      app.selectConversation(route);
+      await _eventually(() => !app.isBusy);
+      expect(
+        engine.commands.where((command) => command['op'] == 'history'),
+        isEmpty,
+      );
+      expect(app.error, isNull);
+    },
+  );
+
+  test(
+    'LinkedIn approval continues without resubmitting the password',
+    () async {
+      final engine = _FakeEngine(
+        additionalPlatforms: ['linkedIn'],
+        connectState: 'approval',
+      );
+      final app = await start(engine: engine);
+      await app.beginLogin('linkedIn');
+      await app.submitLogin({
+        'username': 'fixture@example.test',
+        'password': 'fixture-password',
+      });
+      expect(app.login?.fields, isEmpty);
+      expect(app.login?.title, 'Approve LinkedIn sign-in');
+      await app.submitLogin({});
+      expect(
+        engine.commands
+            .lastWhere((command) => command['op'] == 'login_wait')
+            .keys,
+        containsAll(['op', 'account_id']),
+      );
+      expect(app.login?.step, LoginStep.complete);
+    },
+  );
 
   test('accepted cross-network suggestion persists once without connecting accounts', () async {
     await seed(firstRoute);
@@ -2158,12 +2589,21 @@ void main() {
     expect(app.messagesFor(firstRoute).single.body, 'Cached history');
     expect(app.draftFor(firstRoute)?.body, 'Saved draft');
     expect(app.networks.where((network) => network.available), isEmpty);
-    expect(app.networks, hasLength(10));
+    expect(app.networks, hasLength(8));
+    expect(
+      app.networks.map((network) => network.id),
+      isNot(contains('imessage')),
+    );
+    expect(
+      app.networks.map((network) => network.id),
+      isNot(contains('matrix')),
+    );
+    expect(app.networks.map((network) => network.id), isNot(contains('x')));
     expect(
       app.networks
           .where((network) => network.comingSoon)
           .map((network) => network.id),
-      ['linkedIn', 'slack', 'x'],
+      ['slack'],
     );
 
     app.updateDraft(firstRoute, 'Edited offline');
@@ -2272,6 +2712,8 @@ class _SavePicker extends FilePickerPlatform {
 }
 
 class _NativeFixture {
+  bool loginBackgroundExpired = false;
+  bool photosDenied = false;
   bool launchAtLogin = false;
   bool failLaunchAtLogin = false;
   var imessageAvailable = false;
@@ -2297,6 +2739,13 @@ class _NativeFixture {
       'arguments': Map<String, Object?>.of(arguments),
     });
     switch (method) {
+      case 'loginBackgroundStatus':
+        return {'expired': loginBackgroundExpired};
+      case 'saveLoginQr':
+        if (photosDenied) {
+          throw PlatformException(code: 'photos_denied');
+        }
+        return true;
       case 'capabilities':
         return {
           'web_login_platforms': ['instagram', 'messenger'],
@@ -2379,11 +2828,18 @@ class _FakeEngine implements ConnectorEngine {
     this.onSend,
     this.onReact,
     this.chats = const [],
+    this.additionalPlatforms = const [],
+    this.onConnect,
+    this.onPairPhone,
   });
   String connectState;
   bool failLogout = false;
   bool? hasSessionOnClose;
   final Future<void> Function()? onInitialize;
+  final List<String> additionalPlatforms;
+  final Future<Map<String, Object?>> Function(Map<String, Object?>)? onConnect;
+  final Future<Map<String, Object?>> Function(Map<String, Object?>)?
+  onPairPhone;
   final List<Map<String, Object?>> chats;
   final Future<Map<String, Object?>> Function(Map<String, Object?>)? onSend;
   final Future<Map<String, Object?>> Function(Map<String, Object?>)? onReact;
@@ -2406,18 +2862,31 @@ class _FakeEngine implements ConnectorEngine {
       case 'capabilities':
         return {
           'abi_version': 1,
-          'platforms': ['whatsapp', 'telegram', 'instagram', 'messenger'],
+          'platforms': [
+            'whatsapp',
+            'telegram',
+            'instagram',
+            'messenger',
+            ...additionalPlatforms,
+          ],
           'features': {
             for (final platform in [
               'whatsapp',
               'telegram',
               'instagram',
               'messenger',
+              ...additionalPlatforms,
             ])
               platform: {
-                'replies': true,
-                'reactions': true,
-                'send_attachment': platform != 'messenger',
+                'replies': !{'wechat', 'linkedIn'}.contains(platform),
+                'reactions': !additionalPlatforms.contains(platform),
+                'send_attachment': !{
+                  'messenger',
+                  'wechat',
+                  'linkedIn',
+                }.contains(platform),
+                if (platform == 'discord')
+                  'max_attachment_bytes': 10 * 1024 * 1024,
                 'start_conversation':
                     platform == 'whatsapp' || platform == 'telegram',
               },
@@ -2434,7 +2903,10 @@ class _FakeEngine implements ConnectorEngine {
           if (hasSessionOnClose != null) 'has_session': hasSessionOnClose,
         };
       case 'connect':
-        return {'state': connectState};
+      case 'login':
+        return onConnect == null
+            ? {'state': connectState}
+            : onConnect!(command);
       case 'logout':
         if (failLogout) throw const ConnectorException('operation_failed');
         return {
@@ -2448,8 +2920,17 @@ class _FakeEngine implements ConnectorEngine {
         return {'chats': chats};
       case 'login_phone':
         return {'state': 'code'};
+      case 'pair_phone':
+        return onPairPhone == null
+            ? {'code': 'ABCD-EFGH'}
+            : onPairPhone!(command);
       case 'login_code':
+        if (additionalPlatforms.contains(platforms[command['account_id']])) {
+          return {'state': 'connected'};
+        }
         return {'state': 'password'};
+      case 'login_wait':
+        return {'state': 'connected'};
       case 'login_password':
         return {'state': 'connected'};
       case 'react':

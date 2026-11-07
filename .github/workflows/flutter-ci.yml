@@ -59,9 +59,6 @@ jobs:
           python3 -m pip install Pillow==10.4.0
           python3 Scripts/generate-platform-icons.py --check
           python3 Scripts/generate-flutter-glyphs.py --check
-      - name: Verify generated emoji catalog
-        if: runner.os == 'macOS'
-        run: python3 Scripts/generate-flutter-emoji.py --check
       - name: Install Linux native dependencies
         if: runner.os == 'Linux'
         run: |
@@ -135,6 +132,18 @@ jobs:
           compression-level: 0
       - name: Check whitespace
         run: git diff --check
+
+  package:
+    name: Package the app
+    needs: desktop
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all Flutter desktop archives
+        env:
+          DESKTOP_RESULT: ${{ needs.desktop.result }}
+        run: test "$DESKTOP_RESULT" = success
 
   android:
     name: Flutter / Android

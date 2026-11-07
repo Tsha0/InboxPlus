@@ -140,7 +140,6 @@ static void native_method_call_cb(FlMethodChannel*, FlMethodCall* method_call,
     fl_value_append_take(web_login_platforms, fl_value_new_string("messenger"));
 #endif
     fl_value_set_string(capabilities, "web_login_platforms", web_login_platforms);
-    fl_value_set_string_take(capabilities, "imessage", fl_value_new_bool(FALSE));
     fl_value_set_string_take(capabilities, "launch_at_login_status", fl_value_new_string(launch_at_login_status()));
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(capabilities));
   } else if (g_strcmp0(method, "takeNotificationRoute") == 0) {
@@ -193,10 +192,6 @@ static void native_method_call_cb(FlMethodChannel*, FlMethodCall* method_call,
     inboxplus_cancel_web_login();
 #endif
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
-  } else if (g_strcmp0(method, "imessageSnapshot") == 0 ||
-             g_strcmp0(method, "imessageSend") == 0) {
-    response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-        "imessage_unavailable", nullptr, nullptr));
   } else if (g_strcmp0(method, "legacyProfileStatus") == 0) {
     g_autoptr(FlValue) status = fl_value_new_map();
     fl_value_set_string_take(status, "has_legacy_profile", fl_value_new_bool(FALSE));

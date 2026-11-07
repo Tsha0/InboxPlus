@@ -16,9 +16,12 @@ import (
 	"time"
 	"unsafe"
 
+	discordconnector "github.com/Tsha0/InboxPlus/native/connectors/discord"
 	"github.com/Tsha0/InboxPlus/native/connectors/internal/securedb"
+	"github.com/Tsha0/InboxPlus/native/connectors/linkedin"
 	metaconnector "github.com/Tsha0/InboxPlus/native/connectors/meta"
 	"github.com/Tsha0/InboxPlus/native/connectors/telegram"
+	"github.com/Tsha0/InboxPlus/native/connectors/wechat"
 	"github.com/Tsha0/InboxPlus/native/connectors/whatsapp"
 )
 
@@ -92,11 +95,14 @@ func (r *runtime) request(encoded []byte) (response []byte) {
 		return success(map[string]any{"secured": true})
 	}
 	if op == "capabilities" && req["account_id"] == nil {
-		return success(map[string]any{"abi_version": 1, "platforms": []string{"whatsapp", "telegram", "instagram", "messenger"}, "max_attachment_bytes": 32 * 1024 * 1024, "features": map[string]any{
+		return success(map[string]any{"abi_version": 1, "platforms": []string{"whatsapp", "telegram", "instagram", "messenger", "wechat", "discord", "linkedIn"}, "max_attachment_bytes": 32 * 1024 * 1024, "features": map[string]any{
 			"whatsapp":  whatsapp.Capabilities(),
 			"telegram":  telegram.Capabilities(),
 			"instagram": metaconnector.Capabilities("instagram"),
 			"messenger": metaconnector.Capabilities("messenger"),
+			"wechat":    wechat.Capabilities(),
+			"discord":   discordconnector.Capabilities(),
+			"linkedIn":  linkedin.Capabilities(),
 		}})
 	}
 	if op == "shutdown" {
@@ -169,6 +175,12 @@ func (r *runtime) request(encoded []byte) (response []byte) {
 			client, err = telegram.New(id, directory, key, r.emit)
 		case "instagram", "messenger":
 			client, err = metaconnector.New(req, r.emit)
+		case "wechat":
+			client, err = wechat.New(id, directory, key, r.emit)
+		case "discord":
+			client, err = discordconnector.New(id, directory, key, r.emit)
+		case "linkedIn":
+			client, err = linkedin.New(id, directory, key, r.emit)
 		default:
 			err = errors.New("This messaging platform is unavailable")
 		}
@@ -216,6 +228,16 @@ func (r *runtime) request(encoded []byte) (response []byte) {
 	}()
 	data, err := entry.connector.Handle(ctx, req)
 	if err != nil {
+		switch {
+		case errors.Is(err, whatsapp.ErrInvalidPhone):
+			return failure("whatsapp_invalid_phone", "Enter a valid international phone number")
+		case errors.Is(err, whatsapp.ErrPairingNotReady):
+			return failure("whatsapp_pairing_not_ready", "Wait for WhatsApp pairing to be ready")
+		case errors.Is(err, whatsapp.ErrPairingExpired):
+			return failure("whatsapp_pairing_expired", "Start a new WhatsApp pairing attempt")
+		case errors.Is(err, whatsapp.ErrPhonePairing):
+			return failure("whatsapp_phone_pairing_failed", "WhatsApp could not create a linking code")
+		}
 		return failure("operation_failed", "The messaging operation could not be completed")
 	}
 	return success(data)

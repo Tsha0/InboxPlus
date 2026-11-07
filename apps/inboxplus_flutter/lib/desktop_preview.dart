@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle, LogicalKeyboardKey;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path/path.dart' as p;
@@ -16,7 +16,7 @@ import 'ui/inbox_app.dart';
 
 Future<void> main() async {
   if (kReleaseMode) {
-    throw StateError('Desktop comparison fixtures require a debug build.');
+    throw StateError('Preview fixtures require a debug build.');
   }
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
@@ -182,7 +182,7 @@ Future<void> main() async {
         case 'capabilities':
           return {
             'web_login_platforms': ['instagram', 'messenger'],
-            'imessage': true,
+            'imessage': Platform.isMacOS,
             'launch_at_login_status': 'off',
           };
         case 'notificationStatus':
@@ -233,17 +233,7 @@ Future<void> main() async {
     }
     return null;
   });
-  runApp(
-    CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.f8): () =>
-            AppEnvironment.native.invokeMethod<void>('previewNotification', {
-              'route': {'account_id': 'whatsapp', 'conversation_id': 'team'},
-            }),
-      },
-      child: InboxPlusApp(controller: controller),
-    ),
-  );
+  runApp(InboxPlusApp(controller: controller));
 }
 
 class _PreviewSecrets implements SecretStore {
@@ -273,23 +263,48 @@ class _PreviewEngine implements ConnectorEngine {
       case 'capabilities':
         return {
           'abi_version': 1,
-          'platforms': ['whatsapp', 'telegram', 'instagram', 'messenger'],
+          'platforms': [
+            'whatsapp',
+            'telegram',
+            'instagram',
+            'messenger',
+            'wechat',
+            'discord',
+            'linkedIn',
+          ],
           'features': {
             for (final platform in [
               'whatsapp',
               'telegram',
               'instagram',
               'messenger',
+              'wechat',
+              'discord',
+              'linkedIn',
             ])
               platform: {
-                'send_attachment': true,
-                'start_conversation': true,
-                'replies': true,
-                'reactions': true,
+                'send_attachment': !{
+                  'wechat',
+                  'linkedIn',
+                  'messenger',
+                }.contains(platform),
+                'start_conversation': {
+                  'whatsapp',
+                  'telegram',
+                  'wechat',
+                  'discord',
+                }.contains(platform),
+                'replies': !{'wechat', 'linkedIn'}.contains(platform),
+                'reactions': !{
+                  'wechat',
+                  'discord',
+                  'linkedIn',
+                }.contains(platform),
               },
           },
         };
       case 'connect':
+      case 'login':
         return {'state': 'connected'};
       case 'send_text':
         return {

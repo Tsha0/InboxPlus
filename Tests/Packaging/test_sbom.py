@@ -57,11 +57,35 @@ class CombinedInventoryTests(unittest.TestCase):
             sbom.pub_components({})
 
     def test_generation_is_deterministic_and_keeps_meta_copyleft_license(self):
-        legacy = json.dumps({"components": [], "metadata": {"component": {}}, "serialNumber": "unused"})
-        first = sbom.generate(legacy)
-        self.assertEqual(first, sbom.generate(legacy))
-        meta = next(value for value in json.loads(first)["components"] if value["name"] == "go.mau.fi/mautrix-meta")
+        first = sbom.generate()
+        self.assertEqual(first, sbom.generate())
+        document = json.loads(first)
+        meta = next(value for value in document["components"] if value["name"] == "go.mau.fi/mautrix-meta")
         self.assertEqual(meta["licenses"], [{"license": {"id": "AGPL-3.0-or-later"}}])
+        self.assertEqual(document["bomFormat"], "CycloneDX")
+        self.assertEqual(document["specVersion"], "1.5")
+        self.assertEqual(document["metadata"]["component"]["licenses"], [{"license": {"id": "AGPL-3.0-or-later"}}])
+        names = {component["name"] for component in document["components"]}
+        self.assertTrue({"Flutter", "Dart", "Go", "Pillow"}.issubset(names))
+        self.assertTrue(names.isdisjoint({"Sparkle", "cpython", "matrix-rust-components-swift", "synapse", "libolm"}))
+
+    def test_application_version_changes_inventory_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            fixture_root = Path(directory)
+            (fixture_root / "docs").mkdir()
+            (fixture_root / "docs/dependency-licenses.json").write_text("{}")
+            pubspec = fixture_root / "apps/inboxplus_flutter/pubspec.yaml"
+            pubspec.parent.mkdir(parents=True)
+            with patch.object(sbom, "ROOT", fixture_root), \
+                    patch.object(sbom, "pub_components", return_value=[]), \
+                    patch.object(sbom, "go_components", return_value=[]):
+                pubspec.write_text("version: 0.9.0+112\n")
+                first = json.loads(sbom.generate())
+                pubspec.write_text("version: 0.9.0+113\n")
+                second = json.loads(sbom.generate())
+            self.assertEqual(first["metadata"]["component"]["version"], "0.9.0+112")
+            self.assertEqual(second["metadata"]["component"]["version"], "0.9.0+113")
+            self.assertNotEqual(first["serialNumber"], second["serialNumber"])
 
 
 if __name__ == "__main__":
