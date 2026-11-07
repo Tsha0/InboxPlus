@@ -12,7 +12,7 @@ The app focuses on conversations, attachments and contacts. There are no feeds, 
 
 ## Status
 
-The Flutter app is a development build, version **0.9.0+112**. The five platform runners share Dart
+The Flutter app is a development build, version **0.9.0+113**. The five platform runners share Dart
 application code and an embedded Go connector library. Platform builds, fixture tests and live
 network verification are separate checks: a passing build does not establish that a real account
 can sign in or send messages. New Flutter connectors have not been certified with live accounts.
