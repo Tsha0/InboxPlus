@@ -1,0 +1,139 @@
+name: iOS release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  launch:
+    name: iOS / Launch test
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Match the tag to the app version
+        if: github.ref_type == 'tag'
+        run: |
+          version="$(sed -n 's/^version: *\([^+]*\)+.*$/\1/p' apps/inboxplus_flutter/pubspec.yaml)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in apps/inboxplus_flutter/pubspec.yaml."
+            exit 1
+          fi
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: native/connectors/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Record the Xcode version
+        run: xcodebuild -version
+      - name: Boot a fresh iPhone simulator
+        id: simulator
+        run: |
+          read -r runtime device < <(xcrun simctl list runtimes available --json | python3 -c '
+          import json, re, sys
+          runtimes = [r for r in json.load(sys.stdin)["runtimes"] if re.search(r"\.iOS-[0-9]+(-[0-9]+)*$", r["identifier"])]
+          runtime = max(runtimes, key=lambda r: [int(p) for p in r["version"].split(".")])
+          phones = []
+          for device in runtime["supportedDeviceTypes"]:
+              match = re.fullmatch(r"iPhone (\d+) Pro", device["name"])
+              if match:
+                  phones.append((int(match.group(1)), device["identifier"]))
+          print(runtime["identifier"], max(phones)[1])
+          ')
+          udid="$(xcrun simctl create 'Inbox+ launch test' "$device" "$runtime")"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+      - name: Run the launch test
+        working-directory: apps/inboxplus_flutter
+        env:
+          SIMULATOR: ${{ steps.simulator.outputs.udid }}
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter test integration_test -d "$SIMULATOR"
+
+  testflight:
+    name: iOS / TestFlight
+    needs: launch
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: native/connectors/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Record the Xcode version
+        run: xcodebuild -version
+      # Automatic signing would first sign for development, which needs a
+      # registered device. Exporting an unsigned archive signs it straight for
+      # the App Store instead.
+      - name: Build the unsigned archive
+        working-directory: apps/inboxplus_flutter
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter build ipa --release --no-codesign
+      - name: Install the App Store Connect key
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          keys="$RUNNER_TEMP/private_keys"
+          mkdir -m 700 "$keys"
+          (umask 077 && printf '%s\n' "$ASC_PRIVATE_KEY" > "$keys/AuthKey_$ASC_KEY_ID.p8")
+          echo "API_PRIVATE_KEYS_DIR=$keys" >> "$GITHUB_ENV"
+      - name: Sign for App Store distribution
+        working-directory: apps/inboxplus_flutter
+        run: |
+          team="$(sed -n 's/.*DEVELOPMENT_TEAM = \([A-Z0-9]*\);/\1/p' ios/Runner.xcodeproj/project.pbxproj | sort -u)"
+          options="$RUNNER_TEMP/ExportOptions.plist"
+          /usr/libexec/PlistBuddy \
+            -c 'Add :method string app-store-connect' \
+            -c "Add :teamID string $team" \
+            -c 'Add :signingStyle string automatic' \
+            -c 'Add :destination string export' \
+            -c 'Add :manageAppVersionAndBuildNumber bool false' \
+            "$options"
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportOptionsPlist "$options" \
+            -exportPath build/ios/ipa \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$API_PRIVATE_KEYS_DIR/AuthKey_$ASC_KEY_ID.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Verify the signed application
+        run: python3 Scripts/verify-ios-app.py apps/inboxplus_flutter/build/ios/ipa/Inbox+.ipa --distribution
+      - name: Upload to TestFlight
+        working-directory: apps/inboxplus_flutter
+        run: |
+          xcrun altool --upload-app -f build/ios/ipa/Inbox+.ipa -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"

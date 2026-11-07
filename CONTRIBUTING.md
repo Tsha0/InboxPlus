@@ -152,6 +152,13 @@ mimalloc. Platform SDKs and signing remain target-specific even though the UI is
 The Windows runner prepares media-kit archives with `Scripts/verify-media-artifacts.py` before
 CMake can extract them. Never replace that SHA-256 check with the dependency's MD5-only check.
 
+For iOS, `flutter build ipa --release --no-codesign` builds the archive TestFlight receives. Check
+it with `python3 Scripts/verify-ios-app.py apps/inboxplus_flutter/build/ios/archive/Runner.xcarchive`
+from the repository root. Archiving strips symbols, and the Dart side finds the embedded connectors
+by name, so the Runner target must keep `STRIP_STYLE = non-global`. A stripped app still launches
+but shows every network as unavailable. A plain device or simulator build does not show this.
+Run the launch test on a booted simulator with `flutter test integration_test -d <simulator-id>`.
+
 For Flutter desktop archives, use Python **3.12** and run
 `python3 Scripts/package-flutter-desktop.py --target macos` (or `windows` / `linux`) from the
 repository root after the native release build. `--bundle` selects a non-default release directory;
@@ -288,7 +295,7 @@ Required check names depend on the protected branch configuration. CI defines:
 | --- | --- |
 | **Flutter / macos, linux, windows** | Shared Dart checks, encrypted storage and connector tests, native desktop build and development archive |
 | **Flutter / Android** | Deferred native Android build; manual opt-in only |
-| **Flutter / iOS** | Deferred unsigned iOS build; manual opt-in only |
+| **Flutter / iOS** | Unsigned App Store archive keeps its connector symbols, privacy manifest and pubspec version |
 | **Build and test** | Retained Swift build and tests, packaging-script checks and whitespace checks |
 | **Generated files are current** | Brand marks, app icon and SBOM match their sources |
 | **Package the app** | Retained Swift bundle assembles, its signature verifies and its CLI runs |
@@ -297,8 +304,24 @@ The executable definitions live in [ci.yml](.github/workflows/ci.yml) and
 [flutter-ci.yml](.github/workflows/flutter-ci.yml). Keep this guide's commands aligned when changing
 those workflows.
 
-The Flutter workflow runs desktop jobs by default. Android and iOS jobs remain available only
-through manual dispatch with `mobile_builds` enabled; leave this off during the desktop milestone.
+The Flutter workflow runs desktop and iOS jobs by default. The Android job remains available only
+through manual dispatch with `android_build` enabled.
+
+### iOS releases
+
+[ios-release.yml](.github/workflows/ios-release.yml) publishes iOS builds to TestFlight. To release,
+raise `version:` in `apps/inboxplus_flutter/pubspec.yaml` on `main`, always with a new build number
+after `+`, then push a matching tag: `0.9.1+114` is released by `v0.9.1`. The workflow refuses a tag
+that does not match. It runs the launch test on a fresh iPhone simulator, archives the app
+unsigned, signs it for the App Store with the App Store Connect API key, checks it with
+`Scripts/verify-ios-app.py --distribution` and uploads it. Manual dispatch releases the selected
+branch without the tag check.
+
+Signing uses the `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID` and
+`APP_STORE_CONNECT_PRIVATE_KEY` repository secrets; the key needs the Admin role for cloud signing.
+Export keeps the pubspec build number, so an already-uploaded number fails the upload rather than
+being renumbered. After processing, answer the build's export-compliance questions in App Store
+Connect and add it to TestFlight groups.
 
 Use a short, descriptive title. The PR description should explain the problem and resulting
 behavior, list checks and results, and identify untested paths or migration concerns when relevant.

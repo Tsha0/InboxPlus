@@ -76,9 +76,10 @@ flutter build ios --release --no-codesign
 ```
 
 Run only the command supported by the build host. The iOS command verifies an unsigned build;
-installation and App Store distribution still need Apple's signing setup. Android release signing,
-desktop installers, notarization, store publishing and automatic updates require release work beyond
-these development builds. The previous Swift Sparkle updater is not part of the Flutter app.
+tagged releases reach TestFlight through the [iOS release workflow](CONTRIBUTING.md#ios-releases).
+Android release signing, desktop installers, notarization, App Store and Play Store publishing and
+automatic updates require release work beyond these development builds. The previous Swift Sparkle
+updater is not part of the Flutter app.
 
 Each desktop target has its own native runner and release artifact: a macOS `.app`, a Windows
 executable with its bundled libraries, or a Linux executable with its bundled libraries. Build and
