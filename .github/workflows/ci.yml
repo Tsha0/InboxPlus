@@ -195,16 +195,18 @@ jobs:
 
   macos:
     name: Platform tests and builds / macOS
-    needs: [changes, lint, generated-files, packaging-linux, messages, updater, generated-macos, packaging-macos]
+    needs: [changes, lint, generated-files, packaging-linux, messages, updater, generated-macos, packaging-macos, packaging-windows]
     if: >-
-      ${{ !cancelled() && needs.changes.outputs.macos == 'true' &&
+      ${{ !cancelled() &&
+      needs.changes.outputs.macos == 'true' &&
       needs.lint.result == 'success' &&
       needs.generated-files.result == 'success' &&
       needs.packaging-linux.result == 'success' &&
-      needs.messages.result == 'success' &&
-      needs.updater.result == 'success' &&
-      needs.generated-macos.result == 'success' &&
-      needs.packaging-macos.result == 'success' }}
+      (needs.changes.outputs.macos != 'true' || needs.messages.result == 'success') &&
+      (needs.changes.outputs.macos != 'true' || needs.updater.result == 'success') &&
+      (needs.changes.outputs.macos != 'true' || needs.generated-macos.result == 'success') &&
+      (needs.changes.outputs.macos != 'true' || needs.packaging-macos.result == 'success') &&
+      (needs.changes.outputs.windows != 'true' || needs.packaging-windows.result == 'success') }}
     runs-on: macos-latest
     timeout-minutes: 60
     defaults:
@@ -267,13 +269,18 @@ jobs:
 
   windows:
     name: Platform tests and builds / Windows
-    needs: [changes, lint, generated-files, packaging-linux, packaging-windows]
+    needs: [changes, lint, generated-files, packaging-linux, messages, updater, generated-macos, packaging-macos, packaging-windows]
     if: >-
-      ${{ !cancelled() && needs.changes.outputs.windows == 'true' &&
+      ${{ !cancelled() &&
+      needs.changes.outputs.windows == 'true' &&
       needs.lint.result == 'success' &&
       needs.generated-files.result == 'success' &&
       needs.packaging-linux.result == 'success' &&
-      needs.packaging-windows.result == 'success' }}
+      (needs.changes.outputs.macos != 'true' || needs.messages.result == 'success') &&
+      (needs.changes.outputs.macos != 'true' || needs.updater.result == 'success') &&
+      (needs.changes.outputs.macos != 'true' || needs.generated-macos.result == 'success') &&
+      (needs.changes.outputs.macos != 'true' || needs.packaging-macos.result == 'success') &&
+      (needs.changes.outputs.windows != 'true' || needs.packaging-windows.result == 'success') }}
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
@@ -343,12 +350,18 @@ jobs:
 
   linux:
     name: Platform tests and builds / Linux
-    needs: [changes, lint, generated-files, packaging-linux]
+    needs: [changes, lint, generated-files, packaging-linux, messages, updater, generated-macos, packaging-macos, packaging-windows]
     if: >-
-      ${{ !cancelled() && needs.changes.outputs.linux == 'true' &&
+      ${{ !cancelled() &&
+      needs.changes.outputs.linux == 'true' &&
       needs.lint.result == 'success' &&
       needs.generated-files.result == 'success' &&
-      needs.packaging-linux.result == 'success' }}
+      needs.packaging-linux.result == 'success' &&
+      (needs.changes.outputs.macos != 'true' || needs.messages.result == 'success') &&
+      (needs.changes.outputs.macos != 'true' || needs.updater.result == 'success') &&
+      (needs.changes.outputs.macos != 'true' || needs.generated-macos.result == 'success') &&
+      (needs.changes.outputs.macos != 'true' || needs.packaging-macos.result == 'success') &&
+      (needs.changes.outputs.windows != 'true' || needs.packaging-windows.result == 'success') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
