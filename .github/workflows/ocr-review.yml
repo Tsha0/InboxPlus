@@ -49,10 +49,10 @@ jobs:
           llm_model: ${{ vars.KIMI_MODEL }}
           llm_use_anthropic: 'false'
           llm_protocol: openai
-          llm_extra_body: ${{ vars.KIMI_REVIEW_EXTRA_BODY || '{"max_completion_tokens":16000}' }}
+          llm_extra_body: ${{ vars.KIMI_REVIEW_EXTRA_BODY || '{}' }}
           llm_reasoning_effort: low
-          effort: medium
-          max_tokens_budget: '500000'
+          effort: low
+          max_tokens_budget: '0'
           review_concurrency: '1'
           checkpoint_range: 'true'
           incremental: 'true'
