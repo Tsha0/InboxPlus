@@ -1432,5 +1432,12 @@
       "LICENSE": "021c41b9b081664f6ee181aaf4e03602c51591204dabe9ac8c8d736f0965b851"
     },
     "license": "BSD-3-Clause"
+  },
+  "swift:Sparkle@2.10.0": {
+    "evidence": {
+      "LICENSE.sparkle": "389a4e4e9a32f059775b13a06e25a591445ba229d2838d26dd3e7c0c45127cfe"
+    },
+    "license": "MIT AND BSD-2-Clause AND Zlib",
+    "note": "macOS updater. Includes the upstream bundled third-party license notices."
   }
 }

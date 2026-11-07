@@ -40,6 +40,16 @@ class _InboxPlusState extends State<InboxPlus> {
         await _controller?.openPendingNotification();
         return null;
       }
+      if (call.method == 'prepareToTerminate') {
+        final controller = _controller;
+        if (controller == null) return _error != null;
+        try {
+          await controller.close();
+          return true;
+        } catch (_) {
+          return false;
+        }
+      }
       if (call.method != 'prepareToClose') throw MissingPluginException();
       try {
         await _controller?.flushBeforeClose();

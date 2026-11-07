@@ -315,6 +315,8 @@ abstract class InboxUiController extends ChangeNotifier {
   StorageSummary get storageSummary;
   PreferencesRecord get preferences;
   String get launchAtLoginStatus;
+  bool get supportsUpdates;
+  Future<void> checkForUpdates();
   SystemNotificationStatus get notificationStatus;
 
   AccountNetworkProblem? networkProblem(String accountId);

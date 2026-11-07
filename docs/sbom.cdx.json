@@ -102,6 +102,36 @@
       "version": "10.4.0"
     },
     {
+      "description": "macOS updater. Includes the upstream bundled third-party license notices.",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://github.com/sparkle-project/Sparkle/releases/download/2.10.0/Sparkle-for-Swift-Package-Manager.zip"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "17e28312b8e18ab7cdbbe09a6fb28cc55a5479ec6c371dbc07cdecd2a14fd959"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT AND BSD-2-Clause AND Zlib"
+        }
+      ],
+      "name": "Sparkle",
+      "properties": [
+        {
+          "name": "inboxplus:swiftpm:revision",
+          "value": "eef1a539a373c1f1a320624b1130fc5de7b2e100"
+        }
+      ],
+      "purl": "pkg:github/sparkle-project/Sparkle@2.10.0",
+      "type": "framework",
+      "version": "2.10.0"
+    },
+    {
       "externalReferences": [
         {
           "type": "distribution",
@@ -6030,7 +6060,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:52aa1210-d4f4-4366-bf16-b07d6ee0a0a0",
+  "serialNumber": "urn:uuid:3cdf9481-019f-4098-bb44-8358fceb9dfb",
   "specVersion": "1.5",
   "version": 1
 }

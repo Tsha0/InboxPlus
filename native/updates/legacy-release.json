@@ -1,0 +1,9 @@
+{
+  "version": "0.8.5",
+  "build": "111",
+  "archive_url": "https://github.com/Tsha0/InboxPlus/releases/download/v0.8.5/InboxPlus-0.8.5-111.zip",
+  "archive_sha256": "b43fcda4956c83225e1e1c225b10b326b31222d01b73694897b29a7788cfdc5d",
+  "feed_url": "https://tsha0.github.io/InboxPlus/appcast.xml",
+  "public_key": "6QdJj5ANmhrZaLh/5TE/Ii6LZCPTxzLUgAGuXKB6Q9U=",
+  "signing_requirement": "identifier \"com.inboxplus.app\" and certificate leaf = H\"bcf4bc2923858d101bbbb473bbd7fc373d209daf\""
+}

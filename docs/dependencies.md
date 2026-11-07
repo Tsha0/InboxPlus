@@ -9,8 +9,8 @@ python3 Scripts/generate-sbom.py
 python3 Scripts/generate-third-party-notices.py
 ```
 
-The generator reads both committed pub lockfiles and `native/connectors/go.mod` / `go.sum`, then
-applies the reviewed licenses in [`dependency-licenses.json`](dependency-licenses.json). The content-derived serial is deterministic.
+The generator reads both committed pub lockfiles, `native/connectors/go.mod` / `go.sum`, and the
+Sparkle lock and artifact record in `native/updates`, then applies the reviewed licenses in [`dependency-licenses.json`](dependency-licenses.json). The content-derived serial is deterministic.
 Bundled [third-party notices](../apps/inboxplus_flutter/assets/third_party_notices.txt) are generated
 from the reviewed package license and NOTICE files and exposed through Settings → Open source
 licenses. Resolve both pub lockfiles and run `go -C native/connectors mod download` before
@@ -50,6 +50,14 @@ The root consuming app and storage package both select `source: sqlite3mc` for t
 build hook. It downloads SQLite3MultipleCiphers from the sqlite3 package's exact release and verifies
 the platform artifact's published SHA-256 before loading it. A normal unencrypted SQLite build is
 not an acceptable substitution.
+
+## macOS updater
+
+`native/updates/Package.swift` pins Sparkle **2.10.0**. The committed SwiftPM and Xcode locks pin its
+source revision; that revision declares the binary artifact's SHA-256, verified by SwiftPM before
+extraction. `native/updates/sparkle-artifact.json` records that same distribution and checksum for
+the SBOM. `LICENSE.sparkle` preserves the artifact's complete MIT, BSD-2-Clause and Zlib notices,
+which the notices generator verifies against reviewed hashes and bundles with the app.
 
 ## Embedded connectors
 

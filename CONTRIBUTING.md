@@ -128,11 +128,14 @@ repository root after the native release build. `--bundle` selects a non-default
 runtime files and verifies macOS signatures before packaging. See
 [desktop development packages](README.md#desktop-development-packages) for outputs and limitations.
 
-Each desktop CI job runs `test_flutter_desktop.py`, packages its native build and uploads the
-archive plus checksum. Upload the ZIP or tar archive rather than the raw app directory: GitHub
-artifact uploads do not preserve executable permissions or framework symlinks. Extract and verify
-the full runtime when changing the archive format; fixture tests alone do not prove a native app
-launches. Signing, notarization, installers and automatic updates are separate release work.
+CI runs common packaging fixtures once on Linux, macOS icon checks on macOS and
+`test_flutter_desktop.py` on Windows for its filesystem behavior. Each affected desktop job
+packages its native build and uploads the archive plus checksum. Upload the ZIP or tar archive
+rather than the raw app directory: GitHub artifact uploads do not preserve executable permissions
+or framework symlinks. Extract and verify the full runtime when changing the archive format; fixture tests alone do not prove a native app
+launches. Production macOS signing and Sparkle updates use the separate
+[macOS release pipeline](docs/updates.md); development archives keep updates disabled.
+Windows/Linux installers and automatic updates remain separate release work.
 
 Run the packaging and artifact checks from the repository root:
 
@@ -238,23 +241,63 @@ directly when adding emoji names or categories.
 Approvals are not required for this solo repository, but CI is. Use a focused branch such as
 `codex/my-change`.
 
-Required check names depend on the protected branch configuration. CI defines:
+The single [CI workflow](.github/workflows/ci.yml) defines these jobs:
 
 | Check | What it protects |
 | --- | --- |
-| **Flutter / macos, linux, windows** | Shared Dart checks, encrypted storage and connector tests, native desktop build and development archive |
-| **Flutter / Android** | Deferred native Android build; manual opt-in only |
-| **Flutter / iOS** | Unsigned App Store archive keeps its connector symbols, privacy manifest and pubspec version |
-| **Build and test** | macOS Messages adapter tests, packaging-script checks and whitespace checks |
-| **Generated files are current** | Brand marks, app icon and SBOM match their sources |
-| **Package the app** | All three desktop Flutter builds produce verified development archives |
+| **Detect changes** | Selects affected components and native platforms |
+| **Lint** | Checks committed-diff whitespace once, plus shared Dart formatting and application/storage analysis |
+| **Generated files / Linux** | Brand marks, launcher icons, Drift code, SBOM and bundled dependency notices match their sources |
+| **Generated files / macOS** | The macOS app icon matches its source |
+| **Messages adapter** | Swift tests for the local macOS Messages adapter |
+| **Updater** | Swift tests for the macOS updater |
+| **Packaging checks / Linux, Windows, macOS** | Common fixtures on Linux, Windows filesystem behavior and macOS icon fixtures |
+| **Platform tests and builds / macOS, Linux, Windows** | Go, storage, Flutter and real connector smoke tests, native builds and verified development archives |
+| **Platform tests and builds / iOS** | Unsigned App Store archive with connector symbols, privacy manifest and pubspec version verified |
+| **Platform tests and builds / Android** | Deferred release APK build; manual opt-in only |
+| **CI passed** | Every selected job succeeded and all other jobs were intentionally skipped |
 
-The executable definitions live in [ci.yml](.github/workflows/ci.yml) and
-[flutter-ci.yml](.github/workflows/flutter-ci.yml). Keep this guide's commands aligned when changing
-those workflows.
+Documentation and website changes run change detection, Lint's whitespace check and **CI passed**.
+Shared Dart, storage, connector, asset and packaging inputs affect every consuming platform;
+platform runner changes affect that platform. Unknown inputs conservatively select every platform.
+Native jobs wait for their relevant fast checks. Each desktop has an independent job: macOS
+waits for shared checks plus Messages, updater, macOS icon and macOS packaging checks; Windows
+waits for shared checks plus Windows packaging checks; Linux waits for shared checks. A failed
+macOS-specific check blocks macOS while Windows and Linux can continue. iOS and Android wait
+for shared checks.
+Failures, cancellations and unexpected skips prevent **CI passed** from succeeding.
 
-The Flutter workflow runs desktop and iOS jobs by default. The Android job remains available only
-through manual dispatch with `android_build` enabled.
+Shared Dart formatting, application/storage analysis and each generated-file freshness check run
+once. Desktop Go, encrypted-storage, Flutter and real connector smoke tests still run on every
+affected desktop. Connector smoke tests explicitly build their library; native builds use Go's
+compatible compilation cache rather than copying binaries between targets. CI records Go-test,
+connector-library and full native-build timings to inform further optimization. The generated-file
+job does not populate the desktop Go build cache with a module-only cache entry.
+
+For a manual full CI run, dispatch **CI**; enable `android_build` to include Android. Manual runs
+check all components. Release delivery, website deployment and advisory OCR review remain separate.
+
+Use **CI passed** as the required branch check. When adopting this workflow, wait for the new check
+to appear on the pull request, then replace **Build and test**, **Generated files are current** and
+**Package the app** with **CI passed** in the active `main` ruleset. Keep the other rules unchanged.
+The workflow rename does not update GitHub rules automatically; leaving the old names required
+would block merging because those checks no longer run.
+
+### macOS releases
+
+The manual [macOS release workflow](.github/workflows/macos-release.yml) builds a matching version
+tag and attaches signed archives, checksums, SBOM and appcast to a draft GitHub Release. It preserves
+the shipped 0.8.5 feed, public update key, signing requirement and application identity. Production
+packaging uses `Scripts/package-macos-release.py`; ordinary Flutter builds keep updates disabled.
+See [macOS updates](docs/updates.md) for credentials, local commands and the required two-version
+installation test. Publishing the reviewed stable release triggers
+[feed publication](.github/workflows/update-feed.yml); it refuses stale or rewritten feed entries.
+
+Run `swift test --package-path native/updates --force-resolved-versions` for updater changes, plus
+the packaging suite, Flutter checks and a native macOS release build. Keep the native package and
+both Xcode `Package.resolved` files aligned when changing Sparkle. SwiftPM verifies the upstream
+binary SHA-256 before extraction. Update `native/updates/sparkle-artifact.json`, reviewed license
+evidence and generated SBOM/notices when changing that dependency.
 
 ### iOS releases
 
@@ -262,8 +305,11 @@ through manual dispatch with `android_build` enabled.
 raise `version:` in `apps/inboxplus_flutter/pubspec.yaml` on `main`, always with a new build number
 after `+`, and run `python3 Scripts/generate-sbom.py`, which records the version. Then push a
 matching tag: `0.9.1+115` is released by `v0.9.1`. The workflow refuses a tag that does not match.
-It runs the launch test on a fresh iPhone simulator, archives the app unsigned, signs it for the
-App Store with the App Store Connect API key, checks it with
+Before using a macOS runner, it requires the latest eligible CI run for the exact checked-out
+commit to have completed successfully (a push to `main` or a manual CI run, not a PR run). If CI
+is missing or still running, finish CI and rerun the release. It then runs the launch test on a
+fresh iPhone simulator, archives and verifies the app unsigned, signs it for the App Store with
+the App Store Connect API key, checks it with
 `Scripts/verify-ios-app.py --distribution` and uploads it. Manual dispatch releases the selected
 branch without the tag check.
 

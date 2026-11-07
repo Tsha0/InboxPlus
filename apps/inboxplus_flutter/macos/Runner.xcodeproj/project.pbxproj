@@ -21,6 +21,7 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
+		AABBAABB0000000000000401 /* InboxPlusUpdates in Frameworks */ = {isa = PBXBuildFile; productRef = AABBAABB0000000000000402 /* InboxPlusUpdates */; };
 		148B7B6EFC8FB0BFB5346230 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7883B7AE4DCF8861C3912050 /* Pods_Runner.framework */; };
 		331C80D8294CF71000263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C80D7294CF71000263BE5 /* RunnerTests.swift */; };
 		335BBD1B22A9A15E00E9071D /* GeneratedPluginRegistrant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 335BBD1A22A9A15E00E9071D /* GeneratedPluginRegistrant.swift */; };
@@ -112,6 +113,7 @@
 			files = (
 				78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */,
 				AABBAABB0000000000000201 /* InboxPlusIMessage in Frameworks */,
+				AABBAABB0000000000000401 /* InboxPlusUpdates in Frameworks */,
 				148B7B6EFC8FB0BFB5346230 /* Pods_Runner.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -264,6 +266,7 @@
 			packageProductDependencies = (
 				78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */,
 				AABBAABB0000000000000202 /* InboxPlusIMessage */,
+				AABBAABB0000000000000402 /* InboxPlusUpdates */,
 			);
 			productName = Runner;
 			productReference = 33CC10ED2044A3C60003C045 /* Inbox+.app */;
@@ -310,6 +313,7 @@
 			);
 			mainGroup = 33CC10E42044A3C60003C045;
 			packageReferences = (
+				AABBAABB0000000000000403 /* XCLocalSwiftPackageReference "InboxPlusUpdates" */,
 				AABBAABB0000000000000203 /* XCLocalSwiftPackageReference "InboxPlusIMessage" */,
 				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "FlutterGeneratedPluginSwiftPackage" */,
 			);
@@ -834,6 +838,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		AABBAABB0000000000000403 /* XCLocalSwiftPackageReference "InboxPlusUpdates" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../native/updates;
+		};
 		781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "FlutterGeneratedPluginSwiftPackage" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage;
@@ -845,6 +853,11 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		AABBAABB0000000000000402 /* InboxPlusUpdates */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AABBAABB0000000000000403 /* XCLocalSwiftPackageReference "InboxPlusUpdates" */;
+			productName = InboxPlusUpdates;
+		};
 		78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = FlutterGeneratedPluginSwiftPackage;

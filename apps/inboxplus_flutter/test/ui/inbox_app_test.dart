@@ -42,6 +42,34 @@ void main() {
     expect(controller.beginLoginCalls, isEmpty);
   });
 
+  testWidgets('macOS update menu follows native availability', (tester) async {
+    final controller = _FakeController()..updatesEnabled = true;
+    await _pumpApp(tester, controller);
+    final bar = tester.widget<PlatformMenuBar>(find.byType(PlatformMenuBar));
+    final appMenu = bar.menus.first as PlatformMenu;
+    final group = appMenu.menus.whereType<PlatformMenuItemGroup>().first;
+    final update = group.members.singleWhere(
+      (item) => item.label == 'Check for Updates…',
+    );
+    update.onSelected!();
+    expect(controller.updateChecks, 1);
+
+    controller.updatesEnabled = false;
+    controller.notifyListeners();
+    await tester.pumpAndSettle();
+    final disabledBar = tester.widget<PlatformMenuBar>(
+      find.byType(PlatformMenuBar),
+    );
+    final disabledMenu = disabledBar.menus.first as PlatformMenu;
+    final disabledGroup = disabledMenu.menus
+        .whereType<PlatformMenuItemGroup>()
+        .first;
+    expect(
+      disabledGroup.members.where((item) => item.label == 'Check for Updates…'),
+      isEmpty,
+    );
+  }, variant: TargetPlatformVariant({TargetPlatform.macOS}));
+
   testWidgets('phone opens a conversation and returns to the inbox', (
     tester,
   ) async {
@@ -3272,6 +3300,15 @@ class _FakeController extends InboxUiController {
   PreferencesRecord currentPreferences = const PreferencesRecord();
   @override
   String get launchAtLoginStatus => 'off';
+  bool updatesEnabled = false;
+  int updateChecks = 0;
+  @override
+  bool get supportsUpdates => updatesEnabled;
+  @override
+  Future<void> checkForUpdates() async {
+    updateChecks++;
+  }
+
   @override
   SystemNotificationStatus notificationStatus = const SystemNotificationStatus(
     authorization: NotificationAuthorization.allowed,

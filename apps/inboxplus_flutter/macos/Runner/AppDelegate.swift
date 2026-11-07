@@ -3,9 +3,15 @@ import FlutterMacOS
 
 @main
 class AppDelegate: FlutterAppDelegate {
+  private var terminationPending = false
+
   override func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-    guard let services = InboxPlusAppleServices.shared, !services.canClose else { return .terminateNow }
-    services.prepareToClose { allowed in
+    guard let services = InboxPlusAppleServices.shared else { return .terminateCancel }
+    if services.canClose { return .terminateNow }
+    guard !terminationPending else { return .terminateLater }
+    terminationPending = true
+    services.prepareToTerminate { [weak self] allowed in
+      self?.terminationPending = false
       sender.reply(toApplicationShouldTerminate: allowed)
     }
     return .terminateLater

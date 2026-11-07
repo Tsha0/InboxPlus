@@ -81,6 +81,30 @@ def go_components(reviews):
     return components
 
 
+def sparkle_component(reviews):
+    directory = ROOT / "native/updates"
+    artifact = json.loads((directory / "sparkle-artifact.json").read_text())
+    lock = json.loads((directory / "Package.resolved").read_text())
+    for location in (
+        "Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+        "Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+    ):
+        xcode_lock = json.loads((ROOT / "apps/inboxplus_flutter/macos" / location).read_text())
+        if xcode_lock["pins"] != lock["pins"]:
+            raise ValueError("The Xcode and native updater SwiftPM locks must agree")
+    pin, = lock["pins"]
+    if pin["identity"] != "sparkle" or pin["state"]["version"] != artifact["version"]:
+        raise ValueError("The Sparkle artifact must match the SwiftPM lock")
+    component = {
+        "type": "framework", "name": "Sparkle", "version": artifact["version"],
+        "purl": "pkg:github/sparkle-project/Sparkle@" + artifact["version"],
+        "hashes": [{"alg": "SHA-256", "content": artifact["sha256"]}],
+        "externalReferences": [{"type": "distribution", "url": artifact["url"]}],
+        "properties": [{"name": "inboxplus:swiftpm:revision", "value": pin["state"]["revision"]}],
+    }
+    return [licensed(component, reviews, "swift:Sparkle@" + artifact["version"])]
+
+
 def generate():
     reviews = json.loads((ROOT / "docs/dependency-licenses.json").read_text())
     application_version = re.search(r"^version: (\S+)$", (ROOT / "apps/inboxplus_flutter/pubspec.yaml").read_text(), re.M).group(1)
@@ -98,7 +122,7 @@ def generate():
                 "value": "Repository inventory: Flutter app and build tools, embedded connectors. Not every component is distributed in every app.",
             }],
         },
-        "components": pub_components(reviews) + go_components(reviews),
+        "components": pub_components(reviews) + go_components(reviews) + sparkle_component(reviews),
     }
     for name, version, source, license_id in (
         ("Flutter", "3.47.9", "https://github.com/flutter/flutter/tree/3.47.9", "BSD-3-Clause"),

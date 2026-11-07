@@ -6,6 +6,7 @@ import Cocoa
 import ServiceManagement
 import FlutterMacOS
 import InboxPlusIMessage
+import InboxPlusUpdates
 #else
 import Flutter
 import UIKit
@@ -20,6 +21,7 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
     private let webLogin = InboxPlusWebLogin()
     private var hasUnfinishedWork = false
     #if os(macOS)
+    private let updates = AppUpdateController()
     private var gateway: IMessageGateway?
     private var gatewayProfile: String?
     private var readMarkersFile: URL?
@@ -44,7 +46,9 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             self.handle(call, result: result)
         }
         UNUserNotificationCenter.current().delegate = self
-        #if !os(macOS)
+        #if os(macOS)
+        updates.start()
+        #else
         NotificationCenter.default.addObserver(self, selector: #selector(loginDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(loginWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
         #endif
@@ -61,8 +65,14 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             ]
             #if os(macOS)
             capabilities["launch_at_login_status"] = launchAtLoginStatus
+            capabilities["updates"] = updates.isEnabled
             #endif
             result(capabilities)
+        #if os(macOS)
+        case "checkForUpdates":
+            updates.checkForUpdates()
+            result(nil)
+        #endif
         case "webLogin":
             guard let platform = arguments["platform"] as? String else {
                 return result(Self.failure("invalid_request"))
@@ -457,6 +467,29 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
         alert.addButton(withTitle: "Keep Open")
         alert.addButton(withTitle: "Close")
         return alert.runModal() == .alertSecondButtonReturn
+    }
+
+    func prepareToTerminate(completion: @escaping (Bool) -> Void) {
+        let windows = NSApp.windows.map { ($0, $0.ignoresMouseEvents, $0.firstResponder) }
+        prepareToClose { [weak self] allowed in
+            guard let self, allowed else { return completion(false) }
+            self.canClose = false
+            self.channel.invokeMethod("prepareToTerminate", arguments: nil) { [weak self] response in
+                guard let self else { return completion(false) }
+                self.canClose = response as? Bool == true
+                if !self.canClose {
+                    for (window, ignoredMouseEvents, responder) in windows {
+                        window.ignoresMouseEvents = ignoredMouseEvents
+                        window.makeFirstResponder(responder)
+                    }
+                    let alert = NSAlert()
+                    alert.messageText = "Inbox+ could not finish closing."
+                    alert.informativeText = "Keep Inbox+ open and try again. Your data has been kept."
+                    alert.runModal()
+                }
+                completion(self.canClose)
+            }
+        }
     }
 
     func prepareToClose(completion: @escaping (Bool) -> Void) {

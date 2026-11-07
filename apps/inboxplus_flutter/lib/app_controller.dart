@@ -62,6 +62,7 @@ class AppController extends InboxUiController {
   final _attachmentLimits = <String, int>{};
   PreferencesRecord _preferences = const PreferencesRecord();
   String _launchAtLoginStatus = 'unavailable';
+  bool _supportsUpdates = false;
   SystemNotificationStatus _notificationStatus =
       const SystemNotificationStatus();
   int _notificationStatusGeneration = 0;
@@ -206,6 +207,7 @@ class AppController extends InboxUiController {
           state.reactions;
     }
     final nativeCapabilities = await _optionalNative('capabilities');
+    _supportsUpdates = nativeCapabilities['updates'] == true;
     await refreshNotificationStatus();
     _launchAtLoginStatus =
         nativeCapabilities['launch_at_login_status'] as String? ??
@@ -367,6 +369,13 @@ class AppController extends InboxUiController {
   PreferencesRecord get preferences => _preferences;
   @override
   String get launchAtLoginStatus => _launchAtLoginStatus;
+  @override
+  bool get supportsUpdates => _supportsUpdates;
+  @override
+  Future<void> checkForUpdates() async {
+    if (_supportsUpdates) await _nativeCall('checkForUpdates', {});
+  }
+
   @override
   SystemNotificationStatus get notificationStatus => _notificationStatus;
   @override

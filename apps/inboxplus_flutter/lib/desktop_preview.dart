@@ -227,6 +227,10 @@ Future<void> main() async {
       await controller.openPendingNotification();
       return null;
     }
+    if (call.method == 'prepareToTerminate') {
+      await controller.close();
+      return true;
+    }
     if (call.method == 'prepareToClose') {
       await controller.flushBeforeClose();
       return true;

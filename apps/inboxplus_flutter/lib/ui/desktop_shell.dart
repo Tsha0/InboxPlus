@@ -847,6 +847,11 @@ class _DesktopHomeState extends State<_DesktopHome> {
               ),
               PlatformMenuItemGroup(
                 members: [
+                  if (controller.supportsUpdates)
+                    PlatformMenuItem(
+                      label: 'Check for Updates…',
+                      onSelected: controller.checkForUpdates,
+                    ),
                   PlatformMenuItem(
                     label: 'Settings…',
                     shortcut: shortcut(LogicalKeyboardKey.comma),

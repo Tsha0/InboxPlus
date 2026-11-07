@@ -45,6 +45,16 @@ def generate(pub_cache, go_cache, go_root):
                 texts.append("The Go Authors' BSD license referenced by the source headers:\n\n" + (go_root / "LICENSE").read_text())
             sections.append(name + " " + version + "\n" + component["purl"] + "\n"
                             + review["license"] + "\n\n" + "\n\n".join(texts))
+    component, = inventory.sparkle_component(reviews)
+    review = reviews["swift:Sparkle@" + component["version"]]
+    texts = []
+    for filename, expected in sorted(review["evidence"].items()):
+        content = (ROOT / "native/updates" / filename).read_bytes()
+        if hashlib.sha256(content).hexdigest() != expected:
+            raise ValueError("Sparkle license differs from the reviewed artifact")
+        texts.append(content.decode("utf-8"))
+    sections.append("Sparkle " + component["version"] + "\n" + component["purl"] + "\n"
+                    + review["license"] + "\n\n" + "\n\n".join(texts))
     sections.append(
         "Native media components\n\n"
         "The media_kit plugin license covers its wrapper, not the native mpv, FFmpeg and codec libraries. "

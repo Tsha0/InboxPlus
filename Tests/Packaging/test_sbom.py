@@ -66,8 +66,8 @@ class CombinedInventoryTests(unittest.TestCase):
         self.assertEqual(document["specVersion"], "1.5")
         self.assertEqual(document["metadata"]["component"]["licenses"], [{"license": {"id": "AGPL-3.0-or-later"}}])
         names = {component["name"] for component in document["components"]}
-        self.assertTrue({"Flutter", "Dart", "Go", "Pillow"}.issubset(names))
-        self.assertTrue(names.isdisjoint({"Sparkle", "cpython", "matrix-rust-components-swift", "synapse", "libolm"}))
+        self.assertTrue({"Flutter", "Dart", "Go", "Pillow", "Sparkle"}.issubset(names))
+        self.assertTrue(names.isdisjoint({"cpython", "matrix-rust-components-swift", "synapse", "libolm"}))
 
     def test_application_version_changes_inventory_identity(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -78,7 +78,8 @@ class CombinedInventoryTests(unittest.TestCase):
             pubspec.parent.mkdir(parents=True)
             with patch.object(sbom, "ROOT", fixture_root), \
                     patch.object(sbom, "pub_components", return_value=[]), \
-                    patch.object(sbom, "go_components", return_value=[]):
+                    patch.object(sbom, "go_components", return_value=[]), \
+                    patch.object(sbom, "sparkle_component", return_value=[]):
                 pubspec.write_text("version: 0.9.0+112\n")
                 first = json.loads(sbom.generate())
                 pubspec.write_text("version: 0.9.0+113\n")

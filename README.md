@@ -72,8 +72,9 @@ flutter build ios --release --no-codesign
 
 Run only the command supported by the build host. The iOS command verifies an unsigned build;
 tagged releases reach TestFlight through the [iOS release workflow](CONTRIBUTING.md#ios-releases).
-Android release signing, desktop installers, notarization, App Store and Play Store publishing and
-automatic updates require release work beyond these development builds.
+Production macOS packages use the [Sparkle release pipeline](docs/updates.md); development builds
+keep updates disabled. Android release signing, Windows/Linux installers and automatic updates,
+and App Store and Play Store publishing require additional release work.
 
 Each desktop target has its own native runner and release artifact: a macOS `.app`, a Windows
 executable with its bundled libraries, or a Linux executable with its bundled libraries. Build and

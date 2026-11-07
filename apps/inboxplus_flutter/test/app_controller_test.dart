@@ -1464,6 +1464,59 @@ void main() {
   );
 
   test(
+    'update checks are available only when the native updater is enabled',
+    () async {
+      native.updatesEnabled = true;
+      final app = await start(engine: _FakeEngine());
+      expect(app.supportsUpdates, isTrue);
+      await app.checkForUpdates();
+      expect(
+        native.calls.where((call) => call['method'] == 'checkForUpdates'),
+        hasLength(1),
+      );
+    },
+  );
+
+  test('development builds do not invoke the native updater', () async {
+    final app = await start(engine: _FakeEngine());
+    expect(app.supportsUpdates, isFalse);
+    await app.checkForUpdates();
+    expect(
+      native.calls.where((call) => call['method'] == 'checkForUpdates'),
+      isEmpty,
+    );
+  });
+
+  test(
+    'termination waits for connector shutdown and preserves drafts',
+    () async {
+      await seed(firstRoute);
+      final engine = _FakeEngine()..closeGate = Completer<void>();
+      final app = await start(engine: engine);
+      app.updateDraft(firstRoute, 'Keep this through the update');
+      final closing = app.close();
+      await _eventually(() => engine.closeStarted);
+      expect(
+        (await store.loadDraft(firstRoute))?.body,
+        'Keep this through the update',
+      );
+      engine.closeGate!.complete();
+      await closing;
+      controller = null;
+      storeClosed = true;
+      final reopened = await LocalStore.open(file: database, key: key);
+      try {
+        expect(
+          (await reopened.loadDraft(firstRoute))?.body,
+          'Keep this through the update',
+        );
+      } finally {
+        await reopened.close();
+      }
+    },
+  );
+
+  test(
     'login setting reflects the system result and preserves state on failure',
     () async {
       final app = await start(engine: _FakeEngine());
@@ -2715,6 +2768,7 @@ class _NativeFixture {
   bool loginBackgroundExpired = false;
   bool photosDenied = false;
   bool launchAtLogin = false;
+  bool updatesEnabled = false;
   bool failLaunchAtLogin = false;
   var imessageAvailable = false;
   Object? recipientSnapshot = {'status': 'available', 'recipients': []};
@@ -2751,6 +2805,7 @@ class _NativeFixture {
           'web_login_platforms': ['instagram', 'messenger'],
           'imessage': imessageAvailable,
           'launch_at_login_status': launchAtLogin ? 'on' : 'off',
+          'updates': updatesEnabled,
         };
       case 'setLaunchAtLogin':
         if (failLaunchAtLogin) {
@@ -2956,6 +3011,13 @@ class _FakeEngine implements ConnectorEngine {
     }
   }
 
+  Completer<void>? closeGate;
+  bool closeStarted = false;
+
   @override
-  Future<void> close() => _events.close();
+  Future<void> close() async {
+    closeStarted = true;
+    await closeGate?.future;
+    await _events.close();
+  }
 }
