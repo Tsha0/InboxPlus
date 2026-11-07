@@ -312,8 +312,9 @@ through manual dispatch with `android_build` enabled.
 [ios-release.yml](.github/workflows/ios-release.yml) publishes iOS builds to TestFlight. To release,
 raise `version:` in `apps/inboxplus_flutter/pubspec.yaml` on `main`, always with a new build number
 after `+`, and run `python3 Scripts/generate-sbom.py`, which records the version. Then push a
-matching tag: `0.9.1+114` is released by `v0.9.1`. The workflow refuses a tag that does not match. It runs the launch test on a fresh iPhone simulator, archives the app
-unsigned, signs it for the App Store with the App Store Connect API key, checks it with
+matching tag: `0.9.1+114` is released by `v0.9.1`. The workflow refuses a tag that does not match.
+It runs the launch test on a fresh iPhone simulator, archives the app unsigned, signs it for the
+App Store with the App Store Connect API key, checks it with
 `Scripts/verify-ios-app.py --distribution` and uploads it. Manual dispatch releases the selected
 branch without the tag check.
 
