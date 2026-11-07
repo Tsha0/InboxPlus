@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Inbox+
+Exec=InboxPlus
+Icon=com.inboxplus.app
+Type=Application
+Categories=Network;InstantMessaging;
+Terminal=false
+StartupNotify=true
+X-GNOME-UsesNotifications=true

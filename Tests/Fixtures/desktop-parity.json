@@ -1,0 +1,52 @@
+{
+  "referenceTime": "2026-11-05T08:00:00Z",
+  "accounts": [
+    {"id":"whatsapp","platform":"whatsApp","name":"WhatsApp","identity":"Preview account"},
+    {"id":"telegram","platform":"telegram","name":"Telegram","identity":"Preview account"},
+    {"id":"instagram","platform":"instagram","name":"Instagram","identity":"Preview account"},
+    {"id":"messenger","platform":"facebookMessenger","name":"Facebook Messenger","identity":"Preview account"},
+    {"id":"imessage-local","platform":"iMessage","name":"iMessage","identity":"Preview account"}
+  ],
+  "recipients": [
+    {"name":"Alex Morgan","address":"alex.fixture@example.com"},
+    {"name":"Alex Morgan","address":"+14155550101"},
+    {"name":"Maya Chen","address":"maya.fixture@example.com"}
+  ],
+  "contacts": [
+    {"id":"alex","name":"Alex Morgan","identities":["alex-wa","alex-tg"]},
+    {"id":"maya","name":"Maya Chen","identities":["maya-tg"]},
+    {"id":"nora","name":"Nora Williams","identities":["nora-ig"]}
+  ],
+  "conversations": [
+    {"id":"alex-wa-chat","account":"whatsapp","identity":"alex-wa","title":"Alex Morgan","preview":"Sounds good. See you at 6!","minutesAgo":5,"unread":2,"group":false},
+    {"id":"team","account":"whatsapp","identity":"team-wa","title":"Weekend plans","preview":"Maya Chen: I'll bring the snacks.","minutesAgo":18,"unread":3,"group":true},
+    {"id":"maya","account":"telegram","identity":"maya-tg","title":"Maya Chen","preview":"The photos turned out great.","minutesAgo":40,"unread":0,"group":false},
+    {"id":"nora","account":"instagram","identity":"nora-ig","title":"Nora Williams","preview":"Have a look at this place.","minutesAgo":90,"unread":1,"group":false},
+    {"id":"alex-tg-chat","account":"telegram","identity":"alex-tg","title":"Alex Morgan","preview":"I've sent the document here too.","minutesAgo":140,"unread":0,"group":false},
+    {"id":"sam","account":"messenger","identity":"sam-fb","title":"Sam Rivera","preview":"Thanks for the update!","minutesAgo":180,"unread":0,"group":false},
+    {"id":"riley-wa","account":"whatsapp","identity":"riley-wa","title":"Riley Park","preview":"The plan looks good.","minutesAgo":200,"unread":0,"group":false},
+    {"id":"riley-tg","account":"telegram","identity":"riley-tg","title":"Riley Park","preview":"See you tomorrow.","minutesAgo":210,"unread":0,"group":false},
+    {"id":"local-media","account":"imessage-local","identity":"local-media","title":"Local attachments","preview":"Synthetic desktop files.","minutesAgo":60,"unread":0,"group":false}
+  ],
+  "messages": [
+    {"id":"alex-1","account":"whatsapp","conversation":"alex-wa-chat","body":"Hey! Are we still meeting this evening?","minutesAgo":14,"outgoing":false,"sender":"Alex Morgan"},
+    {"id":"alex-2","account":"whatsapp","conversation":"alex-wa-chat","body":"Yes, the same place works for me.","minutesAgo":10,"outgoing":true,"sender":""},
+    {"id":"alex-3","account":"whatsapp","conversation":"alex-wa-chat","body":"Sounds good. See you at 6!","minutesAgo":5,"outgoing":false,"sender":"Alex Morgan"},
+    {"id":"team-1","account":"whatsapp","conversation":"team","body":"The weather looks perfect for Saturday.","minutesAgo":24,"outgoing":false,"sender":"Alex Morgan"},
+    {"id":"team-2","account":"whatsapp","conversation":"team","body":"Let's meet at the park entrance at 10.","minutesAgo":20,"outgoing":true,"sender":""},
+    {"id":"team-3","account":"whatsapp","conversation":"team","body":"I'll bring the snacks.","minutesAgo":18,"outgoing":false,"sender":"Maya Chen"},
+    {"id":"maya-1","account":"telegram","conversation":"maya","body":"The photos turned out great.","minutesAgo":40,"outgoing":false,"sender":"Maya Chen"},
+    {"id":"nora-1","account":"instagram","conversation":"nora","body":"Have a look at this place.","minutesAgo":90,"outgoing":false,"sender":"Nora Williams"},
+    {"id":"alex-tg-1","account":"telegram","conversation":"alex-tg-chat","body":"I've sent the document here too.","minutesAgo":140,"outgoing":false,"sender":"Alex Morgan"},
+    {"id":"sam-1","account":"messenger","conversation":"sam","body":"Thanks for the update!","minutesAgo":180,"outgoing":false,"sender":"Sam Rivera"},
+    {"id":"riley-wa-1","account":"whatsapp","conversation":"riley-wa","body":"The plan looks good.","minutesAgo":200,"outgoing":false,"sender":"Riley Park"},
+    {"id":"riley-tg-1","account":"telegram","conversation":"riley-tg","body":"See you tomorrow.","minutesAgo":210,"outgoing":false,"sender":"Riley Park"},
+    {"id":"local-file","account":"imessage-local","conversation":"local-media","body":"Here is the local itinerary.","minutesAgo":62,"outgoing":false,"sender":"Fixture sender","attachments":[{"id":"local-itinerary","kind":"file","name":"Desktop itinerary.txt","mimeType":"text/plain","text":"Meet at the park at 10.\nSynthetic desktop fixture.\n"}]},
+    {"id":"local-image","account":"imessage-local","conversation":"local-media","body":"Synthetic app logo.","minutesAgo":60,"outgoing":false,"sender":"Fixture sender","attachments":[{"id":"local-logo","kind":"image","name":"Inbox+ logo.png","mimeType":"image/png","asset":"inboxplus-logo.png"}]}
+  ],
+  "reactions": [
+    {"account":"whatsapp","conversation":"alex-wa-chat","message":"alex-1","key":"👍","count":2,"own":false},
+    {"account":"whatsapp","conversation":"alex-wa-chat","message":"alex-2","key":"❤️","count":1,"own":true},
+    {"account":"telegram","conversation":"maya","message":"maya-1","key":"😮","count":1,"own":false}
+  ]
+}

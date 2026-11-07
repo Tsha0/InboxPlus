@@ -6,8 +6,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# A newer push to the same branch makes the previous run's answer irrelevant, so it is cancelled
-# rather than left to finish and burn a runner.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -18,181 +16,36 @@ permissions:
 jobs:
   test:
     name: Build and test
-    # InboxPlus is macOS-only: AppKit, SwiftUI, CryptoKit, Keychain and the Messages database all are.
-    # There is no Linux job to add because there is nothing that would compile there.
-    runs-on: macos-latest
-    timeout-minutes: 45
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Record the toolchain
-        id: toolchain
-        run: |
-          swift --version
-          xcodebuild -version
-          sw_vers
-          key=$({ swift --version; xcodebuild -version; sw_vers -productVersion; } | shasum -a 256 | cut -d' ' -f1)
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      # Keep the checksum-verified Matrix SDK download across runs.
-      - name: Cache Swift package artifacts
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
-
-      # Exact content keys allow reuse despite fresh checkout timestamps. Changes to sources,
-      # package pins, workflow build flags or the toolchain always build again; tests always run.
-      - name: Cache test build
-        id: test-build
-        uses: actions/cache@v4
-        with:
-          path: .build
-          key: swift-test-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', '.github/workflows/ci.yml', 'Sources/**', 'Tests/**') }}
-
-      - name: Resolve dependencies
-        run: swift package resolve
-
-      - name: Build
-        if: steps.test-build.outputs.cache-hit != 'true'
-        run: swift build --build-tests
-
-      # The live-runtime and live-bridge tests are opt-in behind INBOXPLUS_RUNTIME_PYTHON and are
-      # deliberately NOT enabled here: they start a real Synapse and download real bridge binaries,
-      # which makes a CI failure a report about the network rather than about the change.
-      - name: Test
-        # Native UI tests share NSApplication and windows, so they must not overlap.
-        run: |
-          swift test --skip-build --skip InboxPlusUITests
-          swift test --skip-build --filter InboxPlusUITests --no-parallel
-
-      - name: Verify update packaging and feed validation
-        run: |
-          python3 -m unittest discover -s Tests/Packaging -v
-          bash Tests/Packaging/verify-signed-feed.sh
-          bash Tests/Packaging/verify-self-signed-identity.sh
-          bash -n Scripts/embed-sparkle.sh Scripts/generate-update-feed.sh Scripts/package-release.sh Scripts/build-app.sh Scripts/create-signing-certificate.sh
-
-      - name: Check for whitespace damage
-        run: git diff --check
-
-  generated-files:
-    name: Generated files are current
-    # Both of these are produced by a script from a pinned source. A stale one is invisible in
-    # review and wrong in the product, so the check is that regenerating changes nothing.
     runs-on: macos-latest
     timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache Swift package artifacts
-        uses: actions/cache@v4
+      - uses: actions/setup-python@v5
         with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
+          python-version: '3.12'
+      - name: Verify the macOS Messages adapter
+        run: swift test --package-path native/imessage
+      - name: Verify packaging, media artifacts and dependency inventory
+        run: python3 -m unittest discover -s Tests/Packaging -v
+      - name: Check whitespace
+        run: git diff --check
 
-      - name: Regenerate the brand marks
-        run: swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/InboxPlusUI/PlatformGlyphPaths.swift
-
-      - name: Regenerate the app icon
-        run: swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns
-
-      - name: Regenerate the bill of materials
-        run: swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json
-
-      - name: Fail if anything drifted
-        run: |
-          if ! git diff --quiet; then
-            echo "::error::A generated file is out of date. Regenerate and commit:"
-            echo "  swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/InboxPlusUI/PlatformGlyphPaths.swift"
-            echo "  swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns"
-            echo "  swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json"
-            git diff --stat
-            exit 1
-          fi
-          echo "Generated files match their sources."
-
-  package:
-    name: Package the app
-    # Proves the bundle still assembles and launches its own CLI. This is NOT a release: the build
-    # is ad-hoc signed, so its identity changes every build. Releases use Scripts/package-release.sh.
+  generated-files:
+    name: Generated files are current
     runs-on: macos-latest
-    timeout-minutes: 45
-    needs: test
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache Swift package artifacts
-        uses: actions/cache@v4
+      - uses: actions/setup-python@v5
         with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
-
-      - name: Record the toolchain
-        id: toolchain
-        run: |
-          swift --version
-          xcodebuild -version
-          sw_vers
-          key=$({ swift --version; xcodebuild -version; sw_vers -productVersion; } | shasum -a 256 | cut -d' ' -f1)
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Record runtime build tools
-        id: runtime-tools
-        run: |
-          cmake --version
-          rustc --version
-          cargo --version
-          key=$({ cmake --version; rustc --version; cargo --version; } | shasum -a 256 | cut -d' ' -f1)
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Cache release build
-        id: release-build
-        uses: actions/cache@v4
-        with:
-          path: .build
-          key: swift-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', '.github/workflows/ci.yml', 'Scripts/build-app.sh', 'Sources/**') }}
-
-      # Reuse the pinned Python/Synapse environment, including the expensive Rust extension.
-      # No fallback: changes to pins, preparation, verification or native tools require a rebuild.
-      # prepare-bundled-runtime.sh rechecks the inventory and portability on every cache hit.
-      - name: Cache bundled Python runtime
-        uses: actions/cache@v4
-        with:
-          path: build/runtime-cache
-          key: bundled-python-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ steps.runtime-tools.outputs.key }}-${{ hashFiles('Runtime/Synapse/**', 'Scripts/prepare-bundled-runtime.sh', 'Scripts/verify-bundled-python.py') }}
-
-      - name: Build the app bundle
-        env:
-          INBOXPLUS_SKIP_SWIFT_BUILD: ${{ steps.release-build.outputs.cache-hit == 'true' && '1' || '0' }}
-        run: Scripts/build-app.sh
-
-      - name: Verify the bundle
-        run: |
-          codesign --verify --strict build/Inbox+.app
-          # The CLI ships inside the bundle and is how a profile is prepared; if it cannot run,
-          # the bundle is useless even though it assembled.
-          build/Inbox+.app/Contents/MacOS/InboxPlusRuntimeCLI sbom > /dev/null
-          # Showing a video aborts the app unless AVKit itself is linked, not just its SwiftUI overlay.
-          otool -L build/Inbox+.app/Contents/MacOS/InboxPlus | grep -q '/AVKit.framework/'
-          echo "Bundle assembled, its CLI runs and it links AVKit."
-
-      - name: Upload the unsigned bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: InboxPlus-unsigned-${{ github.sha }}
-          path: build/Inbox+.app
-          retention-days: 14
-          if-no-files-found: error
+          python-version: '3.12'
+      - name: Regenerate the brand marks
+        run: python3 Scripts/generate-flutter-glyphs.py
+      - name: Regenerate the app icon
+        run: swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns
+      - name: Regenerate the bill of materials
+        run: python3 Scripts/generate-sbom.py
+      - name: Fail if anything drifted
+        run: git diff --exit-code

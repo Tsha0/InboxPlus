@@ -9,8 +9,8 @@ assignees: ''
 ## Observed workflow and impact
 
 Describe the user's goal, the current steps or workaround, and the specific friction or missing
-capability. Include the affected screen, app version/build, macOS version and fixture/live context
-when known, without account identifiers.
+capability. Include the affected screen, app version/build, operating system/device and fixture/live
+context when known, without account identifiers.
 
 ## Proposed outcome
 

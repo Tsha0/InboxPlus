@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#181818">
     <title>Inbox+ — Your people. All together.</title>
-    <meta name="description" content="A little less app hopping. Bring your conversations together in one local-first, native Mac app. Meet Inbox+.">
+    <meta name="description" content="A little less app hopping. Bring your conversations together in one local-first messaging app. Meet Inbox+.">
     <link rel="canonical" href="https://inboxplus.chat/">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://inboxplus.chat/">
     <meta property="og:title" content="Inbox+ — Your people. All together.">
-    <meta property="og:description" content="Your favorite people, minus the app hopping. One local-first inbox for your Mac.">
+    <meta property="og:description" content="Your favorite people, minus the app hopping. One local-first inbox for your device.">
     <meta property="og:image" content="https://inboxplus.chat/assets/social.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -38,9 +38,6 @@
         </symbol>
         <symbol id="arrow-up-right" viewBox="0 0 24 24">
           <path d="M5 19 19 5M5 5h14v14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-        </symbol>
-        <symbol id="apple" viewBox="0 0 24 24">
-          <path fill="currentColor" d="M16.6 12.8c0-2 1.6-3 1.7-3.1-1-1.4-2.4-1.6-2.9-1.6-1.3-.1-2.5.8-3.2.8-.6 0-1.6-.8-2.7-.8-1.4 0-2.8.9-3.5 2.1-1.5 2.6-.4 6.4 1 8.5.7 1 1.5 2.1 2.6 2.1 1 0 1.5-.7 2.8-.7s1.7.7 2.8.6c1.2 0 1.9-1 2.6-2.1.8-1.2 1.1-2.3 1.2-2.4-.1 0-2.4-.9-2.4-3.4ZM14.5 6.7c.6-.8 1.1-1.9 1-3-.9.1-2 .6-2.7 1.4-.6.7-1.2 1.9-1 3 1 .1 2-.5 2.7-1.4Z"/>
         </symbol>
         <symbol id="inbox" viewBox="0 0 24 24">
           <path d="m4 5-2 9v5h20v-5l-2-9H4Zm-2 9h6l2 3h4l2-3h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
@@ -94,7 +91,7 @@
       <nav aria-label="Main navigation">
         <button class="replay-intro nav-replay" type="button" aria-label="Replay the entrance animation">Replay hello <span aria-hidden="true">↻</span></button>
         <a class="nav-preview" href="#peek">Take a peek <span aria-hidden="true">↓</span></a>
-        <a class="button button-small" href="https://github.com/Tsha0/InboxPlus/releases/latest">Get the app <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
+        <a class="button button-small" href="https://github.com/Tsha0/InboxPlus#build-from-source">Build the app <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
       </nav>
     </header>
 
@@ -124,9 +121,9 @@
           </div>
           <div class="hero-copy">
             <p class="hero-tagline">Your people.<br>All together<span class="period">.</span></p>
-            <p class="hero-description">All your conversations.<br>One happy little Mac app.</p>
-            <a class="button hero-download" href="https://github.com/Tsha0/InboxPlus/releases/latest"><svg class="apple-icon" aria-hidden="true"><use href="#apple"/></svg> Get Inbox+ for Mac <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
-            <p class="requirements">macOS 15+ · Apple silicon · Early release</p>
+            <p class="hero-description">All your conversations.<br>One happy little inbox.</p>
+            <a class="button hero-download" href="https://github.com/Tsha0/InboxPlus#build-from-source">Build Inbox+ <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
+            <p class="requirements">Desktop development builds · macOS, Windows, Linux</p>
           </div>
         </div>
         <div class="hero-bottom">
@@ -187,10 +184,10 @@
             <fieldset class="theme-picker"><legend>Light or dark?</legend><button class="theme-swatch theme-light is-active" type="button" data-appearance="light" aria-label="Light appearance" aria-pressed="true"><span></span></button><button class="theme-swatch theme-dark" type="button" data-appearance="dark" aria-label="Dark appearance" aria-pressed="false"><span></span></button><output id="appearance-name">Light</output></fieldset>
           </div>
           <fieldset class="palette-picker"><legend>A mood for every message.</legend><div id="palette-options"></div><span id="palette-name">Classic</span><button class="surprise-theme" type="button" aria-label="Surprise me with an Inbox+ theme">Surprise me <span aria-hidden="true">↝</span></button></fieldset>
-          <details class="network-note"><summary>A quick note on connections <span aria-hidden="true">+</span></summary><p>Inbox+ is an early release. Instagram has been tested with a live account. WhatsApp, Messenger, and Telegram have working setup flows, but live messaging is still being verified. iMessage reads and sends through macOS. Unofficial clients can carry account risks; <a href="https://github.com/Tsha0/InboxPlus#networks">see network details</a>.</p></details>
+          <details class="network-note"><summary>A quick note on connections <span aria-hidden="true">+</span></summary><p>Inbox+ is a development build with experimental connections to WhatsApp, Telegram, Instagram, Messenger, WeChat, Discord, and LinkedIn. Sign-in and messaging with these new integrations still need live-account verification. Availability varies by platform; iMessage reads and sends through macOS only. Unofficial clients can carry account risks; <a href="https://github.com/Tsha0/InboxPlus#networks">see network details</a>.</p></details>
         </div>
         <p class="sr-only" id="demo-announcement" role="status" aria-live="polite" aria-atomic="true"></p>
-        <noscript><p class="no-script">The preview needs JavaScript. Inbox+ itself is a native Mac app. <a href="https://github.com/Tsha0/InboxPlus/releases/latest">Get it here.</a></p></noscript>
+        <noscript><p class="no-script">The preview needs JavaScript. Inbox+ itself runs on your device. <a href="https://github.com/Tsha0/InboxPlus#build-from-source">Build it here.</a></p></noscript>
       </section>
 
       <section class="privacy" id="yours" aria-labelledby="privacy-title">
@@ -219,10 +216,10 @@
         <div class="closing-top reveal">
           <svg class="closing-star" viewBox="0 0 100 100" aria-hidden="true"><use href="#asterisk"/></svg>
           <div><p class="eyebrow">That’s more like it.</p><h2 id="closing-title">Less app.<br>More hello.</h2></div>
-          <div class="closing-action"><a class="button" href="https://github.com/Tsha0/InboxPlus/releases/latest"><svg class="apple-icon" aria-hidden="true"><use href="#apple"/></svg> Get Inbox+ for Mac <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a><p class="requirements">macOS 15+ · Apple silicon</p><a class="setup-link" href="https://github.com/Tsha0/InboxPlus#download">Early release · First-time setup <span aria-hidden="true">↗</span></a></div>
+          <div class="closing-action"><a class="button" href="https://github.com/Tsha0/InboxPlus#build-from-source">Build Inbox+ <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a><p class="requirements">macOS · Windows · Linux</p><a class="setup-link" href="https://github.com/Tsha0/InboxPlus#build-from-source">Development builds · Setup instructions <span aria-hidden="true">↗</span></a></div>
         </div>
         <div class="footer-wordmark" aria-hidden="true">Inbox<span>+</span></div>
-        <footer class="site-footer"><span>A happy little home for your conversations.</span><div><a href="https://github.com/Tsha0/InboxPlus"><svg aria-hidden="true"><use href="#github"/></svg>Open source</a><button class="replay-intro" type="button">One more hello <span aria-hidden="true">↻</span></button><a href="#top">Back to top <span aria-hidden="true">↑</span></a></div><span>Made for Mac. Made for you.</span></footer>
+        <footer class="site-footer"><span>A happy little home for your conversations.</span><div><a href="https://github.com/Tsha0/InboxPlus"><svg aria-hidden="true"><use href="#github"/></svg>Open source</a><button class="replay-intro" type="button">One more hello <span aria-hidden="true">↻</span></button><a href="#top">Back to top <span aria-hidden="true">↑</span></a></div><span>Made for your device. Made for you.</span></footer>
       </section>
     </main>
   </body>

@@ -1,332 +1,6036 @@
 {
-  "bomFormat" : "CycloneDX",
-  "components" : [
+  "bomFormat": "CycloneDX",
+  "components": [
     {
-      "description" : "Checksum-verified update framework and installer helpers; pinned through SwiftPM.",
-      "externalReferences" : [
+      "externalReferences": [
         {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/sparkle-project\/Sparkle"
+          "type": "vcs",
+          "url": "https://github.com/dart-lang/sdk/tree/3.13.7"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "Dart",
+      "properties": [
+        {
+          "name": "inboxplus:usage",
+          "value": "build-toolchain"
+        }
+      ],
+      "purl": "pkg:generic/dart@3.13.7",
+      "type": "application",
+      "version": "3.13.7"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/flutter/flutter/tree/3.47.9"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "Flutter",
+      "properties": [
+        {
+          "name": "inboxplus:usage",
+          "value": "build-toolchain"
+        }
+      ],
+      "purl": "pkg:generic/flutter@3.47.9",
+      "type": "framework",
+      "version": "3.47.9"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://go.dev/dl/#go1.27.3"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "Go",
+      "properties": [
+        {
+          "name": "inboxplus:usage",
+          "value": "build-toolchain"
+        }
+      ],
+      "purl": "pkg:generic/go@1.27.3",
+      "type": "application",
+      "version": "1.27.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "https://github.com/python-pillow/Pillow/tree/10.4.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "HPND"
+          }
+        }
+      ],
+      "name": "Pillow",
+      "properties": [
+        {
+          "name": "inboxplus:usage",
+          "value": "build-toolchain"
+        }
+      ],
+      "purl": "pkg:generic/pillow@10.4.0",
+      "type": "application",
+      "version": "10.4.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/_fe_analyzer_shared/versions/111.0.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1c5591cc6f252d5f440d96ab87c03e43504be552a3fa49d7cb7563f04c51fb0a"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "_fe_analyzer_shared",
+      "purl": "pkg:pub/_fe_analyzer_shared@111.0.0",
+      "type": "library",
+      "version": "111.0.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/analyzer/versions/14.7.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "6c39bd5486a310e56217bed7cb1691377959f31be4227e41750107db7e6dd55c"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "analyzer",
+      "purl": "pkg:pub/analyzer@14.7.0",
+      "type": "library",
+      "version": "14.7.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/android_file_picker/versions/2.1.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "868183c959e754e915954d8074c20cfa4cfdb4684b35ecc08378437be1a542d8"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "android_file_picker",
+      "purl": "pkg:pub/android_file_picker@2.1.3",
+      "type": "library",
+      "version": "2.1.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/archive/versions/4.6.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "de5ac590b8155e4e676088d714bd41ea620449a6adc0f7950c5073874b287ddb"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT AND BSD-3-Clause"
+        }
+      ],
+      "name": "archive",
+      "purl": "pkg:pub/archive@4.6.0",
+      "type": "library",
+      "version": "4.6.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/args/versions/2.7.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "d0481093c50b1da8910eb0bb301626d4d8eb7284aa739614d2b394ee09e3ea04"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "args",
+      "purl": "pkg:pub/args@2.7.0",
+      "type": "library",
+      "version": "2.7.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/async/versions/2.13.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e2eb0491ba5ddb6177742d2da23904574082139b07c1e33b8503b9f46f3e1a37"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "async",
+      "purl": "pkg:pub/async@2.13.1",
+      "type": "library",
+      "version": "2.13.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/boolean_selector/versions/2.1.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8aab1771e1243a5063b8b0ff68042d67334e3feab9e95b9490f9a6ebf73b42ea"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "boolean_selector",
+      "purl": "pkg:pub/boolean_selector@2.1.2",
+      "type": "library",
+      "version": "2.1.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/build/versions/5.0.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "50df3d1558953a0d936401c1687cc41dbc039f9132f538c7bcb2aac2a580ae7f"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "build",
+      "purl": "pkg:pub/build@5.0.0",
+      "type": "library",
+      "version": "5.0.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/build_config/versions/1.4.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4703a785fbc3c266c5c7518589d0863f6a05078ee33f7ca5aa4b87a56f1cedd2"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "build_config",
+      "purl": "pkg:pub/build_config@1.4.0",
+      "type": "library",
+      "version": "1.4.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/build_daemon/versions/4.1.7"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "39ab65f7c60c19af64b9ef96e6a5d3ab48355f7dddfd98a9079d55a8cb6628fc"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "build_daemon",
+      "purl": "pkg:pub/build_daemon@4.1.7",
+      "type": "library",
+      "version": "4.1.7"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/build_runner/versions/2.17.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "96b9da39a3a8d4365aa1ca6f7655437d80f514ba13d4c21d8408cc8aacb94681"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "build_runner",
+      "purl": "pkg:pub/build_runner@2.17.1",
+      "type": "library",
+      "version": "2.17.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/built_collection/versions/5.1.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "44922ecebd8e3d0cef743dadd3b54df4e87e2a4c52a29465a1872aa9e192caa8"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "built_collection",
+      "purl": "pkg:pub/built_collection@5.1.2",
+      "type": "library",
+      "version": "5.1.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/built_value/versions/8.13.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f87ea98192116f7093cb214551ce1929caae0681fdba282b3d8b4462adee7bb7"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "built_value",
+      "purl": "pkg:pub/built_value@8.13.0",
+      "type": "library",
+      "version": "8.13.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/characters/versions/1.4.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "faf38497bda5ead2a8c7615f4f7939df04333478bf32e4173fcb06d428b5716b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "characters",
+      "purl": "pkg:pub/characters@1.4.1",
+      "type": "library",
+      "version": "1.4.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/charcode/versions/1.4.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "fb0f1107cac15a5ea6ef0a6ef71a807b9e4267c713bb93e00e92d737cc8dbd8a"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "charcode",
+      "purl": "pkg:pub/charcode@1.4.0",
+      "type": "library",
+      "version": "1.4.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/checked_yaml/versions/2.0.4"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "959525d3162f249993882720d52b7e0c833978df229be20702b33d48d91de70f"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "checked_yaml",
+      "purl": "pkg:pub/checked_yaml@2.0.4",
+      "type": "library",
+      "version": "2.0.4"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/cli_config/versions/0.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ac20a183a07002b700f0c25e61b7ee46b23c309d76ab7b7640a028f18e4d99ec"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "cli_config",
+      "purl": "pkg:pub/cli_config@0.2.0",
+      "type": "library",
+      "version": "0.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/cli_util/versions/0.6.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "89b8801ba49f8b593fbf2d3e59efd0f566c46cd4ba6837ae2610c72b52a0f899"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "cli_util",
+      "purl": "pkg:pub/cli_util@0.6.0",
+      "type": "library",
+      "version": "0.6.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/clock/versions/1.1.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e51d50bca3217c9a9fa2b41a30e4a38971133f5f9ec7a3d57bae095007f1d28e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "clock",
+      "purl": "pkg:pub/clock@1.1.3",
+      "type": "library",
+      "version": "1.1.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/code_assets/versions/2.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "828110d598123b5ea96c00c9f3c72105bf79f8ee36c20a39b26209ade421ec57"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "code_assets",
+      "purl": "pkg:pub/code_assets@2.1.0",
+      "type": "library",
+      "version": "2.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/collection/versions/1.19.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2f5709ae4d3d59dd8f7cd309b4e023046b57d8a6c82130785d2b0e5868084e76"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "collection",
+      "purl": "pkg:pub/collection@1.19.1",
+      "type": "library",
+      "version": "1.19.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/convert/versions/3.1.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b30acd5944035672bc15c6b7a8b47d773e41e2f17de064350988c5d02adb1c68"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "convert",
+      "purl": "pkg:pub/convert@3.1.2",
+      "type": "library",
+      "version": "3.1.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/coverage/versions/1.16.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ff89e37c19355194e279d26dafe8e4bece46c9ea63a30be4dc68214f5bc290d3"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "coverage",
+      "purl": "pkg:pub/coverage@1.16.0",
+      "type": "library",
+      "version": "1.16.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/cross_file/versions/0.3.5+5"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f141ea4f277af142a0356955707f6556f37b03947d39d55585981a06ca437bd6"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "cross_file",
+      "purl": "pkg:pub/cross_file@0.3.5%2B5",
+      "type": "library",
+      "version": "0.3.5+5"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/crypto/versions/3.0.8"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e3626ae6270383c9e3a549f34c9e4cd26c09ae6a9adaab2bf4737a00340efdc4"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "crypto",
+      "purl": "pkg:pub/crypto@3.0.8",
+      "type": "library",
+      "version": "3.0.8"
+    },
+    {
+      "description": "Flutter Cupertino icon font for the classic desktop navigation symbols.",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/cupertino_icons/versions/2.0.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b7cc2390aac296c083bea762859413eb1cf5b630c70e0c7e4d831018f762a8b2"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "cupertino_icons",
+      "purl": "pkg:pub/cupertino_icons@2.0.0",
+      "type": "library",
+      "version": "2.0.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/dart_style/versions/3.1.14"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a0e4f65339b31eb6a9e6a12e14b4682a48d46fbc54a82f4a702396fbdbac63a7"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "dart_style",
+      "purl": "pkg:pub/dart_style@3.1.14",
+      "type": "library",
+      "version": "3.1.14"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/dbus/versions/0.8.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f7db8504e715b835f5ebe5fe74604ccd961d504c73389a5d8e81bafc2e2f3612"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "name": "dbus",
+      "purl": "pkg:pub/dbus@0.8.0",
+      "type": "library",
+      "version": "0.8.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/drift/versions/2.35.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3179e7323b36d1852b42997b92ac72e8abcb61b1d58cfa8c6da9b540ab02a540"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "drift",
+      "purl": "pkg:pub/drift@2.35.3",
+      "type": "library",
+      "version": "2.35.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/drift_dev/versions/2.35.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ff4201b38dfbbbc85ffcd85597ad63c7146d2303126241623ebfce89fc4c4bfe"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "drift_dev",
+      "purl": "pkg:pub/drift_dev@2.35.2",
+      "type": "library",
+      "version": "2.35.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/fake_async/versions/1.3.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "5368f224a74523e8d2e7399ea1638b37aecfca824a3cc4dfdf77bf1fa905ac44"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "fake_async",
+      "purl": "pkg:pub/fake_async@1.3.3",
+      "type": "library",
+      "version": "1.3.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/ffi/versions/2.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "6d7fd89431262d8f3125e81b50d3847a091d846eafcd4fdb88dd06f36d705a45"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "ffi",
+      "purl": "pkg:pub/ffi@2.2.0",
+      "type": "library",
+      "version": "2.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/ffi_leak_tracker/versions/0.1.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4093d4ef9ca06ffe2786e73bfb25e22aa92112b9bb4ec941f11e3e6b61489a97"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "ffi_leak_tracker",
+      "purl": "pkg:pub/ffi_leak_tracker@0.1.2",
+      "type": "library",
+      "version": "0.1.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/file/versions/7.0.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a3b4f84adafef897088c160faf7dfffb7696046cb13ae90b508c2cbc95d3b8d4"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "file",
+      "purl": "pkg:pub/file@7.0.1",
+      "type": "library",
+      "version": "7.0.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/file_picker/versions/13.3.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "c64036857780d7125f011d543f89eedcb5df61da473668bace4eee9ab875284d"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "file_picker",
+      "purl": "pkg:pub/file_picker@13.3.2",
+      "type": "library",
+      "version": "13.3.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/file_picker_darwin/versions/2.4.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "daeb0219f6279c73eb9c63ae9a566beef04ae13d59b8feba0be2a7f3b258d3d4"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "file_picker_darwin",
+      "purl": "pkg:pub/file_picker_darwin@2.4.2",
+      "type": "library",
+      "version": "2.4.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/file_picker_linux/versions/2.0.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "eb00de71b123e91d3c61f389a05b8cc90f9cbe7e4c88da30ebe2f0442b281b61"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "file_picker_linux",
+      "purl": "pkg:pub/file_picker_linux@2.0.3",
+      "type": "library",
+      "version": "2.0.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/file_picker_platform_interface/versions/4.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "336e7168306834a2b68e6168ed768e00d3fabeac23154d5793e277ca9f97cf20"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "file_picker_platform_interface",
+      "purl": "pkg:pub/file_picker_platform_interface@4.2.0",
+      "type": "library",
+      "version": "4.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/file_picker_web/versions/4.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a2288008280aabe371aff029466b3405e60838e0a1d714767488c59b926c8b8c"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "file_picker_web",
+      "purl": "pkg:pub/file_picker_web@4.2.0",
+      "type": "library",
+      "version": "4.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/filippo.io/edwards25519@v1.2.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "filippo.io/edwards25519",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:crnVqOiS4jqYleHd9vaKZ+HKtHfllngJIiOpNpoJsjo="
+        }
+      ],
+      "purl": "pkg:golang/filippo.io/edwards25519@v1.2.0",
+      "type": "library",
+      "version": "v1.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/fixnum/versions/1.1.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b6dc7065e46c974bc7c5f143080a6764ec7a4be6da1285ececdc37be96de53be"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "fixnum",
+      "purl": "pkg:pub/fixnum@1.1.1",
+      "type": "library",
+      "version": "1.1.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/flutter_lints/versions/6.0.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3105dc8492f6183fb076ccf1f351ac3d60564bff92e20bfc4af9cc1651f4e7e1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "flutter_lints",
+      "purl": "pkg:pub/flutter_lints@6.0.0",
+      "type": "library",
+      "version": "6.0.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/flutter_secure_storage/versions/11.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "d4e1fb6b2cb524868929e78dc0282fa000554b22060fb53789dc481c9fc95bb8"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "flutter_secure_storage",
+      "purl": "pkg:pub/flutter_secure_storage@11.2.0",
+      "type": "library",
+      "version": "11.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/flutter_secure_storage_darwin/versions/0.4.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a031ceac9b070e62ef183cd7f7d1a8798ebde402d5049f0fe6eb3a51bd797a21"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "flutter_secure_storage_darwin",
+      "purl": "pkg:pub/flutter_secure_storage_darwin@0.4.3",
+      "type": "library",
+      "version": "0.4.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/flutter_secure_storage_linux/versions/3.0.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "caa75bd78f017422912e3a904933113b2428eb79f981ac37acd2dd2a700458ea"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "flutter_secure_storage_linux",
+      "purl": "pkg:pub/flutter_secure_storage_linux@3.0.3",
+      "type": "library",
+      "version": "3.0.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/flutter_secure_storage_platform_interface/versions/2.1.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "64951127f001f546891c86f414972bf49ef2c4c8a4c92c65f5790cc0c9100045"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "flutter_secure_storage_platform_interface",
+      "purl": "pkg:pub/flutter_secure_storage_platform_interface@2.1.1",
+      "type": "library",
+      "version": "2.1.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/flutter_secure_storage_web/versions/2.1.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "073a62b3aeb866ab4ce795f960413948e51e5a42a9b0c8333b6daf5bb3208a1c"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "flutter_secure_storage_web",
+      "purl": "pkg:pub/flutter_secure_storage_web@2.1.1",
+      "type": "library",
+      "version": "2.1.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/flutter_secure_storage_windows/versions/4.2.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "471951813a97006d899db4948acc654a4f28c440083ea08178935ce20b173ec1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "flutter_secure_storage_windows",
+      "purl": "pkg:pub/flutter_secure_storage_windows@4.2.2",
+      "type": "library",
+      "version": "4.2.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/frontend_server_client/versions/4.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2b56423afc7651a81da53ed3a4f9f51e92572293f54d0d54e19b759f13714849"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "frontend_server_client",
+      "purl": "pkg:pub/frontend_server_client@4.2.0",
+      "type": "library",
+      "version": "4.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/andybalholm/brotli@v1.2.4"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/andybalholm/brotli",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:649LN6qF+/7JJYNN3Wdu4Dt5PS6eC/yP/Go3Bb0/AHI="
+        }
+      ],
+      "purl": "pkg:golang/github.com/andybalholm/brotli@v1.2.4",
+      "type": "library",
+      "version": "v1.2.4"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/apache/thrift@v0.24.0"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 AND BSD-3-Clause"
+        }
+      ],
+      "name": "github.com/apache/thrift",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:zy31L1a49QTNB2bG1BBfMXol3yJrTH975G3pPubQVLQ="
+        }
+      ],
+      "purl": "pkg:golang/github.com/apache/thrift@v0.24.0",
+      "type": "library",
+      "version": "v0.24.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/armfazh/h2c-go-ref@v0.0.0-20210215173008-07e12a6f8e0d"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/armfazh/h2c-go-ref",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:0YBiQ+rXap26i6apP7AldB+h50fAP7XSzpbio4ElXQo="
+        }
+      ],
+      "purl": "pkg:golang/github.com/armfazh/h2c-go-ref@v0.0.0-20210215173008-07e12a6f8e0d",
+      "type": "library",
+      "version": "v0.0.0-20210215173008-07e12a6f8e0d"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/armfazh/tozan-ecc@v0.1.3"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/armfazh/tozan-ecc",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:g3OKE0KR4L/GZaoQYzsOUdg97Ey5lZRl1i1fD/QkUUw="
+        }
+      ],
+      "purl": "pkg:golang/github.com/armfazh/tozan-ecc@v0.1.3",
+      "type": "library",
+      "version": "v0.1.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/beeper/argo-go@v1.1.2"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/beeper/argo-go",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:UQI2G8F+NLfGTOmTUI0254pGKx/HUU/etbUGTJv91Fs="
+        }
+      ],
+      "purl": "pkg:golang/github.com/beeper/argo-go@v1.1.2",
+      "type": "library",
+      "version": "v1.1.2"
+    },
+    {
+      "description": "Go BSD-licensed source headers; upstream fork omits the referenced LICENSE file.",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/beeper/poly1305@v0.0.0-20250815183548-d4eede7bbf3c"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/beeper/poly1305",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:Axyrzr6L42CLNJIQq0S87UhgK0Hq+4hCed4rc6sDdao="
+        }
+      ],
+      "purl": "pkg:golang/github.com/beeper/poly1305@v0.0.0-20250815183548-d4eede7bbf3c",
+      "type": "library",
+      "version": "v0.0.0-20250815183548-d4eede7bbf3c"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/beeper/req/v3@v3.0.0-20260925135712-b49593750e56"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/beeper/req/v3",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:VQTcNnqViZfzYJtDue7HUF9Y979KdafTdJkX/DPasSQ="
         },
         {
-          "type" : "distribution",
-          "url" : "https:\/\/github.com\/sparkle-project\/Sparkle\/releases\/download\/2.10.0\/Sparkle-for-Swift-Package-Manager.zip"
+          "name": "inboxplus:go:replaces",
+          "value": "github.com/imroc/req/v3"
         }
       ],
-      "hashes" : [
-        {
-          "alg" : "SHA-256",
-          "content" : "17e28312b8e18ab7cdbbe09a6fb28cc55a5479ec6c371dbc07cdecd2a14fd959"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "MIT"
-          }
-        }
-      ],
-      "name" : "Sparkle",
-      "purl" : "pkg:github\/sparkle-project\/Sparkle@2.10.0",
-      "type" : "framework",
-      "version" : "2.10.0"
+      "purl": "pkg:golang/github.com/beeper/req/v3@v3.0.0-20260925135712-b49593750e56",
+      "type": "library",
+      "version": "v3.0.0-20260925135712-b49593750e56"
     },
     {
-      "description" : "Portable Apple Silicon interpreter shipped inside the app; upstream distribution 20260929.",
-      "externalReferences" : [
+      "externalReferences": [
         {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/astral-sh\/python-build-standalone"
-        },
-        {
-          "type" : "distribution",
-          "url" : "https:\/\/github.com\/astral-sh\/python-build-standalone\/releases\/download\/20260929\/cpython-3.12.14%2B20260929-aarch64-apple-darwin-install_only_stripped.tar.gz"
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/bytemare/cryptotools@v0.0.0-20210309005813-f9985b05742f"
         }
       ],
-      "hashes" : [
+      "licenses": [
         {
-          "alg" : "SHA-256",
-          "content" : "1bb3e53d231ee2c8881e8daf6426f4dd95bff0dda496af0f3af300357aa998d0"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "PSF-2.0"
+          "license": {
+            "id": "MIT"
           }
         }
       ],
-      "name" : "cpython",
-      "purl" : "pkg:generic\/cpython@3.12.14",
-      "type" : "application",
-      "version" : "3.12.14"
+      "name": "github.com/bytemare/cryptotools",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:CXLSVUN4laSSTqbZxZ2gCn5bqO+K8a4fhoru+92SQD0="
+        }
+      ],
+      "purl": "pkg:golang/github.com/bytemare/cryptotools@v0.0.0-20210309005813-f9985b05742f",
+      "type": "library",
+      "version": "v0.0.0-20210309005813-f9985b05742f"
     },
     {
-      "description" : "Built from a checksum-verified tarball with a pinned one-line patch; upstream is archived and does not compile with a current clang.",
-      "externalReferences" : [
+      "externalReferences": [
         {
-          "type" : "vcs",
-          "url" : "https:\/\/gitlab.matrix.org\/matrix-org\/olm"
-        },
-        {
-          "type" : "distribution",
-          "url" : "https:\/\/gitlab.matrix.org\/matrix-org\/olm\/-\/archive\/3.2.16\/olm-3.2.16.tar.gz"
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/bytemare/opaque@v0.0.0-20210310201842-16a10d180656"
         }
       ],
-      "hashes" : [
+      "licenses": [
         {
-          "alg" : "SHA-256",
-          "content" : "1e90f9891009965fd064be747616da46b232086fe270b77605ec9bda34272a68"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "Apache-2.0"
+          "license": {
+            "id": "MIT"
           }
         }
       ],
-      "name" : "libolm",
-      "type" : "library",
-      "version" : "3.2.16"
+      "name": "github.com/bytemare/opaque",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:zjeJZ8qK8Jzjx0Q4J51HoOpyuRcMxD3hZW5Ir4sV7y0="
+        }
+      ],
+      "purl": "pkg:golang/github.com/bytemare/opaque@v0.0.0-20210310201842-16a10d180656",
+      "type": "library",
+      "version": "v0.0.0-20210310201842-16a10d180656"
     },
     {
-      "description" : "Checksum-verified binary xcframework, pinned exactly so protocol drift cannot arrive through a version range.",
-      "externalReferences" : [
+      "externalReferences": [
         {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/matrix-org\/matrix-rust-components-swift"
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/bytemare/voprf@v0.0.0-20210221170502-f0af88d24d16"
         }
       ],
-      "licenses" : [
+      "licenses": [
         {
-          "license" : {
-            "id" : "Apache-2.0"
+          "license": {
+            "id": "MIT"
           }
         }
       ],
-      "name" : "matrix-rust-components-swift",
-      "purl" : "pkg:swift\/github.com\/matrix-org\/matrix-rust-components-swift@26.08.11",
-      "type" : "framework",
-      "version" : "26.08.11"
+      "name": "github.com/bytemare/voprf",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:XRqQTKj1yBJZZ401bOiw/WDlF5BOfh+7OvPOXlfvfs4="
+        }
+      ],
+      "purl": "pkg:golang/github.com/bytemare/voprf@v0.0.0-20210221170502-f0af88d24d16",
+      "type": "library",
+      "version": "v0.0.0-20210221170502-f0af88d24d16"
     },
     {
-      "description" : "Downloaded on demand and verified before it is made executable.",
-      "externalReferences" : [
+      "externalReferences": [
         {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/mautrix\/gmessages"
-        },
-        {
-          "type" : "distribution",
-          "url" : "https:\/\/github.com\/mautrix\/gmessages\/releases\/download\/v0.2605.0\/mautrix-gmessages-darwin-arm64"
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/cenkalti/backoff/v4@v4.3.0"
         }
       ],
-      "hashes" : [
+      "licenses": [
         {
-          "alg" : "SHA-256",
-          "content" : "d45c1a5e4ce317f0288930f71ecb32375b1a755567469eaac581d17d6b1777b9"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "AGPL-3.0-or-later"
+          "license": {
+            "id": "MIT"
           }
         }
       ],
-      "name" : "mautrix-gmessages-darwin-arm64",
-      "purl" : "pkg:github\/mautrix\/gmessages@v0.2605.0",
-      "type" : "application",
-      "version" : "v0.2605.0"
+      "name": "github.com/cenkalti/backoff/v4",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8="
+        }
+      ],
+      "purl": "pkg:golang/github.com/cenkalti/backoff/v4@v4.3.0",
+      "type": "library",
+      "version": "v4.3.0"
     },
     {
-      "description" : "Downloaded on demand and verified before it is made executable.",
-      "externalReferences" : [
+      "externalReferences": [
         {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/mautrix\/gvoice"
-        },
-        {
-          "type" : "distribution",
-          "url" : "https:\/\/github.com\/mautrix\/gvoice\/releases\/download\/v0.2605.0\/mautrix-gvoice-darwin-arm64"
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/cespare/xxhash/v2@v2.3.0"
         }
       ],
-      "hashes" : [
+      "licenses": [
         {
-          "alg" : "SHA-256",
-          "content" : "a259d45000dd34c144a71b017d0a193bf13b414d1321d7f2113736cbae0df4da"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "AGPL-3.0-or-later"
+          "license": {
+            "id": "MIT"
           }
         }
       ],
-      "name" : "mautrix-gvoice-darwin-arm64",
-      "purl" : "pkg:github\/mautrix\/gvoice@v0.2605.0",
-      "type" : "application",
-      "version" : "v0.2605.0"
+      "name": "github.com/cespare/xxhash/v2",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs="
+        }
+      ],
+      "purl": "pkg:golang/github.com/cespare/xxhash/v2@v2.3.0",
+      "type": "library",
+      "version": "v2.3.0"
     },
     {
-      "description" : "Downloaded on demand and verified before it is made executable.",
-      "externalReferences" : [
+      "externalReferences": [
         {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/mautrix\/meta"
-        },
-        {
-          "type" : "distribution",
-          "url" : "https:\/\/github.com\/mautrix\/meta\/releases\/download\/v0.2607.0\/mautrix-instagram-darwin-arm64"
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/coder/websocket@v1.8.15"
         }
       ],
-      "hashes" : [
+      "licenses": [
         {
-          "alg" : "SHA-256",
-          "content" : "c7bc6e81def6a23f0f2e8359d7079e86b82723dfb9082b22ad642a9a8912173b"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "AGPL-3.0-or-later"
+          "license": {
+            "id": "ISC"
           }
         }
       ],
-      "name" : "mautrix-instagram-darwin-arm64",
-      "purl" : "pkg:github\/mautrix\/meta@v0.2607.0",
-      "type" : "application",
-      "version" : "v0.2607.0"
+      "name": "github.com/coder/websocket",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:6B2JPeOGlpff2Uz6vOEH1Vzpi0iUz20A+lPVhPHtNUA="
+        }
+      ],
+      "purl": "pkg:golang/github.com/coder/websocket@v1.8.15",
+      "type": "library",
+      "version": "v1.8.15"
     },
     {
-      "description" : "Downloaded on demand and verified before it is made executable.",
-      "externalReferences" : [
+      "externalReferences": [
         {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/mautrix\/meta"
-        },
-        {
-          "type" : "distribution",
-          "url" : "https:\/\/github.com\/mautrix\/meta\/releases\/download\/v0.2607.0\/mautrix-meta-darwin-arm64"
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/coreos/go-systemd/v22@v22.7.0"
         }
       ],
-      "hashes" : [
+      "licenses": [
         {
-          "alg" : "SHA-256",
-          "content" : "a468cca261034f1a93efc927113ab3d07411836e7c5dd68b7c71e59bdfb17dfb"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "AGPL-3.0-or-later"
+          "license": {
+            "id": "Apache-2.0"
           }
         }
       ],
-      "name" : "mautrix-meta-darwin-arm64",
-      "purl" : "pkg:github\/mautrix\/meta@v0.2607.0",
-      "type" : "application",
-      "version" : "v0.2607.0"
+      "name": "github.com/coreos/go-systemd/v22",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:LAEzFkke61DFROc7zNLX/WA2i5J8gYqe0rSj9KI28KA="
+        }
+      ],
+      "purl": "pkg:golang/github.com/coreos/go-systemd/v22@v22.7.0",
+      "type": "library",
+      "version": "v22.7.0"
     },
     {
-      "description" : "Downloaded on demand and verified before it is made executable.",
-      "externalReferences" : [
+      "externalReferences": [
         {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/mautrix\/telegram"
-        },
-        {
-          "type" : "distribution",
-          "url" : "https:\/\/github.com\/mautrix\/telegram\/releases\/download\/v0.2607.0\/mautrix-telegram-darwin-arm64"
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/diamondburned/arikawa/v3@v3.6.1-0.20261031043016-e170775edee6"
         }
       ],
-      "hashes" : [
+      "licenses": [
         {
-          "alg" : "SHA-256",
-          "content" : "0e2c2ded1773533c691b902b3d0fc4ec87a2f5d3170cd714f7e9e3e494481dd3"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "AGPL-3.0-or-later"
+          "license": {
+            "id": "ISC"
           }
         }
       ],
-      "name" : "mautrix-telegram-darwin-arm64",
-      "purl" : "pkg:github\/mautrix\/telegram@v0.2607.0",
-      "type" : "application",
-      "version" : "v0.2607.0"
+      "name": "github.com/diamondburned/arikawa/v3",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:6ZCXZQLdaQyeeZ2qiFywxhGOqc4YZ732Ohwf4dHezPU="
+        }
+      ],
+      "purl": "pkg:golang/github.com/diamondburned/arikawa/v3@v3.6.1-0.20261031043016-e170775edee6",
+      "type": "library",
+      "version": "v3.6.1-0.20261031043016-e170775edee6"
     },
     {
-      "description" : "Downloaded on demand and verified before it is made executable.",
-      "externalReferences" : [
+      "externalReferences": [
         {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/mautrix\/whatsapp"
-        },
-        {
-          "type" : "distribution",
-          "url" : "https:\/\/github.com\/mautrix\/whatsapp\/releases\/download\/v0.2607.0\/mautrix-whatsapp-darwin-arm64"
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/dlclark/regexp2@v1.12.0"
         }
       ],
-      "hashes" : [
+      "licenses": [
         {
-          "alg" : "SHA-256",
-          "content" : "f5c0291e4315a8cf70e836b7707f4e6503353b021a115eebb3a6b18f1b9acfbc"
-        }
-      ],
-      "licenses" : [
-        {
-          "license" : {
-            "id" : "AGPL-3.0-or-later"
+          "license": {
+            "id": "MIT"
           }
         }
       ],
-      "name" : "mautrix-whatsapp-darwin-arm64",
-      "purl" : "pkg:github\/mautrix\/whatsapp@v0.2607.0",
-      "type" : "application",
-      "version" : "v0.2607.0"
+      "name": "github.com/dlclark/regexp2",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:0j4c5qQmnC6XOWNjP3PIXURXN2gWx76rd3KvgdPkCz8="
+        }
+      ],
+      "purl": "pkg:golang/github.com/dlclark/regexp2@v1.12.0",
+      "type": "library",
+      "version": "v1.12.0"
     },
     {
-      "description" : "Bundled with locked Python dependencies, then copied to a private profile at first launch.",
-      "externalReferences" : [
+      "externalReferences": [
         {
-          "type" : "vcs",
-          "url" : "https:\/\/github.com\/element-hq\/synapse"
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/eatmoreapple/openwechat@v1.4.11-0.20250102030116-635e5561f319"
         }
       ],
-      "licenses" : [
+      "licenses": [
         {
-          "license" : {
-            "id" : "AGPL-3.0-or-later"
+          "license": {
+            "id": "Apache-2.0"
           }
         }
       ],
-      "name" : "synapse",
-      "purl" : "pkg:pypi\/matrix-synapse@1.158.0",
-      "type" : "application",
-      "version" : "1.158.0"
+      "name": "github.com/eatmoreapple/openwechat",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:COzCpr30Ppptt36gd+xQnP8HPWl6Ka9uVnupUgcBjvw="
+        }
+      ],
+      "purl": "pkg:golang/github.com/eatmoreapple/openwechat@v1.4.11-0.20250102030116-635e5561f319",
+      "type": "library",
+      "version": "v1.4.11-0.20250102030116-635e5561f319"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/elliotchance/orderedmap/v3@v3.1.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/elliotchance/orderedmap/v3",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:j4DJ5ObEmMBt/lcwIecKcoRxIQUEnw0L804lXYDt/pg="
+        }
+      ],
+      "purl": "pkg:golang/github.com/elliotchance/orderedmap/v3@v3.1.0",
+      "type": "library",
+      "version": "v3.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/fatih/color@v1.19.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/fatih/color",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:Zp3PiM21/9Ld6FzSKyL5c/BULoe/ONr9KlbYVOfG8+w="
+        }
+      ],
+      "purl": "pkg:golang/github.com/fatih/color@v1.19.0",
+      "type": "library",
+      "version": "v1.19.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/ghodss/yaml@v1.0.0"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT AND BSD-3-Clause"
+        }
+      ],
+      "name": "github.com/ghodss/yaml",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:wQHKEahhL6wmXdzwWG11gIVCkOv05bNOh+Rxn0yngAk="
+        }
+      ],
+      "purl": "pkg:golang/github.com/ghodss/yaml@v1.0.0",
+      "type": "library",
+      "version": "v1.0.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/go-faster/errors@v0.8.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/go-faster/errors",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:9T9eJrM+72dFk7n4DfhuaDDe6cyuFCSW2oNUkN77Yqc="
+        }
+      ],
+      "purl": "pkg:golang/github.com/go-faster/errors@v0.8.0",
+      "type": "library",
+      "version": "v0.8.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/go-faster/jx@v1.2.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/go-faster/jx",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:T2YHJPrFaYu21fJtUxC9GzmluKu8rVIFDwwGBKTDseI="
+        }
+      ],
+      "purl": "pkg:golang/github.com/go-faster/jx@v1.2.0",
+      "type": "library",
+      "version": "v1.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/go-faster/xor@v1.0.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/go-faster/xor",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:2o8vTOgErSGHP3/7XwA5ib1FTtUsNtwCoLLBjl31X38="
+        }
+      ],
+      "purl": "pkg:golang/github.com/go-faster/xor@v1.0.0",
+      "type": "library",
+      "version": "v1.0.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/go-faster/yaml@v0.4.6"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT AND Apache-2.0"
+        }
+      ],
+      "name": "github.com/go-faster/yaml",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:lOK/EhI04gCpPgPhgt0bChS6bvw7G3WwI8xxVe0sw9I="
+        }
+      ],
+      "purl": "pkg:golang/github.com/go-faster/yaml@v0.4.6",
+      "type": "library",
+      "version": "v0.4.6"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/google/flatbuffers@v25.12.19+incompatible"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "github.com/google/flatbuffers",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:haMV2JRRJCe1998HeW/p0X9UaMTK6SDo0ffLn2+DbLs="
+        }
+      ],
+      "purl": "pkg:golang/github.com/google/flatbuffers@v25.12.19+incompatible",
+      "type": "library",
+      "version": "v25.12.19+incompatible"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/google/go-querystring@v1.2.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/google/go-querystring",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:yhqkPbu2/OH+V9BfpCVPZkNmUXhb2gBxJArfhIxNtP0="
+        }
+      ],
+      "purl": "pkg:golang/github.com/google/go-querystring@v1.2.0",
+      "type": "library",
+      "version": "v1.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/google/uuid@v1.6.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/google/uuid",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0="
+        }
+      ],
+      "purl": "pkg:golang/github.com/google/uuid@v1.6.0",
+      "type": "library",
+      "version": "v1.6.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/gorilla/schema@v1.4.1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/gorilla/schema",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:jUg5hUjCSDZpNGLuXQOgIWGdlgrIdYvgQ0wZtdK1M3E="
+        }
+      ],
+      "purl": "pkg:golang/github.com/gorilla/schema@v1.4.1",
+      "type": "library",
+      "version": "v1.4.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/gorilla/websocket@v1.5.3"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "name": "github.com/gorilla/websocket",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg="
+        }
+      ],
+      "purl": "pkg:golang/github.com/gorilla/websocket@v1.5.3",
+      "type": "library",
+      "version": "v1.5.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/gotd/ige@v0.3.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/gotd/ige",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:4f6LEHWsVDLBG0bT9wWG2/9TZb5aWm265G8ZlTXmRRU="
+        }
+      ],
+      "purl": "pkg:golang/github.com/gotd/ige@v0.3.0",
+      "type": "library",
+      "version": "v0.3.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/gotd/log@v0.1.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "github.com/gotd/log",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:4LJUEvafD1xtBwx2QkrlzFnRgbYXTlWqJPDi8BvrLbU="
+        }
+      ],
+      "purl": "pkg:golang/github.com/gotd/log@v0.1.0",
+      "type": "library",
+      "version": "v0.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/gotd/neo@v0.1.5"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/gotd/neo",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:oj0iQfMbGClP8xI59x7fE/uHoTJD7NZH9oV1WNuPukQ="
+        }
+      ],
+      "purl": "pkg:golang/github.com/gotd/neo@v0.1.5",
+      "type": "library",
+      "version": "v0.1.5"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/gotd/td@v0.163.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/gotd/td",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:A/QHpyMmYaQgyOY//vySoKa1wQP8NCAo3/5OcgfZVnU="
+        }
+      ],
+      "purl": "pkg:golang/github.com/gotd/td@v0.163.0",
+      "type": "library",
+      "version": "v0.163.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/gtank/ristretto255@v0.2.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/gtank/ristretto255",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:LeOuWr6giplWkkMizx2emfG03SRPJqKt1nfIHLVHQ/0="
+        }
+      ],
+      "purl": "pkg:golang/github.com/gtank/ristretto255@v0.2.0",
+      "type": "library",
+      "version": "v0.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/icholy/digest@v1.2.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/icholy/digest",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:oTbG4IsNOmidJ+421ehG7Ty93yt1yotq13kFMG569yw="
+        }
+      ],
+      "purl": "pkg:golang/github.com/icholy/digest@v1.2.0",
+      "type": "library",
+      "version": "v1.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/klauspost/compress@v1.20.0"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "BSD-3-Clause AND Apache-2.0 AND MIT"
+        }
+      ],
+      "name": "github.com/klauspost/compress",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:a3C1ke2ohxFymNlb2HWAHjDeKCI90scRskErZkR0ezA="
+        }
+      ],
+      "purl": "pkg:golang/github.com/klauspost/compress@v1.20.0",
+      "type": "library",
+      "version": "v1.20.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/mattn/go-colorable@v0.1.15"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/mattn/go-colorable",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:+u9SLTRGnXv73cEsnsmoZBom+dMU88B2M0aDcWy0/jY="
+        }
+      ],
+      "purl": "pkg:golang/github.com/mattn/go-colorable@v0.1.15",
+      "type": "library",
+      "version": "v0.1.15"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/mattn/go-isatty@v0.0.22"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/mattn/go-isatty",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:j8l17JJ9i6VGPUFUYoTUKPSgKe/83EYU2zBC7YNKMw4="
+        }
+      ],
+      "purl": "pkg:golang/github.com/mattn/go-isatty@v0.0.22",
+      "type": "library",
+      "version": "v0.0.22"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/mattn/go-sqlite3@v1.14.52"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/mattn/go-sqlite3",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:wVbm2Qnf4OXkqhBTSPuCRZDRnxfbVrrmiCEroVdog8U="
+        }
+      ],
+      "purl": "pkg:golang/github.com/mattn/go-sqlite3@v1.14.52",
+      "type": "library",
+      "version": "v1.14.52"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/ogen-go/ogen@v1.23.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "github.com/ogen-go/ogen",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:QaWeKm2KZ2zy7NkqqO1Vdl5idNqlG+svxdgwVAX+zbo="
+        }
+      ],
+      "purl": "pkg:golang/github.com/ogen-go/ogen@v1.23.0",
+      "type": "library",
+      "version": "v1.23.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/petermattis/goid@v0.0.0-20260918085751-abfca077860b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "github.com/petermattis/goid",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:OzNsuVdSWGwXvWKTtChx9ve89k4cFJ6NxYM4Aw4/f+E="
+        }
+      ],
+      "purl": "pkg:golang/github.com/petermattis/goid@v0.0.0-20260918085751-abfca077860b",
+      "type": "library",
+      "version": "v0.0.0-20260918085751-abfca077860b"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/quic-go/qpack@v0.6.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/quic-go/qpack",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:g7W+BMYynC1LbYLSqRt8PBg5Tgwxn214ZZR34VIOjz8="
+        }
+      ],
+      "purl": "pkg:golang/github.com/quic-go/qpack@v0.6.0",
+      "type": "library",
+      "version": "v0.6.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/quic-go/quic-go@v0.64.1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/quic-go/quic-go",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:BCNTP+6x6++OPKrGST2FR3f1tycx8O3QOA3QQv09g70="
+        }
+      ],
+      "purl": "pkg:golang/github.com/quic-go/quic-go@v0.64.1",
+      "type": "library",
+      "version": "v0.64.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/refraction-networking/utls@v1.8.2"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "github.com/refraction-networking/utls",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:j4Q1gJj0xngdeH+Ox/qND11aEfhpgoEvV+S9iJ2IdQo="
+        }
+      ],
+      "purl": "pkg:golang/github.com/refraction-networking/utls@v1.8.2",
+      "type": "library",
+      "version": "v1.8.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/rs/xid@v1.6.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/rs/xid",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:fV591PaemRlL6JfRxGDEPl69wICngIQ3shQtzfy2gxU="
+        }
+      ],
+      "purl": "pkg:golang/github.com/rs/xid@v1.6.0",
+      "type": "library",
+      "version": "v1.6.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/rs/zerolog@v1.35.1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/rs/zerolog",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:m7xQeoiLIiV0BCEY4Hs+j2NG4Gp2o2KPKmhnnLiazKI="
+        }
+      ],
+      "purl": "pkg:golang/github.com/rs/zerolog@v1.35.1",
+      "type": "library",
+      "version": "v1.35.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/segmentio/asm@v1.2.1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/segmentio/asm",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:DTNbBqs57ioxAD4PrArqftgypG4/qNpXoJx8TVXxPR0="
+        }
+      ],
+      "purl": "pkg:golang/github.com/segmentio/asm@v1.2.1",
+      "type": "library",
+      "version": "v1.2.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/shopspring/decimal@v1.4.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/shopspring/decimal",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:bxl37RwXBklmTi0C79JfXCEBD1cqqHt0bbgBAGFp81k="
+        }
+      ],
+      "purl": "pkg:golang/github.com/shopspring/decimal@v1.4.0",
+      "type": "library",
+      "version": "v1.4.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/tidwall/gjson@v1.20.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/tidwall/gjson",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:+agJ3rEzKcCXKDKo0ml26UROcpcAlnZyjq+TjbY5Fto="
+        }
+      ],
+      "purl": "pkg:golang/github.com/tidwall/gjson@v1.20.0",
+      "type": "library",
+      "version": "v1.20.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/tidwall/match@v1.1.1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/tidwall/match",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:+Ho715JplO36QYgwN9PGYNhgZvoUSc9X2c80KVTi+GA="
+        }
+      ],
+      "purl": "pkg:golang/github.com/tidwall/match@v1.1.1",
+      "type": "library",
+      "version": "v1.1.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/tidwall/pretty@v1.2.1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/tidwall/pretty",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:qjsOFOWWQl+N3RsoF5/ssm1pHmJJwhjlSbZ51I6wMl4="
+        }
+      ],
+      "purl": "pkg:golang/github.com/tidwall/pretty@v1.2.1",
+      "type": "library",
+      "version": "v1.2.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/tidwall/sjson@v1.2.5"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/tidwall/sjson",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:kLy8mja+1c9jlljvWTlSazM7cKDRfJuR/bOJhcY5NcY="
+        }
+      ],
+      "purl": "pkg:golang/github.com/tidwall/sjson@v1.2.5",
+      "type": "library",
+      "version": "v1.2.5"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/vektah/gqlparser/v2@v2.5.27"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/vektah/gqlparser/v2",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:RHPD3JOplpk5mP5JGX8RKZkt2/Vwj/PZv0HxTdwFp0s="
+        }
+      ],
+      "purl": "pkg:golang/github.com/vektah/gqlparser/v2@v2.5.27",
+      "type": "library",
+      "version": "v2.5.27"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/vmihailenco/msgpack/v5@v5.2.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "name": "github.com/vmihailenco/msgpack/v5",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:ZhIAtVUP1mme8GIlpiAnmTzjSWMexA/uNF2We85DR0w="
+        }
+      ],
+      "purl": "pkg:golang/github.com/vmihailenco/msgpack/v5@v5.2.0",
+      "type": "library",
+      "version": "v5.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/vmihailenco/tagparser/v2@v2.0.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "name": "github.com/vmihailenco/tagparser/v2",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:y09buUbR+b5aycVFQs/g70pqKVZNBmxwAhO7/IwNM9g="
+        }
+      ],
+      "purl": "pkg:golang/github.com/vmihailenco/tagparser/v2@v2.0.0",
+      "type": "library",
+      "version": "v2.0.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/github.com/yuin/goldmark@v1.8.6"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "github.com/yuin/goldmark",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:d0VcaP1sx9GkFVkoW+KtggpGi2KZ965i14b0+bDQST4="
+        }
+      ],
+      "purl": "pkg:golang/github.com/yuin/goldmark@v1.8.6",
+      "type": "library",
+      "version": "v1.8.6"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/glob/versions/2.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "218aeb56050c714f62a3182775320dfa04602b55074873e24e31bbd39bda96fb"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "glob",
+      "purl": "pkg:pub/glob@2.2.0",
+      "type": "library",
+      "version": "2.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.mau.fi/libsignal@v0.2.3-0.20261103023201-5ce3f7a54370"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "GPL-3.0-only"
+          }
+        }
+      ],
+      "name": "go.mau.fi/libsignal",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:QSBS5beRnHzCWaNHk/6Z/W4i3ei5udrfHDo1/7nnBM8="
+        }
+      ],
+      "purl": "pkg:golang/go.mau.fi/libsignal@v0.2.3-0.20261103023201-5ce3f7a54370",
+      "type": "library",
+      "version": "v0.2.3-0.20261103023201-5ce3f7a54370"
+    },
+    {
+      "description": "Upstream additional licensing exceptions apply only to the named third parties.",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.mau.fi/mautrix-linkedin@v0.2609.1-0.20261105130905-ff697e9152a8"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "AGPL-3.0-or-later"
+          }
+        }
+      ],
+      "name": "go.mau.fi/mautrix-linkedin",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:qLgQCJhBTkH91GQXsvMrd9y1BSdXbJWLzqcmTRXPRAo="
+        }
+      ],
+      "purl": "pkg:golang/go.mau.fi/mautrix-linkedin@v0.2609.1-0.20261105130905-ff697e9152a8",
+      "type": "library",
+      "version": "v0.2609.1-0.20261105130905-ff697e9152a8"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.mau.fi/mautrix-meta@v0.2610.1-0.20261103213641-69a505d69039"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "AGPL-3.0-or-later"
+          }
+        }
+      ],
+      "name": "go.mau.fi/mautrix-meta",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:WCl5sBJhBQw2Jfnr8ch1k45T5zgx1dPTGT5JBght9Eo="
+        }
+      ],
+      "purl": "pkg:golang/go.mau.fi/mautrix-meta@v0.2610.1-0.20261103213641-69a505d69039",
+      "type": "library",
+      "version": "v0.2610.1-0.20261103213641-69a505d69039"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.mau.fi/util@v0.11.1-0.20261026174803-9e6b9c87cfbc"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "name": "go.mau.fi/util",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:jmJTcqqZT1I8DM2ur4uf/XFCqH91EM27gjwhPP5FCrU="
+        }
+      ],
+      "purl": "pkg:golang/go.mau.fi/util@v0.11.1-0.20261026174803-9e6b9c87cfbc",
+      "type": "library",
+      "version": "v0.11.1-0.20261026174803-9e6b9c87cfbc"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.mau.fi/whatsmeow@v0.0.0-20261102152715-54038813c47f"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "name": "go.mau.fi/whatsmeow",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:UFm189GiALMSjhuywDHDQhRdhH6y8AD+eaGn5C75B1w="
+        }
+      ],
+      "purl": "pkg:golang/go.mau.fi/whatsmeow@v0.0.0-20261102152715-54038813c47f",
+      "type": "library",
+      "version": "v0.0.0-20261102152715-54038813c47f"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.mau.fi/zeroconfig@v0.2.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "name": "go.mau.fi/zeroconfig",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:e/OGEERqVRRKlgaro7E6bh8xXiKFSXB3eNNIud7FUjU="
+        }
+      ],
+      "purl": "pkg:golang/go.mau.fi/zeroconfig@v0.2.0",
+      "type": "library",
+      "version": "v0.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.opentelemetry.io/otel@v1.44.0"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 AND BSD-3-Clause"
+        }
+      ],
+      "name": "go.opentelemetry.io/otel",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:JjwHmHpA4iZ3wBxluu2fbbE7j4kqlE8jXyAyPXH7HqU="
+        }
+      ],
+      "purl": "pkg:golang/go.opentelemetry.io/otel@v1.44.0",
+      "type": "library",
+      "version": "v1.44.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.opentelemetry.io/otel/metric@v1.44.0"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 AND BSD-3-Clause"
+        }
+      ],
+      "name": "go.opentelemetry.io/otel/metric",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:1w0gILTcHdr3YI+ixLyjemwrVnsMURbTZFrSYCdDdmc="
+        }
+      ],
+      "purl": "pkg:golang/go.opentelemetry.io/otel/metric@v1.44.0",
+      "type": "library",
+      "version": "v1.44.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.opentelemetry.io/otel/trace@v1.44.0"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0 AND BSD-3-Clause"
+        }
+      ],
+      "name": "go.opentelemetry.io/otel/trace",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:jxF5CsGYCe74MCRx2X4g7WsY/VBKRqqpNvXlX/6gtIk="
+        }
+      ],
+      "purl": "pkg:golang/go.opentelemetry.io/otel/trace@v1.44.0",
+      "type": "library",
+      "version": "v1.44.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.uber.org/atomic@v1.11.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "go.uber.org/atomic",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:ZvwS0R+56ePWxUNi+Atn9dWONBPp/AUETXlHW0DxSjE="
+        }
+      ],
+      "purl": "pkg:golang/go.uber.org/atomic@v1.11.0",
+      "type": "library",
+      "version": "v1.11.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.uber.org/multierr@v1.11.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "go.uber.org/multierr",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:blXXJkSxSSfBVBlC76pxqeO+LN3aDfLQo+309xJstO0="
+        }
+      ],
+      "purl": "pkg:golang/go.uber.org/multierr@v1.11.0",
+      "type": "library",
+      "version": "v1.11.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/go.uber.org/zap@v1.28.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "go.uber.org/zap",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:IZzaP1Fv73/T/pBMLk4VutPl36uNC+OSUh3JLG3FIjo="
+        }
+      ],
+      "purl": "pkg:golang/go.uber.org/zap@v1.28.0",
+      "type": "library",
+      "version": "v1.28.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/golang.org/x/crypto@v0.58.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/crypto",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:COkYLr4k7nDI4r6QtMML2AfzeIswWHAJthLS6K/M/54="
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/crypto@v0.58.0",
+      "type": "library",
+      "version": "v0.58.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/golang.org/x/exp@v0.0.0-20261014143641-f0251eb4aa3e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/exp",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:HgI6W1OolKK6tcV74is+rl9SMT0njsHlp0TbQiGXI/A="
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/exp@v0.0.0-20261014143641-f0251eb4aa3e",
+      "type": "library",
+      "version": "v0.0.0-20261014143641-f0251eb4aa3e"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/golang.org/x/mod@v0.42.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/mod",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:ICeL3t2L30ljSPHHxDnR4fqVcBt/zR2zJAb9juavmQg="
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/mod@v0.42.0",
+      "type": "library",
+      "version": "v0.42.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/golang.org/x/net@v0.61.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/net",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:RR+6j/BTBCrggOLugxa+66R8FvoN6MHlzDlZIbN9YFw="
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/net@v0.61.0",
+      "type": "library",
+      "version": "v0.61.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/golang.org/x/sync@v0.24.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/sync",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:iqiDrGoDgyuvAKrhLQthUEzU/R378N78gXbBjxed7oA="
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/sync@v0.24.0",
+      "type": "library",
+      "version": "v0.24.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/golang.org/x/sys@v0.49.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/sys",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:XbzkgYJHdqh/8m2Uu0W/dQv8nktxx4BFHp1M0gROTXA="
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/sys@v0.49.0",
+      "type": "library",
+      "version": "v0.49.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/golang.org/x/text@v0.43.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/text",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:1QivrlhwAsnMOcqgOdl9my7s9OyZl8O5/UGUTJVXoWc="
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/text@v0.43.0",
+      "type": "library",
+      "version": "v0.43.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/golang.org/x/time@v0.15.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/time",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:bbrp8t3bGUeFOx08pvsMYRTCVSMk89u4tKbNOZbp88U="
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/time@v0.15.0",
+      "type": "library",
+      "version": "v0.15.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/golang.org/x/tools@v0.52.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/tools",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:ryxg4U63oaUYk7uOLTF37n43f4qgtGvqV4Ioit1BaEs="
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/tools@v0.52.0",
+      "type": "library",
+      "version": "v0.52.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/google.golang.org/protobuf@v1.36.12"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "google.golang.org/protobuf",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:pJOKDDOyeXErUroCihFAd5LQuwXBSpVnKGrj5o/fwxc="
+        }
+      ],
+      "purl": "pkg:golang/google.golang.org/protobuf@v1.36.12",
+      "type": "library",
+      "version": "v1.36.12"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/gopkg.in/natefinch/lumberjack.v2@v2.2.1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "gopkg.in/natefinch/lumberjack.v2",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:bBRl1b0OH9s/DuPhuXpNl+VtCaJXFZ5/uEFST95x9zc="
+        }
+      ],
+      "purl": "pkg:golang/gopkg.in/natefinch/lumberjack.v2@v2.2.1",
+      "type": "library",
+      "version": "v2.2.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/gopkg.in/yaml.v2@v2.4.0"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT AND Apache-2.0"
+        }
+      ],
+      "name": "gopkg.in/yaml.v2",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:D8xgwECY7CYvx+Y2n4sBz93Jn9JRvxdiyyo8CTfuKaY="
+        }
+      ],
+      "purl": "pkg:golang/gopkg.in/yaml.v2@v2.4.0",
+      "type": "library",
+      "version": "v2.4.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/gopkg.in/yaml.v3@v3.0.1"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT AND Apache-2.0"
+        }
+      ],
+      "name": "gopkg.in/yaml.v3",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA="
+        }
+      ],
+      "purl": "pkg:golang/gopkg.in/yaml.v3@v3.0.1",
+      "type": "library",
+      "version": "v3.0.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/graphs/versions/2.3.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "741bbf84165310a68ff28fe9e727332eef1407342fca52759cb21ad8177bb8d0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "graphs",
+      "purl": "pkg:pub/graphs@2.3.2",
+      "type": "library",
+      "version": "2.3.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/hooks/versions/2.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "eaac480a35ec0814146c2c48d96aaa829e0e44a7662c88ae84c9edf4bc35651f"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "hooks",
+      "purl": "pkg:pub/hooks@2.2.0",
+      "type": "library",
+      "version": "2.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/http/versions/1.6.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "87721a4a50b19c7f1d49001e51409bddc46303966ce89a65af4f4e6004896412"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "http",
+      "purl": "pkg:pub/http@1.6.0",
+      "type": "library",
+      "version": "1.6.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/http_multi_server/versions/3.2.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "361668bdd71f0ae2dc6d17b75a593520f3c414af6534f9eed1aa72049dd71d18"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "http_multi_server",
+      "purl": "pkg:pub/http_multi_server@3.2.3",
+      "type": "library",
+      "version": "3.2.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/http_parser/versions/4.1.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "178d74305e7866013777bab2c3d8726205dc5a4dd935297175b19a23a2e66571"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "http_parser",
+      "purl": "pkg:pub/http_parser@4.1.2",
+      "type": "library",
+      "version": "4.1.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/image/versions/4.12.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "89ed75b2f8231fe676808c5564f9590d728024ded7ac782a7ed8474f1c95b72a"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT AND BSD-3-Clause AND Apache-2.0"
+        }
+      ],
+      "name": "image",
+      "purl": "pkg:pub/image@4.12.0",
+      "type": "library",
+      "version": "4.12.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/io/versions/1.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2635216ca6a737e60de577ffa1a48a0bec76ca8a62917cfc1bb88c14c570646f"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "io",
+      "purl": "pkg:pub/io@1.1.0",
+      "type": "library",
+      "version": "1.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/jni/versions/1.1.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2e91e6087291affd10b31b6c872f3e3ac7dc5d93b51b5ba485d930c8f08bde6c"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "jni",
+      "purl": "pkg:pub/jni@1.1.2",
+      "type": "library",
+      "version": "1.1.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/jni_flutter/versions/1.0.4+1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0dd33d67797560f66e961a6053882d4df54bd345bf063b8fe7ea133f7ad8b191"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "jni_flutter",
+      "purl": "pkg:pub/jni_flutter@1.0.4%2B1",
+      "type": "library",
+      "version": "1.0.4+1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/jni_util/versions/1.0.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1ba86da04a5f2bf18fde2edb235587e70c5b0fc5bd4ba955f46b00942c3fc35f"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "jni_util",
+      "purl": "pkg:pub/jni_util@1.0.0",
+      "type": "library",
+      "version": "1.0.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/json_annotation/versions/4.12.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2a743920d81b7910627f68ee2c9ac1fc0bfee32b9fc3403587d7c6791ca12f80"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "json_annotation",
+      "purl": "pkg:pub/json_annotation@4.12.0",
+      "type": "library",
+      "version": "4.12.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/leak_tracker/versions/11.0.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "33e2e26bdd85a0112ec15400c8cbffea70d0f9c3407491f672a2fad47915e2de"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "leak_tracker",
+      "purl": "pkg:pub/leak_tracker@11.0.2",
+      "type": "library",
+      "version": "11.0.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/leak_tracker_flutter_testing/versions/3.0.10"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1dbc140bb5a23c75ea9c4811222756104fbcd1a27173f0c34ca01e16bea473c1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "leak_tracker_flutter_testing",
+      "purl": "pkg:pub/leak_tracker_flutter_testing@3.0.10",
+      "type": "library",
+      "version": "3.0.10"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/leak_tracker_testing/versions/3.0.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8d5a2d49f4a66b49744b23b018848400d23e54caf9463f4eb20df3eb8acb2eb1"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "leak_tracker_testing",
+      "purl": "pkg:pub/leak_tracker_testing@3.0.2",
+      "type": "library",
+      "version": "3.0.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/lints/versions/6.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "12f842a479589fea194fe5c5a3095abc7be0c1f2ddfa9a0e76aed1dbd26a87df"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "lints",
+      "purl": "pkg:pub/lints@6.1.0",
+      "type": "library",
+      "version": "6.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/logging/versions/1.3.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "c8245ada5f1717ed44271ed1c26b8ce85ca3228fd2ffdb75468ab01979309d61"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "logging",
+      "purl": "pkg:pub/logging@1.3.0",
+      "type": "library",
+      "version": "1.3.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/matcher/versions/0.12.20"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "31bd099b47c10cd1aeb55146a2d46ce0277630ecef3f7dae54ad7873f36696cd"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "matcher",
+      "purl": "pkg:pub/matcher@0.12.20",
+      "type": "library",
+      "version": "0.12.20"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/material_color_utilities/versions/0.13.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9c337007e82b1889149c82ed242ed1cb24a66044e30979c44912381e9be4c48b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "material_color_utilities",
+      "purl": "pkg:pub/material_color_utilities@0.13.0",
+      "type": "library",
+      "version": "0.13.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/maunium.net/go/mautrix@v0.32.1-0.20261027121747-b5763ae4f269"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "name": "maunium.net/go/mautrix",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:H1yth58X8a7/2bl95KDIShW26X5D5bQhWjcpqTWKz4o="
+        }
+      ],
+      "purl": "pkg:golang/maunium.net/go/mautrix@v0.32.1-0.20261027121747-b5763ae4f269",
+      "type": "library",
+      "version": "v0.32.1-0.20261027121747-b5763ae4f269"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/media_kit/versions/1.2.6"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ae9e79597500c7ad6083a3c7b7b7544ddabfceacce7ae5c9709b0ec16a5d6643"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "media_kit",
+      "purl": "pkg:pub/media_kit@1.2.6",
+      "type": "library",
+      "version": "1.2.6"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/media_kit_libs_android_video/versions/1.3.8"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3f6274e5ab2de512c286a25c327288601ee445ed8ac319e0ef0b66148bd8f76c"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "media_kit_libs_android_video",
+      "purl": "pkg:pub/media_kit_libs_android_video@1.3.8",
+      "type": "library",
+      "version": "1.3.8"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/media_kit_libs_ios_video/versions/1.1.4"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b5382994eb37a4564c368386c154ad70ba0cc78dacdd3fb0cd9f30db6d837991"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "media_kit_libs_ios_video",
+      "purl": "pkg:pub/media_kit_libs_ios_video@1.1.4",
+      "type": "library",
+      "version": "1.1.4"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/media_kit_libs_linux/versions/1.2.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2b473399a49ec94452c4d4ae51cfc0f6585074398d74216092bf3d54aac37ecf"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "media_kit_libs_linux",
+      "purl": "pkg:pub/media_kit_libs_linux@1.2.1",
+      "type": "library",
+      "version": "1.2.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/media_kit_libs_macos_video/versions/1.1.4"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f26aa1452b665df288e360393758f84b911f70ffb3878032e1aabba23aa1032d"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "media_kit_libs_macos_video",
+      "purl": "pkg:pub/media_kit_libs_macos_video@1.1.4",
+      "type": "library",
+      "version": "1.1.4"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/media_kit_libs_video/versions/1.0.7"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2b235b5dac79c6020e01eef5022c6cc85fedc0df1738aadc6ea489daa12a92a9"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "media_kit_libs_video",
+      "purl": "pkg:pub/media_kit_libs_video@1.0.7",
+      "type": "library",
+      "version": "1.0.7"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/media_kit_libs_windows_video/versions/1.0.11"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "dff76da2778729ab650229e6b4ec6ec111eb5151431002cbd7ea304ff1f112ab"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "media_kit_libs_windows_video",
+      "purl": "pkg:pub/media_kit_libs_windows_video@1.0.11",
+      "type": "library",
+      "version": "1.0.11"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/media_kit_video/versions/2.0.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "afaa509e7b7e0bf247557a3a740cde903a52c34ace9810f94500e127bd7b043d"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "media_kit_video",
+      "purl": "pkg:pub/media_kit_video@2.0.1",
+      "type": "library",
+      "version": "2.0.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/meta/versions/1.19.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "307249ce4ff29d58a18e97f6345f539382eb9c9c29ecda628900f31de0443dd9"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "meta",
+      "purl": "pkg:pub/meta@1.19.0",
+      "type": "library",
+      "version": "1.19.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/mime/versions/2.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "bd47de35f07e27267e69c8c8b22edf9473bfee170a60d60fcc93730c5144b7f6"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "mime",
+      "purl": "pkg:pub/mime@2.1.0",
+      "type": "library",
+      "version": "2.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/native_toolchain_c/versions/0.19.5"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "90eaad8059ebc2004a63810a4696ea9acdb02473e47ed3b6b3bafb100ac77e31"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "native_toolchain_c",
+      "purl": "pkg:pub/native_toolchain_c@0.19.5",
+      "type": "library",
+      "version": "0.19.5"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/node_preamble/versions/2.0.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "6e7eac89047ab8a8d26cf16127b5ed26de65209847630400f9aefd7cd5c730db"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT AND BSD-3-Clause"
+        }
+      ],
+      "name": "node_preamble",
+      "purl": "pkg:pub/node_preamble@2.0.2",
+      "type": "library",
+      "version": "2.0.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/objective_c/versions/9.6.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "5c80c2ad6e2c0397de5db38c6d653e69616a3397e13aa7633bf39eb668f2041b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "objective_c",
+      "purl": "pkg:pub/objective_c@9.6.2",
+      "type": "library",
+      "version": "9.6.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/package_config/versions/3.0.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "ffcf4cf3d6c0b74ac43708d9f56625506e8a68aa935abe9d267a7330f320eb5d"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "package_config",
+      "purl": "pkg:pub/package_config@3.0.0",
+      "type": "library",
+      "version": "3.0.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/package_info_plus/versions/10.2.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "73ef2cd5c11a7548f9b7f6fc2a4f6113de2e64aa2a70de63feede95548822908"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "package_info_plus",
+      "purl": "pkg:pub/package_info_plus@10.2.2",
+      "type": "library",
+      "version": "10.2.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/package_info_plus_platform_interface/versions/4.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "db762cb2f4f25ee60fb6359773861b0f199e00b90d237bd85a76a1e806b46ef4"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "package_info_plus_platform_interface",
+      "purl": "pkg:pub/package_info_plus_platform_interface@4.1.0",
+      "type": "library",
+      "version": "4.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/path/versions/1.9.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "75cca69d1490965be98c73ceaea117e8a04dd21217b37b292c9ddbec0d955bc5"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "path",
+      "purl": "pkg:pub/path@1.9.1",
+      "type": "library",
+      "version": "1.9.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/path_provider/versions/2.1.6"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a7f4874f987173da295a61c181b8ee71dab59b332a486b391babf26a1b884825"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "path_provider",
+      "purl": "pkg:pub/path_provider@2.1.6",
+      "type": "library",
+      "version": "2.1.6"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/path_provider_android/versions/2.3.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "69cbd515a62b94d32a7944f086b2f82b4ac40a1d45bebfc00813a430ab2dabcd"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "path_provider_android",
+      "purl": "pkg:pub/path_provider_android@2.3.1",
+      "type": "library",
+      "version": "2.3.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/path_provider_foundation/versions/2.6.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2a376b7d6392d80cd3705782d2caa734ca4727776db0b6ec36ef3f1855197699"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "path_provider_foundation",
+      "purl": "pkg:pub/path_provider_foundation@2.6.0",
+      "type": "library",
+      "version": "2.6.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/path_provider_linux/versions/2.2.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "58c2005f147315b11e9b4a7bc889cd5203e250cba8e3f012dae259b4972b5c16"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "path_provider_linux",
+      "purl": "pkg:pub/path_provider_linux@2.2.2",
+      "type": "library",
+      "version": "2.2.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/path_provider_platform_interface/versions/2.1.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "484838772624c3a4b94f1e44a3e19897fee738f2d5c4ce448443b0417f7c9dda"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "path_provider_platform_interface",
+      "purl": "pkg:pub/path_provider_platform_interface@2.1.3",
+      "type": "library",
+      "version": "2.1.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/path_provider_windows/versions/2.3.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "bd6f00dbd873bfb70d0761682da2b3a2c2fccc2b9e84c495821639601d81afe7"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "path_provider_windows",
+      "purl": "pkg:pub/path_provider_windows@2.3.0",
+      "type": "library",
+      "version": "2.3.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/petitparser/versions/7.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2f1564aadb14215e478563b5406cb80729d022158c01dc50c96013c2f7eb4790"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "petitparser",
+      "purl": "pkg:pub/petitparser@7.1.0",
+      "type": "library",
+      "version": "7.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/platform/versions/3.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a36d119c13416516a7b5913fbe8af8531e11633d784c550b2125f76c758524ec"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "platform",
+      "purl": "pkg:pub/platform@3.2.0",
+      "type": "library",
+      "version": "3.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/plugin_platform_interface/versions/2.1.8"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "plugin_platform_interface",
+      "purl": "pkg:pub/plugin_platform_interface@2.1.8",
+      "type": "library",
+      "version": "2.1.8"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/pool/versions/1.5.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4177f68c237ea2128d1bee66ac17b2ce05ba3dbaafcbdd54c5d40a39d0b6b11c"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "pool",
+      "purl": "pkg:pub/pool@1.5.3",
+      "type": "library",
+      "version": "1.5.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/posix/versions/6.5.4"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "613646d076944f3acc125830af935b48d4b8a57a388691547bbfd25b434f4d63"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "posix",
+      "purl": "pkg:pub/posix@6.5.4",
+      "type": "library",
+      "version": "6.5.4"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/process/versions/5.0.6"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "4242ba3508d37e01808bdf71ad1d5bb93a8d671bf2e7450e6b1b353fb0808891"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "process",
+      "purl": "pkg:pub/process@5.0.6",
+      "type": "library",
+      "version": "5.0.6"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/pub_semver/versions/2.2.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "261236774e8b1d69cfc6b9eabbc96c40f25e7a2d6b171f3385d4f65d5734fb24"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "pub_semver",
+      "purl": "pkg:pub/pub_semver@2.2.1",
+      "type": "library",
+      "version": "2.2.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/pubspec_parse/versions/1.7.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9ac81c01ffd6a9cf9b2713288834fbaaf6aebde05ffdf02d380e68b8e06f27d8"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "pubspec_parse",
+      "purl": "pkg:pub/pubspec_parse@1.7.0",
+      "type": "library",
+      "version": "1.7.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/qr/versions/3.0.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2c0189dca64a3ab08dda7acd7911c89af2374f08eb4eaded3e8ef4609f3b9c8b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "qr",
+      "purl": "pkg:pub/qr@3.0.3",
+      "type": "library",
+      "version": "3.0.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/qr_flutter/versions/4.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "5095f0fc6e3f71d08adef8feccc8cea4f12eec18a2e31c2e8d82cb6019f4b097"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "qr_flutter",
+      "purl": "pkg:pub/qr_flutter@4.1.0",
+      "type": "library",
+      "version": "4.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/recase/versions/4.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e4eb4ec2dcdee52dcf99cb4ceabaffc631d7424ee55e56f280bc039737f89213"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "name": "recase",
+      "purl": "pkg:pub/recase@4.1.0",
+      "type": "library",
+      "version": "4.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/record_use/versions/1.1.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1cb8564af8d43b464294411db9217f5ec04891c6f22ee2c32d73ae05e88a6bd2"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "record_use",
+      "purl": "pkg:pub/record_use@1.1.1",
+      "type": "library",
+      "version": "1.1.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pkg.go.dev/rsc.io/qr@v0.2.0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "rsc.io/qr",
+      "properties": [
+        {
+          "name": "inboxplus:go:module-content-checksum",
+          "value": "h1:6vBLea5/NRMVTz8V66gipeLycZMl/+UlFmk8DvqQ6WY="
+        }
+      ],
+      "purl": "pkg:golang/rsc.io/qr@v0.2.0",
+      "type": "library",
+      "version": "v0.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/safe_local_storage/versions/2.0.7"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "76288b689a3e1fddccb377177feed85d73fdfc64c9c3c52991e2d9aba35c4857"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "safe_local_storage",
+      "purl": "pkg:pub/safe_local_storage@2.0.7",
+      "type": "library",
+      "version": "2.0.7"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/shelf/versions/1.4.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e75e9cf311d7fd712048038cc17c25199c38536c20330d53e7db058b543d5a48"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "shelf",
+      "purl": "pkg:pub/shelf@1.4.3",
+      "type": "library",
+      "version": "1.4.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/shelf_packages_handler/versions/3.0.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "89f967eca29607c933ba9571d838be31d67f53f6e4ee15147d5dc2934fee1b1e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "shelf_packages_handler",
+      "purl": "pkg:pub/shelf_packages_handler@3.0.2",
+      "type": "library",
+      "version": "3.0.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/shelf_static/versions/1.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "480504af9e5323899c5be26a4f6c2fc4437d50954d39842f0290f4ae733d57b4"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "shelf_static",
+      "purl": "pkg:pub/shelf_static@1.2.0",
+      "type": "library",
+      "version": "1.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/shelf_web_socket/versions/3.0.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "3632775c8e90d6c9712f883e633716432a27758216dfb61bd86a8321c0580925"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "shelf_web_socket",
+      "purl": "pkg:pub/shelf_web_socket@3.0.0",
+      "type": "library",
+      "version": "3.0.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/source_gen/versions/4.3.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "833ea7d15b5be79949d3d6c077da0267a0bd93c16897b36a771395a91e63086e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "source_gen",
+      "purl": "pkg:pub/source_gen@4.3.1",
+      "type": "library",
+      "version": "4.3.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/source_map_stack_trace/versions/2.1.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "c0713a43e323c3302c2abe2a1cc89aa057a387101ebd280371d6a6c9fa68516b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "source_map_stack_trace",
+      "purl": "pkg:pub/source_map_stack_trace@2.1.2",
+      "type": "library",
+      "version": "2.1.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/source_maps/versions/0.10.14"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "14c2945847669b44089bb1222f66873d7ff7103c58911917f2a63c5a62327898"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "source_maps",
+      "purl": "pkg:pub/source_maps@0.10.14",
+      "type": "library",
+      "version": "0.10.14"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/source_span/versions/1.10.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "56a02f1f4cd1a2d96303c0144c93bd6d909eea6bee6bf5a0e0b685edbd4c47ab"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "source_span",
+      "purl": "pkg:pub/source_span@1.10.2",
+      "type": "library",
+      "version": "1.10.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/sqlite3/versions/3.8.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "5340531ad17f386ae444873f643f281060b6238cc702edeee6b1e90bc4c6874e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "sqlite3",
+      "purl": "pkg:pub/sqlite3@3.8.0",
+      "type": "library",
+      "version": "3.8.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/sqlparser/versions/0.45.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8121dae2c5de4a1e39153d95c55f7fd1816e32d1232fe270bc415a4a370d6e47"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "sqlparser",
+      "purl": "pkg:pub/sqlparser@0.45.1",
+      "type": "library",
+      "version": "0.45.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/stack_trace/versions/1.12.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "277654b3034d17ac6f9f1cb5595db011b1d5d41e8806866db28e0abaa101c490"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "stack_trace",
+      "purl": "pkg:pub/stack_trace@1.12.2",
+      "type": "library",
+      "version": "1.12.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/stream_channel/versions/2.1.4"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "969e04c80b8bcdf826f8f16579c7b14d780458bd97f56d107d3950fdbeef059d"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "stream_channel",
+      "purl": "pkg:pub/stream_channel@2.1.4",
+      "type": "library",
+      "version": "2.1.4"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/stream_transform/versions/2.1.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a00e5f18bffc764f923e7dec1038527f7fe7a1791361a7117f0358193f13d53a"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "stream_transform",
+      "purl": "pkg:pub/stream_transform@2.1.2",
+      "type": "library",
+      "version": "2.1.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/string_scanner/versions/1.4.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "921cd31725b72fe181906c6a94d987c78e3b98c2e205b397ea399d4054872b43"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "string_scanner",
+      "purl": "pkg:pub/string_scanner@1.4.1",
+      "type": "library",
+      "version": "1.4.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/sync_http/versions/0.3.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "7f0cd72eca000d2e026bcd6f990b81d0ca06022ef4e32fb257b30d3d1014a961"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "sync_http",
+      "purl": "pkg:pub/sync_http@0.3.1",
+      "type": "library",
+      "version": "0.3.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/synchronized/versions/3.5.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b3d516dbd3757ff2a458735e4f6cbac9ff261f576f6e87bcb17feabb39e657c5"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "synchronized",
+      "purl": "pkg:pub/synchronized@3.5.0",
+      "type": "library",
+      "version": "3.5.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/term_glyph/versions/1.2.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "7f554798625ea768a7518313e58f83891c7f5024f88e46e7182a4558850a4b8e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "term_glyph",
+      "purl": "pkg:pub/term_glyph@1.2.2",
+      "type": "library",
+      "version": "1.2.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/test/versions/1.33.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "44b2fccf4407bcdb5e105c064c5d6b5e2a640c87761f8b03cdce8cf532d98cfa"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "test",
+      "purl": "pkg:pub/test@1.33.0",
+      "type": "library",
+      "version": "1.33.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/test_api/versions/0.7.12"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "2a122cbe059f8b610d3a5415f42e255b6c17b1f21eee1d960f31080237fb4f11"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "test_api",
+      "purl": "pkg:pub/test_api@0.7.12",
+      "type": "library",
+      "version": "0.7.12"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/test_api/versions/0.7.15"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "47481c58bb92d0b1d218f0510ff5647e768f8e1256d07077a151fb520923b51d"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "test_api",
+      "purl": "pkg:pub/test_api@0.7.15",
+      "type": "library",
+      "version": "0.7.15"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/test_core/versions/0.6.21"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9dec4c178bd61493e1cd2060ffe701fcb61c43da2493e99590fb1b0cc82eb4af"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "test_core",
+      "purl": "pkg:pub/test_core@0.6.21",
+      "type": "library",
+      "version": "0.6.21"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/typed_data/versions/1.4.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f9049c039ebfeb4cf7a7104a675823cd72dba8297f264b6637062516699fa006"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "typed_data",
+      "purl": "pkg:pub/typed_data@1.4.0",
+      "type": "library",
+      "version": "1.4.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/universal_platform/versions/1.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "64e16458a0ea9b99260ceb5467a214c1f298d647c659af1bff6d3bf82536b1ec"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "universal_platform",
+      "purl": "pkg:pub/universal_platform@1.1.0",
+      "type": "library",
+      "version": "1.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/unorm_dart/versions/0.3.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "b4f4d2aff27d65a5fc37f400d4c09e55d7535359315acbe3b895a9add4de3a23"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "unorm_dart",
+      "purl": "pkg:pub/unorm_dart@0.3.3",
+      "type": "library",
+      "version": "0.3.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/uri_parser/versions/3.0.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "051c62e5f693de98ca9f130ee707f8916e2266945565926be3ff20659f7853ce"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "uri_parser",
+      "purl": "pkg:pub/uri_parser@3.0.2",
+      "type": "library",
+      "version": "3.0.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/url_launcher/versions/6.3.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e8cc955c97e06df9879140a1fe301f3d493f01b7c62dec7f46834be31d7e9fda"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "url_launcher",
+      "purl": "pkg:pub/url_launcher@6.3.3",
+      "type": "library",
+      "version": "6.3.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/url_launcher_android/versions/6.3.33"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "611e87fb320b70d1dd721dc46af89c98aceccea9b31fde49e084591414e0c610"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "url_launcher_android",
+      "purl": "pkg:pub/url_launcher_android@6.3.33",
+      "type": "library",
+      "version": "6.3.33"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/url_launcher_ios/versions/6.4.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8faa1aab294f1ab4040b43660c887b0418d5fa4f0cffef76a484e6aa1092eb4a"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "url_launcher_ios",
+      "purl": "pkg:pub/url_launcher_ios@6.4.2",
+      "type": "library",
+      "version": "6.4.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/url_launcher_linux/versions/3.2.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "10f86fef4c2c43563fa6c211ff9cf757adf4d3ab762c56bd430664a947d70cd0"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "url_launcher_linux",
+      "purl": "pkg:pub/url_launcher_linux@3.2.3",
+      "type": "library",
+      "version": "3.2.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/url_launcher_macos/versions/3.2.6"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "5e835a3b869c2d70325349c81c5a45c28e20791265b67b2669da6b08c5cd5201"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "url_launcher_macos",
+      "purl": "pkg:pub/url_launcher_macos@3.2.6",
+      "type": "library",
+      "version": "3.2.6"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/url_launcher_platform_interface/versions/2.3.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "552f8a1e663569be95a8190206a38187b531910283c3e982193e4f2733f01029"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "url_launcher_platform_interface",
+      "purl": "pkg:pub/url_launcher_platform_interface@2.3.2",
+      "type": "library",
+      "version": "2.3.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/url_launcher_web/versions/2.4.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "85c81589622fbc87c1c683aaea164d3604a7777495a79d91e39ffcdec39ddb34"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "url_launcher_web",
+      "purl": "pkg:pub/url_launcher_web@2.4.3",
+      "type": "library",
+      "version": "2.4.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/url_launcher_windows/versions/3.1.6"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "6c5ad3f22cd4c38e089b81963b3cd7bb83b111b2df5dce008bb066162f42e429"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "url_launcher_windows",
+      "purl": "pkg:pub/url_launcher_windows@3.1.6",
+      "type": "library",
+      "version": "3.1.6"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/uuid/versions/4.6.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "9b129329f58692f6e6578329498a8fe9fbe98f090beb764ffbb8ee2eadd01dcd"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "uuid",
+      "purl": "pkg:pub/uuid@4.6.0",
+      "type": "library",
+      "version": "4.6.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/vector_math/versions/2.4.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1d774bbdf6b72a0b12122fc1560c9c2d2a67db5a4a4cc2bd8a5c990ab20e3188"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "vector_math",
+      "purl": "pkg:pub/vector_math@2.4.0",
+      "type": "library",
+      "version": "2.4.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/vm_service/versions/15.4.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "89b11d62e1040ee681af3b4f1c97a803ecbf010c6e8b9c5896ee5b08c3bf7b78"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "vm_service",
+      "purl": "pkg:pub/vm_service@15.4.0",
+      "type": "library",
+      "version": "15.4.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/wakelock_plus/versions/1.8.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "39a1d99085cf3190d41305bca05f0c0d77522f355f7f99bb648ee231192d9d68"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "wakelock_plus",
+      "purl": "pkg:pub/wakelock_plus@1.8.2",
+      "type": "library",
+      "version": "1.8.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/wakelock_plus_platform_interface/versions/1.7.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "764c25504562abc8ac3406f5d175f126b276e6ba916c7c2675690b73368ca384"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "wakelock_plus_platform_interface",
+      "purl": "pkg:pub/wakelock_plus_platform_interface@1.7.0",
+      "type": "library",
+      "version": "1.7.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/watcher/versions/1.2.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "1398c9f081a753f9226febe8900fce8f7d0a67163334e1c94a2438339d79d635"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "watcher",
+      "purl": "pkg:pub/watcher@1.2.1",
+      "type": "library",
+      "version": "1.2.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/web/versions/1.1.2"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "e119e82ac4795c7925103b7cf3768191f33941b99e7ccffbd6c645201d9f606b"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "web",
+      "purl": "pkg:pub/web@1.1.2",
+      "type": "library",
+      "version": "1.1.2"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/web_socket/versions/1.0.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "34d64019aa8e36bf9842ac014bb5d2f5586ca73df5e4d9bf5c936975cae6982c"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "web_socket",
+      "purl": "pkg:pub/web_socket@1.0.1",
+      "type": "library",
+      "version": "1.0.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/web_socket_channel/versions/3.0.3"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "d645757fb0f4773d602444000a8131ff5d48c9e47adfe9772652dd1a4f2d45c8"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "web_socket_channel",
+      "purl": "pkg:pub/web_socket_channel@3.0.3",
+      "type": "library",
+      "version": "3.0.3"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/webdriver/versions/3.2.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "28b82ec894fed45dd71c23ba62d1af973ed97dd59a4f5790a4d38b0b13e5657e"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "name": "webdriver",
+      "purl": "pkg:pub/webdriver@3.2.0",
+      "type": "library",
+      "version": "3.2.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/webkit_inspection_protocol/versions/1.2.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "87d3f2333bb240704cd3f1c6b5b7acd8a10e7f0bc28c28dcf14e782014f4a572"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "webkit_inspection_protocol",
+      "purl": "pkg:pub/webkit_inspection_protocol@1.2.1",
+      "type": "library",
+      "version": "1.2.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/win32/versions/6.4.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a0b93865d5644f11cf6a8c3f6db909f1ec168958b5805f6cc684adea957cd63d"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "win32",
+      "purl": "pkg:pub/win32@6.4.0",
+      "type": "library",
+      "version": "6.4.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/windows_file_picker/versions/2.0.1"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "18452aa293de3b6961c6d05b0e71b4be7bb90c67635abdd3aa5c4e75dd875072"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "windows_file_picker",
+      "purl": "pkg:pub/windows_file_picker@2.0.1",
+      "type": "library",
+      "version": "2.0.1"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/xdg_directories/versions/1.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "7a3f37b05d989967cdddcbb571f1ea834867ae2faa29725fd085180e0883aa15"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "xdg_directories",
+      "purl": "pkg:pub/xdg_directories@1.1.0",
+      "type": "library",
+      "version": "1.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/xml/versions/7.1.0"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "0fe8cc98946def31cbcbc8734aa4067031e6f65ea3a78a508060bfed2200bfeb"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "xml",
+      "purl": "pkg:pub/xml@7.1.0",
+      "type": "library",
+      "version": "7.1.0"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/yaml/versions/3.1.4"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "f67cdd8e07d3c6329146aaef1ba043542b3134c12489f553ca9a7435d1068aea"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "name": "yaml",
+      "purl": "pkg:pub/yaml@3.1.4",
+      "type": "library",
+      "version": "3.1.4"
+    },
+    {
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://pub.dev/packages/yaml_edit/versions/2.2.4"
+        }
+      ],
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "07c9e63ba42519745182b88ca12264a7ba2484d8239958778dfe4d44fe760488"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "yaml_edit",
+      "purl": "pkg:pub/yaml_edit@2.2.4",
+      "type": "library",
+      "version": "2.2.4"
     }
   ],
-  "metadata" : {
-    "component" : {
-      "licenses" : [
+  "metadata": {
+    "component": {
+      "licenses": [
         {
-          "license" : {
-            "id" : "AGPL-3.0-or-later"
+          "license": {
+            "id": "AGPL-3.0-or-later"
           }
         }
       ],
-      "name" : "Inbox+",
-      "type" : "application",
-      "version" : "0.8.5"
+      "name": "Inbox+",
+      "type": "application",
+      "version": "0.9.0+114"
     },
-    "timestamp" : "1970-01-01T00:00:00Z"
+    "properties": [
+      {
+        "name": "inboxplus:inventory-scope",
+        "value": "Repository inventory: Flutter app and build tools, embedded connectors. Not every component is distributed in every app."
+      }
+    ]
   },
-  "serialNumber" : "urn:uuid:7CD78386-EED3-4923-BAD2-598CC6895C64",
-  "specVersion" : "1.5",
-  "version" : 1
+  "serialNumber": "urn:uuid:52aa1210-d4f4-4366-bf16-b07d6ee0a0a0",
+  "specVersion": "1.5",
+  "version": 1
 }

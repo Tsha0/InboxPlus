@@ -1,0 +1,206 @@
+name: Flutter
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      android_build:
+        description: Run the deferred Android build check
+        type: boolean
+        default: false
+
+concurrency:
+  group: flutter-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  desktop:
+    name: Flutter / ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: macos
+          - os: ubuntu-24.04
+            target: linux
+          - os: windows-latest
+            target: windows
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: native/connectors/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify generated launcher icons
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m pip install Pillow==10.4.0
+          python3 Scripts/generate-platform-icons.py --check
+          python3 Scripts/generate-flutter-glyphs.py --check
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libmpv-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+      - name: Locate Windows Cgo compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $compiler = @('C:\mingw64\bin', 'C:\msys64\mingw64\bin') | Where-Object { Test-Path "$_\gcc.exe" } | Select-Object -First 1
+          if (-not $compiler) { throw 'The Windows runner needs a MinGW GCC compiler for Go/cgo.' }
+          $compiler | Out-File -FilePath $env:GITHUB_PATH -Append
+          'CC=gcc' | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Verify connector modules and behavior
+        working-directory: native/connectors
+        env:
+          CGO_ENABLED: '1'
+          GOFLAGS: -mod=readonly
+        run: |
+          go mod verify
+          go test ./...
+          bash build.sh host
+          case "$RUNNER_OS" in
+            macOS) library="$(pwd)/build/libinboxplus_connectors.dylib" ;;
+            Linux) library="$(pwd)/build/libinboxplus_connectors.so" ;;
+            Windows) library="$(cygpath -w "$(pwd)/build/inboxplus_connectors.dll")" ;;
+          esac
+          echo "INBOXPLUS_CONNECTORS_LIBRARY=$library" >> "$GITHUB_ENV"
+      - name: Verify encrypted storage
+        working-directory: packages/inboxplus_storage
+        run: |
+          dart pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test
+          dart analyze
+          dart test
+      - name: Verify generated Drift source
+        if: runner.os == 'Linux'
+        working-directory: packages/inboxplus_storage
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          git diff --exit-code -- lib/src/local_store.g.dart
+      - name: Verify Flutter application
+        working-directory: apps/inboxplus_flutter
+        run: |
+          flutter pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test integration_test
+          flutter analyze
+          flutter test
+      - name: Verify bundled dependency notices
+        if: runner.os == 'Linux'
+        run: |
+          go -C native/connectors mod download
+          python3 Scripts/generate-third-party-notices.py
+          git diff --exit-code -- apps/inboxplus_flutter/assets/third_party_notices.txt
+      - name: Build native desktop application
+        working-directory: apps/inboxplus_flutter
+        run: flutter build ${{ matrix.target }} --release
+      - name: Verify desktop archive packaging
+        run: python3 -m unittest discover -s Tests/Packaging -p test_flutter_desktop.py -v
+      - name: Package desktop development build
+        run: python3 Scripts/package-flutter-desktop.py --target ${{ matrix.target }}
+      - name: Upload desktop development archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: InboxPlus-${{ matrix.target }}-development
+          path: |
+            build/flutter-desktop/*.zip
+            build/flutter-desktop/*.tar.gz
+            build/flutter-desktop/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+      - name: Check whitespace
+        run: git diff --check
+
+  package:
+    name: Package the app
+    needs: desktop
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all Flutter desktop archives
+        env:
+          DESKTOP_RESULT: ${{ needs.desktop.result }}
+        run: test "$DESKTOP_RESULT" = success
+
+  android:
+    name: Flutter / Android
+    if: github.event_name == 'workflow_dispatch' && inputs.android_build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: native/connectors/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - name: Install pinned Android NDK
+        run: sdkmanager 'ndk;28.2.13676358'
+      - name: Resolve locked dependencies
+        working-directory: apps/inboxplus_flutter
+        run: flutter pub get --enforce-lockfile
+      - name: Build Android application
+        working-directory: apps/inboxplus_flutter
+        run: flutter build apk --release
+
+  ios:
+    name: Flutter / iOS
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: native/connectors/go.sum
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Record the Xcode version
+        run: xcodebuild -version
+      - name: Resolve locked dependencies
+        working-directory: apps/inboxplus_flutter
+        run: flutter pub get --enforce-lockfile
+      # Archiving is what strips symbols for the App Store, so build the archive
+      # TestFlight would receive rather than a plain device build.
+      - name: Build unsigned App Store archive
+        working-directory: apps/inboxplus_flutter
+        run: flutter build ipa --release --no-codesign
+      - name: Verify the archived application
+        run: python3 Scripts/verify-ios-app.py apps/inboxplus_flutter/build/ios/archive/Runner.xcarchive
