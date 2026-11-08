@@ -120,7 +120,7 @@ def package(output, previous_feed, bundle, environment):
         shutil.copy2(ROOT / "LICENSE", resources / "LICENSE")
         shutil.copy2(ROOT / "docs/sbom.cdx.json", resources / "sbom.cdx.json")
         sign_bundle(app, identity, mode == "developer-id")
-        subprocess.run(["codesign", "--verify", "--strict", "-R", legacy["signing_requirement"], str(app)], check=True)
+        subprocess.run(["codesign", "--verify", "--strict", "-R", "=" + legacy["signing_requirement"], str(app)], check=True)
         archive = staging / archive_name
         if mode == "developer-id":
             submission = staging / "notarization.zip"
