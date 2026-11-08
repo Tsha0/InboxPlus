@@ -1,6 +1,9 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -91,6 +94,33 @@ class ConnectorBuildCacheTests(unittest.TestCase):
 
 
 class MacOSBuildTimingTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "Fixture command uses a POSIX executable script")
+    def test_failed_build_records_timings_without_publishing_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            flutter = root / "flutter"
+            flutter.write_text(
+                "#!/usr/bin/env python3\n"
+                "print('export PRIVATE_VALUE=never-publish')\n"
+                "print('Running pod install...')\n"
+                "print('executing: xcodebuild -workspace Runner -configuration Release')\n"
+                "raise SystemExit(7)\n"
+            )
+            flutter.chmod(0o755)
+            process = subprocess.run(
+                [sys.executable, str(ROOT / "Scripts/time-macos-build.py")],
+                env={**os.environ, "PATH": directory + os.pathsep + os.environ["PATH"],
+                     "RUNNER_TEMP": directory},
+                capture_output=True, text=True, timeout=30,
+            )
+            self.assertEqual(process.returncode, 7, process.stderr)
+            self.assertNotIn("PRIVATE_VALUE", process.stdout)
+            summary = json.loads((root / "macos-build-timings.json").read_text())
+            self.assertEqual(summary["exit_code"], 7)
+            self.assertEqual([item["phase"] for item in summary["events"]], ["pod_install", "xcode_build"])
+            self.assertIn("preparation_seconds", summary)
+            self.assertFalse(list(root.glob("inboxplus-build-*")))
+
     def test_build_settings_queries_are_not_counted_as_compilation(self):
         self.assertIsNone(timing.phase("executing: xcodebuild -showBuildSettings -configuration Release"))
         self.assertEqual(timing.phase("executing: xcodebuild -workspace Runner.xcworkspace -configuration Release"), "xcode_build")
