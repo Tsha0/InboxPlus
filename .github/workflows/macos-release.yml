@@ -112,7 +112,7 @@ jobs:
       - name: Build, sign and package the macOS release
         run: |
           (cd apps/inboxplus_flutter && python3 ../../Scripts/retry-sqlite-download.py flutter build macos --release)
-          python3 Scripts/package-macos-release.py --bundle apps/inboxplus_flutter/build/macos/Build/Products/Release/Inbox+v2.app --previous-feed "$RUNNER_TEMP/previous-appcast.xml"
+          python3 Scripts/package-macos-release.py --bundle "$GITHUB_WORKSPACE/apps/inboxplus_flutter/build/macos/Build/Products/Release/Inbox+v2.app" --previous-feed "$RUNNER_TEMP/previous-appcast.xml"
       - name: Attach immutable assets to a draft release
         env:
           GH_TOKEN: ${{ github.token }}
