@@ -515,7 +515,7 @@ jobs:
       # TestFlight would receive rather than a plain device build.
       - name: Build unsigned App Store archive
         working-directory: apps/inboxplus_flutter
-        run: flutter build ipa --release --no-codesign
+        run: python3 ../../Scripts/retry-sqlite-download.py flutter build ipa --release --no-codesign
       - name: Verify the archived application
         run: python3 Scripts/verify-ios-app.py apps/inboxplus_flutter/build/ios/archive/Runner.xcarchive
 

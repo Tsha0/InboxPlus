@@ -43,7 +43,7 @@ def run_command(command):
     for attempt in range(3):
         rejected_download = None
         hook_failed = False
-        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as process:
+        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8") as process:
             for line in process.stdout:
                 print(line, end="", flush=True)
                 rejected = re.search(
@@ -61,6 +61,7 @@ def run_command(command):
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8")
     if len(sys.argv) < 2:
         sys.exit("Usage: retry-sqlite-download.py <command> [arguments...]")
     sys.exit(run_command(sys.argv[1:]))

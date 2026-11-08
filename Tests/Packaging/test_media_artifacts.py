@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import subprocess
@@ -172,6 +173,17 @@ class SqliteDownloadRetryTests(unittest.TestCase):
             process.wait.return_value = 0
             self.assertEqual(retry.run_command(["dart", "test"]), 0)
             self.assertEqual(launch.call_args.args[0], [r"C:\sdk\bin\dart.exe", "test"])
+
+    def test_flutter_utf8_status_output_is_preserved(self):
+        retry = script.parent / "retry-sqlite-download.py"
+        program = "import sys; sys.stdout.buffer.write('✅ Flutter: ready\\n'.encode('utf-8'))"
+        result = subprocess.run(
+            [sys.executable, str(retry), sys.executable, "-c", program],
+            capture_output=True, text=True, encoding="utf-8", timeout=60,
+            env={**os.environ, "PYTHONIOENCODING": "cp1252"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "✅ Flutter: ready\n")
 
     def test_application_failure_is_not_retried(self):
         result, attempts = self.run_fixture(download_error=False)
