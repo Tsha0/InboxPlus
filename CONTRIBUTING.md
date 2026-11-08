@@ -270,9 +270,21 @@ Failures, cancellations and unexpected skips prevent **CI passed** from succeedi
 Shared Dart formatting, application/storage analysis and each generated-file freshness check run
 once. Desktop Go, encrypted-storage, Flutter and real connector smoke tests still run on every
 affected desktop. Connector smoke tests explicitly build their library; native builds use Go's
-compatible compilation cache rather than copying binaries between targets. CI records Go-test,
-connector-library and full native-build timings to inform further optimization. The generated-file
-job does not populate the desktop Go build cache with a module-only cache entry.
+compatible compilation cache. macOS keeps module downloads separate from compilation caches;
+compilation keys include connector source and the Go/Xcode/SDK/compiler identity, with compatible
+restore prefixes. This saves newly compiled work after source changes instead of repeatedly using
+an immutable dependency-only snapshot. The generated-file job does not populate that cache.
+
+Within the macOS job, `INBOXPLUS_CONNECTORS_BUILD_CACHE` reuses an explicitly built connector
+library only when dependency source contents, embedded files, Go/compiler settings, SDK and
+architecture match. Both the library and C header are SHA-256 checked before reuse. The local
+library cache is temporary and is not restored from GitHub; other architectures still build
+independently. Smoke tests and the final bundle verifier remain required.
+
+macOS build logs report per-architecture connector timings and cache hits. The
+`macos-build-timings` artifact separates Flutter dependency preparation from Xcode and
+postprocessing. Verbose Flutter environment dumps are kept private and discarded after timing;
+only phase timings and filtered compiler errors are published.
 
 For a manual full CI run, dispatch **CI**; enable `android_build` to include Android. Manual runs
 check all components. Release delivery, website deployment and advisory OCR review remain separate.

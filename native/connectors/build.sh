@@ -19,13 +19,19 @@ output=$(cd "$output" && pwd)
 "$go_binary" mod verify
 
 build_shared() {
-  "$go_binary" build -trimpath -buildmode=c-shared -o "$1" .
+  if [[ "${INBOXPLUS_CONNECTORS_BUILD_CACHE:-}" != "" && "$("$go_binary" env GOOS)" == darwin ]]; then
+    python3 "$connector_root/../../Scripts/build-connectors-cache.py" "$go_binary" "$1" "$INBOXPLUS_CONNECTORS_BUILD_CACHE"
+  else
+    time "$go_binary" build -trimpath -buildmode=c-shared -o "$1" .
+  fi
 }
 
 configure_macos() {
   sdk=$(xcrun --sdk macosx --show-sdk-path)
   export CC="$(xcrun --sdk macosx --find clang)"
   macos_target=${MACOSX_DEPLOYMENT_TARGET:-15.0}
+  export MACOSX_DEPLOYMENT_TARGET="$macos_target"
+  export SDKROOT="$sdk"
   export CGO_CFLAGS="${CGO_CFLAGS:-} -isysroot $sdk -mmacosx-version-min=$macos_target"
   export CGO_LDFLAGS="${CGO_LDFLAGS:-} -isysroot $sdk -mmacosx-version-min=$macos_target"
   case "${CURRENT_ARCH:-}" in

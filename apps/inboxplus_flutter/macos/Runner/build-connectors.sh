@@ -19,7 +19,10 @@ for architecture in $ARCHS; do
     x86_64) go_architecture=amd64 ;;
     *) printf 'Unsupported Apple architecture.\n' >&2; exit 1 ;;
   esac
+  printf 'connector_architecture_start target=%s arch=%s\n' "$target" "$go_architecture"
+  started=$SECONDS
   GOARCH="$go_architecture" bash "$repository_root/native/connectors/build.sh" "$target" "$output_root/$architecture"
+  printf 'connector_architecture_done target=%s arch=%s seconds=%s\n' "$target" "$go_architecture" "$((SECONDS - started))"
   inputs+=("$output_root/$architecture/$library")
 done
 

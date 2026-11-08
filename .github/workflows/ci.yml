@@ -215,7 +215,27 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
           go-version: '1.27.3'
-          cache-dependency-path: native/connectors/go.sum
+          cache: false
+      - name: Identify Go cache toolchain and paths
+        id: go-cache
+        run: |
+          echo "INBOXPLUS_CONNECTORS_BUILD_CACHE=$RUNNER_TEMP/inboxplus-connectors" >> "$GITHUB_ENV"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          toolchain="$( { go version; xcodebuild -version; xcrun --sdk macosx --show-sdk-build-version; clang --version; } | shasum -a 256 | cut -d ' ' -f 1)"
+          echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
+      - name: Cache verified Go modules
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: ${{ steps.go-cache.outputs.modules }}
+          key: go-modules-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/connectors/go.sum') }}
+      - name: Cache Go compilation
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: ${{ steps.go-cache.outputs.build }}
+          key: go-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-cache.outputs.toolchain }}-${{ hashFiles('native/connectors/**/*.go', 'native/connectors/**/*.c', 'native/connectors/**/*.h', 'native/connectors/go.mod', 'native/connectors/go.sum', 'native/connectors/build.sh', 'Scripts/build-connectors-cache.py') }}
+          restore-keys: |
+            go-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-cache.outputs.toolchain }}-
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
         with:
           flutter-version: '3.47.9'
@@ -251,7 +271,14 @@ jobs:
           flutter test
       - name: Build native desktop application
         working-directory: apps/inboxplus_flutter
-        run: time flutter build macos --release
+        run: python3 ../../Scripts/time-macos-build.py
+      - name: Upload macOS build timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: macos-build-timings
+          path: ${{ runner.temp }}/macos-build-timings.json
+          if-no-files-found: ignore
       - name: Package desktop development build
         run: python3 Scripts/package-flutter-desktop.py --target macos
       - name: Upload desktop development archive
