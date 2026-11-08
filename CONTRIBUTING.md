@@ -103,8 +103,11 @@ certify a network's live login or messaging behavior. Timeouts for real processe
 enough for slower CI runners: they guard against hangs, not assert developer-machine speed.
 
 Desktop CI uses `Scripts/retry-sqlite-download.py` to retry only SQLite hook failures that reject
-downloaded bytes against their pinned SHA-256. It never retries application test failures or
-accepts a mismatched checksum; repeated download failures still fail the job.
+downloaded bytes against their pinned SHA-256. It can populate the hook's shared download cache
+using the checksums from the locked sqlite3 package and the generated hook input. Keep this
+cache integration aligned with the pinned Dart SDK and sqlite3 version. It never retries
+application test failures or accepts a mismatched checksum; repeated download failures still fail
+the job.
 
 ### Packaging checks
 
@@ -131,6 +134,10 @@ The Windows runner prepares media-kit archives with `Scripts/verify-media-artifa
 CMake can extract them. Never replace that SHA-256 check with the dependency's MD5-only check.
 The Apple Podfiles use the same verifier before CocoaPods evaluates media-kit's podspecs, whose
 `make` failures otherwise can be ignored and surface later as missing frameworks at link time.
+If a GitHub release download fails, the verifier can use GitHub CLI's asset API route; it verifies
+the same pinned SHA-256 before publishing the file. CI provides a read-only `GH_TOKEN` for those
+requests. `--platform sparkle` prepares SwiftPM's artifact cache from `sparkle-artifact.json`,
+without changing the SwiftPM target or its checksum verification.
 
 For iOS, `flutter build ipa --release --no-codesign` builds the archive TestFlight receives. Check
 it with `python3 Scripts/verify-ios-app.py apps/inboxplus_flutter/build/ios/archive/Runner.xcarchive`

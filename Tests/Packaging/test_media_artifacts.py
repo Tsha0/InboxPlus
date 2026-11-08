@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import io
+import json
 from pathlib import Path
 import tempfile
 import subprocess
@@ -73,6 +74,31 @@ class MediaArtifactsTests(unittest.TestCase):
                 self.assertEqual((location / "fixture.tar.gz").read_bytes(), payload)
                 self.assertEqual(len(list(location.iterdir())), 1)
 
+    def test_github_api_download_still_requires_the_pinned_checksum(self):
+        payload = b"verified API archive"
+        url = "https://github.com/fixture/native/releases/download/v1/archive.zip"
+        for valid in [True, False]:
+            with self.subTest(valid=valid), tempfile.TemporaryDirectory() as directory:
+                location = Path(directory)
+                artifacts = (("archive.zip", url, hashlib.sha256(payload).hexdigest()),)
+
+                def api_download(command, **kwargs):
+                    kwargs["stdout"].write(payload if valid else b"unverified")
+                    return subprocess.CompletedProcess(command, 0)
+
+                with patch.object(media_artifacts.urllib.request, "urlopen", side_effect=urllib.error.HTTPError(url, 504, "timeout", {}, None)), \
+                        patch.object(media_artifacts.shutil, "which", return_value="gh"), \
+                        patch.object(media_artifacts.subprocess, "check_output", return_value=json.dumps({"assets": [{"id": 7, "name": "archive.zip"}]})), \
+                        patch.object(media_artifacts.subprocess, "run", side_effect=api_download), \
+                        patch.object(media_artifacts.time, "sleep"):
+                    if valid:
+                        media_artifacts.prepare(location, artifacts)
+                        self.assertEqual((location / "archive.zip").read_bytes(), payload)
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "SHA-256 verification"):
+                            media_artifacts.prepare(location, artifacts)
+                        self.assertEqual(list(location.iterdir()), [])
+
 
 class SqliteDownloadRetryTests(unittest.TestCase):
     def run_fixture(self, *, download_error, permanent=False):
@@ -105,6 +131,35 @@ class SqliteDownloadRetryTests(unittest.TestCase):
         result, attempts = self.run_fixture(download_error=True, permanent=True)
         self.assertEqual(result.returncode, 65)
         self.assertEqual(attempts, 3)
+
+    def test_cache_recovery_uses_pinned_package_hashes_and_hook_output_directory(self):
+        spec = importlib.util.spec_from_file_location("sqlite_retry", script.parent / "retry-sqlite-download.py")
+        retry = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(retry)
+        expected = "1" * 64
+        filename = "libsqlite3mc.x64.linux.so"
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            package = project / "package"
+            hashes = package / "lib/src/hook/asset_hashes.dart"
+            hashes.parent.mkdir(parents=True)
+            hashes.write_text(f"const String? releaseTag = 'sqlite3-fixture';\nconst hashes = {{'{filename}': '{expected}'}};")
+            hook = project / ".dart_tool/hooks_runner/sqlite3/fixture/input.json"
+            hook.parent.mkdir(parents=True)
+            shared = project / "shared"
+            hook.write_text(json.dumps({
+                "package_root": str(package), "out_dir_shared": str(shared),
+                "config": {"extensions": {"code_assets": {"target_os": "linux", "target_architecture": "x64"}}},
+            }))
+            with patch.object(retry.runpy, "run_path", return_value={"prepare": lambda *args: None}) as loader:
+                retry.prepare_rejected_download(filename, "0" * 64, project)
+                loader.assert_not_called()
+            calls = []
+            with patch.object(retry.runpy, "run_path", return_value={"prepare": lambda *args: calls.append(args)}):
+                retry.prepare_rejected_download(filename, expected, project)
+            self.assertEqual(calls, [(shared / ("download-" + expected[:8]), ((
+                "libsqlite3mc.so", f"https://github.com/simolus3/sqlite3.dart/releases/download/sqlite3-fixture/{filename}", expected,
+            ),))])
 
     def test_application_failure_is_not_retried(self):
         result, attempts = self.run_fixture(download_error=False)

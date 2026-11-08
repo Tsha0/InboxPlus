@@ -4,8 +4,12 @@
 import argparse
 import hashlib
 import http.client
+import json
 import os
 from pathlib import Path
+import re
+import shutil
+import subprocess
 import tempfile
 import time
 import urllib.request
@@ -75,7 +79,7 @@ def prepare(directory, artifacts=None):
             try:
                 download(directory, name, url, expected)
                 break
-            except (OSError, RuntimeError, http.client.HTTPException):
+            except (OSError, RuntimeError, http.client.HTTPException, subprocess.SubprocessError):
                 if attempt == 2:
                     raise
                 print(f"Media download did not verify; retrying {name} ({attempt + 2}/3).", flush=True)
@@ -86,17 +90,31 @@ def download(directory, name, url, expected):
     destination = directory / name
     descriptor, temporary = tempfile.mkstemp(prefix=name + ".", suffix=".tmp", dir=directory)
     try:
-        with os.fdopen(descriptor, "wb") as output:
-            with urllib.request.urlopen(url, timeout=120) as response:
-                if not response.url.startswith("https://"):
-                    raise RuntimeError("Media archive redirected away from HTTPS")
-                while True:
-                    chunk = response.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    output.write(chunk)
-        if digest(Path(temporary)) != expected:
-            raise RuntimeError("Downloaded media archive failed SHA-256 verification: " + name)
+        try:
+            with os.fdopen(descriptor, "wb") as output:
+                with urllib.request.urlopen(url, timeout=120) as response:
+                    if not response.url.startswith("https://"):
+                        raise RuntimeError("Media archive redirected away from HTTPS")
+                    shutil.copyfileobj(response, output)
+            if digest(Path(temporary)) != expected:
+                raise RuntimeError("Downloaded media archive failed SHA-256 verification: " + name)
+        except (OSError, RuntimeError, http.client.HTTPException):
+            match = re.fullmatch(r"https://github.com/([^/]+)/([^/]+)/releases/download/([^/]+)/([^/?]+)", url)
+            if match is None or shutil.which("gh") is None:
+                raise
+            owner, repository, tag, filename = match.groups()
+            release = json.loads(subprocess.check_output(
+                ["gh", "api", f"repos/{owner}/{repository}/releases/tags/{tag}"], text=True, timeout=120,
+            ))
+            asset = next(item for item in release["assets"] if item["name"] == filename)
+            with open(temporary, "wb") as output:
+                subprocess.run(
+                    ["gh", "api", "-H", "Accept: application/octet-stream",
+                     f"repos/{owner}/{repository}/releases/assets/{asset['id']}"],
+                    stdout=output, check=True, timeout=120,
+                )
+            if digest(Path(temporary)) != expected:
+                raise RuntimeError("Downloaded media archive failed SHA-256 verification: " + name)
         os.replace(temporary, destination)
     finally:
         if os.path.exists(temporary):
@@ -105,8 +123,11 @@ def download(directory, name, url, expected):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--platform", choices=("windows", "android", "ios", "macos"), required=True)
+    parser.add_argument("--platform", choices=("windows", "android", "ios", "macos", "sparkle"), required=True)
     parser.add_argument("--cache-dir", type=Path, required=True)
     arguments = parser.parse_args()
     artifacts = {"windows": ARTIFACTS, "android": ANDROID_ARTIFACTS, **APPLE_ARTIFACTS}
+    if arguments.platform == "sparkle":
+        sparkle = json.loads((Path(__file__).resolve().parents[1] / "native/updates/sparkle-artifact.json").read_text())
+        artifacts["sparkle"] = ((re.sub(r"[^a-zA-Z0-9]", "_", sparkle["url"]), sparkle["url"], sparkle["sha256"]),)
     prepare(arguments.cache_dir, artifacts[arguments.platform])
