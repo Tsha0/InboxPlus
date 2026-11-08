@@ -161,6 +161,18 @@ class SqliteDownloadRetryTests(unittest.TestCase):
                 "libsqlite3mc.so", f"https://github.com/simolus3/sqlite3.dart/releases/download/sqlite3-fixture/{filename}", expected,
             ),))])
 
+    def test_windows_executable_suffix_keeps_the_case_expected_by_dart_hooks(self):
+        spec = importlib.util.spec_from_file_location("sqlite_retry", script.parent / "retry-sqlite-download.py")
+        retry = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(retry)
+        with patch.object(retry.shutil, "which", return_value=r"C:\sdk\bin\dart.EXE"), \
+                patch.object(retry.subprocess, "Popen") as launch:
+            process = launch.return_value.__enter__.return_value
+            process.stdout = []
+            process.wait.return_value = 0
+            self.assertEqual(retry.run_command(["dart", "test"]), 0)
+            self.assertEqual(launch.call_args.args[0], [r"C:\sdk\bin\dart.exe", "test"])
+
     def test_application_failure_is_not_retried(self):
         result, attempts = self.run_fixture(download_error=False)
         self.assertEqual(result.returncode, 65)

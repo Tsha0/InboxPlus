@@ -43,7 +43,9 @@ def main():
                 connector = re.search(r"connector_(?:build|architecture_start|architecture_done)\s+.*", line)
                 if connector:
                     print(connector.group(), flush=True)
-                if "Built build/macos/" in line or re.search(r"(?:error:|Error \(|BUILD FAILED)", line):
+                if "Built build/macos/" in line or re.search(
+                    r"(?:error:|Error[: (]|BUILD FAILED|Bad state: Hash of downloaded file|Building assets for package:sqlite3 failed|Running build hooks failed)", line,
+                ):
                     print(line.rstrip(), flush=True)
             result = process.wait()
         total = time.monotonic() - started

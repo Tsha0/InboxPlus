@@ -37,6 +37,8 @@ def run_command(command):
     executable = shutil.which(command[0])
     if executable is None:
         raise FileNotFoundError(command[0])
+    if executable.lower().endswith('.exe'):
+        executable = executable[:-4] + '.exe'
     command = [executable, *command[1:]]
     for attempt in range(3):
         rejected_download = None

@@ -279,7 +279,7 @@ jobs:
         working-directory: apps/inboxplus_flutter
         run: |
           python3 ../../Scripts/verify-media-artifacts.py --platform sparkle --cache-dir "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
-          python3 ../../Scripts/time-macos-build.py
+          python3 ../../Scripts/retry-sqlite-download.py python3 ../../Scripts/time-macos-build.py
       - name: Upload macOS build timings
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

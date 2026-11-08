@@ -102,6 +102,8 @@ class MacOSBuildTimingTests(unittest.TestCase):
             flutter.write_text(
                 "#!/usr/bin/env python3\n"
                 "print('export PRIVATE_VALUE=never-publish')\n"
+                "print('Error: Running build hooks failed.')\n"
+                "print('Bad state: Hash of downloaded file libsqlite3mc.x64.macos.dylib is rejected')\n"
                 "print('Running pod install...')\n"
                 "print('executing: xcodebuild -workspace Runner -configuration Release')\n"
                 "raise SystemExit(7)\n"
@@ -115,6 +117,8 @@ class MacOSBuildTimingTests(unittest.TestCase):
             )
             self.assertEqual(process.returncode, 7, process.stderr)
             self.assertNotIn("PRIVATE_VALUE", process.stdout)
+            self.assertIn("Error: Running build hooks failed.", process.stdout)
+            self.assertIn("Hash of downloaded file libsqlite3mc.x64.macos.dylib", process.stdout)
             summary = json.loads((root / "macos-build-timings.json").read_text())
             self.assertEqual(summary["exit_code"], 7)
             self.assertEqual([item["phase"] for item in summary["events"]], ["pod_install", "xcode_build"])
