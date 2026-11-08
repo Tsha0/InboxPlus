@@ -5,9 +5,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      android_build:
+        description: Run the deferred Android build check
+        type: boolean
+        default: false
 
-# A newer push to the same branch makes the previous run's answer irrelevant, so it is cancelled
-# rather than left to finish and burn a runner.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -15,184 +18,517 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  GOTOOLCHAIN: local
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
-  test:
-    name: Build and test
-    # InboxPlus is macOS-only: AppKit, SwiftUI, CryptoKit, Keychain and the Messages database all are.
-    # There is no Linux job to add because there is nothing that would compile there.
-    runs-on: macos-latest
-    timeout-minutes: 45
-
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      base: ${{ steps.changes.outputs.base }}
+      head: ${{ steps.changes.outputs.head }}
+      code: ${{ steps.changes.outputs.code }}
+      macos: ${{ steps.changes.outputs.macos }}
+      linux: ${{ steps.changes.outputs.linux }}
+      windows: ${{ steps.changes.outputs.windows }}
+      ios: ${{ steps.changes.outputs.ios }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Record the toolchain
-        id: toolchain
-        run: |
-          swift --version
-          xcodebuild -version
-          sw_vers
-          key=$({ swift --version; xcodebuild -version; sw_vers -productVersion; } | shasum -a 256 | cut -d' ' -f1)
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      # Keep the checksum-verified Matrix SDK download across runs.
-      - name: Cache Swift package artifacts
-        uses: actions/cache@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
+          fetch-depth: 0
+      - name: Identify changed inputs
+        id: changes
+        run: python3 Scripts/ci-changes.py
 
-      # Exact content keys allow reuse despite fresh checkout timestamps. Changes to sources,
-      # package pins, workflow build flags or the toolchain always build again; tests always run.
-      - name: Cache test build
-        id: test-build
-        uses: actions/cache@v4
+  lint:
+    name: Lint
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          path: .build
-          key: swift-test-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', '.github/workflows/ci.yml', 'Sources/**', 'Tests/**') }}
-
-      - name: Resolve dependencies
-        run: swift package resolve
-
-      - name: Build
-        if: steps.test-build.outputs.cache-hit != 'true'
-        run: swift build --build-tests
-
-      # The live-runtime and live-bridge tests are opt-in behind INBOXPLUS_RUNTIME_PYTHON and are
-      # deliberately NOT enabled here: they start a real Synapse and download real bridge binaries,
-      # which makes a CI failure a report about the network rather than about the change.
-      - name: Test
-        # Native UI tests share NSApplication and windows, so they must not overlap.
+          fetch-depth: 0
+      - name: Check whitespace in committed changes
+        env:
+          BASE: ${{ needs.changes.outputs.base }}
+          HEAD: ${{ needs.changes.outputs.head }}
         run: |
-          swift test --skip-build --skip InboxPlusUITests
-          swift test --skip-build --filter InboxPlusUITests --no-parallel
-
-      - name: Verify update packaging and feed validation
+          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]]; then
+            git diff --check "$BASE" "$HEAD"
+          else
+            git show --format= --check "$HEAD"
+          fi
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        if: needs.changes.outputs.code == 'true'
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - name: Verify formatting and storage analysis
+        if: needs.changes.outputs.code == 'true'
+        working-directory: packages/inboxplus_storage
         run: |
-          python3 -m unittest discover -s Tests/Packaging -v
-          bash Tests/Packaging/verify-signed-feed.sh
-          bash Tests/Packaging/verify-self-signed-identity.sh
-          bash -n Scripts/embed-sparkle.sh Scripts/generate-update-feed.sh Scripts/package-release.sh Scripts/build-app.sh Scripts/create-signing-certificate.sh
-
-      - name: Check for whitespace damage
-        run: git diff --check
+          dart pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test
+          dart analyze
+      - name: Verify formatting and application analysis
+        if: needs.changes.outputs.code == 'true'
+        working-directory: apps/inboxplus_flutter
+        run: |
+          flutter pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test integration_test
+          flutter analyze
 
   generated-files:
-    name: Generated files are current
-    # Both of these are produced by a script from a pinned source. A stale one is invisible in
-    # review and wrong in the product, so the check is that regenerating changes nothing.
+    name: Generated files / Linux
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Resolve locked dependencies
+        run: |
+          (cd packages/inboxplus_storage && dart pub get --enforce-lockfile)
+          (cd apps/inboxplus_flutter && flutter pub get --enforce-lockfile)
+      - name: Verify generated assets and inventory
+        run: |
+          python3 -m pip install Pillow==10.4.0
+          python3 Scripts/generate-platform-icons.py --check
+          python3 Scripts/generate-flutter-glyphs.py --check
+          python3 Scripts/generate-sbom.py
+          go -C native/connectors mod download
+          python3 Scripts/generate-third-party-notices.py
+      - name: Verify generated Drift source
+        working-directory: packages/inboxplus_storage
+        run: dart run build_runner build --delete-conflicting-outputs
+      - name: Fail if generated files drifted
+        run: git diff --exit-code
+
+  generated-macos:
+    name: Generated files / macOS
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
     runs-on: macos-latest
     timeout-minutes: 30
-
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: |
+          swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns
+          git diff --exit-code -- Resources/AppIcon.icns
 
-      - name: Cache Swift package artifacts
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
-
-      - name: Regenerate the brand marks
-        run: swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/InboxPlusUI/PlatformGlyphPaths.swift
-
-      - name: Regenerate the app icon
-        run: swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns
-
-      - name: Regenerate the bill of materials
-        run: swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json
-
-      - name: Fail if anything drifted
-        run: |
-          if ! git diff --quiet; then
-            echo "::error::A generated file is out of date. Regenerate and commit:"
-            echo "  swift Scripts/make-platform-glyphs.swift Scripts/brand-icons Sources/InboxPlusUI/PlatformGlyphPaths.swift"
-            echo "  swift Scripts/make-icon.swift docs/assets/inboxplus-logo.png Resources/AppIcon.icns"
-            echo "  swift run InboxPlusRuntimeCLI sbom --output docs/sbom.cdx.json"
-            git diff --stat
-            exit 1
-          fi
-          echo "Generated files match their sources."
-
-  package:
-    name: Package the app
-    # Proves the bundle still assembles and launches its own CLI. This is NOT a release: the build
-    # is ad-hoc signed, so its identity changes every build. Releases use Scripts/package-release.sh.
+  messages:
+    name: Messages adapter
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
     runs-on: macos-latest
-    timeout-minutes: 45
-    needs: test
-
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: |
+          swift test --package-path native/imessage
 
-      - name: Cache Swift package artifacts
-        uses: actions/cache@v4
+  updater:
+    name: Updater
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
+          python-version: '3.12'
+      - name: Prepare verified updater artifact
+        run: python3 Scripts/verify-media-artifacts.py --platform sparkle --cache-dir "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
+      - run: |
+          swift test --package-path native/updates --force-resolved-versions
 
-      - name: Record the toolchain
-        id: toolchain
+  packaging-linux:
+    name: Packaging checks / Linux
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: python3 -m unittest discover -s Tests/Packaging -v
+
+  packaging-windows:
+    name: Packaging checks / Windows
+    needs: changes
+    if: needs.changes.outputs.windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s Tests/Packaging -p test_flutter_desktop.py -v
+
+  packaging-macos:
+    name: Packaging checks / macOS
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - run: python3 -m unittest discover -s Tests/Packaging -p test_icons.py -v
+
+  macos:
+    name: Platform tests and builds / macOS
+    needs: [changes, lint, generated-files, packaging-linux, messages, updater, generated-macos, packaging-macos]
+    if: >-
+      ${{ !cancelled() && needs.changes.outputs.macos == 'true' &&
+      needs.lint.result == 'success' &&
+      needs.generated-files.result == 'success' &&
+      needs.packaging-linux.result == 'success' &&
+      needs.messages.result == 'success' &&
+      needs.updater.result == 'success' &&
+      needs.generated-macos.result == 'success' &&
+      needs.packaging-macos.result == 'success' }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Identify Go cache toolchain and paths
+        id: go-cache
         run: |
-          swift --version
-          xcodebuild -version
-          sw_vers
-          key=$({ swift --version; xcodebuild -version; sw_vers -productVersion; } | shasum -a 256 | cut -d' ' -f1)
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Record runtime build tools
-        id: runtime-tools
-        run: |
-          cmake --version
-          rustc --version
-          cargo --version
-          key=$({ cmake --version; rustc --version; cargo --version; } | shasum -a 256 | cut -d' ' -f1)
-          echo "key=$key" >> "$GITHUB_OUTPUT"
-
-      - name: Cache release build
-        id: release-build
-        uses: actions/cache@v4
+          echo "INBOXPLUS_CONNECTORS_BUILD_CACHE=$RUNNER_TEMP/inboxplus-connectors" >> "$GITHUB_ENV"
+          echo "modules=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          toolchain="$( { go version; xcodebuild -version; xcrun --sdk macosx --show-sdk-build-version; clang --version; } | shasum -a 256 | cut -d ' ' -f 1)"
+          echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
+      - name: Cache verified Go modules
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: .build
-          key: swift-release-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ hashFiles('Package.swift', 'Package.resolved', '.github/workflows/ci.yml', 'Scripts/build-app.sh', 'Sources/**') }}
-
-      # Reuse the pinned Python/Synapse environment, including the expensive Rust extension.
-      # No fallback: changes to pins, preparation, verification or native tools require a rebuild.
-      # prepare-bundled-runtime.sh rechecks the inventory and portability on every cache hit.
-      - name: Cache bundled Python runtime
-        uses: actions/cache@v4
+          path: ${{ steps.go-cache.outputs.modules }}
+          key: go-modules-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('native/connectors/go.sum') }}
+      - name: Cache Go compilation
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
         with:
-          path: build/runtime-cache
-          key: bundled-python-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.key }}-${{ steps.runtime-tools.outputs.key }}-${{ hashFiles('Runtime/Synapse/**', 'Scripts/prepare-bundled-runtime.sh', 'Scripts/verify-bundled-python.py') }}
-
-      - name: Build the app bundle
+          path: ${{ steps.go-cache.outputs.build }}
+          key: go-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-cache.outputs.toolchain }}-${{ hashFiles('native/connectors/**/*.go', 'native/connectors/**/*.c', 'native/connectors/**/*.h', 'native/connectors/go.mod', 'native/connectors/go.sum', 'native/connectors/build.sh', 'Scripts/build-connectors-cache.py') }}
+          restore-keys: |
+            go-build-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-cache.outputs.toolchain }}-
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Verify connector modules and behavior
+        working-directory: native/connectors
         env:
-          INBOXPLUS_SKIP_SWIFT_BUILD: ${{ steps.release-build.outputs.cache-hit == 'true' && '1' || '0' }}
-        run: Scripts/build-app.sh
-
-      - name: Verify the bundle
+          CGO_ENABLED: '1'
+          GOFLAGS: -mod=readonly
         run: |
-          codesign --verify --strict build/Inbox+.app
-          # The CLI ships inside the bundle and is how a profile is prepared; if it cannot run,
-          # the bundle is useless even though it assembled.
-          build/Inbox+.app/Contents/MacOS/InboxPlusRuntimeCLI sbom > /dev/null
-          # Showing a video aborts the app unless AVKit itself is linked, not just its SwiftUI overlay.
-          otool -L build/Inbox+.app/Contents/MacOS/InboxPlus | grep -q '/AVKit.framework/'
-          echo "Bundle assembled, its CLI runs and it links AVKit."
-
-      - name: Upload the unsigned bundle
-        uses: actions/upload-artifact@v4
+          go mod verify
+          time go test ./...
+          time bash build.sh host
+          case "$RUNNER_OS" in
+            macOS) library="$(pwd)/build/libinboxplus_connectors.dylib" ;;
+            Linux) library="$(pwd)/build/libinboxplus_connectors.so" ;;
+            Windows) library="$(cygpath -w "$(pwd)/build/inboxplus_connectors.dll")" ;;
+          esac
+          echo "INBOXPLUS_CONNECTORS_LIBRARY=$library" >> "$GITHUB_ENV"
+      - name: Verify encrypted storage
+        working-directory: packages/inboxplus_storage
+        run: |
+          dart pub get --enforce-lockfile
+          python3 ../../Scripts/retry-sqlite-download.py dart test
+      - name: Verify Flutter application
+        working-directory: apps/inboxplus_flutter
+        run: |
+          flutter pub get --enforce-lockfile
+          python3 ../../Scripts/retry-sqlite-download.py flutter test
+      - name: Build native desktop application
+        working-directory: apps/inboxplus_flutter
+        run: |
+          python3 ../../Scripts/verify-media-artifacts.py --platform sparkle --cache-dir "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
+          python3 ../../Scripts/retry-sqlite-download.py python3 ../../Scripts/time-macos-build.py
+      - name: Upload macOS build timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: InboxPlus-unsigned-${{ github.sha }}
-          path: build/Inbox+.app
-          retention-days: 14
+          name: macos-build-timings
+          path: ${{ runner.temp }}/macos-build-timings.json
+          if-no-files-found: ignore
+      - name: Package desktop development build
+        run: python3 Scripts/package-flutter-desktop.py --target macos
+      - name: Upload desktop development archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: InboxPlus-macos-development
+          path: |
+            build/flutter-desktop/*.zip
+            build/flutter-desktop/*.tar.gz
+            build/flutter-desktop/*.sha256
           if-no-files-found: error
+          compression-level: 0
+
+  windows:
+    name: Platform tests and builds / Windows
+    needs: [changes, lint, generated-files, packaging-linux, packaging-windows]
+    if: >-
+      ${{ !cancelled() && needs.changes.outputs.windows == 'true' &&
+      needs.lint.result == 'success' &&
+      needs.generated-files.result == 'success' &&
+      needs.packaging-linux.result == 'success' &&
+      needs.packaging-windows.result == 'success' }}
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: native/connectors/go.sum
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Locate Windows Cgo compiler
+        shell: pwsh
+        run: |
+          $compiler = @('C:\mingw64\bin', 'C:\msys64\mingw64\bin') | Where-Object { Test-Path "$_\gcc.exe" } | Select-Object -First 1
+          if (-not $compiler) { throw 'The Windows runner needs a MinGW GCC compiler for Go/cgo.' }
+          $compiler | Out-File -FilePath $env:GITHUB_PATH -Append
+          'CC=gcc' | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Verify connector modules and behavior
+        working-directory: native/connectors
+        env:
+          CGO_ENABLED: '1'
+          GOFLAGS: -mod=readonly
+        run: |
+          go mod verify
+          time go test ./...
+          time bash build.sh host
+          case "$RUNNER_OS" in
+            macOS) library="$(pwd)/build/libinboxplus_connectors.dylib" ;;
+            Linux) library="$(pwd)/build/libinboxplus_connectors.so" ;;
+            Windows) library="$(cygpath -w "$(pwd)/build/inboxplus_connectors.dll")" ;;
+          esac
+          echo "INBOXPLUS_CONNECTORS_LIBRARY=$library" >> "$GITHUB_ENV"
+      - name: Verify encrypted storage
+        working-directory: packages/inboxplus_storage
+        run: |
+          dart pub get --enforce-lockfile
+          python3 ../../Scripts/retry-sqlite-download.py dart test
+      - name: Verify Flutter application
+        working-directory: apps/inboxplus_flutter
+        run: |
+          flutter pub get --enforce-lockfile
+          python3 ../../Scripts/retry-sqlite-download.py flutter test
+      - name: Build native desktop application
+        working-directory: apps/inboxplus_flutter
+        run: time flutter build windows --release
+      - name: Package desktop development build
+        run: python3 Scripts/package-flutter-desktop.py --target windows
+      - name: Upload desktop development archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: InboxPlus-windows-development
+          path: |
+            build/flutter-desktop/*.zip
+            build/flutter-desktop/*.tar.gz
+            build/flutter-desktop/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+
+  linux:
+    name: Platform tests and builds / Linux
+    needs: [changes, lint, generated-files, packaging-linux]
+    if: >-
+      ${{ !cancelled() && needs.changes.outputs.linux == 'true' &&
+      needs.lint.result == 'success' &&
+      needs.generated-files.result == 'success' &&
+      needs.packaging-linux.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: native/connectors/go.sum
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libmpv-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+      - name: Verify connector modules and behavior
+        working-directory: native/connectors
+        env:
+          CGO_ENABLED: '1'
+          GOFLAGS: -mod=readonly
+        run: |
+          go mod verify
+          time go test ./...
+          time bash build.sh host
+          case "$RUNNER_OS" in
+            macOS) library="$(pwd)/build/libinboxplus_connectors.dylib" ;;
+            Linux) library="$(pwd)/build/libinboxplus_connectors.so" ;;
+            Windows) library="$(cygpath -w "$(pwd)/build/inboxplus_connectors.dll")" ;;
+          esac
+          echo "INBOXPLUS_CONNECTORS_LIBRARY=$library" >> "$GITHUB_ENV"
+      - name: Verify encrypted storage
+        working-directory: packages/inboxplus_storage
+        run: |
+          dart pub get --enforce-lockfile
+          python3 ../../Scripts/retry-sqlite-download.py dart test
+      - name: Verify Flutter application
+        working-directory: apps/inboxplus_flutter
+        run: |
+          flutter pub get --enforce-lockfile
+          python3 ../../Scripts/retry-sqlite-download.py flutter test
+      - name: Build native desktop application
+        working-directory: apps/inboxplus_flutter
+        run: time flutter build linux --release
+      - name: Package desktop development build
+        run: python3 Scripts/package-flutter-desktop.py --target linux
+      - name: Upload desktop development archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: InboxPlus-linux-development
+          path: |
+            build/flutter-desktop/*.zip
+            build/flutter-desktop/*.tar.gz
+            build/flutter-desktop/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+
+  android:
+    name: Platform tests and builds / Android
+    needs: [changes, lint, generated-files, packaging-linux]
+    if: >-
+      ${{ !cancelled() && needs.lint.result == 'success' &&
+          needs.generated-files.result == 'success' && needs.packaging-linux.result == 'success' &&
+          github.event_name == 'workflow_dispatch' && inputs.android_build }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: native/connectors/go.sum
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - name: Install pinned Android NDK
+        run: sdkmanager 'ndk;28.2.13676358'
+      - name: Resolve locked dependencies
+        working-directory: apps/inboxplus_flutter
+        run: flutter pub get --enforce-lockfile
+      - name: Build Android application
+        working-directory: apps/inboxplus_flutter
+        run: flutter build apk --release
+
+  ios:
+    name: Platform tests and builds / iOS
+    needs: [changes, lint, generated-files, packaging-linux]
+    if: >-
+      ${{ !cancelled() &&
+      needs.lint.result == 'success' &&
+      needs.generated-files.result == 'success' &&
+      needs.packaging-linux.result == 'success' &&
+      needs.changes.outputs.ios == 'true' }}
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: native/connectors/go.sum
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Record the Xcode version
+        run: xcodebuild -version
+      - name: Resolve locked dependencies
+        working-directory: apps/inboxplus_flutter
+        run: flutter pub get --enforce-lockfile
+      # Archiving is what strips symbols for the App Store, so build the archive
+      # TestFlight would receive rather than a plain device build.
+      - name: Build unsigned App Store archive
+        working-directory: apps/inboxplus_flutter
+        run: python3 ../../Scripts/retry-sqlite-download.py flutter build ipa --release --no-codesign
+      - name: Verify the archived application
+        run: python3 Scripts/verify-ios-app.py apps/inboxplus_flutter/build/ios/archive/Runner.xcarchive
+
+  passed:
+    name: CI passed
+    needs: [changes, lint, generated-files, generated-macos, messages, updater, packaging-linux, packaging-windows, packaging-macos, macos, windows, linux, ios, android]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Require selected jobs and intentional skips
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+          ANDROID_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.android_build }}
+        run: python3 Scripts/check-ci-results.py

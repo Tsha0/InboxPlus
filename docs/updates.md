@@ -1,134 +1,118 @@
-# App updates
+# macOS updates
 
-Inbox+ uses Sparkle 2.10.0. The app checks a stable HTTPS appcast, downloads a signed ZIP from a
-specific GitHub Release, verifies it, and replaces only the app bundle. A reminder appears above
-Settings in the rail as soon as an update is found. Clicking it opens Sparkle's standard update UI.
-Dismiss keeps the reminder; Skip hides it. Manual checks are in the application menu.
+Production Flutter macOS releases use Sparkle 2.10.0. It checks the existing stable HTTPS feed every
+four hours and can download updates automatically. **Inbox+ → Check for Updates…** opens Sparkle's
+standard update UI. Installation on quit and explicit update restarts both use the app's termination
+gate: flush drafts, confirm closing with unfinished work, wait for connector operations and shutdown,
+and close encrypted storage. A failed shutdown cancels termination; no writer is force-killed.
+Ordinary development and preview builds do not enable updates.
 
-Release builds enable checks and downloads every four hours. Downloads can install on normal quit.
-The termination gate covers explicit update restarts and installation on quit: it refuses unsent
-drafts, staged attachments, pending sends and setup in progress, disables messaging controls during
-shutdown, and waits up to 30 seconds for the app-owned CLI to stop. A timeout cancels termination
-instead of force-killing a database writer. Separately started runtimes remain under their owner's
-control.
+## Upgrading from 0.8.5
 
-## One-time release setup
+A Sparkle-enabled 0.8.5 installation can receive the Flutter app directly. Users do not need to
+manually download or reinstall it. The first transition downloads a full signed ZIP; new delta
+patches are disabled. Older published feed entries and delta URLs remain intact.
 
-1. Create the release signing certificate. Every release must be signed with the same one: macOS
-   remembers Full Disk Access and Automation grants by it, so a release signed with another
-   certificate makes every user grant access again. Preserve the bundle identifier
-   `com.inboxplus.app`, profile paths, and Keychain identifiers between releases too.
+The shipped 0.8.5 archive was inspected without running it, and its archive signature was verified.
+Its public compatibility contract is recorded in `native/updates/legacy-release.json`: build 111,
+`com.inboxplus.app`, the existing GitHub Pages feed, Sparkle public key and certificate-based signing
+requirement. The packager refuses a different feed/key, a non-increasing build or a signature that
+does not satisfy that requirement. It stages the production bundle as `Inbox+.app`, independently
+of the development app's `Inbox+v2` name. Profile paths and Keychain identifiers are unchanged.
 
-   The free route is a self-signed certificate:
+Application replacement does not migrate every part of the old runtime. The current Flutter
+migration imports saved contacts and conversation choices, requires reconnecting accounts, and
+leaves previous message history and staged files in the original profile. Every generated release
+includes this warning in its embedded update notes. Finish pending work in 0.8.5 before updating.
+A failed migration must keep the old data and must never silently open an empty profile.
 
-   ```bash
-   Scripts/create-signing-certificate.sh .signing/inboxplus-release-signing.p12
-   ```
+## Signing setup
 
-   It adds **Inbox+ Release Signing** to the login Keychain and writes a password-protected backup.
-   `.signing/` is ignored by git, but it is on the same disk as the Keychain, so also copy the
-   backup and its password somewhere offline; without them, no future release can be signed as the
-   same app. The first time a release is signed, macOS asks whether `codesign` may use the key;
-   choose **Always Allow**.
+Keep the original release certificate/private key and the original Sparkle private signing key.
+A newly generated certificate or update key will not satisfy the existing compatibility checks.
+Never commit private keys or certificate backups.
 
-   Self-signed releases are not notarized. On first launch of a downloaded copy, macOS blocks
-   Inbox+ until the user chooses **Open Anyway** in System Settings → Privacy & Security. Updates
-   installed by Sparkle after that open normally.
+The original release used a self-signed certificate. Keep `INBOXPLUS_RELEASE_SIGNING=self-signed`
+for this restoration. Those releases are not notarized: new users may need **Open Anyway** in
+System Settings, while the existing Sparkle update path must be tested separately. The packager
+also contains a Developer ID/notarization path, but changing from the original certificate requires
+a separately reviewed identity transition and an updated compatibility contract; toggling the
+signing mode alone does not bypass the existing signing requirement.
 
-   With a paid Apple Developer Program membership, use a Developer ID Application certificate and
-   configure notarization as described in `Scripts/package-release.sh` instead. Moving from a
-   self-signed certificate to Developer ID later changes the app's identity once.
-2. Run `swift package resolve` and then:
+For GitHub Actions, configure the `macos-release` environment:
 
-   ```bash
-   .build/artifacts/sparkle/Sparkle/bin/generate_keys
-   ```
+| Setting | Kind | Value |
+| --- | --- | --- |
+| `INBOXPLUS_SIGNING_IDENTITY` | Variable | Original release certificate's name |
+| `INBOXPLUS_RELEASE_SIGNING` | Variable | `self-signed` (default) |
+| `MACOS_SIGNING_P12_BASE64` | Secret | Base64 of the original certificate/private-key P12 backup |
+| `MACOS_SIGNING_P12_PASSWORD` | Secret | P12 password |
+| `INBOXPLUS_SPARKLE_PRIVATE_KEY` | Secret | Original Sparkle key exported with `generate_keys -x` |
 
-   Sparkle stores the private key in the login Keychain and prints the public key. Keep a secure
-   backup of the private key using the tool's `-x` option; never commit it. The public key is safe
-   to distribute. The package scripts intentionally do not generate a production key for you.
-3. Enable GitHub Pages for this repository, using **GitHub Actions** as its source. The default feed
-   is `https://tsha0.github.io/InboxPlus/appcast.xml`. For another host, set
-   `INBOXPLUS_UPDATE_FEED_URL` when building each release and publish the feed at that address.
+Credentials are written with mode `0600` in a `0700` temporary directory and imported into an
+isolated temporary Keychain. Cleanup runs even after failure. The public update key comes from the
+committed compatibility contract; it is not a secret. Developer ID mode additionally requires
+`MACOS_NOTARY_APPLE_ID` and `MACOS_NOTARY_PASSWORD` secrets and the `MACOS_TEAM_ID` variable.
 
-## Package a release
+## Build a release
 
-Increment the app's display version in `Sources/InboxPlusCore/InboxPlusVersion.swift`. Choose a build
-number greater than every shipped build; it is separate from the display version.
+1. Raise `version:` in `apps/inboxplus_flutter/pubspec.yaml`, including a build number greater than
+   every published build. Regenerate the SBOM/notices and run the relevant checks.
+2. After the change is merged, push a matching version tag (for example `0.9.1+115` uses `v0.9.1`).
+   Tags also trigger the separate iOS TestFlight workflow.
+3. Run **macOS release** manually with that tag. The workflow uses Flutter 3.47.9, Go 1.27.3,
+   Python 3.12 and Xcode 27.2. It checks the tag/version, runs tests, downloads the current feed,
+   builds the native app and signs all nested code before the outer bundle.
+4. It verifies runtime files/architectures and signatures, packages the exact final bundle,
+   generates the appcast, cryptographically verifies its archive signature against the embedded
+   public key, and attaches ZIP, SBOM, appcast and checksums to a draft GitHub Release. Existing
+   assets are never overwritten. A published release cannot be reused as the output target.
+5. Perform the installation tests below, review the artifacts and publish the stable release.
+   **Publish update feed** then validates and deploys its appcast to the existing GitHub Pages URL.
+   It refuses prereleases, drafts, rollback to an older build, or changes/removal of existing feed
+   entries. Assets must already exist before the feed becomes discoverable. GitHub Pages must use
+   **GitHub Actions** as its publishing source.
+
+If the release was published by automation that suppresses subsequent workflow events, manually
+run **Publish update feed** with its published stable tag. Do not enable stable publication until
+the migration behavior and two-version installation test have been reviewed.
+
+Local packaging uses the same script, with the original certificate available in Keychain:
 
 ```bash
-export INBOXPLUS_RELEASE_SIGNING='self-signed'
+export INBOXPLUS_RELEASE_SIGNING=self-signed
 export INBOXPLUS_SIGNING_IDENTITY='Inbox+ Release Signing'
-export INBOXPLUS_UPDATE_PUBLIC_KEY='PUBLIC_KEY_FROM_GENERATE_KEYS'
-export INBOXPLUS_BUILD_NUMBER='106'
-export INBOXPLUS_RELEASE_TAG='v0.6.0'
-# Optional: an HTML fragment containing this release's notes.
-export INBOXPLUS_RELEASE_NOTES_FILE='/absolute/path/to/release-notes.html'
-Scripts/package-release.sh
+curl --fail --location --proto '=https' --proto-redir '=https' \
+  https://tsha0.github.io/InboxPlus/appcast.xml --output build/previous-appcast.xml
+python3 Scripts/package-macos-release.py --previous-feed build/previous-appcast.xml
 ```
 
-For Developer ID, set `INBOXPLUS_RELEASE_SIGNING='developer-id'`, use the Developer ID certificate's
-name as the identity, and also set `INBOXPLUS_TEAM_ID` and `INBOXPLUS_NOTARY_PROFILE`.
+Use Python 3.12 and the pinned Flutter/Go toolchains on `PATH`; create `build` first if absent.
+Sparkle reads the private key from its existing Keychain entry, or from
+`INBOXPLUS_SPARKLE_PRIVATE_KEY_FILE` pointing to a protected exported key file. Optional
+`INBOXPLUS_RELEASE_NOTES_FILE` supplies an HTML fragment; the migration notice is appended.
+`--bundle` selects an already-built release app, and `--output` selects a fresh artifact directory.
+For Developer ID packaging, `INBOXPLUS_NOTARY_PROFILE` names a configured `notarytool` profile.
 
-Use your actual version, build number, identifiers and key. The script tests, builds, embeds and
-signs Sparkle's helpers, signs the app/runtime, and refuses a signature whose identity is not tied
-to a certificate. Developer ID releases are then hardened, notarized and stapled; self-signed
-releases are not hardened, because hardened library validation needs an Apple Team ID and would
-refuse the bundled runtime's native modules. It generates a final ZIP, then uses Sparkle's
-`generate_appcast` to sign that exact ZIP. The private key comes from Keychain, or from
-`INBOXPLUS_SPARKLE_PRIVATE_KEY_FILE` for a controlled CI release environment. The public key embedded
-in the app must match the signing key. The archive URL includes the release tag and versioned asset
-name; do not replace a published ZIP with different bytes.
+The local packager never uploads artifacts or publishes the feed. Development archives from
+`Scripts/package-flutter-desktop.py` remain separate and cannot serve as Sparkle release archives.
 
-Reuse the release directory's existing `appcast.xml` on subsequent releases to preserve compatible
-older items, and keep earlier release ZIPs there. Each new release gets a delta update from up to
-three earlier builds whose ZIPs are present: a small patch, so an app on 0.5.1 downloads tens of KB
-for a version-only change instead of the full 125 MB ZIP. Sparkle falls back to the full ZIP if a
-patch cannot be applied. On another build machine, first download the currently served feed and
-the most recent release ZIPs into that directory. Earlier feed entries are kept exactly as
-published (`Scripts/finalize-update-feed.py`). Release notes are embedded in the feed.
+## Verification before publishing
 
-Upload the files the script lists — the ZIP, its `InboxPlus-<build>-<earlier>.delta` patches,
-`appcast.xml`, SBOM and checksums — to a draft GitHub Release with the matching tag.
-Review its artifacts and publish it. The **Publish update feed** workflow downloads the appcast
-asset, validates its versioned GitHub download URLs, signature metadata and build numbers, and
-deploys it to Pages. Prereleases do not automatically deploy to the stable feed. The workflow can
-also be dispatched for a specific published tag.
+Run the packaging suite, `swift test --package-path native/updates --force-resolved-versions`,
+Flutter analysis/tests, and a native macOS release build. Verify that the extracted production ZIP
+has an `Inbox+.app` at its root, keeps framework symlinks and executable permissions, and passes
+strict code-signature and runtime checks. A Developer ID release must also pass notarization,
+stapling and Gatekeeper assessment.
 
-Publishing a release without an `appcast.xml` asset fails the feed workflow rather than replacing
-the live feed with an empty file. The feed is made discoverable after the release assets exist.
-The workflow validates feed structure; clients perform cryptographic archive verification.
+On a separate Mac/user account with isolated test profiles, test an actual installed 0.8.5 → Flutter
+update and a Flutter → Flutter update. Use a controlled feed with the original trust credentials;
+do not publish a production feed merely to test installation. Confirm discovery, compatible
+macOS/architecture filtering, download, restart, app path, permission grants and profile access.
+Verify reconnect/import messaging, old data retention, and that a migration failure keeps data.
+Test postponing/cancelling a restart with drafts, staged attachments and pending sends, restoring
+them after upgrade, interrupted downloads and invalid signatures. No live account is needed.
 
-## User data and compatibility
-
-Sparkle replaces `/Applications/Inbox+.app`; it does not delete or reset Application Support,
-Messages' database, preferences, or Keychain entries. No runtime or database versions are changed
-by this feature. This first updater release supports updates using the existing runtime contract.
-Before shipping a future release that changes that contract, implement and verify its profile/data
-migrations; do not assume app replacement upgrades the Python/runtime copy already in a profile.
-Never recover from a failed migration by silently creating an empty profile.
-
-An installed version without Sparkle needs one manual installation of the first signed
-Sparkle-enabled release. A first-launch Gatekeeper check (and notarization, for Developer ID) and a
-two-version update test on a separate Mac/user account must pass before publishing the first
-production feed. Those checks require the production signing certificate and Sparkle key. The
-update test should confirm Full Disk Access is still granted after the update installs.
-
-## Development and verification
-
-`Scripts/build-app.sh` embeds Sparkle but disables update checks unless explicitly opted in with
-`INBOXPLUS_ENABLE_UPDATES=1`, a valid public key and build number. Running an unbundled executable
-does not initialize Sparkle. The Debug-only `INBOXPLUS_UPDATE_PREVIEW_VERSION=0.6.0` environment
-variable previews the rail button without contacting a feed or installing an update.
-
-```bash
-swift test
-python3 -m unittest discover -s Tests/Packaging -v
-bash Tests/Packaging/verify-self-signed-identity.sh
-bash -n Scripts/embed-sparkle.sh Scripts/generate-update-feed.sh Scripts/package-release.sh
-Scripts/build-app.sh
-codesign --verify --deep --strict 'build/Inbox+.app'
-```
-
-Release builds reject missing or malformed public keys, non-HTTPS feed URLs, and missing/nonpositive
-build numbers. The Sparkle artifact is checksum-verified by SwiftPM and listed in the generated SBOM.
+A successful development build or fixture suite does not establish production signing, Gatekeeper
+acceptance or a working end-to-end update. Those checks need the original signing credentials and
+the installed-release test above.

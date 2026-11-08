@@ -1,0 +1,2 @@
+# Preserve the hash-verified upstream license verbatim.
+native/updates/LICENSE.sparkle whitespace=-blank-at-eol

@@ -47,13 +47,13 @@ directory is `.` (also specified in `vercel.json`).
 Demo replies live only in memory in the current tab. Nothing is sent or persisted.
 The preview is an illustration of the native app, not a running messaging client.
 Keep supported networks, requirements, and early-release notes aligned with the main
-repository README. Download links point to GitHub’s latest release page, so they
-do not need updating for each version.
+repository README. Build links point to the current Flutter setup instructions; change them to
+platform downloads only when those releases are available.
 
 The first screen starts in Classic monochrome. Scrolling blends through Grape Soda,
 Bubblegum, Mint Chip, and Sunset on one continuous background. The preview follows
 that palette until a visitor chooses a swatch. The theme values match
-`Sources/InboxPlusFeatures/AppTheme.swift`; update them together if the app changes.
+`apps/inboxplus_flutter/lib/ui/inbox_ui_controller.dart`; update them together if the app changes.
 Surprise me cycles through all ten app presets, including Classic.
 
 The opening animation assembles four strokes into the Inbox+ asterisk, then docks

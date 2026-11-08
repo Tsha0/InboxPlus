@@ -13,7 +13,7 @@ Describe the affected screen or workflow and how the problem affects the user.
 ## Environment
 
 - App version/build (and commit if known):
-- macOS version:
+- Operating system/version and device:
 - Fixtures or live profile (no account identifiers):
 
 ## Reproduction

@@ -1,0 +1,131 @@
+name: macOS release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to package as a draft macOS release
+        required: true
+        type: string
+
+concurrency:
+  group: macos-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-26
+    timeout-minutes: 90
+    environment: macos-release
+    permissions:
+      contents: write
+    env:
+      GOTOOLCHAIN: local
+      GH_TOKEN: ${{ github.token }}
+      INBOXPLUS_RELEASE_TAG: ${{ inputs.tag }}
+      INBOXPLUS_RELEASE_SIGNING: ${{ vars.INBOXPLUS_RELEASE_SIGNING || 'self-signed' }}
+      INBOXPLUS_SIGNING_IDENTITY: ${{ vars.INBOXPLUS_SIGNING_IDENTITY }}
+      INBOXPLUS_NOTARY_PROFILE: inboxplus-ci
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.tag }}
+      - name: Select the release Xcode toolchain
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_27.2.app/Contents/Developer
+          xcodebuild -version
+      - name: Require a matching version tag
+        run: |
+          git fetch origin "refs/tags/$INBOXPLUS_RELEASE_TAG:refs/tags/$INBOXPLUS_RELEASE_TAG"
+          git show-ref --verify "refs/tags/$INBOXPLUS_RELEASE_TAG"
+          version="$(sed -n 's/^version: *\([^+]*\)+.*$/\1/p' apps/inboxplus_flutter/pubspec.yaml)"
+          test "$INBOXPLUS_RELEASE_TAG" = "v$version"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: native/connectors/go.sum
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Prepare verified updater artifact
+        run: python3 Scripts/verify-media-artifacts.py --platform sparkle --cache-dir "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
+      - name: Verify packaging and updater
+        run: |
+          python3 -m unittest discover -s Tests/Packaging -v
+          swift test --package-path native/updates --force-resolved-versions
+      - name: Verify the Flutter application
+        working-directory: apps/inboxplus_flutter
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter analyze
+          python3 ../../Scripts/retry-sqlite-download.py flutter test
+      - name: Download the currently published feed
+        run: |
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            https://tsha0.github.io/InboxPlus/appcast.xml --output "$RUNNER_TEMP/previous-appcast.xml"
+      - name: Prepare isolated signing credentials
+        env:
+          SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12_BASE64 }}
+          SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_P12_PASSWORD }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.INBOXPLUS_SPARKLE_PRIVATE_KEY }}
+          NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+          TEAM_ID: ${{ vars.MACOS_TEAM_ID }}
+        run: |
+          credentials="$RUNNER_TEMP/inboxplus-signing"
+          mkdir -m 700 "$credentials"
+          export CREDENTIALS_DIR="$credentials"
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          root = Path(os.environ['CREDENTIALS_DIR'])
+          for name, data in (
+              ('certificate.p12', base64.b64decode(os.environ['SIGNING_P12'], validate=True)),
+              ('sparkle.key', os.environ['SPARKLE_PRIVATE_KEY'].encode()),
+          ):
+              if not data:
+                  raise ValueError('Missing release signing credential')
+              with os.fdopen(os.open(root / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as stream:
+                  stream.write(data)
+          PY
+          keychain="$credentials/release.keychain-db"
+          password="$(openssl rand -hex 32)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 7200 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$credentials/certificate.p12" -P "$SIGNING_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+          echo "INBOXPLUS_SPARKLE_PRIVATE_KEY_FILE=$credentials/sparkle.key" >> "$GITHUB_ENV"
+          if [ "$INBOXPLUS_RELEASE_SIGNING" = developer-id ]; then
+            xcrun notarytool store-credentials "$INBOXPLUS_NOTARY_PROFILE" --keychain "$keychain" \
+              --apple-id "$NOTARY_APPLE_ID" --team-id "$TEAM_ID" --password "$NOTARY_PASSWORD"
+          fi
+      - name: Build, sign and package the macOS release
+        run: |
+          (cd apps/inboxplus_flutter && python3 ../../Scripts/retry-sqlite-download.py flutter build macos --release)
+          python3 Scripts/package-macos-release.py --bundle "$GITHUB_WORKSPACE/apps/inboxplus_flutter/build/macos/Build/Products/Release/Inbox+v2.app" --previous-feed "$RUNNER_TEMP/previous-appcast.xml"
+      - name: Attach immutable assets to a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$INBOXPLUS_RELEASE_TAG" --json isDraft >/dev/null 2>&1; then
+            test "$(gh release view "$INBOXPLUS_RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          else
+            gh release create "$INBOXPLUS_RELEASE_TAG" --verify-tag --draft --title "Inbox+ ${INBOXPLUS_RELEASE_TAG#v}" \
+              --notes 'macOS release. Review the signed artifacts and upgrade verification before publishing.'
+          fi
+          gh release upload "$INBOXPLUS_RELEASE_TAG" build/macos-release/*
+      - name: Remove signing credentials
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/inboxplus-signing/release.keychain-db" || true
+          rm -rf "$RUNNER_TEMP/inboxplus-signing"

@@ -28,7 +28,7 @@ class UpdatePackagingTests(unittest.TestCase):
         self.app = Path(self.directory.name) / "Inbox+.app"
         self.plist = self.app / "Contents/Info.plist"
         self.plist.parent.mkdir(parents=True)
-        self.plist.write_bytes(plistlib.dumps({"CFBundleVersion": "0.5.0"}))
+        self.plist.write_bytes(plistlib.dumps({"CFBundleVersion": "106"}))
         self.environment = {
             "INBOXPLUS_UPDATE_PUBLIC_KEY": base64.b64encode(bytes(range(32))).decode(),
             "INBOXPLUS_BUILD_NUMBER": "106",
@@ -132,6 +132,91 @@ class UpdatePackagingTests(unittest.TestCase):
         for item in previous_items:
             self.assertEqual(result.count(item), 1)
         self.assertNotIn("Changed", result)
+
+
+class MacOSReleaseTests(unittest.TestCase):
+    def setUp(self):
+        self.packaging = load("package-macos-release")
+        self.environment = {
+            "INBOXPLUS_RELEASE_SIGNING": "self-signed",
+            "INBOXPLUS_SIGNING_IDENTITY": "Fixture release certificate",
+        }
+
+    def test_release_keeps_existing_updater_trust_and_rejects_ad_hoc_signing(self):
+        from unittest.mock import patch
+        with patch.object(self.packaging.desktop, "version", return_value=("0.9.0", "114")):
+            self.assertEqual(self.packaging.release_settings(self.environment, None)[:3], ("0.9.0", "114", "v0.9.0"))
+            for field, value in [
+                ("INBOXPLUS_RELEASE_TAG", "v0.8.5"),
+                ("INBOXPLUS_SIGNING_IDENTITY", "-"),
+                ("INBOXPLUS_SIGNING_IDENTITY", ""),
+                ("INBOXPLUS_UPDATE_PUBLIC_KEY", base64.b64encode(bytes(32)).decode()),
+                ("INBOXPLUS_UPDATE_FEED_URL", "https://example.com/new-feed.xml"),
+                ("INBOXPLUS_RELEASE_SIGNING", "ad-hoc"),
+                ("INBOXPLUS_RELEASE_SIGNING", "developer-id"),
+            ]:
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    self.packaging.release_settings({**self.environment, field: value}, None)
+
+    def test_release_build_must_exceed_all_published_versions(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            previous = Path(directory) / "previous.xml"
+            previous.write_text(f'<rss xmlns:sparkle="{feed_validation.SPARKLE}"><channel><item>'
+                                '<sparkle:version>115</sparkle:version></item></channel></rss>')
+            with patch.object(self.packaging.desktop, "version", return_value=("0.9.0", "114")):
+                with self.assertRaisesRegex(ValueError, "every previously published"):
+                    self.packaging.release_settings(self.environment, previous)
+            with patch.object(self.packaging.desktop, "version", return_value=("0.9.0", "111")):
+                with self.assertRaisesRegex(ValueError, "shipped 0.8.5"):
+                    self.packaging.release_settings(self.environment, None)
+
+    def test_reconfiguring_development_build_removes_stale_production_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "Inbox+.app"
+            plist = app / "Contents/Info.plist"
+            plist.parent.mkdir(parents=True)
+            plist.write_bytes(plistlib.dumps({"SUFeedURL": "https://example.com/feed", "SUAutomaticallyUpdate": True}))
+            configuration.configure(app, False, {})
+            info = plistlib.loads(plist.read_bytes())
+            self.assertFalse(info["InboxPlusUpdatesEnabled"])
+            self.assertNotIn("SUFeedURL", info)
+            self.assertNotIn("SUAutomaticallyUpdate", info)
+
+    def test_feed_publication_rejects_rollback_and_changed_previous_entries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            current, previous = (Path(directory) / name for name in ("current.xml", "previous.xml"))
+            def document(builds):
+                return f'<rss xmlns:sparkle="{feed_validation.SPARKLE}"><channel>' + ''.join(
+                    f'<item><sparkle:version>{build}</sparkle:version><description>Original</description></item>'
+                    for build in builds) + '</channel></rss>'
+            previous.write_text(document([111, 109]))
+            current.write_text(document([114, 111, 109]))
+            feed_validation.validate_publication(current, previous)
+            feed_validation.validate_publication(previous, previous)
+            current.write_text(document([109]))
+            with self.assertRaisesRegex(ValueError, "roll back"):
+                feed_validation.validate_publication(current, previous)
+            current.write_text(document([114, 111]))
+            with self.assertRaisesRegex(ValueError, "unchanged"):
+                feed_validation.validate_publication(current, previous)
+            current.write_text(document([114, 111, 109]).replace('Original', 'Changed'))
+            with self.assertRaisesRegex(ValueError, "unchanged"):
+                feed_validation.validate_publication(current, previous)
+
+    def test_flutter_build_number_is_not_overridden_by_release_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "Inbox+.app"
+            plist = app / "Contents/Info.plist"
+            plist.parent.mkdir(parents=True)
+            original = plistlib.dumps({"CFBundleVersion": "114"})
+            plist.write_bytes(original)
+            with self.assertRaisesRegex(ValueError, "Flutter build number"):
+                configuration.configure(app, True, {
+                    "INBOXPLUS_UPDATE_PUBLIC_KEY": base64.b64encode(bytes(32)).decode(),
+                    "INBOXPLUS_BUILD_NUMBER": "115",
+                })
+            self.assertEqual(plist.read_bytes(), original)
 
 
 if __name__ == "__main__":

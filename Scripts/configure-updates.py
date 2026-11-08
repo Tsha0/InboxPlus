@@ -29,7 +29,11 @@ def configure(app: Path, release: bool, environment: dict[str, str]) -> None:
             raise ValueError("INBOXPLUS_UPDATE_PUBLIC_KEY must be a base64-encoded 32-byte Sparkle public key")
         if not build.isascii() or not build.isdecimal() or int(build) < 1:
             raise ValueError("INBOXPLUS_BUILD_NUMBER must be a positive increasing integer")
+        if info.get("CFBundleVersion") != build:
+            raise ValueError("INBOXPLUS_BUILD_NUMBER must match the Flutter build number")
         info.update({
+            "CFBundleName": "Inbox+",
+            "CFBundleDisplayName": "Inbox+",
             "CFBundleVersion": build,
             "SUFeedURL": feed,
             "SUPublicEDKey": key,
@@ -38,6 +42,10 @@ def configure(app: Path, release: bool, environment: dict[str, str]) -> None:
             "SUScheduledCheckInterval": 14400,
             "SUEnableSystemProfiling": False,
         })
+    else:
+        for name in list(info):
+            if name.startswith("SU"):
+                del info[name]
     info["InboxPlusUpdatesEnabled"] = enabled
     with plist.open("wb") as stream:
         plistlib.dump(info, stream, fmt=plistlib.FMT_XML, sort_keys=False)
