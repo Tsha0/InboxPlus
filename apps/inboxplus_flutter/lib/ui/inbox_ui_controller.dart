@@ -96,7 +96,7 @@ const inboxPlusVersion = String.fromEnvironment(
 );
 const inboxPlusBuild = String.fromEnvironment(
   'INBOXPLUS_BUILD',
-  defaultValue: '112',
+  defaultValue: '115',
 );
 
 @immutable

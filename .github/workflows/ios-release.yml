@@ -14,6 +14,7 @@ permissions:
 
 env:
   GOTOOLCHAIN: local
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   ci:
@@ -74,7 +75,7 @@ jobs:
           SIMULATOR: ${{ steps.simulator.outputs.udid }}
         run: |
           flutter pub get --enforce-lockfile
-          flutter test integration_test -d "$SIMULATOR"
+          python3 ../../Scripts/retry-sqlite-download.py flutter test integration_test -d "$SIMULATOR"
 
   testflight:
     name: iOS / TestFlight
@@ -107,7 +108,7 @@ jobs:
         working-directory: apps/inboxplus_flutter
         run: |
           flutter pub get --enforce-lockfile
-          flutter build ipa --release --no-codesign
+          python3 ../../Scripts/retry-sqlite-download.py flutter build ipa --release --no-codesign
       - name: Verify the unsigned archive
         run: python3 Scripts/verify-ios-app.py apps/inboxplus_flutter/build/ios/archive/Runner.xcarchive
       - name: Install the App Store Connect key
