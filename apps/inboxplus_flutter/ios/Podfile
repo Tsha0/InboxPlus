@@ -26,6 +26,17 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_ios_podfile_setup
 
+require 'json'
+plugins = JSON.parse(File.read(File.expand_path('../.flutter-plugins-dependencies', __dir__)))
+media = plugins.fetch('plugins').fetch('ios').find { |plugin| plugin.fetch('name') == 'media_kit_libs_ios_video' }
+verified = system(
+  ENV.fetch('PYTHON_BINARY', 'python3'),
+  File.expand_path('../../../Scripts/verify-media-artifacts.py', __dir__),
+  '--platform', 'ios',
+  '--cache-dir', File.join(media.fetch('path'), 'ios', '.cache', 'xcframeworks')
+)
+raise 'The ios media frameworks could not be verified' unless verified
+
 target 'Runner' do
   use_frameworks!
 

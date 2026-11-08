@@ -3,9 +3,11 @@
 
 import argparse
 import hashlib
+import http.client
 import os
 from pathlib import Path
 import tempfile
+import time
 import urllib.request
 
 
@@ -39,6 +41,20 @@ ANDROID_ARTIFACTS = tuple(
 )
 
 
+APPLE_ARTIFACTS = {
+    platform: ((
+        f"libmpv-xcframeworks-v0.6.0-{platform}-universal.tar.gz",
+        f"https://github.com/media-kit/libmpv-darwin-build/releases/download/v0.6.0/"
+        f"libmpv-xcframeworks_v0.6.0_{platform}-universal-video-default.tar.gz",
+        checksum,
+    ),)
+    for platform, checksum in (
+        ("ios", "a95bc18508af26136b8a408341c05b5585d644ec013f00ac07db09d2e28d36ae"),
+        ("macos", "84d2ad98e046e82c6dc34d8547d76c2afeaee89c0f53032773be8985c95536d6"),
+    )
+}
+
+
 def digest(path):
     result = hashlib.sha256()
     with path.open("rb") as source:
@@ -55,28 +71,42 @@ def prepare(directory, artifacts=None):
             if destination.is_symlink() or digest(destination) != expected:
                 raise RuntimeError("Cached media archive failed SHA-256 verification: " + name)
             continue
-        descriptor, temporary = tempfile.mkstemp(prefix=name + ".", suffix=".tmp", dir=directory)
-        try:
-            with os.fdopen(descriptor, "wb") as output:
-                with urllib.request.urlopen(url, timeout=120) as response:
-                    if not response.url.startswith("https://"):
-                        raise RuntimeError("Media archive redirected away from HTTPS")
-                    while True:
-                        chunk = response.read(1024 * 1024)
-                        if not chunk:
-                            break
-                        output.write(chunk)
-            if digest(Path(temporary)) != expected:
-                raise RuntimeError("Downloaded media archive failed SHA-256 verification: " + name)
-            os.replace(temporary, destination)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+        for attempt in range(3):
+            try:
+                download(directory, name, url, expected)
+                break
+            except (OSError, RuntimeError, http.client.HTTPException):
+                if attempt == 2:
+                    raise
+                print(f"Media download did not verify; retrying {name} ({attempt + 2}/3).", flush=True)
+                time.sleep(2 * (attempt + 1))
+
+
+def download(directory, name, url, expected):
+    destination = directory / name
+    descriptor, temporary = tempfile.mkstemp(prefix=name + ".", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            with urllib.request.urlopen(url, timeout=120) as response:
+                if not response.url.startswith("https://"):
+                    raise RuntimeError("Media archive redirected away from HTTPS")
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+        if digest(Path(temporary)) != expected:
+            raise RuntimeError("Downloaded media archive failed SHA-256 verification: " + name)
+        os.replace(temporary, destination)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--platform", choices=("windows", "android"), required=True)
+    parser.add_argument("--platform", choices=("windows", "android", "ios", "macos"), required=True)
     parser.add_argument("--cache-dir", type=Path, required=True)
     arguments = parser.parse_args()
-    prepare(arguments.cache_dir, ANDROID_ARTIFACTS if arguments.platform == "android" else ARTIFACTS)
+    artifacts = {"windows": ARTIFACTS, "android": ANDROID_ARTIFACTS, **APPLE_ARTIFACTS}
+    prepare(arguments.cache_dir, artifacts[arguments.platform])

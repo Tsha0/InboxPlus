@@ -283,11 +283,14 @@ func TestFailedPersistencePoisonsConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	moved := directory + "-moved"
-	if err := os.Rename(directory, moved); err != nil {
+	durable := t.TempDir()
+	moved := filepath.Join(durable, "credentials.db.enc")
+	if err := os.Rename(path, moved); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(moved) })
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec("UPDATE credentials SET value='must-fail' WHERE id=1"); !errors.Is(err, ErrPersistence) {
 		t.Fatalf("write error: %v", err)
 	}
@@ -297,14 +300,14 @@ func TestFailedPersistencePoisonsConnection(t *testing.T) {
 	if failures != 1 {
 		t.Fatalf("persistence failure callback ran %d times", failures)
 	}
-	after, err := os.ReadFile(filepath.Join(moved, "credentials.db.enc"))
+	after, err := os.ReadFile(moved)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(previous, after) {
 		t.Fatal("last durable snapshot changed")
 	}
-	if got := valueTest(t, snapshotTestDB(t, moved)); got != "last-durable" {
+	if got := valueTest(t, snapshotTestDB(t, durable)); got != "last-durable" {
 		t.Fatalf("failed mutation persisted %q", got)
 	}
 }

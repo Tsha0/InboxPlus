@@ -263,12 +263,12 @@ jobs:
         working-directory: packages/inboxplus_storage
         run: |
           dart pub get --enforce-lockfile
-          dart test
+          python3 ../../Scripts/retry-sqlite-download.py dart test
       - name: Verify Flutter application
         working-directory: apps/inboxplus_flutter
         run: |
           flutter pub get --enforce-lockfile
-          flutter test
+          python3 ../../Scripts/retry-sqlite-download.py flutter test
       - name: Build native desktop application
         working-directory: apps/inboxplus_flutter
         run: python3 ../../Scripts/time-macos-build.py
@@ -346,12 +346,12 @@ jobs:
         working-directory: packages/inboxplus_storage
         run: |
           dart pub get --enforce-lockfile
-          dart test
+          python3 ../../Scripts/retry-sqlite-download.py dart test
       - name: Verify Flutter application
         working-directory: apps/inboxplus_flutter
         run: |
           flutter pub get --enforce-lockfile
-          flutter test
+          python3 ../../Scripts/retry-sqlite-download.py flutter test
       - name: Build native desktop application
         working-directory: apps/inboxplus_flutter
         run: time flutter build windows --release
@@ -418,12 +418,12 @@ jobs:
         working-directory: packages/inboxplus_storage
         run: |
           dart pub get --enforce-lockfile
-          dart test
+          python3 ../../Scripts/retry-sqlite-download.py dart test
       - name: Verify Flutter application
         working-directory: apps/inboxplus_flutter
         run: |
           flutter pub get --enforce-lockfile
-          flutter test
+          python3 ../../Scripts/retry-sqlite-download.py flutter test
       - name: Build native desktop application
         working-directory: apps/inboxplus_flutter
         run: time flutter build linux --release

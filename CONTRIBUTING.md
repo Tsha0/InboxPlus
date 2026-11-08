@@ -102,6 +102,10 @@ Tests use isolated fixtures and do not touch real network accounts. Passing fixt
 certify a network's live login or messaging behavior. Timeouts for real processes must be generous
 enough for slower CI runners: they guard against hangs, not assert developer-machine speed.
 
+Desktop CI uses `Scripts/retry-sqlite-download.py` to retry only SQLite hook failures that reject
+downloaded bytes against their pinned SHA-256. It never retries application test failures or
+accepts a mismatched checksum; repeated download failures still fail the job.
+
 ### Packaging checks
 
 Build the affected Flutter target from `apps/inboxplus_flutter` with `flutter build macos`,
@@ -125,6 +129,8 @@ write flag. Keep checksum verification enabled; a missing checksum or lock is a 
 
 The Windows runner prepares media-kit archives with `Scripts/verify-media-artifacts.py` before
 CMake can extract them. Never replace that SHA-256 check with the dependency's MD5-only check.
+The Apple Podfiles use the same verifier before CocoaPods evaluates media-kit's podspecs, whose
+`make` failures otherwise can be ignored and surface later as missing frameworks at link time.
 
 For iOS, `flutter build ipa --release --no-codesign` builds the archive TestFlight receives. Check
 it with `python3 Scripts/verify-ios-app.py apps/inboxplus_flutter/build/ios/archive/Runner.xcarchive`
