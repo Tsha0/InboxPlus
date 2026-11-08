@@ -111,6 +111,18 @@ Python 3 and MinGW for Go/cgo in addition to Visual Studio. Linux needs the pack
 README, including GLib 2.66+, WebKitGTK 4.1 and Ayatana AppIndicator; its media plugin uses the
 system allocator rather than fetching mimalloc. Platform SDKs and signing remain target-specific even though the UI is shared.
 
+Android Maven artifacts and plugin classpaths use strict checksum verification in
+`android/gradle/verification-metadata.xml` and version locks in `android/gradle/locks` (under the
+Flutter app). Locks for pub plugins stay in this checkout, not the pub cache. After an intentional
+Android dependency update, run `./gradlew resolveDependencyLocks --write-locks
+--write-verification-metadata sha256` from `apps/inboxplus_flutter/android`. This also verifies AAPT2
+archives for all three build hosts; keep its version aligned with AGP. For each of debug, profile
+and release, first run `flutter build apk --<mode> --config-only` from the app directory, then
+`./gradlew assemble<Mode> --write-locks --write-verification-metadata sha256` from `android` to capture
+task-time dependencies. Run these modes sequentially: Flutter regenerates the plugin registrant
+for each mode. Review the resolved versions and checksums, then repeat the builds without either
+write flag. Keep checksum verification enabled; a missing checksum or lock is a build failure.
+
 The Windows runner prepares media-kit archives with `Scripts/verify-media-artifacts.py` before
 CMake can extract them. Never replace that SHA-256 check with the dependency's MD5-only check.
 

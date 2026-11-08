@@ -2,12 +2,15 @@ package securedb
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 var testKey = bytes.Repeat([]byte{0x47}, 32)
@@ -20,6 +23,69 @@ func openTestDB(t *testing.T, directory string) *sql.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	return db
+}
+
+func snapshotTestDB(t *testing.T, directory string) *sql.DB {
+	t.Helper()
+	sealed, err := os.ReadFile(filepath.Join(directory, "credentials.db.enc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(snapshot, "credentials.db.enc"), sealed, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return openTestDB(t, snapshot)
+}
+
+func TestSnapshotLockAcrossHandlesAndProcesses(t *testing.T) {
+	if directory := os.Getenv("INBOXPLUS_LOCK_TEST"); directory != "" {
+		if db, err := Open(directory, testKey); err == nil {
+			db.Close()
+			t.Fatal("second process opened a locked snapshot")
+		}
+		return
+	}
+	directory := t.TempDir()
+	db := openTestDB(t, directory)
+	execTest(t, db, "CREATE TABLE credentials (id INTEGER PRIMARY KEY, value TEXT); INSERT INTO credentials VALUES (1, 'preserved')")
+	if second, err := Open(directory, testKey); err == nil {
+		second.Close()
+		t.Fatal("second handle opened a locked snapshot")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	child := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSnapshotLockAcrossHandlesAndProcesses$")
+	child.Env = append(os.Environ(), "INBOXPLUS_LOCK_TEST="+directory)
+	if output, err := child.CombinedOutput(); err != nil {
+		t.Fatalf("lock probe: %v: %s", err, output)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := valueTest(t, openTestDB(t, directory)); got != "preserved" {
+		t.Fatal("locked snapshot changed")
+	}
+}
+
+func TestSnapshotLockOutlivesInUseConnection(t *testing.T) {
+	directory := t.TempDir()
+	db := openTestDB(t, directory)
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if second, err := Open(directory, testKey); err == nil {
+		second.Close()
+		t.Fatal("lock released with a writer still in use")
+	}
+	if err := conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	openTestDB(t, directory)
 }
 
 func execTest(t *testing.T, db *sql.DB, query string, args ...any) {
@@ -43,7 +109,7 @@ func TestEverySuccessfulWriteIsEncryptedAndDurableBeforeClose(t *testing.T) {
 	db := openTestDB(t, directory)
 	execTest(t, db, "CREATE TABLE credentials (id INTEGER PRIMARY KEY, value TEXT)")
 	execTest(t, db, "INSERT INTO credentials VALUES (1, ?)", "private-session-secret")
-	if got := valueTest(t, openTestDB(t, directory)); got != "private-session-secret" {
+	if got := valueTest(t, snapshotTestDB(t, directory)); got != "private-session-secret" {
 		t.Fatalf("restored %q", got)
 	}
 	sealed, err := os.ReadFile(filepath.Join(directory, "credentials.db.enc"))
@@ -65,7 +131,7 @@ func TestEverySuccessfulWriteIsEncryptedAndDurableBeforeClose(t *testing.T) {
 		}
 	}
 	execTest(t, db, "UPDATE credentials SET value=? WHERE id=1", "next-ratchet")
-	if got := valueTest(t, openTestDB(t, directory)); got != "next-ratchet" {
+	if got := valueTest(t, snapshotTestDB(t, directory)); got != "next-ratchet" {
 		t.Fatalf("update lost: %q", got)
 	}
 }
@@ -95,7 +161,7 @@ func TestTransactionCommitsAndRollbacks(t *testing.T) {
 	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}
-	if got := valueTest(t, openTestDB(t, directory)); got != "initial" {
+	if got := valueTest(t, snapshotTestDB(t, directory)); got != "initial" {
 		t.Fatalf("rollback persisted %q", got)
 	}
 	tx, err = db.Begin()
@@ -108,7 +174,7 @@ func TestTransactionCommitsAndRollbacks(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	if got := valueTest(t, openTestDB(t, directory)); got != "committed" {
+	if got := valueTest(t, snapshotTestDB(t, directory)); got != "committed" {
 		t.Fatalf("commit lost: %q", got)
 	}
 }
@@ -125,14 +191,14 @@ func TestPreparedStatementsAndReturningPersist(t *testing.T) {
 	if _, err := stmt.Exec("prepared-secret"); err != nil {
 		t.Fatal(err)
 	}
-	if got := valueTest(t, openTestDB(t, directory)); got != "prepared-secret" {
+	if got := valueTest(t, snapshotTestDB(t, directory)); got != "prepared-secret" {
 		t.Fatalf("prepared write lost: %q", got)
 	}
 	var value string
 	if err := db.QueryRow("UPDATE credentials SET value='returning-secret' WHERE id=1 RETURNING value").Scan(&value); err != nil {
 		t.Fatal(err)
 	}
-	if got := valueTest(t, openTestDB(t, directory)); got != "returning-secret" {
+	if got := valueTest(t, snapshotTestDB(t, directory)); got != "returning-secret" {
 		t.Fatalf("RETURNING write lost: %q", got)
 	}
 	query, err := db.Prepare("UPDATE credentials SET value=? WHERE id=1 RETURNING value")
@@ -143,7 +209,7 @@ func TestPreparedStatementsAndReturningPersist(t *testing.T) {
 	if err := query.QueryRow("prepared-returning").Scan(&value); err != nil {
 		t.Fatal(err)
 	}
-	if got := valueTest(t, openTestDB(t, directory)); got != "prepared-returning" {
+	if got := valueTest(t, snapshotTestDB(t, directory)); got != "prepared-returning" {
 		t.Fatalf("prepared RETURNING write lost: %q", got)
 	}
 }
@@ -159,7 +225,7 @@ func TestRestoredDatabaseCanGrow(t *testing.T) {
 	restored := openTestDB(t, directory)
 	large := string(bytes.Repeat([]byte("secret"), 10000))
 	execTest(t, restored, "UPDATE credentials SET value=? WHERE id=1", large)
-	if got := valueTest(t, openTestDB(t, directory)); got != large {
+	if got := valueTest(t, snapshotTestDB(t, directory)); got != large {
 		t.Fatal("restored database did not grow")
 	}
 }
@@ -169,6 +235,9 @@ func TestWrongKeyAndCorruptionNeverResetExistingStore(t *testing.T) {
 	db := openTestDB(t, directory)
 	execTest(t, db, "CREATE TABLE credentials (id INTEGER PRIMARY KEY, value TEXT); INSERT INTO credentials VALUES (1, 'secret')")
 	path := filepath.Join(directory, "credentials.db.enc")
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 	before, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -235,7 +304,7 @@ func TestFailedPersistencePoisonsConnection(t *testing.T) {
 	if !bytes.Equal(previous, after) {
 		t.Fatal("last durable snapshot changed")
 	}
-	if got := valueTest(t, openTestDB(t, moved)); got != "last-durable" {
+	if got := valueTest(t, snapshotTestDB(t, moved)); got != "last-durable" {
 		t.Fatalf("failed mutation persisted %q", got)
 	}
 }

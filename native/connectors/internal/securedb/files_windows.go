@@ -6,6 +6,26 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+func lockSnapshot(path string) (*os.File, error) {
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, ErrOpen
+	}
+	handle, err := windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil, windows.OPEN_ALWAYS, windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		return nil, ErrOpen
+	}
+	file := os.NewFile(uintptr(handle), path)
+	if SecureFile(path) != nil || windows.LockFileEx(windows.Handle(file.Fd()),
+		windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &windows.Overlapped{}) != nil {
+		_ = file.Close()
+		return nil, ErrOpen
+	}
+	return file, nil
+}
+
 func makePrivate(path string, mode os.FileMode) error {
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {

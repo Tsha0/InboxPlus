@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/mattn/go-sqlite3"
@@ -27,10 +28,14 @@ var (
 var header = []byte("INBOXPLUS-SESSION\x01")
 
 type storage struct {
-	path      string
-	aead      cipher.AEAD
-	failed    atomic.Bool
-	onFailure func()
+	mu          sync.Mutex
+	lock        *os.File
+	closed      bool
+	connections int
+	path        string
+	aead        cipher.AEAD
+	failed      atomic.Bool
+	onFailure   func()
 }
 
 type connector struct{ storage *storage }
@@ -76,6 +81,10 @@ func OpenWithFailure(directory string, key []byte, onFailure func()) (*sql.DB, e
 		return nil, ErrOpen
 	}
 	s := &storage{path: filepath.Join(directory, "credentials.db.enc"), aead: aead, onFailure: onFailure}
+	s.lock, err = lockSnapshot(filepath.Join(directory, ".credentials.lock"))
+	if err != nil {
+		return nil, ErrOpen
+	}
 	db := sql.OpenDB(&connector{storage: s})
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
@@ -145,7 +154,29 @@ func (c *connector) Connect(context.Context) (driver.Conn, error) { return c.sto
 func (c *connector) Driver() driver.Driver                        { return &sqliteDriver{storage: c.storage} }
 func (d *sqliteDriver) Open(string) (driver.Conn, error)          { return d.storage.open() }
 
+func (c *connector) Close() error {
+	s := c.storage
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	return s.releaseLock()
+}
+
+func (s *storage) releaseLock() error {
+	if s.closed && s.connections == 0 && s.lock != nil {
+		err := s.lock.Close()
+		s.lock = nil
+		return err
+	}
+	return nil
+}
+
 func (s *storage) open() (driver.Conn, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, ErrOpen
+	}
 	if s.failed.Load() {
 		return nil, ErrPersistence
 	}
@@ -168,6 +199,7 @@ func (s *storage) open() (driver.Conn, error) {
 		return nil, ErrOpen
 	}
 	c := &connection{native: native, storage: s}
+	s.connections++
 	// The hook detects commits from every SQL path, including schema migrations and RETURNING.
 	native.RegisterCommitHook(func() int { c.pending = true; return 0 })
 	return c, nil
@@ -287,7 +319,17 @@ func (c *connection) persist() error {
 	return nil
 }
 
-func (c *connection) Close() error               { return c.native.Close() }
+func (c *connection) Close() error {
+	err := c.native.Close()
+	c.storage.mu.Lock()
+	defer c.storage.mu.Unlock()
+	c.storage.connections--
+	lockErr := c.storage.releaseLock()
+	if err != nil {
+		return err
+	}
+	return lockErr
+}
 func (c *connection) Ping(context.Context) error { return c.check() }
 func (c *connection) Prepare(query string) (driver.Stmt, error) {
 	return c.PrepareContext(context.Background(), query)

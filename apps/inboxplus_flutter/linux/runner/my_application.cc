@@ -291,8 +291,12 @@ static gboolean window_delete_cb(GtkWidget* window, GdkEvent*, gpointer user_dat
       g_object_get_data(G_OBJECT(window), "inboxplus-native-channel"));
   if (channel == nullptr) return TRUE;
   g_object_set_data(G_OBJECT(window), "inboxplus-close-pending", GINT_TO_POINTER(1));
+  const gboolean terminating = self->quit_requested || !self->indicator_connected;
+  g_object_set_data(G_OBJECT(window), "inboxplus-termination-pending", GINT_TO_POINTER(terminating));
   gtk_widget_set_sensitive(window, FALSE);
-  fl_method_channel_invoke_method(channel, "prepareToClose", nullptr, nullptr,
+  fl_method_channel_invoke_method(channel,
+      terminating ? "prepareToTerminate" : "prepareToClose",
+      nullptr, nullptr,
       [](GObject* object, GAsyncResult* result, gpointer data) {
         GtkWidget* closing_window = GTK_WIDGET(data);
         g_autoptr(GError) error = nullptr;
@@ -307,11 +311,13 @@ static gboolean window_delete_cb(GtkWidget* window, GdkEvent*, gpointer user_dat
           MyApplication* app = MY_APPLICATION(gtk_window_get_application(GTK_WINDOW(closing_window)));
           g_object_set_data(G_OBJECT(closing_window), "inboxplus-close-pending", nullptr);
           if (prepared) {
-            if (!app->quit_requested && app->indicator_connected) {
+            if (g_object_get_data(G_OBJECT(closing_window), "inboxplus-termination-pending") != nullptr) {
+              g_object_set_data(G_OBJECT(closing_window), "inboxplus-close-prepared", GINT_TO_POINTER(1));
+              gtk_window_close(GTK_WINDOW(closing_window));
+            } else if (!app->quit_requested && app->indicator_connected) {
               gtk_widget_set_sensitive(closing_window, TRUE);
               gtk_widget_hide(closing_window);
             } else {
-              g_object_set_data(G_OBJECT(closing_window), "inboxplus-close-prepared", GINT_TO_POINTER(1));
               gtk_window_close(GTK_WINDOW(closing_window));
             }
           } else {

@@ -223,6 +223,7 @@ class ConversationPreferencesRecord {
     this.isMuted = false,
     this.mutedUntil,
     this.hiddenAt,
+    this.readThrough,
   });
 
   final ConversationRoute route;
@@ -231,6 +232,7 @@ class ConversationPreferencesRecord {
   final bool isMuted;
   final DateTime? mutedUntil;
   final DateTime? hiddenAt;
+  final DateTime? readThrough;
 
   bool isMutedAt(DateTime now) =>
       isMuted && (mutedUntil == null || mutedUntil!.isAfter(now));

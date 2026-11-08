@@ -368,8 +368,10 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     if (!close_pending_) return 0;
     close_pending_ = false;
     if (wparam == 1) {
-      if (quit_requested_ || !notification_icon_added_) {
+      if (lparam == 1) {
         close_prepared_ = true;
+        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+      } else if (quit_requested_ || !notification_icon_added_) {
         PostMessageW(hwnd, WM_CLOSE, 0, 0);
       } else {
         EnableWindow(hwnd, TRUE);
@@ -436,10 +438,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     if (native_channel_ == nullptr) return 0;
     close_pending_ = true;
     EnableWindow(hwnd, FALSE);
-    auto reply = [hwnd](bool prepared) {
-      if (IsWindow(hwnd)) PostMessageW(hwnd, kClosePreparedMessage, prepared ? 1 : 0, 0);
+    const bool terminating = quit_requested_ || !notification_icon_added_;
+    auto reply = [hwnd, terminating](bool prepared) {
+      if (IsWindow(hwnd)) PostMessageW(hwnd, kClosePreparedMessage, prepared ? 1 : 0, terminating ? 1 : 0);
     };
-    native_channel_->InvokeMethod("prepareToClose", nullptr,
+    native_channel_->InvokeMethod(
+        terminating ? "prepareToTerminate" : "prepareToClose", nullptr,
         std::make_unique<flutter::MethodResultFunctions<flutter::EncodableValue>>(
             [reply](const flutter::EncodableValue* result) {
               const bool* prepared = result == nullptr ? nullptr : std::get_if<bool>(result);

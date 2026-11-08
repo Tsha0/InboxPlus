@@ -5,6 +5,29 @@ allprojects {
     }
 }
 
+val androidToolArtifacts by configurations.creating
+dependencies {
+    for (host in listOf("linux", "osx", "windows")) {
+        androidToolArtifacts("com.android.tools.build:aapt2:9.1.0-14792394:$host")
+    }
+}
+
+tasks.register("resolveDependencyLocks") {
+    doLast {
+        allprojects.forEach { project ->
+            project.configurations.filter {
+                it.isCanBeResolved && !it.name.contains("Test", ignoreCase = true) &&
+                    !it.name.endsWith("DependenciesMetadata")
+            }.forEach { configuration ->
+                configuration.incoming.resolutionResult.allDependencies.forEach {
+                    if (it is org.gradle.api.artifacts.result.UnresolvedDependencyResult) throw it.failure
+                }
+            }
+        }
+        androidToolArtifacts.resolve()
+    }
+}
+
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
         .dir("../../build")

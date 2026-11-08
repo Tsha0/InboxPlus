@@ -68,6 +68,8 @@ class AppController extends InboxUiController {
   int _notificationStatusGeneration = 0;
   final _networkProblems = <String, AccountNetworkProblem>{};
   final _changingAccounts = <String>{};
+  final _deletingAccounts = <String>{};
+  final _stagingAttachments = <ConversationRoute>{};
   int? _publishedUnreadCount;
   StorageSummary _storageSummary = const StorageSummary();
   Timer? _statisticsTimer;
@@ -527,12 +529,16 @@ class AppController extends InboxUiController {
           if (preferencesFor(route).markedUnread) {
             await _changeConversationPreference(route, markedUnread: false);
           }
-          if (current != null && current.unreadCount > 0) {
+          if (current != null) {
+            await _changeConversationPreference(
+              route,
+              readThrough: current.latestActivity,
+            );
             await _saveChat({
               'account_id': route.accountId,
               'id': route.conversationId,
               'unread_count': 0,
-            });
+            }, local: true);
           }
           final account = _accounts[route.accountId];
           if (account?.isConnected != true) return;
@@ -1230,6 +1236,11 @@ class AppController extends InboxUiController {
     List<AttachmentRecord> attachments,
     String? reply,
   ) {
+    if ((_deletingAccounts.contains(route.accountId) &&
+            !_stagingAttachments.contains(route)) ||
+        !_conversations.containsKey(route)) {
+      return;
+    }
     final draft = DraftRecord(
       route: route,
       body: body,
@@ -1260,46 +1271,59 @@ class AppController extends InboxUiController {
 
   @override
   Future<void> stageAttachments(ConversationRoute route) => _perform(() async {
-    final capability = _capabilityFor(route);
-    if (capability?.canAttach != true) {
-      throw const AppStorageException('This account cannot send attachments.');
+    if (_deletingAccounts.contains(route.accountId) ||
+        !_conversations.containsKey(route) ||
+        !_stagingAttachments.add(route)) {
+      return;
     }
-    if (_drafts[route]?.attachments.isNotEmpty == true) {
-      throw const AppStorageException(
-        'Send or remove the current attachment before adding another.',
+    try {
+      final capability = _capabilityFor(route);
+      if (capability?.canAttach != true) {
+        throw const AppStorageException(
+          'This account cannot send attachments.',
+        );
+      }
+      if (_drafts[route]?.attachments.isNotEmpty == true) {
+        throw const AppStorageException(
+          'Send or remove the current attachment before adding another.',
+        );
+      }
+      await _prepareFilePicker();
+      final source = await FilePicker.pickFile();
+      if (source?.path == null) return;
+      final file = File(source!.path!);
+      final limit = _attachmentLimit(route);
+      if (await file.length() > limit) {
+        throw AppStorageException(
+          'Attachments must be ${limit ~/ (1024 * 1024)} MiB or smaller.',
+        );
+      }
+      final id = _uuid.v4();
+      final target = File(
+        p.join(
+          environment.directory.path,
+          'staging',
+          '$id${_safeExtension(source.name)}',
+        ),
       );
-    }
-    await _prepareFilePicker();
-    final source = await FilePicker.pickFile();
-    if (source?.path == null) return;
-    final file = File(source!.path!);
-    final limit = _attachmentLimit(route);
-    if (await file.length() > limit) {
-      throw AppStorageException(
-        'Attachments must be ${limit ~/ (1024 * 1024)} MiB or smaller.',
+      await environment.writePrivate(target, await file.readAsBytes());
+      final mime = _mimeFor(source.name);
+      final attachment = AttachmentRecord(
+        id: id,
+        kind: mime.split('/').first,
+        fileName: p.basename(source.name),
+        mimeType: mime,
+        byteCount: await target.length(),
+        localPath: target.path,
       );
+      final draft = _drafts[route];
+      _editDraft(route, draft?.body ?? '', [
+        attachment,
+      ], draft?.replyToMessageId);
+      await _draftWrites[route];
+    } finally {
+      _stagingAttachments.remove(route);
     }
-    final id = _uuid.v4();
-    final target = File(
-      p.join(
-        environment.directory.path,
-        'staging',
-        '$id${_safeExtension(source.name)}',
-      ),
-    );
-    await environment.writePrivate(target, await file.readAsBytes());
-    final mime = _mimeFor(source.name);
-    final attachment = AttachmentRecord(
-      id: id,
-      kind: mime.split('/').first,
-      fileName: p.basename(source.name),
-      mimeType: mime,
-      byteCount: await target.length(),
-      localPath: target.path,
-    );
-    final draft = _drafts[route];
-    _editDraft(route, draft?.body ?? '', [attachment], draft?.replyToMessageId);
-    await _draftWrites[route];
   });
 
   @override
@@ -1322,6 +1346,7 @@ class AppController extends InboxUiController {
 
   @override
   Future<void> sendDraft(ConversationRoute route) => _perform(() async {
+    if (_deletingAccounts.contains(route.accountId)) return;
     final unavailable = sendingUnavailableReason(route);
     if (unavailable != null) throw AppStorageException(unavailable);
     if (!_enqueueing.add(route)) return;
@@ -1811,11 +1836,15 @@ class AppController extends InboxUiController {
       _perform(() async {
         await _changeConversationPreference(route, markedUnread: unread);
         if (!unread) {
+          await _changeConversationPreference(
+            route,
+            readThrough: _conversations[route]?.latestActivity,
+          );
           await _saveChat({
             'account_id': route.accountId,
             'id': route.conversationId,
             'unread_count': 0,
-          });
+          }, local: true);
           if (_accounts[route.accountId]?.platform == 'imessage') {
             await _imessage('imessageMarkRead', {
               'conversation_id': route.conversationId,
@@ -1830,6 +1859,7 @@ class AppController extends InboxUiController {
     bool? hidden,
     bool? markedUnread,
     DateTime? mutedUntil,
+    DateTime? readThrough,
   }) async {
     final old = preferencesFor(route);
     final value = ConversationPreferencesRecord(
@@ -1838,6 +1868,7 @@ class AppController extends InboxUiController {
       markedUnread: markedUnread ?? old.markedUnread,
       isMuted: muted ?? old.isMuted,
       mutedUntil: muted == null ? old.mutedUntil : mutedUntil,
+      readThrough: readThrough ?? old.readThrough,
       hiddenAt: hidden == null
           ? old.hiddenAt
           : hidden
@@ -1902,12 +1933,7 @@ class AppController extends InboxUiController {
   ) => _changingAccount(accountId, () async {
     final account = _accounts[accountId];
     if (account == null || account.platform == 'imessage') return;
-    if (_pending.any((s) => s.route.accountId == accountId) ||
-        _drafts.values.any(
-          (d) =>
-              d.route.accountId == accountId &&
-              (d.body.isNotEmpty || d.attachments.isNotEmpty),
-        )) {
+    if (_hasUnfinishedAccountWork(accountId)) {
       throw const AppStorageException(
         'This account has a draft or pending message. Keep it connected until that work is resolved.',
       );
@@ -1919,7 +1945,19 @@ class AppController extends InboxUiController {
       await engine!.request({'op': 'close', 'account_id': accountId});
       _initialized.remove(accountId);
     }
-    await _deleteAccount(accountId);
+    await _setConnection(accountId, false);
+    _deletingAccounts.add(accountId);
+    try {
+      await _waitForDrafts();
+      if (_hasUnfinishedAccountWork(accountId)) {
+        throw const AppStorageException(
+          'This account has a draft or pending message. Its saved work has been kept. Reconnect it to finish that work.',
+        );
+      }
+      await _deleteAccount(accountId);
+    } finally {
+      _deletingAccounts.remove(accountId);
+    }
     if (!signedOut) {
       final network = _networkName(account.platform);
       throw AppStorageException(
@@ -1927,6 +1965,16 @@ class AppController extends InboxUiController {
       );
     }
   });
+
+  bool _hasUnfinishedAccountWork(String accountId) =>
+      _pending.any((s) => s.route.accountId == accountId) ||
+      _enqueueing.any((route) => route.accountId == accountId) ||
+      _stagingAttachments.any((route) => route.accountId == accountId) ||
+      _drafts.values.any(
+        (d) =>
+            d.route.accountId == accountId &&
+            (d.body.isNotEmpty || d.attachments.isNotEmpty),
+      );
 
   Future<bool> _signOut(AccountRecord account) async {
     if (account.platform == 'legacy') return true;
@@ -2356,33 +2404,53 @@ class AppController extends InboxUiController {
   }
 
   Future<void> _syncAccount(AccountRecord account) async {
-    final result = await engine!.request({
-      'op': account.platform == 'telegram' ? 'sync' : 'list_chats',
-      'account_id': account.id,
-    });
-    for (final raw in result['chats'] as List? ?? []) {
-      await _saveChat({
-        ...Map<String, Object?>.from(raw as Map),
+    String? cursor;
+    final cursors = <String>{};
+    do {
+      final result = await engine!.request({
+        'op': account.platform == 'telegram' ? 'sync' : 'list_chats',
         'account_id': account.id,
+        'cursor': ?cursor,
       });
-    }
-    _publish();
+      for (final raw in result['chats'] as List? ?? []) {
+        await _saveChat({
+          ...Map<String, Object?>.from(raw as Map),
+          'account_id': account.id,
+        });
+      }
+      _publish();
+      if (account.platform != 'instagram' || result['has_more'] != true) return;
+      cursor = result['cursor'] as String?;
+      if (cursor == null || cursor.isEmpty || !cursors.add(cursor)) {
+        throw const ConnectorException('native_protocol_error');
+      }
+    } while (true);
   }
 
-  Future<void> _saveChat(Map<String, Object?> data) async {
+  Future<void> _saveChat(
+    Map<String, Object?> data, {
+    bool local = false,
+  }) async {
     final accountId = data['account_id'] as String;
     final id = data['id'] as String? ?? data['conversation_id'] as String?;
     if (id == null || id.isEmpty) return;
     final route = ConversationRoute(accountId, id);
     final old = _conversations[route];
+    final timestamp = data['timestamp'] == null
+        ? old?.latestActivity ?? DateTime.now()
+        : _timestamp(data['timestamp']);
+    final readThrough = preferencesFor(route).readThrough;
+    final staleUnread =
+        !local && readThrough != null && !timestamp.isAfter(readThrough);
     final conversation = ConversationRecord(
       route: route,
       title: data['title'] as String? ?? old?.title ?? id,
-      latestActivity: data['timestamp'] == null
-          ? old?.latestActivity ?? DateTime.now()
-          : _timestamp(data['timestamp']),
-      unreadCount:
-          (data['unread_count'] as num?)?.toInt() ?? old?.unreadCount ?? 0,
+      latestActivity: old != null && old.latestActivity.isAfter(timestamp)
+          ? old.latestActivity
+          : timestamp,
+      unreadCount: staleUnread
+          ? old?.unreadCount ?? 0
+          : (data['unread_count'] as num?)?.toInt() ?? old?.unreadCount ?? 0,
       isGroup: data['is_group'] as bool? ?? old?.isGroup ?? false,
       identityId:
           data['identity_id'] as String? ??
@@ -2534,6 +2602,14 @@ class AppController extends InboxUiController {
     final chat = _conversations[route]!;
     final isNewIncoming =
         existing == null && !message.isOutgoing && data['historical'] != true;
+    if (_selectedRoute == route && isNewIncoming) {
+      await _changeConversationPreference(
+        route,
+        readThrough: message.timestamp.isAfter(chat.latestActivity)
+            ? message.timestamp
+            : chat.latestActivity,
+      );
+    }
     if (message.timestamp.isAfter(chat.latestActivity) || isNewIncoming) {
       await _saveChat({
         'account_id': route.accountId,
@@ -2544,7 +2620,7 @@ class AppController extends InboxUiController {
         'unread_count': _selectedRoute == route
             ? 0
             : chat.unreadCount + (isNewIncoming ? 1 : 0),
-      });
+      }, local: true);
     }
     final settings = preferencesFor(route);
     if (isNewIncoming &&
@@ -2557,6 +2633,7 @@ class AppController extends InboxUiController {
         markedUnread: settings.markedUnread,
         isMuted: settings.isMuted,
         mutedUntil: settings.mutedUntil,
+        readThrough: settings.readThrough,
       );
       await store.saveConversationPreferences(visible);
       _conversationPreferences[route] = visible;

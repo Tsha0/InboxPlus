@@ -36,6 +36,12 @@ Direct dependency pins live in
 [`lockfile`](../packages/inboxplus_storage/pubspec.lock). Use `pub get --enforce-lockfile` in CI and
 include both lockfiles when updating dependencies.
 
+Android's Maven graph, including Gradle plugin classpaths, is additionally pinned by
+[`android/gradle/locks`](../apps/inboxplus_flutter/android/gradle/locks) and authenticated by
+[`verification-metadata.xml`](../apps/inboxplus_flutter/android/gradle/verification-metadata.xml).
+Gradle enforces both during normal builds. See the Android lock refresh workflow in
+[Contributing](../CONTRIBUTING.md#packaging-checks) when updating Android dependencies.
+
 | Component | License and role |
 | --- | --- |
 | Flutter / Dart | BSD-3-Clause; shared interface and application runtime |

@@ -3,6 +3,8 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -254,5 +256,67 @@ func TestDocumentKinds(t *testing.T) {
 		if event["kind"] != test.kind {
 			t.Fatalf("MIME %s has kind %v, want %s", test.mime, event["kind"], test.kind)
 		}
+	}
+}
+
+func TestDialogSyncPaginatesAndRetainsEveryPeer(t *testing.T) {
+	var events []map[string]any
+	b := &gotdBackend{accountID: "fixture", peers: map[string]tg.InputPeerClass{}, names: map[string]string{}, attachments: map[string]attachmentReference{}, emit: func(event map[string]any) { events = append(events, event) }}
+	calls := 0
+	err := b.syncDialogs(context.Background(), func(ctx context.Context, request *tg.MessagesGetDialogsRequest) (tg.MessagesDialogsClass, error) {
+		calls++
+		first, end := 1, 100
+		if calls == 1 {
+			if request.OffsetID != 0 || request.Limit != 100 {
+				t.Fatal("invalid first page")
+			}
+		} else {
+			peer, ok := request.OffsetPeer.(*tg.InputPeerUser)
+			if calls != 2 || !ok || peer.UserID != 100 || request.OffsetID != 7 || request.OffsetDate != 100 || !request.ExcludePinned {
+				t.Fatal("offset did not advance to last dialog")
+			}
+			first, end = 101, 101
+		}
+		page := &tg.MessagesDialogsSlice{Count: 101}
+		for i := first; i <= end; i++ {
+			peer := &tg.PeerUser{UserID: int64(i)}
+			page.Users = append(page.Users, &tg.User{ID: int64(i), AccessHash: int64(i + 1000), FirstName: "Fixture"})
+			page.Dialogs = append(page.Dialogs, &tg.Dialog{Peer: peer, TopMessage: 7})
+			page.Messages = append(page.Messages, &tg.Message{ID: 7, PeerID: peer, Date: i})
+		}
+		if calls == 2 {
+			return &tg.MessagesDialogs{Users: page.Users, Dialogs: page.Dialogs, Messages: page.Messages}, nil
+		}
+		return page, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 || len(b.peers) != 101 {
+		t.Fatalf("loaded %d peers in %d pages", len(b.peers), calls)
+	}
+	chats := 0
+	for _, event := range events {
+		if event["type"] == "chat" {
+			chats++
+		}
+	}
+	if chats != 101 {
+		t.Fatalf("emitted %d chats", chats)
+	}
+	for i := 1; i <= 101; i++ {
+		if _, err := b.peer(fmt.Sprintf("user:%d", i)); err != nil {
+			t.Fatal("page peer was lost")
+		}
+	}
+}
+
+func TestDialogSyncPropagatesPageFailure(t *testing.T) {
+	expected := errors.New("fixture failure")
+	b := &gotdBackend{}
+	if err := b.syncDialogs(context.Background(), func(context.Context, *tg.MessagesGetDialogsRequest) (tg.MessagesDialogsClass, error) {
+		return nil, expected
+	}); !errors.Is(err, expected) {
+		t.Fatal("page failure was swallowed")
 	}
 }

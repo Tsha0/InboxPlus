@@ -1,4 +1,9 @@
 pluginManagement {
+    settings.buildscript.dependencyLocking.apply {
+        lockAllConfigurations()
+        lockMode = LockMode.STRICT
+        lockFile = settingsDir.resolve("gradle/locks/settings.lockfile")
+    }
     val flutterSdkPath =
         run {
             val properties = java.util.Properties()
@@ -25,7 +30,21 @@ plugins {
 
 include(":app")
 
+val dependencyLocks = settingsDir.resolve("gradle/locks")
 gradle.beforeProject {
+    buildscript.dependencyLocking.apply {
+        lockAllConfigurations()
+        lockMode = LockMode.STRICT
+        lockFile = dependencyLocks.resolve("${project.name}-buildscript.lockfile")
+    }
+    dependencyLocking {
+        lockAllConfigurations()
+        lockMode = LockMode.STRICT
+        lockFile = dependencyLocks.resolve("${project.name}.lockfile")
+    }
+    buildscript.configurations.configureEach {
+        resolutionStrategy.activateDependencyLocking()
+    }
     if (name == "media_kit_libs_android_video") {
         val verificationScript = rootProject.projectDir.resolve("../../../Scripts/verify-media-artifacts.py")
         val mediaBuildDirectory = layout.buildDirectory.get().asFile

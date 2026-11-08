@@ -152,51 +152,79 @@ func (b *gotdBackend) LogOut(ctx context.Context) error {
 func (b *gotdBackend) Sync(ctx context.Context) error {
 	ctx, cancel := requestContext(ctx)
 	defer cancel()
-	result, err := b.client.API().MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
-		OffsetPeer: &tg.InputPeerEmpty{}, Limit: 100,
-	})
-	if err != nil {
-		return err
-	}
-	dialogs, ok := result.AsModified()
-	if !ok {
-		return nil
-	}
-	b.remember(dialogs.GetUsers(), dialogs.GetChats())
-	latest := make(map[string]int64)
-	for _, item := range dialogs.GetMessages() {
-		if m, ok := item.(*tg.Message); ok {
-			latest[peerKey(m.PeerID)] = int64(m.Date) * 1000
+	return b.syncDialogs(ctx, b.client.API().MessagesGetDialogs)
+}
+
+func (b *gotdBackend) syncDialogs(ctx context.Context, fetch func(context.Context, *tg.MessagesGetDialogsRequest) (tg.MessagesDialogsClass, error)) error {
+	request := &tg.MessagesGetDialogsRequest{OffsetPeer: &tg.InputPeerEmpty{}, Limit: 100}
+	previousPeer := ""
+	for {
+		result, err := fetch(ctx, request)
+		if err != nil {
+			return err
 		}
-	}
-	for _, item := range dialogs.GetDialogs() {
-		dialog, ok := item.(*tg.Dialog)
+		dialogs, ok := result.AsModified()
 		if !ok {
-			continue
+			return nil
 		}
-		id := peerKey(dialog.Peer)
-		if id == "" {
-			continue
+		b.remember(dialogs.GetUsers(), dialogs.GetChats())
+		latest := make(map[string]int64)
+		dates := make(map[string]int)
+		for _, item := range dialogs.GetMessages() {
+			if m, ok := item.AsNotEmpty(); ok {
+				id := peerKey(m.GetPeerID())
+				latest[id] = int64(m.GetDate()) * 1000
+				dates[id+":"+strconv.Itoa(m.GetID())] = m.GetDate()
+			}
 		}
-		b.mu.Lock()
-		title := b.names[id]
-		b.mu.Unlock()
-		if title == "" {
-			title = "Telegram conversation"
+		for _, item := range dialogs.GetDialogs() {
+			dialog, ok := item.(*tg.Dialog)
+			if !ok {
+				continue
+			}
+			id := peerKey(dialog.Peer)
+			if id == "" {
+				continue
+			}
+			b.mu.Lock()
+			title := b.names[id]
+			b.mu.Unlock()
+			if title == "" {
+				title = "Telegram conversation"
+			}
+			chat := map[string]any{"type": "chat", "account_id": b.accountID, "id": id, "title": title,
+				"timestamp": latest[id], "unread_count": dialog.UnreadCount, "is_group": !strings.HasPrefix(id, "user:")}
+			if strings.HasPrefix(id, "user:") {
+				chat["identity_id"] = id
+			}
+			b.emit(chat)
 		}
-		chat := map[string]any{"type": "chat", "account_id": b.accountID, "id": id, "title": title,
-			"timestamp": latest[id], "unread_count": dialog.UnreadCount, "is_group": !strings.HasPrefix(id, "user:")}
-		if strings.HasPrefix(id, "user:") {
-			chat["identity_id"] = id
+		for _, item := range dialogs.GetMessages() {
+			if m, ok := item.(*tg.Message); ok {
+				b.deliver(m, true)
+			}
 		}
-		b.emit(chat)
+
+		items := dialogs.GetDialogs()
+		if _, complete := result.(*tg.MessagesDialogs); complete || len(items) == 0 {
+			return nil
+		}
+		last, ok := items[len(items)-1].(*tg.Dialog)
+		if !ok {
+			return errors.New("telegram_dialog_pagination_failed")
+		}
+		id := peerKey(last.Peer)
+		peer, err := b.peer(id)
+		if err != nil {
+			return err
+		}
+		date := dates[id+":"+strconv.Itoa(last.TopMessage)]
+		if date == 0 || (previousPeer == id && request.OffsetID == last.TopMessage && request.OffsetDate == date) {
+			return errors.New("telegram_dialog_pagination_failed")
+		}
+		previousPeer = id
+		request = &tg.MessagesGetDialogsRequest{ExcludePinned: true, OffsetPeer: peer, OffsetID: last.TopMessage, OffsetDate: date, Limit: 100}
 	}
-	for _, item := range dialogs.GetMessages() {
-		if m, ok := item.(*tg.Message); ok {
-			b.deliver(m, true)
-		}
-	}
-	return nil
 }
 
 func (b *gotdBackend) History(ctx context.Context, conversationID string, limit int) error {

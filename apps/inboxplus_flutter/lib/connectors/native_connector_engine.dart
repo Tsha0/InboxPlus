@@ -265,6 +265,10 @@ class NativeConnectorEngine implements ConnectorEngine {
 }
 
 const _errorCodes = {
+  'whatsapp_invalid_phone',
+  'whatsapp_pairing_not_ready',
+  'whatsapp_pairing_expired',
+  'whatsapp_phone_pairing_failed',
   'invalid_request',
   'storage_failed',
   'initialization_failed',

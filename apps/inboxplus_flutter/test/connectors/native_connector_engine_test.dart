@@ -156,6 +156,21 @@ void main() {
     },
   );
 
+  for (final code in [
+    'whatsapp_invalid_phone',
+    'whatsapp_pairing_not_ready',
+    'whatsapp_pairing_expired',
+    'whatsapp_phone_pairing_failed',
+  ]) {
+    test('preserves $code across FFI', () async {
+      final engine = await NativeConnectorEngine.openForTesting(
+        libraryPath: library,
+      );
+      addTearDown(engine.close);
+      await expectLater(engine.request({'op': code}), throwsA(errorCode(code)));
+    });
+  }
+
   test('fails safely when a library cannot be loaded', () async {
     await expectLater(
       NativeConnectorEngine.openForTesting(

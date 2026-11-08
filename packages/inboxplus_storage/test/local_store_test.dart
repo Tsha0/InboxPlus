@@ -1164,6 +1164,85 @@ void main() {
   );
 
   test(
+    'cache clearing finds orphaned files after pruning or deletion',
+    () async {
+      await seed(route);
+      final cache = await Directory('${directory.path}/media').create();
+      final files = <File>[];
+      for (final id in ['expired', 'deleted']) {
+        final file = await File.fromUri(
+          cache.uri.resolve(id),
+        ).writeAsString('Fixture bytes');
+        files.add(file);
+        await store!.saveMessage(
+          MessageRecord(
+            id: id,
+            route: route,
+            body: '',
+            timestamp: instant,
+            isOutgoing: false,
+            attachments: [
+              AttachmentRecord(
+                id: id,
+                kind: 'file',
+                localPath: file.path,
+                isDownloadable: true,
+              ),
+            ],
+          ),
+        );
+      }
+      await store!.deleteMessage(route, 'deleted');
+      await store!.pruneMessagesBefore(instant.add(const Duration(days: 1)));
+      expect(await store!.loadRecentMessages(route), isEmpty);
+      expect(
+        await store!.clearDownloadedMediaPaths(cache.path),
+        unorderedEquals(files.map((f) => f.path)),
+      );
+    },
+  );
+
+  test(
+    'schema five upgrade retains drafts and adds a durable read watermark',
+    () async {
+      await seed(route);
+      await store!.saveDraft(route, 'Keep this draft');
+      await store!.saveConversationPreferences(
+        const ConversationPreferencesRecord(route: route, isFavorite: true),
+      );
+      await store!.close();
+      store = null;
+      final raw = sqlite.sqlite3.open(file.path);
+      final hex = key.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      raw.execute("PRAGMA cipher = 'chacha20'");
+      raw.execute("PRAGMA key = 'raw:$hex'");
+      raw.execute(
+        'ALTER TABLE conversation_preferences DROP COLUMN read_through_micros',
+      );
+      raw.execute('PRAGMA user_version = 5');
+      raw.close();
+      store = await LocalStore.open(file: file, key: key);
+      expect((await store!.loadDraft(route))?.body, 'Keep this draft');
+      expect(
+        (await store!.loadConversationPreferences()).single.isFavorite,
+        isTrue,
+      );
+      expect(
+        (await store!.loadConversationPreferences()).single.readThrough,
+        isNull,
+      );
+      await store!.saveConversationPreferences(
+        ConversationPreferencesRecord(route: route, readThrough: instant),
+      );
+      await reopen();
+      expect(
+        (await store!.loadConversationPreferences()).single.readThrough,
+        instant,
+      );
+    },
+  );
+
+  test(
     'restored profiles rebase attachment metadata without changing payloads or files',
     () async {
       await seed(route);
@@ -1392,6 +1471,9 @@ void main() {
       raw.execute("PRAGMA cipher = 'chacha20'");
       raw.execute("PRAGMA key = 'raw:$hex'");
       raw.execute('DROP TABLE message_reactions');
+      raw.execute(
+        'ALTER TABLE conversation_preferences DROP COLUMN read_through_micros',
+      );
       raw.execute('PRAGMA user_version = 4');
       raw.close();
       store = await LocalStore.open(file: file, key: key);
@@ -1439,6 +1521,9 @@ void main() {
       raw.execute("PRAGMA key = 'raw:$hex'");
       raw.execute('ALTER TABLE messages DROP COLUMN sender_id');
       raw.execute('DROP TABLE message_reactions');
+      raw.execute(
+        'ALTER TABLE conversation_preferences DROP COLUMN read_through_micros',
+      );
       raw.execute('PRAGMA user_version = 3');
       raw.close();
       store = await LocalStore.open(file: file, key: key);
@@ -1481,6 +1566,9 @@ void main() {
       );
       raw.execute(
         'ALTER TABLE conversations DROP COLUMN sending_unavailable_reason',
+      );
+      raw.execute(
+        'ALTER TABLE conversation_preferences DROP COLUMN read_through_micros',
       );
       raw.execute('PRAGMA user_version = 1');
       raw.close();

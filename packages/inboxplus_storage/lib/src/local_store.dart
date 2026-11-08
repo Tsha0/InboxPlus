@@ -141,6 +141,7 @@ class ConversationPreferences extends Table {
   BoolColumn get isMuted => boolean().withDefault(const Constant(false))();
   IntColumn get mutedUntilMicros => integer().nullable()();
   IntColumn get hiddenAtMicros => integer().nullable()();
+  IntColumn get readThroughMicros => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {accountId, conversationId};
@@ -168,7 +169,7 @@ class MessageReactions extends Table {
 }
 
 const _applicationId = 0x494e4250;
-const _schemaVersion = 5;
+const _schemaVersion = 6;
 
 @DriftDatabase(
   tables: [
@@ -214,6 +215,12 @@ class StorageDatabase extends _$StorageDatabase {
       }
       if (from < 5) {
         await migrator.createTable(messageReactions);
+      }
+      if (from < 6) {
+        await migrator.addColumn(
+          conversationPreferences,
+          conversationPreferences.readThroughMicros,
+        );
       }
     },
     beforeOpen: (_) async {
@@ -615,6 +622,15 @@ class LocalStore {
                   attachmentsJson: Value(_encodeAttachments(updated)),
                 ),
               );
+        }
+      }
+      await for (final entity in Directory(
+        rootPath,
+      ).list(recursive: true, followLinks: false)) {
+        if (entity is File &&
+            !protectedPaths.contains(_normalizedPath(entity.path)) &&
+            await _isPrivateMediaPath(entity.path, rootPath)) {
+          paths.add(_normalizedPath(entity.path));
         }
       }
       return paths.toList()..sort();
@@ -1187,6 +1203,7 @@ class LocalStore {
             isMuted: preferences.isMuted,
             mutedUntilMicros: preferences.mutedUntil?.microsecondsSinceEpoch,
             hiddenAtMicros: preferences.hiddenAt?.microsecondsSinceEpoch,
+            readThroughMicros: preferences.readThrough?.microsecondsSinceEpoch,
           ),
         );
   });
@@ -1205,6 +1222,9 @@ class LocalStore {
                 route: ConversationRoute(r.accountId, r.conversationId),
                 isFavorite: r.isFavorite,
                 markedUnread: r.markedUnread,
+                readThrough: r.readThroughMicros == null
+                    ? null
+                    : _date(r.readThroughMicros!),
                 isMuted: r.isMuted,
                 mutedUntil: r.mutedUntilMicros == null
                     ? null

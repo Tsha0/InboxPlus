@@ -68,6 +68,14 @@ char *inboxplus_request(char *json) {
     return strdup(atomic_load(&increments) == 0
       ? "{\"ok\":true,\"data\":{\"increments\":0}}"
       : "{\"ok\":true,\"data\":{\"increments\":1}}");
+  } else if (strstr(json, "\"op\":\"whatsapp_invalid_phone\"")) {
+    return strdup("{\"ok\":false,\"error\":{\"code\":\"whatsapp_invalid_phone\"}}");
+  } else if (strstr(json, "\"op\":\"whatsapp_pairing_not_ready\"")) {
+    return strdup("{\"ok\":false,\"error\":{\"code\":\"whatsapp_pairing_not_ready\"}}");
+  } else if (strstr(json, "\"op\":\"whatsapp_pairing_expired\"")) {
+    return strdup("{\"ok\":false,\"error\":{\"code\":\"whatsapp_pairing_expired\"}}");
+  } else if (strstr(json, "\"op\":\"whatsapp_phone_pairing_failed\"")) {
+    return strdup("{\"ok\":false,\"error\":{\"code\":\"whatsapp_phone_pairing_failed\"}}");
   } else if (strstr(json, "\"op\":\"failure\"")) {
     return strdup("{\"ok\":false,\"error\":{\"code\":\"private-cookie-value\",\"message\":\"private-message-body\"}}");
   } else if (strstr(json, "\"op\":\"malformed\"")) {

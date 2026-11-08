@@ -3334,6 +3334,17 @@ class $ConversationPreferencesTable extends ConversationPreferences
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _readThroughMicrosMeta = const VerificationMeta(
+    'readThroughMicros',
+  );
+  @override
+  late final GeneratedColumn<int> readThroughMicros = GeneratedColumn<int>(
+    'read_through_micros',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     accountId,
@@ -3343,6 +3354,7 @@ class $ConversationPreferencesTable extends ConversationPreferences
     isMuted,
     mutedUntilMicros,
     hiddenAtMicros,
+    readThroughMicros,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -3414,6 +3426,15 @@ class $ConversationPreferencesTable extends ConversationPreferences
         ),
       );
     }
+    if (data.containsKey('read_through_micros')) {
+      context.handle(
+        _readThroughMicrosMeta,
+        readThroughMicros.isAcceptableOrUnknown(
+          data['read_through_micros']!,
+          _readThroughMicrosMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -3451,6 +3472,10 @@ class $ConversationPreferencesTable extends ConversationPreferences
         DriftSqlType.int,
         data['${effectivePrefix}hidden_at_micros'],
       ),
+      readThroughMicros: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}read_through_micros'],
+      ),
     );
   }
 
@@ -3468,6 +3493,7 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
   final bool isMuted;
   final int? mutedUntilMicros;
   final int? hiddenAtMicros;
+  final int? readThroughMicros;
   const PreferenceRow({
     required this.accountId,
     required this.conversationId,
@@ -3476,6 +3502,7 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
     required this.isMuted,
     this.mutedUntilMicros,
     this.hiddenAtMicros,
+    this.readThroughMicros,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3490,6 +3517,9 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
     }
     if (!nullToAbsent || hiddenAtMicros != null) {
       map['hidden_at_micros'] = Variable<int>(hiddenAtMicros);
+    }
+    if (!nullToAbsent || readThroughMicros != null) {
+      map['read_through_micros'] = Variable<int>(readThroughMicros);
     }
     return map;
   }
@@ -3507,6 +3537,9 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
       hiddenAtMicros: hiddenAtMicros == null && nullToAbsent
           ? const Value.absent()
           : Value(hiddenAtMicros),
+      readThroughMicros: readThroughMicros == null && nullToAbsent
+          ? const Value.absent()
+          : Value(readThroughMicros),
     );
   }
 
@@ -3523,6 +3556,7 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
       isMuted: serializer.fromJson<bool>(json['isMuted']),
       mutedUntilMicros: serializer.fromJson<int?>(json['mutedUntilMicros']),
       hiddenAtMicros: serializer.fromJson<int?>(json['hiddenAtMicros']),
+      readThroughMicros: serializer.fromJson<int?>(json['readThroughMicros']),
     );
   }
   @override
@@ -3536,6 +3570,7 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
       'isMuted': serializer.toJson<bool>(isMuted),
       'mutedUntilMicros': serializer.toJson<int?>(mutedUntilMicros),
       'hiddenAtMicros': serializer.toJson<int?>(hiddenAtMicros),
+      'readThroughMicros': serializer.toJson<int?>(readThroughMicros),
     };
   }
 
@@ -3547,6 +3582,7 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
     bool? isMuted,
     Value<int?> mutedUntilMicros = const Value.absent(),
     Value<int?> hiddenAtMicros = const Value.absent(),
+    Value<int?> readThroughMicros = const Value.absent(),
   }) => PreferenceRow(
     accountId: accountId ?? this.accountId,
     conversationId: conversationId ?? this.conversationId,
@@ -3559,6 +3595,9 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
     hiddenAtMicros: hiddenAtMicros.present
         ? hiddenAtMicros.value
         : this.hiddenAtMicros,
+    readThroughMicros: readThroughMicros.present
+        ? readThroughMicros.value
+        : this.readThroughMicros,
   );
   PreferenceRow copyWithCompanion(ConversationPreferencesCompanion data) {
     return PreferenceRow(
@@ -3579,6 +3618,9 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
       hiddenAtMicros: data.hiddenAtMicros.present
           ? data.hiddenAtMicros.value
           : this.hiddenAtMicros,
+      readThroughMicros: data.readThroughMicros.present
+          ? data.readThroughMicros.value
+          : this.readThroughMicros,
     );
   }
 
@@ -3591,7 +3633,8 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
           ..write('markedUnread: $markedUnread, ')
           ..write('isMuted: $isMuted, ')
           ..write('mutedUntilMicros: $mutedUntilMicros, ')
-          ..write('hiddenAtMicros: $hiddenAtMicros')
+          ..write('hiddenAtMicros: $hiddenAtMicros, ')
+          ..write('readThroughMicros: $readThroughMicros')
           ..write(')'))
         .toString();
   }
@@ -3605,6 +3648,7 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
     isMuted,
     mutedUntilMicros,
     hiddenAtMicros,
+    readThroughMicros,
   );
   @override
   bool operator ==(Object other) =>
@@ -3616,7 +3660,8 @@ class PreferenceRow extends DataClass implements Insertable<PreferenceRow> {
           other.markedUnread == this.markedUnread &&
           other.isMuted == this.isMuted &&
           other.mutedUntilMicros == this.mutedUntilMicros &&
-          other.hiddenAtMicros == this.hiddenAtMicros);
+          other.hiddenAtMicros == this.hiddenAtMicros &&
+          other.readThroughMicros == this.readThroughMicros);
 }
 
 class ConversationPreferencesCompanion extends UpdateCompanion<PreferenceRow> {
@@ -3627,6 +3672,7 @@ class ConversationPreferencesCompanion extends UpdateCompanion<PreferenceRow> {
   final Value<bool> isMuted;
   final Value<int?> mutedUntilMicros;
   final Value<int?> hiddenAtMicros;
+  final Value<int?> readThroughMicros;
   final Value<int> rowid;
   const ConversationPreferencesCompanion({
     this.accountId = const Value.absent(),
@@ -3636,6 +3682,7 @@ class ConversationPreferencesCompanion extends UpdateCompanion<PreferenceRow> {
     this.isMuted = const Value.absent(),
     this.mutedUntilMicros = const Value.absent(),
     this.hiddenAtMicros = const Value.absent(),
+    this.readThroughMicros = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ConversationPreferencesCompanion.insert({
@@ -3646,6 +3693,7 @@ class ConversationPreferencesCompanion extends UpdateCompanion<PreferenceRow> {
     this.isMuted = const Value.absent(),
     this.mutedUntilMicros = const Value.absent(),
     this.hiddenAtMicros = const Value.absent(),
+    this.readThroughMicros = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : accountId = Value(accountId),
        conversationId = Value(conversationId);
@@ -3657,6 +3705,7 @@ class ConversationPreferencesCompanion extends UpdateCompanion<PreferenceRow> {
     Expression<bool>? isMuted,
     Expression<int>? mutedUntilMicros,
     Expression<int>? hiddenAtMicros,
+    Expression<int>? readThroughMicros,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -3667,6 +3716,7 @@ class ConversationPreferencesCompanion extends UpdateCompanion<PreferenceRow> {
       if (isMuted != null) 'is_muted': isMuted,
       if (mutedUntilMicros != null) 'muted_until_micros': mutedUntilMicros,
       if (hiddenAtMicros != null) 'hidden_at_micros': hiddenAtMicros,
+      if (readThroughMicros != null) 'read_through_micros': readThroughMicros,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -3679,6 +3729,7 @@ class ConversationPreferencesCompanion extends UpdateCompanion<PreferenceRow> {
     Value<bool>? isMuted,
     Value<int?>? mutedUntilMicros,
     Value<int?>? hiddenAtMicros,
+    Value<int?>? readThroughMicros,
     Value<int>? rowid,
   }) {
     return ConversationPreferencesCompanion(
@@ -3689,6 +3740,7 @@ class ConversationPreferencesCompanion extends UpdateCompanion<PreferenceRow> {
       isMuted: isMuted ?? this.isMuted,
       mutedUntilMicros: mutedUntilMicros ?? this.mutedUntilMicros,
       hiddenAtMicros: hiddenAtMicros ?? this.hiddenAtMicros,
+      readThroughMicros: readThroughMicros ?? this.readThroughMicros,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -3717,6 +3769,9 @@ class ConversationPreferencesCompanion extends UpdateCompanion<PreferenceRow> {
     if (hiddenAtMicros.present) {
       map['hidden_at_micros'] = Variable<int>(hiddenAtMicros.value);
     }
+    if (readThroughMicros.present) {
+      map['read_through_micros'] = Variable<int>(readThroughMicros.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3733,6 +3788,7 @@ class ConversationPreferencesCompanion extends UpdateCompanion<PreferenceRow> {
           ..write('isMuted: $isMuted, ')
           ..write('mutedUntilMicros: $mutedUntilMicros, ')
           ..write('hiddenAtMicros: $hiddenAtMicros, ')
+          ..write('readThroughMicros: $readThroughMicros, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6888,6 +6944,7 @@ typedef $$ConversationPreferencesTableCreateCompanionBuilder =
       Value<bool> isMuted,
       Value<int?> mutedUntilMicros,
       Value<int?> hiddenAtMicros,
+      Value<int?> readThroughMicros,
       Value<int> rowid,
     });
 typedef $$ConversationPreferencesTableUpdateCompanionBuilder =
@@ -6899,6 +6956,7 @@ typedef $$ConversationPreferencesTableUpdateCompanionBuilder =
       Value<bool> isMuted,
       Value<int?> mutedUntilMicros,
       Value<int?> hiddenAtMicros,
+      Value<int?> readThroughMicros,
       Value<int> rowid,
     });
 
@@ -6972,6 +7030,11 @@ class $$ConversationPreferencesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get readThroughMicros => $composableBuilder(
+    column: $table.readThroughMicros,
+    builder: (column) => ColumnFilters(column),
+  );
+
   $$AccountsTableFilterComposer get accountId {
     final $$AccountsTableFilterComposer composer = $composerBuilder(
       composer: this,
@@ -7035,6 +7098,11 @@ class $$ConversationPreferencesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get readThroughMicros => $composableBuilder(
+    column: $table.readThroughMicros,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$AccountsTableOrderingComposer get accountId {
     final $$AccountsTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -7093,6 +7161,11 @@ class $$ConversationPreferencesTableAnnotationComposer
 
   GeneratedColumn<int> get hiddenAtMicros => $composableBuilder(
     column: $table.hiddenAtMicros,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get readThroughMicros => $composableBuilder(
+    column: $table.readThroughMicros,
     builder: (column) => column,
   );
 
@@ -7166,6 +7239,7 @@ class $$ConversationPreferencesTableTableManager
                 Value<bool> isMuted = const Value.absent(),
                 Value<int?> mutedUntilMicros = const Value.absent(),
                 Value<int?> hiddenAtMicros = const Value.absent(),
+                Value<int?> readThroughMicros = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ConversationPreferencesCompanion(
                 accountId: accountId,
@@ -7175,6 +7249,7 @@ class $$ConversationPreferencesTableTableManager
                 isMuted: isMuted,
                 mutedUntilMicros: mutedUntilMicros,
                 hiddenAtMicros: hiddenAtMicros,
+                readThroughMicros: readThroughMicros,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -7186,6 +7261,7 @@ class $$ConversationPreferencesTableTableManager
                 Value<bool> isMuted = const Value.absent(),
                 Value<int?> mutedUntilMicros = const Value.absent(),
                 Value<int?> hiddenAtMicros = const Value.absent(),
+                Value<int?> readThroughMicros = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ConversationPreferencesCompanion.insert(
                 accountId: accountId,
@@ -7195,6 +7271,7 @@ class $$ConversationPreferencesTableTableManager
                 isMuted: isMuted,
                 mutedUntilMicros: mutedUntilMicros,
                 hiddenAtMicros: hiddenAtMicros,
+                readThroughMicros: readThroughMicros,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

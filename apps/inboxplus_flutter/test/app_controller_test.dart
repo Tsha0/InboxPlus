@@ -2337,6 +2337,131 @@ void main() {
     },
   );
 
+  test('account removal keeps a draft typed while logout is pending', () async {
+    await seed(firstRoute);
+    final gate = Completer<void>();
+    final engine = _FakeEngine(onLogout: () => gate.future);
+    final app = await start(engine: engine);
+    final removal = app.removeAccount('first');
+    await _eventually(() => engine.commands.any((c) => c['op'] == 'logout'));
+    app.updateDraft(firstRoute, 'Keep this new draft');
+    gate.complete();
+    await removal;
+    expect(app.accounts.single.id, 'first');
+    expect(app.accounts.single.isConnected, isFalse);
+    expect(app.draftFor(firstRoute)?.body, 'Keep this new draft');
+    expect((await store.loadDraft(firstRoute))?.body, 'Keep this new draft');
+    expect(app.error, contains('saved work has been kept'));
+  });
+
+  test(
+    'account removal waits for an attachment picker opened during logout',
+    () async {
+      await seed(firstRoute);
+      final originalPicker = FilePickerPlatform.instance;
+      final picker = _SavePicker()..pickGate = Completer<PlatformFile?>();
+      FilePickerPlatform.instance = picker;
+      addTearDown(() => FilePickerPlatform.instance = originalPicker);
+      final logout = Completer<void>();
+      final engine = _FakeEngine(onLogout: () => logout.future);
+      final app = await start(engine: engine);
+      final removal = app.removeAccount('first');
+      await _eventually(() => engine.commands.any((c) => c['op'] == 'logout'));
+      final staging = app.stageAttachments(firstRoute);
+      await _eventually(() => picker.pickStarted);
+      logout.complete();
+      await removal;
+      expect(app.accounts.single.id, 'first');
+      expect(app.error, contains('saved work has been kept'));
+      picker.pickGate!.complete(null);
+      await staging;
+      expect(await store.loadAccounts(), hasLength(1));
+    },
+  );
+
+  test(
+    'Instagram refresh follows mailbox cursors and rejects a repeated cursor',
+    () async {
+      await seed(firstRoute, platform: 'instagram');
+      var repeatCursor = false;
+      final engine = _FakeEngine(
+        onListChats: (command) async {
+          final cursor = command['cursor'];
+          return {
+            'chats': [
+              {
+                'id': cursor == null ? 'same-chat' : 'older-chat',
+                'title': 'Fixture',
+              },
+            ],
+            'has_more': cursor == null || repeatCursor,
+            'cursor': 'page-two',
+          };
+        },
+      );
+      final app = await start(engine: engine);
+      expect(
+        app.conversations.map((c) => c.route.conversationId),
+        containsAll(['same-chat', 'older-chat']),
+      );
+      expect(
+        engine.commands.where((c) => c['cursor'] == 'page-two'),
+        isNotEmpty,
+      );
+      repeatCursor = true;
+      await app.refresh();
+      expect(app.error, isNotNull);
+    },
+  );
+
+  for (final select in [false, true]) {
+    test(
+      'network read state survives stale refresh and restart (select=$select)',
+      () async {
+        await seed(firstRoute);
+        final engine = _FakeEngine(
+          chats: [
+            {
+              'id': 'same-chat',
+              'timestamp': instant.millisecondsSinceEpoch,
+              'unread_count': 4,
+            },
+          ],
+        );
+        var app = await start(engine: engine);
+        expect(app.conversations.single.unreadCount, 4);
+        if (select) {
+          app.selectConversation(firstRoute);
+          await _eventually(() => app.conversations.single.unreadCount == 0);
+        } else {
+          await app.setUnread(firstRoute, false);
+        }
+        await app.refresh();
+        expect(app.conversations.single.unreadCount, 0);
+        await closeController();
+        store = await LocalStore.open(file: database, key: key);
+        storeClosed = false;
+        final reopenedEngine = _FakeEngine(chats: engine.chats);
+        app = await start(engine: reopenedEngine);
+        expect(app.conversations.single.unreadCount, 0);
+        reopenedEngine.emit({
+          'type': 'message',
+          'account_id': 'first',
+          'conversation_id': 'same-chat',
+          'id': 'new-unread',
+          'body': 'Fixture',
+          'timestamp': instant
+              .add(const Duration(seconds: 1))
+              .millisecondsSinceEpoch,
+        });
+        await _eventually(() => app.messagesFor(firstRoute).isNotEmpty);
+        await _eventually(() => app.conversations.single.unreadCount == 1);
+        await app.refresh();
+        expect(app.conversations.single.unreadCount, 1);
+      },
+    );
+  }
+
   test('connection reports become account network problems', () async {
     await seed(firstRoute);
     final engine = _FakeEngine();
@@ -2734,6 +2859,27 @@ class _SavePicker extends FilePickerPlatform {
   String? mimeType;
   String? dialogTitle;
 
+  Completer<PlatformFile?>? pickGate;
+  bool pickStarted = false;
+
+  @override
+  Future<PlatformFile?> pickFile({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async {
+    pickStarted = true;
+    return pickGate?.future;
+  }
+
   @override
   Future<Uri?> saveFile({
     required String fileName,
@@ -2886,9 +3032,14 @@ class _FakeEngine implements ConnectorEngine {
     this.additionalPlatforms = const [],
     this.onConnect,
     this.onPairPhone,
+    this.onLogout,
+    this.onListChats,
   });
   String connectState;
   bool failLogout = false;
+  final Future<void> Function()? onLogout;
+  final Future<Map<String, Object?>> Function(Map<String, Object?>)?
+  onListChats;
   bool? hasSessionOnClose;
   final Future<void> Function()? onInitialize;
   final List<String> additionalPlatforms;
@@ -2963,6 +3114,7 @@ class _FakeEngine implements ConnectorEngine {
             ? {'state': connectState}
             : onConnect!(command);
       case 'logout':
+        await onLogout?.call();
         if (failLogout) throw const ConnectorException('operation_failed');
         return {
           'logged_out': true,
@@ -2972,7 +3124,7 @@ class _FakeEngine implements ConnectorEngine {
           }.contains(platforms[command['account_id']]),
         };
       case 'list_chats':
-        return {'chats': chats};
+        return onListChats == null ? {'chats': chats} : onListChats!(command);
       case 'login_phone':
         return {'state': 'code'};
       case 'pair_phone':
