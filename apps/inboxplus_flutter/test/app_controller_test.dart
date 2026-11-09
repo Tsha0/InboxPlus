@@ -1216,6 +1216,163 @@ void main() {
   }
 
   test(
+    'Reel reply targets resolve beyond recent history and stay account scoped',
+    () async {
+      await seed(firstRoute, platform: 'instagram');
+      await seed(secondRoute, platform: 'instagram');
+      for (final route in [firstRoute, secondRoute]) {
+        await store.saveMessage(
+          MessageRecord(
+            id: 'reel',
+            route: route,
+            body: '',
+            timestamp: instant.subtract(const Duration(minutes: 60)),
+            isOutgoing: false,
+            senderName: 'Sharer',
+            attachments: [
+              AttachmentRecord(
+                id: 'link',
+                kind: 'reel',
+                fileName: '${route.accountId} Reel',
+                deepLink: 'https://www.instagram.com/reel/${route.accountId}/',
+                isDownloadable: false,
+              ),
+            ],
+          ),
+        );
+        for (var index = 0; index < 55; index++) {
+          await store.saveMessage(
+            MessageRecord(
+              id: 'm$index',
+              route: route,
+              body: 'Later message',
+              timestamp: instant.subtract(Duration(minutes: 55 - index)),
+              isOutgoing: false,
+            ),
+          );
+        }
+        await store.saveMessage(
+          MessageRecord(
+            id: 'reply',
+            route: route,
+            body: 'Response',
+            timestamp: instant,
+            isOutgoing: false,
+            replyToMessageId: 'reel',
+          ),
+        );
+      }
+      final engine = _FakeEngine();
+      final app = await start(engine: engine);
+      expect(app.messagesFor(firstRoute).length, 50);
+      expect(app.messagesFor(firstRoute).any((m) => m.id == 'reel'), isFalse);
+      expect(
+        app.replyTargetFor(firstRoute, 'reel')!.attachments.single.fileName,
+        'first Reel',
+      );
+      expect(
+        app.replyTargetFor(secondRoute, 'reel')!.attachments.single.fileName,
+        'second Reel',
+      );
+      expect(
+        app.replyTargetFor(
+          const ConversationRoute('first', 'another-chat'),
+          'reel',
+        ),
+        isNull,
+      );
+      expect(app.replyTargetFor(firstRoute, 'missing'), isNull);
+      engine.emit({
+        'type': 'message_edit',
+        'account_id': firstRoute.accountId,
+        'conversation_id': firstRoute.conversationId,
+        'id': 'reel',
+        'body': 'Updated older Reel',
+      });
+      await _eventually(
+        () =>
+            app.replyTargetFor(firstRoute, 'reel')?.body ==
+            'Updated older Reel',
+      );
+      expect(app.messagesFor(firstRoute).length, 50);
+      await app.revealMessage(firstRoute, 'reel');
+      expect(app.messagesFor(firstRoute).length, 57);
+      expect(app.messagesFor(firstRoute).first.id, 'reel');
+      expect(app.messagesFor(firstRoute).last.id, 'reply');
+      expect(app.messagesFor(secondRoute).length, 50);
+      await app.revealMessage(firstRoute, 'reply');
+      expect(app.messagesFor(firstRoute).length, 57);
+      engine.emit({
+        'type': 'message_delete',
+        'account_id': firstRoute.accountId,
+        'conversation_id': firstRoute.conversationId,
+        'id': 'reel',
+      });
+      await _eventually(() => app.replyTargetFor(firstRoute, 'reel') == null);
+      expect(app.messagesFor(firstRoute).last.replyToMessageId, 'reel');
+      expect(app.replyTargetFor(secondRoute, 'reel'), isNotNull);
+      await app.revealMessage(firstRoute, 'missing');
+      expect(app.error, isNull);
+    },
+  );
+
+  test('older Reel quotes refresh after edits and target arrivals', () async {
+    await seed(firstRoute, platform: 'instagram');
+    await store.saveMessage(
+      MessageRecord(
+        id: 'reply',
+        route: firstRoute,
+        body: 'Response',
+        timestamp: instant,
+        isOutgoing: false,
+        replyToMessageId: 'reel',
+      ),
+    );
+    final engine = _FakeEngine();
+    final app = await start(engine: engine);
+    expect(app.replyTargetFor(firstRoute, 'reel'), isNull);
+    engine.emit({
+      'type': 'message',
+      'historical': true,
+      'account_id': firstRoute.accountId,
+      'conversation_id': firstRoute.conversationId,
+      'id': 'reel',
+      'body': '',
+      'timestamp': instant
+          .subtract(const Duration(minutes: 60))
+          .millisecondsSinceEpoch,
+      'attachments': [
+        {
+          'id': 'link',
+          'kind': 'reel',
+          'name': 'Mountain hike',
+          'deep_link': 'https://www.instagram.com/reel/mountain/',
+          'downloadable': false,
+        },
+      ],
+    });
+    await _eventually(() => app.replyTargetFor(firstRoute, 'reel') != null);
+    expect(
+      app.replyTargetFor(firstRoute, 'reel')!.attachments.single.fileName,
+      'Mountain hike',
+    );
+    engine.emit({
+      'type': 'message_edit',
+      'account_id': firstRoute.accountId,
+      'conversation_id': firstRoute.conversationId,
+      'id': 'reel',
+      'body': 'Updated caption',
+    });
+    await _eventually(
+      () => app.replyTargetFor(firstRoute, 'reel')?.body == 'Updated caption',
+    );
+    expect(
+      app.replyTargetFor(firstRoute, 'reel')!.attachments.single.kind,
+      'reel',
+    );
+  });
+
+  test(
     'incoming replies retain authors and quotes after message edits',
     () async {
       await seed(firstRoute);

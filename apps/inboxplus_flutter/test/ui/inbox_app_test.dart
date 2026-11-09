@@ -2331,6 +2331,221 @@ void main() {
     }),
   );
 
+  for (final playsReels in [false, true]) {
+    testWidgets(
+      'Reel replies identify distinct targets with playback $playsReels',
+      (tester) async {
+        const route = ConversationRoute('first', 'alice');
+        final controller = _FakeController(
+          accounts: const [
+            AccountRecord(
+              id: 'first',
+              platform: 'instagram',
+              displayName: 'Instagram',
+              isConnected: true,
+            ),
+          ],
+          messages: {
+            route: [
+              for (final id in ['A', 'B'])
+                MessageRecord(
+                  id: 'reel-$id',
+                  route: route,
+                  body: '',
+                  timestamp: DateTime(2026, 11, 5),
+                  isOutgoing: false,
+                  senderName: 'Alex',
+                  attachments: [
+                    AttachmentRecord(
+                      id: 'link-$id',
+                      kind: 'reel',
+                      fileName: 'Reel $id',
+                      isDownloadable: false,
+                      deepLink: 'https://www.instagram.com/reel/fixture$id/',
+                    ),
+                  ],
+                ),
+              for (final id in ['A', 'B', 'missing'])
+                MessageRecord(
+                  id: 'reply-$id',
+                  route: route,
+                  body: 'Response $id',
+                  timestamp: DateTime(2026, 11, 5, 1),
+                  isOutgoing: id == 'B',
+                  replyToMessageId: 'reel-$id',
+                ),
+            ],
+          },
+        );
+        controller.currentPreferences = PreferencesRecord(
+          appearance: playsReels ? 'dark' : 'light',
+          playsInstagramReels: playsReels,
+        );
+        await _pumpApp(
+          tester,
+          controller,
+          size: isDesktopPlatform
+              ? const Size(1200, 900)
+              : const Size(320, 850),
+        );
+        await tester.tap(find.byKey(const Key('conversation-first-alice')));
+        await tester.pumpAndSettle();
+        for (final id in ['A', 'B']) {
+          final quote = find.byKey(ValueKey('reply-quote-reply-$id'));
+          expect(
+            find.descendant(of: quote, matching: find.text('Reel $id')),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(of: quote, matching: find.text('Reel · Alex')),
+            findsOneWidget,
+          );
+        }
+        expect(find.text('Original message unavailable'), findsOneWidget);
+        expect(find.text('Reply to a message'), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('reply-quote-reply-B')));
+        await tester.pumpAndSettle();
+        expect(controller.revealedMessages.single, (
+          route: route,
+          messageId: 'reel-B',
+        ));
+        expect(controller.openedAttachmentLinks, isEmpty);
+        expect(controller.downloadedAttachments, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+      variant: TargetPlatformVariant({
+        TargetPlatform.macOS,
+        TargetPlatform.iOS,
+      }),
+    );
+  }
+
+  testWidgets(
+    'Reel quotes identify a captionless target by its link and retain text replies',
+    (tester) async {
+      const route = ConversationRoute('first', 'alice');
+      final controller = _FakeController(
+        messages: {
+          route: [
+            MessageRecord(
+              id: 'reel',
+              route: route,
+              body: '',
+              timestamp: DateTime(2026, 11, 5),
+              isOutgoing: true,
+              attachments: [
+                const AttachmentRecord(
+                  id: 'preview',
+                  kind: 'preview',
+                  fileName: 'Preview',
+                  isDownloadable: false,
+                ),
+                const AttachmentRecord(
+                  id: 'link',
+                  kind: 'link',
+                  deepLink: 'https://www.instagram.com/reel/unique-reel/?ignored=query',
+                  isDownloadable: false,
+                ),
+              ],
+            ),
+            MessageRecord(
+              id: 'text',
+              route: route,
+              body: 'Original text',
+              timestamp: DateTime(2026, 11, 5),
+              isOutgoing: false,
+              senderName: 'Alex',
+            ),
+            MessageRecord(
+              id: 'reply-reel',
+              route: route,
+              body: 'Reel response',
+              timestamp: DateTime(2026, 11, 5, 1),
+              isOutgoing: false,
+              replyToMessageId: 'reel',
+            ),
+            MessageRecord(
+              id: 'reply-text',
+              route: route,
+              body: 'Text response',
+              timestamp: DateTime(2026, 11, 5, 1),
+              isOutgoing: false,
+              replyToMessageId: 'text',
+            ),
+          ],
+        },
+      );
+      await _pumpApp(tester, controller);
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(find.text('Reel · You'), findsOneWidget);
+      expect(find.text('Reel unique-reel'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('reply-quote-reply-text')),
+          matching: find.text('Original text'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('ignored=query'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({TargetPlatform.macOS}),
+  );
+
+  testWidgets('Reel quote navigation reveals an offscreen original', (
+    tester,
+  ) async {
+    const route = ConversationRoute('first', 'alice');
+    final controller = _FakeController(
+      messages: {
+        route: [
+          MessageRecord(
+            id: 'original',
+            route: route,
+            body: '',
+            timestamp: DateTime(2026, 11, 5),
+            isOutgoing: false,
+            attachments: [
+              const AttachmentRecord(
+                id: 'reel',
+                kind: 'reel',
+                fileName: 'Early mountain hike',
+                isDownloadable: false,
+              ),
+            ],
+          ),
+          for (var index = 0; index < 45; index++)
+            MessageRecord(
+              id: 'later-$index',
+              route: route,
+              body: 'Later message $index',
+              timestamp: DateTime(2026, 11, 5, 1),
+              isOutgoing: false,
+            ),
+          MessageRecord(
+            id: 'reply',
+            route: route,
+            body: 'Response to the early Reel',
+            timestamp: DateTime(2026, 11, 5, 2),
+            isOutgoing: false,
+            replyToMessageId: 'original',
+          ),
+        ],
+      },
+    );
+    await _pumpApp(tester, controller, size: const Size(1200, 700));
+    await tester.tap(find.byKey(const Key('conversation-first-alice')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('reply-quote-reply')));
+    await tester.pumpAndSettle();
+    final original = find.text('Early mountain hike');
+    expect(original, findsOneWidget);
+    expect(tester.getCenter(original).dy, inInclusiveRange(60, 600));
+    expect(controller.revealedMessages.single.messageId, 'original');
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant({TargetPlatform.macOS}));
+
   testWidgets(
     'desktop Reply focuses the composer and preserves text when canceled',
     (tester) async {
@@ -3642,6 +3857,13 @@ class _FakeController extends InboxUiController {
 
   @override
   Future<void> disconnectAccount(String accountId) async {}
+
+  final revealedMessages = <({ConversationRoute route, String messageId})>[];
+
+  @override
+  Future<void> revealMessage(ConversationRoute route, String messageId) async {
+    revealedMessages.add((route: route, messageId: messageId));
+  }
 
   @override
   List<MessageRecord> messagesFor(ConversationRoute route) =>

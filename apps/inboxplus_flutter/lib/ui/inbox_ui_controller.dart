@@ -325,6 +325,11 @@ abstract class InboxUiController extends ChangeNotifier {
   bool isChangingAccount(String accountId);
 
   List<MessageRecord> messagesFor(ConversationRoute route);
+  MessageRecord? replyTargetFor(ConversationRoute route, String messageId) =>
+      messagesFor(route)
+          .where((message) => message.id == messageId)
+          .firstOrNull;
+  Future<void> revealMessage(ConversationRoute route, String messageId);
   DraftRecord? draftFor(ConversationRoute route);
   ConversationPreferencesRecord preferencesFor(ConversationRoute route);
   Map<String, int> reactionsFor(ConversationRoute route, String messageId);

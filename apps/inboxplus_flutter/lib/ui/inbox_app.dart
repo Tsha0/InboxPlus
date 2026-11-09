@@ -1534,12 +1534,13 @@ class _ConversationPaneState extends State<_ConversationPane> {
   final _scroll = ScrollController();
   int _messageCount = -1;
   String? _highlightedMessageId;
+  String? _externalHighlightedMessageId;
   final _messageKeys = <String, GlobalKey>{};
 
   Future<void> _revealMessage(String id) async {
     if (!_scroll.hasClients) return;
     _scroll.jumpTo(_scroll.position.maxScrollExtent);
-    while (mounted && widget.highlightedMessageId == id && _scroll.hasClients) {
+    while (mounted && _highlightedMessageId == id && _scroll.hasClients) {
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted || !_scroll.hasClients) return;
       final target = _messageKeys[id]?.currentContext;
@@ -1558,6 +1559,14 @@ class _ConversationPaneState extends State<_ConversationPane> {
     }
   }
 
+  Future<void> _showReplyTarget(String id) async {
+    setState(() => _highlightedMessageId = id);
+    await widget.controller.revealMessage(widget.conversation.route, id);
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _revealMessage(id));
+    setState(() {});
+  }
+
   @override
   void dispose() {
     _scroll.dispose();
@@ -1569,7 +1578,8 @@ class _ConversationPaneState extends State<_ConversationPane> {
     final controller = widget.controller;
     final item = widget.conversation;
     final messages = controller.messagesFor(item.route);
-    if (_highlightedMessageId != widget.highlightedMessageId) {
+    if (_externalHighlightedMessageId != widget.highlightedMessageId) {
+      _externalHighlightedMessageId = widget.highlightedMessageId;
       _highlightedMessageId = widget.highlightedMessageId;
       if (_highlightedMessageId case final id?) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _revealMessage(id));
@@ -1587,7 +1597,7 @@ class _ConversationPaneState extends State<_ConversationPane> {
           !_scroll.hasClients ||
           _scroll.position.maxScrollExtent - _scroll.offset < 180;
       _messageCount = messages.length;
-      if (wasNearBottom && widget.highlightedMessageId == null) {
+      if (wasNearBottom && _highlightedMessageId == null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scroll.hasClients) {
             _scroll.jumpTo(_scroll.position.maxScrollExtent);
@@ -1711,14 +1721,13 @@ class _ConversationPaneState extends State<_ConversationPane> {
                         );
                     final repliedTo = message.replyToMessageId == null
                         ? null
-                        : messages
-                              .where(
-                                (item) => item.id == message.replyToMessageId,
-                              )
-                              .firstOrNull;
+                        : controller.replyTargetFor(
+                            item.route,
+                            message.replyToMessageId!,
+                          );
                     return Container(
                       key: _messageKeys.putIfAbsent(message.id, GlobalKey.new),
-                      decoration: widget.highlightedMessageId == message.id
+                      decoration: _highlightedMessageId == message.id
                           ? BoxDecoration(
                               color: Theme.of(context).colorScheme.primary
                                   .withValues(alpha: .08),
@@ -1758,7 +1767,8 @@ class _ConversationPaneState extends State<_ConversationPane> {
                             conversation: item,
                             controller: controller,
                             capability: capability,
-                            replyPreview: repliedTo?.body,
+                            replyTarget: repliedTo,
+                            onRevealReply: _showReplyTarget,
                             desktop: widget.desktop,
                             showsTimestamp:
                                 !widget.desktop ||
@@ -1789,6 +1799,144 @@ class _ConversationPaneState extends State<_ConversationPane> {
   }
 }
 
+class _ReplyQuote extends StatelessWidget {
+  const _ReplyQuote({
+    super.key,
+    required this.target,
+    required this.conversation,
+    required this.foreground,
+    required this.onTap,
+  });
+
+  final MessageRecord? target;
+  final ConversationRecord conversation;
+  final Color foreground;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = target;
+    final attachment =
+        message?.attachments
+            .where(
+              (item) =>
+                  item.kind == 'reel' ||
+                  {'reel', 'reels'}.contains(
+                    Uri.tryParse(item.deepLink ?? '')?.pathSegments.firstOrNull,
+                  ),
+            )
+            .firstOrNull ??
+        message?.attachments.firstOrNull;
+    final link = Uri.tryParse(attachment?.deepLink ?? '');
+    final isReel =
+        attachment?.kind == 'reel' ||
+        {'reel', 'reels'}.contains(link?.pathSegments.firstOrNull);
+    final sender = message == null
+        ? ''
+        : message.isOutgoing
+        ? 'You'
+        : message.senderName?.trim().isNotEmpty == true
+        ? message.senderName!
+        : conversation.title;
+    final name = attachment?.fileName?.trim() ?? '';
+    final body = message?.body.trim() ?? '';
+    final summary = message == null
+        ? 'Original message unavailable'
+        : body.isNotEmpty
+        ? body
+        : name.isNotEmpty
+        ? name
+        : isReel && link != null && link.pathSegments.length > 1
+        ? 'Reel ${link.pathSegments[1]}'
+        : attachment != null
+        ? (isReel ? 'Shared Reel' : 'Attachment')
+        : 'Message';
+    final label = message == null
+        ? 'Reply'
+        : '${isReel ? 'Reel' : 'Reply'} · $sender';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Tooltip(
+        message: onTap == null
+            ? 'Original message unavailable'
+            : 'Show original message',
+        child: Semantics(
+          button: onTap != null,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 300),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: foreground.withValues(alpha: .06),
+                border: Border(
+                  left: BorderSide(
+                    color: foreground.withValues(alpha: .45),
+                    width: 2,
+                  ),
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    message == null
+                        ? Icons.link_off
+                        : isReel
+                        ? Icons.movie_outlined
+                        : Icons.reply,
+                    size: 20,
+                    color: foreground,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: foreground,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          summary,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: foreground.withValues(alpha: .85),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (onTap != null) ...[
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: foreground.withValues(alpha: .65),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
@@ -1796,7 +1944,8 @@ class _MessageBubble extends StatelessWidget {
     required this.controller,
     this.capability,
     this.desktop = false,
-    this.replyPreview,
+    this.replyTarget,
+    required this.onRevealReply,
     this.showsTimestamp = true,
     this.showsSender = true,
   });
@@ -1806,7 +1955,8 @@ class _MessageBubble extends StatelessWidget {
   final InboxUiController controller;
   final NetworkCapability? capability;
   final bool desktop;
-  final String? replyPreview;
+  final MessageRecord? replyTarget;
+  final Future<void> Function(String) onRevealReply;
   final bool showsTimestamp;
   final bool showsSender;
 
@@ -1889,29 +2039,18 @@ class _MessageBubble extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             if (message.replyToMessageId != null)
-                              Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.only(left: 8),
-                                decoration: BoxDecoration(
-                                  border: Border(
-                                    left: BorderSide(
-                                      color:
-                                          (own
-                                                  ? scheme.onPrimary
-                                                  : scheme.primary)
-                                              .withValues(alpha: .5),
-                                      width: 2,
-                                    ),
-                                  ),
-                                ),
-                                child: Text(
-                                  replyPreview?.isNotEmpty == true
-                                      ? replyPreview!
-                                      : 'Reply to a message',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12),
-                                ),
+                              _ReplyQuote(
+                                key: ValueKey('reply-quote-${message.id}'),
+                                target: replyTarget,
+                                conversation: conversation,
+                                foreground: own
+                                    ? scheme.onPrimary
+                                    : scheme.onSurface,
+                                onTap: replyTarget == null
+                                    ? null
+                                    : () => onRevealReply(
+                                        message.replyToMessageId!,
+                                      ),
                               ),
                             for (final attachment in message.attachments)
                               if (attachment.kind != 'preview')

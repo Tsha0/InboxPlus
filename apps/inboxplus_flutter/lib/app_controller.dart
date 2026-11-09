@@ -44,6 +44,8 @@ class AppController extends InboxUiController {
   final _accounts = <String, AccountRecord>{};
   final _conversations = <ConversationRoute, ConversationRecord>{};
   final _messages = <ConversationRoute, List<MessageRecord>>{};
+  final _replyTargets = <ConversationRoute, Map<String, MessageRecord>>{};
+  final _messageStarts = <ConversationRoute, DateTime>{};
   final _reactions =
       <ConversationRoute, Map<String, List<MessageReactionRecord>>>{};
   final _reacting = <(ConversationRoute, String)>{};
@@ -155,9 +157,7 @@ class AppController extends InboxUiController {
     );
     for (final conversation in await store.loadConversations()) {
       _conversations[conversation.route] = conversation;
-      _messages[conversation.route] = await store.loadRecentMessages(
-        conversation.route,
-      );
+      await _reloadMessages(conversation.route);
       final draft = await store.loadDraft(conversation.route);
       if (draft != null) _drafts[conversation.route] = draft;
     }
@@ -210,7 +210,7 @@ class AppController extends InboxUiController {
     );
     await store.pruneMessagesBefore(_messageCutoff);
     for (final route in _messages.keys.toList()) {
-      _messages[route] = await store.loadRecentMessages(route);
+      await _reloadMessages(route);
     }
     for (final state in await store.loadMessageReactions()) {
       _reactions.putIfAbsent(state.route, () => {})[state.messageId] =
@@ -428,6 +428,47 @@ class AppController extends InboxUiController {
     result.sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return List.unmodifiable(result);
   }
+
+  Future<void> _reloadMessages(ConversationRoute route) async {
+    final messages = await store.loadRecentMessages(
+      route,
+      since: _messageStarts[route],
+    );
+    final targets = <String, MessageRecord>{};
+    final ids = {
+      for (final message in messages) ?message.replyToMessageId,
+      for (final send in _pending.where((send) => send.route == route))
+        ?send.replyToMessageId,
+    };
+    final byId = {for (final message in messages) message.id: message};
+    for (final id in ids) {
+      final target = byId[id] ?? await store.loadMessage(route, id);
+      if (target != null) targets[id] = target;
+    }
+    _messages[route] = messages;
+    _replyTargets[route] = targets;
+  }
+
+  @override
+  MessageRecord? replyTargetFor(ConversationRoute route, String messageId) =>
+      _replyTargets[route]?[messageId] ??
+      _messages[route]?.where((message) => message.id == messageId).firstOrNull;
+
+  @override
+  Future<void> revealMessage(ConversationRoute route, String messageId) =>
+      _perform(() async {
+        if (_messages[route]?.any((message) => message.id == messageId) ==
+            true) {
+          return;
+        }
+        final target = await store.loadMessage(route, messageId);
+        if (target == null) return;
+        final start = _messageStarts[route];
+        if (start == null || target.timestamp.isBefore(start)) {
+          _messageStarts[route] = target.timestamp;
+        }
+        await _reloadMessages(route);
+      });
 
   @override
   DraftRecord? draftFor(ConversationRoute route) => _drafts[route];
@@ -1553,7 +1594,7 @@ class AppController extends InboxUiController {
         );
       }
       _pending = await store.loadPendingSends();
-      _messages[send.route] = await store.loadRecentMessages(send.route);
+      await _reloadMessages(send.route);
       final current = await store.loadDraft(send.route);
       if (!_draftWrites.containsKey(send.route) ||
           identical(_drafts[send.route], current) ||
@@ -1823,7 +1864,7 @@ class AppController extends InboxUiController {
       ],
     );
     await store.saveMessage(updated);
-    _messages[route] = await store.loadRecentMessages(route);
+    await _reloadMessages(route);
     _scheduleStatistics();
     _publish();
   }
@@ -2124,6 +2165,8 @@ class AppController extends InboxUiController {
     _accounts.remove(accountId);
     _conversations.removeWhere((route, _) => route.accountId == accountId);
     _messages.removeWhere((route, _) => route.accountId == accountId);
+    _replyTargets.removeWhere((route, _) => route.accountId == accountId);
+    _messageStarts.removeWhere((route, _) => route.accountId == accountId);
     _reactions.removeWhere((route, _) => route.accountId == accountId);
     _drafts.removeWhere((route, _) => route.accountId == accountId);
     if (_selectedRoute?.accountId == accountId) _selectedRoute = null;
@@ -2260,7 +2303,7 @@ class AppController extends InboxUiController {
       if (await file.exists()) await file.delete();
     }
     for (final route in _messages.keys.toList()) {
-      _messages[route] = await store.loadRecentMessages(route);
+      await _reloadMessages(route);
     }
     await _reloadStatistics();
   });
@@ -2418,12 +2461,12 @@ class AppController extends InboxUiController {
               replyToMessageId: original.replyToMessageId,
             ),
           );
-          _messages[route] = await store.loadRecentMessages(route);
+          await _reloadMessages(route);
         }
       case 'message_delete':
         final route = ConversationRoute(id, event['conversation_id'] as String);
         await store.deleteMessage(route, event['id'] as String);
-        _messages[route] = await store.loadRecentMessages(route);
+        await _reloadMessages(route);
         _reactions[route]?.remove(event['id']);
       case 'reaction':
         final route = ConversationRoute(id, event['conversation_id'] as String);
@@ -2812,7 +2855,7 @@ class AppController extends InboxUiController {
         partial: data['reactions_partial'] == true,
       );
     }
-    _messages[route] = await store.loadRecentMessages(route);
+    await _reloadMessages(route);
     for (final preview in message.attachments) {
       if (preview.kind == 'preview' && preview.localPath == null) {
         _fetchPreview(route, message.id, preview.id);

@@ -136,6 +136,36 @@ func TestLoginRejectsMissingOrInjectedCookiesBeforeNetwork(t *testing.T) {
 	}
 }
 
+func TestInstagramReelRepliesKeepTheirDistinctTargets(t *testing.T) {
+	c, err := New(accountRequest(t.TempDir()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"mountain", "cafe"} {
+		original := c.instagramMessage("thread", &slidetypes.Message{
+			ID: id,
+			Content: slidetypes.MessageContentWrapper{Content: &slidetypes.MessageContentXMA{
+				XMA: &slidetypes.XMAContent{TargetURL: "https://www.instagram.com/reel/" + id + "/"},
+			}},
+		})
+		attachments := original["attachments"].([]any)
+		if original["body"] != "" || len(attachments) != 1 {
+			t.Fatal("media-only Reel did not retain its attachment")
+		}
+		attachment := attachments[0].(map[string]any)
+		if attachment["kind"] != "reel" || attachment["deep_link"] != "https://www.instagram.com/reel/"+id+"/" {
+			t.Fatal("Reel identity was lost")
+		}
+		reply := c.instagramMessage("thread", &slidetypes.Message{
+			ID: "reply-" + id, RepliedToMessageID: id,
+			Content: slidetypes.MessageContentWrapper{Content: &slidetypes.MessageContentText{TextBody: "Response"}},
+		})
+		if reply["reply_to_message_id"] != original["id"] {
+			t.Fatal("reply was associated with the wrong Reel")
+		}
+	}
+}
+
 func TestInstagramNormalizesMessageWithoutCredentialOrUnknownFields(t *testing.T) {
 	c, err := New(accountRequest(t.TempDir()), nil)
 	if err != nil {

@@ -83,37 +83,32 @@ Future<void> main() async {
   for (final message in fixture['messages'] as List) {
     final attachments = <AttachmentRecord>[];
     for (final attachment in message['attachments'] as List? ?? []) {
-      final bytes = attachment['asset'] == null
-          ? Uint8List.fromList(utf8.encode(attachment['text'] as String))
-          : (await rootBundle.load('assets/${attachment['asset']}')).buffer
-                .asUint8List();
-      if (attachment['remote'] == true) {
-        remoteMedia[attachment['id'] as String] = bytes;
-        attachments.add(
-          AttachmentRecord(
-            id: attachment['id'] as String,
-            kind: attachment['kind'] as String,
-            fileName: attachment['name'] as String,
-            mimeType: attachment['mimeType'] as String,
-            byteCount: bytes.length,
-            isDownloadable: true,
-          ),
-        );
-        continue;
+      Uint8List? bytes;
+      File? file;
+      if (attachment['asset'] != null || attachment['text'] != null) {
+        bytes = attachment['asset'] == null
+            ? Uint8List.fromList(utf8.encode(attachment['text'] as String))
+            : (await rootBundle.load('assets/${attachment['asset']}')).buffer
+                  .asUint8List();
+        if (attachment['remote'] == true) {
+          remoteMedia[attachment['id'] as String] = bytes;
+        } else {
+          file = File(
+            p.join(directory.path, 'media', attachment['name'] as String),
+          );
+          await environment.writePrivate(file, bytes);
+        }
       }
-      final file = File(
-        p.join(directory.path, 'media', attachment['name'] as String),
-      );
-      await environment.writePrivate(file, bytes);
       attachments.add(
         AttachmentRecord(
           id: attachment['id'] as String,
           kind: attachment['kind'] as String,
           fileName: attachment['name'] as String,
           mimeType: attachment['mimeType'] as String,
-          byteCount: bytes.length,
-          localPath: file.path,
-          isDownloadable: false,
+          byteCount: bytes?.length,
+          localPath: file?.path,
+          deepLink: attachment['deepLink'] as String?,
+          isDownloadable: attachment['remote'] == true,
         ),
       );
     }
@@ -131,6 +126,7 @@ Future<void> main() async {
         isOutgoing: message['outgoing'] as bool,
         senderName: message['sender'] as String,
         attachments: attachments,
+        replyToMessageId: message['replyToMessageId'] as String?,
       ),
     );
   }
