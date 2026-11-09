@@ -405,6 +405,27 @@ func TestRepeatedConnectReportsTheExistingTransportState(t *testing.T) {
 	}
 }
 
+func TestInstagramProfilePhotosStayBehindOpaqueAccountReferences(t *testing.T) {
+	var emitted []map[string]any
+	c := &Connector{accountID: "fixture", ownID: "1", media: make(map[string]mediaReference), emit: func(e map[string]any) { emitted = append(emitted, e) }}
+	raw := "https://scontent.cdninstagram.com/person.jpg?token=private-photo"
+	thread := &slidetypes.ThreadInfo{ID: "thread", Users: []*slidetypes.User{{InteropMessagingUserFBID: 1, ProfilePicURL: "https://scontent.cdninstagram.com/self.jpg"}, {InteropMessagingUserFBID: 2, ProfilePicURL: raw}}}
+	c.emitInstagramThread(thread)
+	source, ok := emitted[0]["avatar_source"].(string)
+	if !ok || !strings.HasPrefix(source, "avatar:") || c.media[source].URL != raw {
+		t.Fatal("recipient photo was not registered")
+	}
+	encoded, _ := json.Marshal(emitted)
+	if strings.Contains(string(encoded), "private-photo") || strings.Contains(string(encoded), "https://") {
+		t.Fatal("photo URL escaped the connector")
+	}
+	thread.Users[1].ProfilePicURL = ""
+	c.emitInstagramThread(thread)
+	if emitted[1]["avatar_source"] != "" {
+		t.Fatal("photo removal was lost")
+	}
+}
+
 func TestInstagramSharedPostKeepsPreviewAndShowsCaptionOnce(t *testing.T) {
 	c, err := New(accountRequest(t.TempDir()), nil)
 	if err != nil {

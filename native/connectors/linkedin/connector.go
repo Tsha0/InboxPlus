@@ -232,6 +232,9 @@ func (b *backend) Handle(ctx context.Context, req map[string]any) (result any, r
 		b.mu.Lock()
 		raw := b.media[direct.Text(req, "id")]
 		b.mu.Unlock()
+		if strings.HasPrefix(direct.Text(req, "id"), "avatar:") {
+			return direct.DownloadAvatar(ctx, raw, "licdn.com", "linkedin.com")
+		}
 		return direct.Download(ctx, raw, "licdn.com", "linkedin.com")
 	default:
 		return nil, errors.New("linkedin_operation_unavailable")
@@ -249,11 +252,15 @@ func conversationURN(req map[string]any) (li.URN, error) {
 func (b *backend) chat(conversation li.Conversation) map[string]any {
 	names := []string{}
 	identity := ""
+	avatar := ""
 	for _, participant := range conversation.ConversationParticipants {
 		if participant.EntityURN.ID() == b.saved.UserID {
 			continue
 		}
 		identity = participant.EntityURN.String()
+		if member := participant.ParticipantType.Member; member != nil && member.ProfilePicture != nil {
+			avatar = member.ProfilePicture.GetLargestArtifactURL()
+		}
 		names = append(names, participantName(participant))
 	}
 	title := conversation.Title
@@ -268,6 +275,13 @@ func (b *backend) chat(conversation li.Conversation) map[string]any {
 		result["unread_count"] = 1
 	} else {
 		result["unread_count"] = 0
+	}
+	if !conversation.GroupChat {
+		source := direct.AvatarID(avatar)
+		b.mu.Lock()
+		b.media[source] = avatar
+		b.mu.Unlock()
+		result["avatar_source"] = source
 	}
 	if !conversation.GroupChat && identity != "" {
 		result["identity_id"] = identity

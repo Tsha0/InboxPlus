@@ -17,6 +17,7 @@ import (
 )
 
 type fbThread struct {
+	avatar     string
 	title      string
 	timestamp  int64
 	threadType table.ThreadType
@@ -34,6 +35,7 @@ type fbAdapter struct {
 	ready    bool
 	threads  map[int64]fbThread
 	contacts map[int64]string
+	avatars  map[int64]string
 }
 
 func fbContext(ctx context.Context) context.Context {
@@ -99,6 +101,13 @@ func (f *fbAdapter) emitThread(id int64, thread fbThread) {
 		"title": thread.title, "timestamp": thread.timestamp, "e2ee": thread.e2ee,
 		"send_supported": thread.canSend, "unsupported_reason": fbUnsupportedReason(thread),
 	}
+	f.mu.Lock()
+	raw := thread.avatar
+	if thread.threadType.IsOneToOne() {
+		raw = f.avatars[id]
+	}
+	f.mu.Unlock()
+	event["avatar_source"] = f.c.avatarSource(raw)
 	fbThreadMetadata(event, id, thread)
 	f.c.emit(event)
 }
@@ -136,7 +145,7 @@ func fbWritable(threadType table.ThreadType) bool {
 	}
 }
 
-func (f *fbAdapter) upsertThread(id int64, name string, timestamp int64, threadType table.ThreadType, syncGroup int64, disabled bool) {
+func (f *fbAdapter) upsertThread(id int64, name string, timestamp int64, threadType table.ThreadType, syncGroup int64, disabled bool, avatar string) {
 	if id <= 0 || threadType == table.FOLDER || threadType == table.COMMUNITY_FOLDER {
 		return
 	}
@@ -146,6 +155,7 @@ func (f *fbAdapter) upsertThread(id int64, name string, timestamp int64, threadT
 	}
 	thread := f.threads[id]
 	thread.title = name
+	thread.avatar = avatar
 	if thread.title == "" {
 		thread.title = f.contacts[id]
 	}
@@ -172,21 +182,40 @@ func (f *fbAdapter) handleTable(data *table.LSTable, historical bool) {
 	if f.contacts == nil {
 		f.contacts = make(map[int64]string)
 	}
+	if f.avatars == nil {
+		f.avatars = make(map[int64]string)
+	}
 	for _, contact := range data.LSDeleteThenInsertContact {
 		f.contacts[contact.Id] = contact.Name
+		f.avatars[contact.Id] = contact.GetAvatarURL()
 	}
 	for _, contact := range data.LSVerifyContactRowExists {
 		f.contacts[contact.ContactId] = contact.Name
+		f.avatars[contact.ContactId] = contact.GetAvatarURL()
+	}
+	updated := make(map[int64]fbThread)
+	for _, contact := range data.LSDeleteThenInsertContact {
+		if thread, ok := f.threads[contact.Id]; ok {
+			updated[contact.Id] = thread
+		}
+	}
+	for _, contact := range data.LSVerifyContactRowExists {
+		if thread, ok := f.threads[contact.ContactId]; ok {
+			updated[contact.ContactId] = thread
+		}
 	}
 	f.mu.Unlock()
+	for id, thread := range updated {
+		f.emitThread(id, thread)
+	}
 	for _, thread := range data.LSDeleteThenInsertThread {
-		f.upsertThread(thread.ThreadKey, thread.ThreadName, thread.LastActivityTimestampMs, thread.ThreadType, thread.SyncGroup, thread.DisableComposerInput)
+		f.upsertThread(thread.ThreadKey, thread.ThreadName, thread.LastActivityTimestampMs, thread.ThreadType, thread.SyncGroup, thread.DisableComposerInput, thread.ThreadPictureUrl)
 	}
 	for _, thread := range data.LSUpdateOrInsertThread {
-		f.upsertThread(thread.ThreadKey, thread.ThreadName, thread.LastActivityTimestampMs, thread.ThreadType, thread.SyncGroup, thread.DisableComposerInput)
+		f.upsertThread(thread.ThreadKey, thread.ThreadName, thread.LastActivityTimestampMs, thread.ThreadType, thread.SyncGroup, thread.DisableComposerInput, thread.ThreadPictureUrl)
 	}
 	for _, thread := range data.LSVerifyHybridThreadExists {
-		f.upsertThread(thread.ThreadKey, "", thread.LastActivityTimestampMS, thread.ThreadType, 1, true)
+		f.upsertThread(thread.ThreadKey, "", thread.LastActivityTimestampMS, thread.ThreadType, 1, true, "")
 	}
 	for _, link := range data.LSCreateOpenToE2EEThreadLink {
 		f.markEncrypted(link.OpenThreadID)

@@ -171,6 +171,16 @@ func (c *Connector) emitInstagramThread(thread *slidetypes.ThreadInfo) {
 	}
 	event := map[string]any{"type": "chat", "account_id": c.accountID, "id": thread.ID, "title": title,
 		"timestamp": thread.LastActivityTimestampMS.UnixMilli(), "unread_count": unreadCount, "is_group": thread.IsGroup, "send_supported": true}
+	if thread.IsGroup {
+		event["avatar_source"] = c.avatarSource(thread.ThreadImageURL)
+	} else {
+		for _, user := range thread.Users {
+			if user != nil && decimal(user.InteropMessagingUserFBID) == metadata.identityID {
+				event["avatar_source"] = c.avatarSource(user.ProfilePicURL)
+				break
+			}
+		}
+	}
 	if metadata.identityID != "" {
 		event["identity_id"] = metadata.identityID
 	}

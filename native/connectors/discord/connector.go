@@ -146,6 +146,17 @@ func (b *backend) recordChannel(channel dc.Channel) map[string]any {
 	b.channels[channel.ID] = channel
 	b.mu.Unlock()
 	result := normalizeChannel(channel)
+	raw := ""
+	if channel.Type == dc.DirectMessage && len(channel.DMRecipients) == 1 {
+		raw = channel.DMRecipients[0].AvatarURL()
+	} else if channel.Type == dc.GroupDM {
+		raw = channel.IconURL()
+	}
+	source := direct.AvatarID(raw)
+	b.mu.Lock()
+	b.media[source] = raw
+	b.mu.Unlock()
+	result["avatar_source"] = source
 	b.c.Event(result)
 	return result
 }
@@ -207,6 +218,9 @@ func (b *backend) Handle(ctx context.Context, req map[string]any) (any, error) {
 		b.mu.Lock()
 		raw := b.media[direct.Text(req, "id")]
 		b.mu.Unlock()
+		if strings.HasPrefix(direct.Text(req, "id"), "avatar:") {
+			return direct.DownloadAvatar(ctx, raw, "discordapp.com", "discordapp.net")
+		}
 		return direct.Download(ctx, raw, "discordapp.com", "discordapp.net")
 	}
 	id, err := strconv.ParseUint(direct.Text(req, "conversation_id"), 10, 64)

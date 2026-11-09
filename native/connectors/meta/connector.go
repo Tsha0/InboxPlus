@@ -20,6 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Tsha0/InboxPlus/native/connectors/internal/direct"
 	"github.com/Tsha0/InboxPlus/native/connectors/internal/securedb"
 	"github.com/rs/zerolog"
 	globalLog "github.com/rs/zerolog/log"
@@ -459,7 +460,11 @@ func (c *Connector) download(ctx context.Context, id string) (any, error) {
 	if err != nil {
 		return nil, errors.New("cannot download attachment")
 	}
-	client := &http.Client{Timeout: 90 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	limit, timeout := int64(maxMediaBytes), 90*time.Second
+	if strings.HasPrefix(id, "avatar:") {
+		limit, timeout = 2<<20, 15*time.Second
+	}
+	client := &http.Client{Timeout: timeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 || !allowedMediaURL(req.URL.String()) {
 			return errors.New("attachment redirect is not allowed")
 		}
@@ -473,8 +478,8 @@ func (c *Connector) download(ctx context.Context, id string) (any, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, errors.New("attachment download failed; reload its conversation")
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxMediaBytes+1))
-	if err != nil || len(data) > maxMediaBytes {
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil || int64(len(data)) > limit {
 		return nil, errors.New("attachment download failed or exceeds 32 MiB")
 	}
 	mime := ref.MimeType
@@ -554,4 +559,12 @@ func Capabilities(platform string) map[string]any {
 		"download_attachment": true, "history": true, "encrypted_chats": false,
 		"attachment_captions": false, "attachment_kinds": []string{"image", "video", "audio"}, "start_conversation": false,
 		"replies": true, "reactions": true, "max_attachment_bytes": maxMediaBytes}
+}
+
+func (c *Connector) avatarSource(raw string) string {
+	id := direct.AvatarID(raw)
+	if c.rememberMedia(id, raw, "image/jpeg", "Profile photo") == nil {
+		return ""
+	}
+	return id
 }

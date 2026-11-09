@@ -320,3 +320,27 @@ func TestDialogSyncPropagatesPageFailure(t *testing.T) {
 		t.Fatal("page failure was swallowed")
 	}
 }
+
+func TestProfilePhotosUsePeerLocationsAndRefreshWithoutMessages(t *testing.T) {
+	var emitted []map[string]any
+	b := &gotdBackend{accountID: "fixture", peers: map[string]tg.InputPeerClass{}, names: map[string]string{}, attachments: map[string]attachmentReference{}, emit: func(e map[string]any) { emitted = append(emitted, e) }}
+	user := &tg.User{ID: 42, AccessHash: 73, Photo: &tg.UserProfilePhoto{PhotoID: 9, DCID: 2}}
+	b.remember([]tg.UserClass{user}, nil)
+	chat := map[string]any{}
+	b.addAvatar(chat, "user:42")
+	source := chat["avatar_source"].(string)
+	location := b.attachments[source].location.(*tg.InputPeerPhotoFileLocation)
+	if location.PhotoID != 9 || location.Peer.(*tg.InputPeerUser).AccessHash != 73 {
+		t.Fatal("photo lost peer authorization")
+	}
+	user.Photo = &tg.UserProfilePhoto{PhotoID: 10, DCID: 2}
+	b.remember([]tg.UserClass{user}, nil)
+	if len(emitted) != 1 || emitted[0]["type"] != "chat" || emitted[0]["avatar_source"] == source {
+		t.Fatal("photo update was lost or became a message")
+	}
+	user.Photo = &tg.UserProfilePhotoEmpty{}
+	b.remember([]tg.UserClass{user}, nil)
+	if emitted[1]["avatar_source"] != "" {
+		t.Fatal("photo removal was lost")
+	}
+}

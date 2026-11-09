@@ -381,3 +381,17 @@ func TestAttachmentMetadataStaysInsideEncryptedSession(t *testing.T) {
 		}
 	}
 }
+
+func TestPictureEventsUpdateAndRemoveConversationPhotos(t *testing.T) {
+	var emitted []map[string]any
+	c := &Connector{accountID: "fixture", emit: func(e map[string]any) { emitted = append(emitted, e) }}
+	jid := types.NewJID("123", types.DefaultUserServer)
+	c.handleEvent(&events.Picture{JID: jid, PictureID: "revision"})
+	if emitted[0]["avatar_source"] != "avatar:"+jid.String()+"#revision" {
+		t.Fatal("photo update missing")
+	}
+	c.handleEvent(&events.Picture{JID: jid, Remove: true})
+	if emitted[1]["avatar_source"] != "" {
+		t.Fatal("photo removal missing")
+	}
+}

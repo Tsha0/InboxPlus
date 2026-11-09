@@ -74,6 +74,9 @@ Future<void> main() async {
         unreadCount: chat['unread'] as int,
         isGroup: chat['group'] as bool,
         identityId: chat['identity'] as String,
+        avatarBytes: chat['avatarBase64'] is String
+            ? base64Decode(chat['avatarBase64'] as String)
+            : null,
       ),
     );
   }

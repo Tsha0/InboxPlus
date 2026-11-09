@@ -1,4 +1,5 @@
 import 'dart:async' show Completer;
+import 'dart:convert';
 import 'dart:ui' show SemanticsAction;
 import 'dart:ui' as ui;
 
@@ -13,6 +14,8 @@ import 'package:inboxplus_flutter/contact_suggestions.dart';
 import 'package:inboxplus_flutter/ui/account_pages.dart'
     show ConnectAccountsDialog, formatByteCount, loginQrImageBytes;
 import 'package:inboxplus_flutter/ui/inbox_app.dart';
+import 'package:inboxplus_flutter/ui/person_avatar.dart';
+import 'package:inboxplus_flutter/ui/contacts_page.dart';
 import 'package:inboxplus_flutter/ui/inbox_ui_controller.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -24,6 +27,128 @@ void main() {
     displayName: 'iMessage',
     isConnected: true,
   );
+  testWidgets('iOS shows the same photo in the conversation list and header', (
+    tester,
+  ) async {
+    final bytes = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAADrElEQVR4nO2brXIUQRRGbyiegAfgIdA4FCYSigITTRUGNEWhwVCFjoGiiIyJwqFxCCwPwDMgLoQluzs7m+m+55ud76j8zPbe+U7f7uzM5Ojix/cwHDfoApaOBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcDcpAvYm/MXT4cPOH7zvqaSJhzN4n7AztC3oS9DWsC1c19H1oSogIbRryKoQXET7pR+15GvjVYHlAWk0wpCHVA5PXVaQUVAfSIiDiQEUFkoOOAFsCngDmAB+PnjNZACFNJPwEr4JWjhYAJ0pn9C1eMOgGEEqE3/BKnKHQBjATCAAM31J6mvzR0AM797whHx6tmjrb9696mykunMScBA7uvHzMXEPASMiX7jS/Q1zGAPuEb6TV5bg3QHNIlPvBV0O6Dt5JVtBVEBPfLSdAAI2PlEQr+kdo5c/7SEXAf0nqdqfSAnYGkwArZ1es303PYuyNNaQh1QuTjoLESYAJ2HAxOqHpUOqJ+SIk1ACtBpArASuAMUHLA1SDyefufn140/f/j6Q0R8fvlkyuDDg3y7fXfK4NNR2QPWyeBWv6AG6YqugIWgK+By0ZiyBDUZpCv8HrBtAyiD3QZ0O2AhWACMBcBYAIwFwFgAjAXAWACMBcDwAkZ+ED07vTg7vRg/7MjjfTV06cxGwIOT+xExsgnysHyJOLMRcKhICBi5EI9sgvHTH98AQuFydDL+ovSlgPWIB361EQv4x153BYabYPzSbwH/se+dmXUNe+26CumH+H/IDDOLP3J2IrEJJ5VTUmT6h5SAqMpFJ/1QE7BA5AT0np5S0z8EBUTPjNTSD00B0ScpwfRDVkC0zksz/RD/HJCpTXx0Tjb6RLcDLpmSoHj6Id4Bb0/PV7/9eO/W+Nc+/vIrIiL+jPD85LhZWU0Ruha0ypXorzBg4m/umxHUICdgOPomSGkQElAQ/SoiGlQ24eL0kXfcCN8BeBBsK8AdgKeP10AKUEg/ASvBBOikn1D1MALU0k+QqgABmukn9bVVC1BOPymusFSAfvpJZZ11AuaSflJWrcon4cVSJGBe0z+pqblCwBzTTwoq9xIE013AfKd/0rt+dwBMXwFzn/5J17PoKOAw0k/6nYuXIBgLgOkl4JDWn6TTGbkDYLoIOLzpn/Q4L3cAjAXAtBdwqOtP0vzs3AEwFgBjATCNBRz2BpC0PUd3AIwFwFgAjAXAtBSwhB04aXim7gAYC4CxABgLgLEAGAuA+Q0U5zslErVXCgAAAABJRU5ErkJggg==',
+    );
+    final controller = _FakeController(
+      conversations: [
+        ConversationRecord(
+          route: const ConversationRoute('first', 'alice'),
+          title: 'Alice',
+          latestActivity: DateTime(2026),
+          avatarBytes: bytes,
+        ),
+      ],
+    );
+    await _pumpApp(tester, controller, size: const Size(390, 844));
+    await tester.runAsync(
+      () => precacheImage(
+        MemoryImage(bytes),
+        tester.element(find.byType(PersonAvatar)),
+      ),
+    );
+    await tester.pump();
+    expect(tester.widget<PersonAvatar>(find.byType(PersonAvatar)).bytes, bytes);
+    await tester.tap(find.byKey(const Key('conversation-first-alice')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<PersonAvatar>(find.byType(PersonAvatar)).bytes, bytes);
+    expect(tester.takeException(), isNull);
+  }, variant: TargetPlatformVariant({TargetPlatform.iOS}));
+
+  testWidgets(
+    'iOS contacts choose photos only from their linked account and identity',
+    (tester) async {
+      final bytes = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+      );
+      final controller = _FakeController(
+        conversations: [
+          ConversationRecord(
+            route: const ConversationRoute('first', 'alice'),
+            identityId: 'person',
+            title: 'Alice',
+            latestActivity: DateTime(2026),
+            avatarBytes: bytes,
+          ),
+          ConversationRecord(
+            route: const ConversationRoute('second', 'bob'),
+            identityId: 'person',
+            title: 'Bob',
+            latestActivity: DateTime(2026),
+          ),
+        ],
+        contacts: [
+          ContactRecord(
+            id: 'bob',
+            displayName: 'Bob',
+            identities: const [IdentityLink('second', 'person')],
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ListenableBuilder(
+              listenable: controller,
+              builder: (_, _) => InboxContactsPage(
+                controller: controller,
+                onConnect: () {},
+                onOpenConversation: () {},
+                onCompose: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<PersonAvatar>(find.byType(PersonAvatar)).bytes,
+        isNull,
+      );
+      controller.contacts[0] = ContactRecord(
+        id: 'alice',
+        displayName: 'Alice',
+        identities: const [IdentityLink('first', 'person')],
+      );
+      controller.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<PersonAvatar>(find.byType(PersonAvatar)).bytes,
+        bytes,
+      );
+    },
+    variant: TargetPlatformVariant({TargetPlatform.iOS}),
+  );
+
+  testWidgets(
+    'missing, corrupt and removed photos show initials or a group icon',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Row(
+              children: [
+                const PersonAvatar(name: 'Alice'),
+                PersonAvatar(name: 'Bob', bytes: Uint8List.fromList([1, 2, 3])),
+                PersonAvatar(name: 'Removed', bytes: Uint8List(0)),
+                const PersonAvatar(name: 'Group', isGroup: true),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('A'), findsOneWidget);
+      expect(find.text('B'), findsOneWidget);
+      expect(find.text('R'), findsOneWidget);
+      expect(find.byIcon(Icons.group_outlined), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('empty inbox offers account setup without sample conversations', (
     tester,
   ) async {

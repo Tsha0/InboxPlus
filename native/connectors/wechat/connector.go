@@ -194,6 +194,27 @@ func (b *backend) Handle(ctx context.Context, req map[string]any) (any, error) {
 		}
 		return map[string]any{"id": sent.MsgId, "timestamp": time.Now().UnixMilli()}, nil
 	case "download_attachment":
+		if reference, ok := strings.CutPrefix(direct.Text(req, "id"), "avatar:"); ok {
+			username, _, _ := strings.Cut(reference, "#")
+			members, err := b.self.Members()
+			if err != nil {
+				return nil, errors.New("avatar_unavailable")
+			}
+			user, ok := members.GetByUserName(username)
+			if !ok {
+				return nil, errors.New("avatar_unavailable")
+			}
+			response, err := b.bot.Caller.Client.WebWxGetHeadImg(ctx, user)
+			if err != nil {
+				return nil, errors.New("avatar_unavailable")
+			}
+			defer response.Body.Close()
+			data, err := io.ReadAll(io.LimitReader(response.Body, (2<<20)+1))
+			if err != nil || response.StatusCode != http.StatusOK || len(data) > 2<<20 {
+				return nil, errors.New("avatar_unavailable")
+			}
+			return map[string]any{"bytes": base64.StdEncoding.EncodeToString(data)}, nil
+		}
 		b.mu.Lock()
 		message := b.media[direct.Text(req, "id")]
 		b.mu.Unlock()
@@ -224,7 +245,11 @@ func chat(user *openwechat.User) map[string]any {
 	if title == "" {
 		title = user.UserName
 	}
-	result := map[string]any{"type": "chat", "id": user.UserName, "title": html.UnescapeString(title), "is_group": user.IsGroup()}
+	source := ""
+	if user.HeadImgUrl != "" {
+		source = "avatar:" + user.UserName + "#" + strings.TrimPrefix(direct.AvatarID(user.HeadImgUrl), "avatar:")
+	}
+	result := map[string]any{"avatar_source": source, "type": "chat", "id": user.UserName, "title": html.UnescapeString(title), "is_group": user.IsGroup()}
 	if !user.IsGroup() {
 		result["identity_id"] = user.UserName
 	}

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Tsha0/InboxPlus/native/connectors/internal/direct"
 	dc "github.com/diamondburned/arikawa/v3/discord"
 	"github.com/diamondburned/arikawa/v3/session"
 )
@@ -124,5 +125,24 @@ func TestDiscordDoesNotRetryUnconfirmedSend(t *testing.T) {
 	_, err := b.Handle(context.Background(), map[string]any{"op": "send_text", "conversation_id": "42", "body": "fixture"})
 	if err == nil || attempts != 1 {
 		t.Fatal("uncertain message was retried")
+	}
+}
+
+func TestDirectMessagePhotoUsesTheRecipientAndStaysOpaque(t *testing.T) {
+	var emitted map[string]any
+	c, err := direct.New("fixture", t.TempDir(), make([]byte, 32), Capabilities(), func(e map[string]any) { emitted = e }, func(*direct.Connector) direct.Backend { return &backend{} })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	b := &backend{c: c, channels: map[dc.ChannelID]dc.Channel{}, media: map[string]string{}}
+	b.recordChannel(dc.Channel{ID: 7, Type: dc.DirectMessage, DMRecipients: []dc.User{{ID: 42, Username: "Fixture", Avatar: "profile-hash"}}})
+	source, _ := emitted["avatar_source"].(string)
+	if !strings.HasPrefix(source, "avatar:") || !strings.Contains(b.media[source], "profile-hash") {
+		t.Fatal("recipient photo missing")
+	}
+	encoded, _ := json.Marshal(emitted)
+	if bytes.Contains(encoded, []byte("https://")) {
+		t.Fatal("photo URL escaped connector")
 	}
 }

@@ -417,6 +417,29 @@ class $ConversationsTable extends Conversations
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _avatarSourceMeta = const VerificationMeta(
+    'avatarSource',
+  );
+  @override
+  late final GeneratedColumn<String> avatarSource = GeneratedColumn<String>(
+    'avatar_source',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _avatarBytesMeta = const VerificationMeta(
+    'avatarBytes',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> avatarBytes =
+      GeneratedColumn<Uint8List>(
+        'avatar_bytes',
+        aliasedName,
+        true,
+        type: DriftSqlType.blob,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _canSendMeta = const VerificationMeta(
     'canSend',
   );
@@ -466,6 +489,8 @@ class $ConversationsTable extends Conversations
     unreadCount,
     isGroup,
     identityId,
+    avatarSource,
+    avatarBytes,
     canSend,
     sendingUnavailableReason,
     isFromUnknownSender,
@@ -541,6 +566,24 @@ class $ConversationsTable extends Conversations
         identityId.isAcceptableOrUnknown(data['identity_id']!, _identityIdMeta),
       );
     }
+    if (data.containsKey('avatar_source')) {
+      context.handle(
+        _avatarSourceMeta,
+        avatarSource.isAcceptableOrUnknown(
+          data['avatar_source']!,
+          _avatarSourceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('avatar_bytes')) {
+      context.handle(
+        _avatarBytesMeta,
+        avatarBytes.isAcceptableOrUnknown(
+          data['avatar_bytes']!,
+          _avatarBytesMeta,
+        ),
+      );
+    }
     if (data.containsKey('can_send')) {
       context.handle(
         _canSendMeta,
@@ -602,6 +645,14 @@ class $ConversationsTable extends Conversations
         DriftSqlType.string,
         data['${effectivePrefix}identity_id'],
       ),
+      avatarSource: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}avatar_source'],
+      ),
+      avatarBytes: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}avatar_bytes'],
+      ),
       canSend: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}can_send'],
@@ -631,6 +682,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
   final int unreadCount;
   final bool isGroup;
   final String? identityId;
+  final String? avatarSource;
+  final Uint8List? avatarBytes;
   final bool canSend;
   final String? sendingUnavailableReason;
   final bool isFromUnknownSender;
@@ -642,6 +695,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     required this.unreadCount,
     required this.isGroup,
     this.identityId,
+    this.avatarSource,
+    this.avatarBytes,
     required this.canSend,
     this.sendingUnavailableReason,
     required this.isFromUnknownSender,
@@ -657,6 +712,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     map['is_group'] = Variable<bool>(isGroup);
     if (!nullToAbsent || identityId != null) {
       map['identity_id'] = Variable<String>(identityId);
+    }
+    if (!nullToAbsent || avatarSource != null) {
+      map['avatar_source'] = Variable<String>(avatarSource);
+    }
+    if (!nullToAbsent || avatarBytes != null) {
+      map['avatar_bytes'] = Variable<Uint8List>(avatarBytes);
     }
     map['can_send'] = Variable<bool>(canSend);
     if (!nullToAbsent || sendingUnavailableReason != null) {
@@ -679,6 +740,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       identityId: identityId == null && nullToAbsent
           ? const Value.absent()
           : Value(identityId),
+      avatarSource: avatarSource == null && nullToAbsent
+          ? const Value.absent()
+          : Value(avatarSource),
+      avatarBytes: avatarBytes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(avatarBytes),
       canSend: Value(canSend),
       sendingUnavailableReason: sendingUnavailableReason == null && nullToAbsent
           ? const Value.absent()
@@ -702,6 +769,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       unreadCount: serializer.fromJson<int>(json['unreadCount']),
       isGroup: serializer.fromJson<bool>(json['isGroup']),
       identityId: serializer.fromJson<String?>(json['identityId']),
+      avatarSource: serializer.fromJson<String?>(json['avatarSource']),
+      avatarBytes: serializer.fromJson<Uint8List?>(json['avatarBytes']),
       canSend: serializer.fromJson<bool>(json['canSend']),
       sendingUnavailableReason: serializer.fromJson<String?>(
         json['sendingUnavailableReason'],
@@ -722,6 +791,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       'unreadCount': serializer.toJson<int>(unreadCount),
       'isGroup': serializer.toJson<bool>(isGroup),
       'identityId': serializer.toJson<String?>(identityId),
+      'avatarSource': serializer.toJson<String?>(avatarSource),
+      'avatarBytes': serializer.toJson<Uint8List?>(avatarBytes),
       'canSend': serializer.toJson<bool>(canSend),
       'sendingUnavailableReason': serializer.toJson<String?>(
         sendingUnavailableReason,
@@ -738,6 +809,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     int? unreadCount,
     bool? isGroup,
     Value<String?> identityId = const Value.absent(),
+    Value<String?> avatarSource = const Value.absent(),
+    Value<Uint8List?> avatarBytes = const Value.absent(),
     bool? canSend,
     Value<String?> sendingUnavailableReason = const Value.absent(),
     bool? isFromUnknownSender,
@@ -749,6 +822,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     unreadCount: unreadCount ?? this.unreadCount,
     isGroup: isGroup ?? this.isGroup,
     identityId: identityId.present ? identityId.value : this.identityId,
+    avatarSource: avatarSource.present ? avatarSource.value : this.avatarSource,
+    avatarBytes: avatarBytes.present ? avatarBytes.value : this.avatarBytes,
     canSend: canSend ?? this.canSend,
     sendingUnavailableReason: sendingUnavailableReason.present
         ? sendingUnavailableReason.value
@@ -772,6 +847,12 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
       identityId: data.identityId.present
           ? data.identityId.value
           : this.identityId,
+      avatarSource: data.avatarSource.present
+          ? data.avatarSource.value
+          : this.avatarSource,
+      avatarBytes: data.avatarBytes.present
+          ? data.avatarBytes.value
+          : this.avatarBytes,
       canSend: data.canSend.present ? data.canSend.value : this.canSend,
       sendingUnavailableReason: data.sendingUnavailableReason.present
           ? data.sendingUnavailableReason.value
@@ -792,6 +873,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
           ..write('unreadCount: $unreadCount, ')
           ..write('isGroup: $isGroup, ')
           ..write('identityId: $identityId, ')
+          ..write('avatarSource: $avatarSource, ')
+          ..write('avatarBytes: $avatarBytes, ')
           ..write('canSend: $canSend, ')
           ..write('sendingUnavailableReason: $sendingUnavailableReason, ')
           ..write('isFromUnknownSender: $isFromUnknownSender')
@@ -808,6 +891,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
     unreadCount,
     isGroup,
     identityId,
+    avatarSource,
+    $driftBlobEquality.hash(avatarBytes),
     canSend,
     sendingUnavailableReason,
     isFromUnknownSender,
@@ -823,6 +908,8 @@ class ConversationRow extends DataClass implements Insertable<ConversationRow> {
           other.unreadCount == this.unreadCount &&
           other.isGroup == this.isGroup &&
           other.identityId == this.identityId &&
+          other.avatarSource == this.avatarSource &&
+          $driftBlobEquality.equals(other.avatarBytes, this.avatarBytes) &&
           other.canSend == this.canSend &&
           other.sendingUnavailableReason == this.sendingUnavailableReason &&
           other.isFromUnknownSender == this.isFromUnknownSender);
@@ -836,6 +923,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
   final Value<int> unreadCount;
   final Value<bool> isGroup;
   final Value<String?> identityId;
+  final Value<String?> avatarSource;
+  final Value<Uint8List?> avatarBytes;
   final Value<bool> canSend;
   final Value<String?> sendingUnavailableReason;
   final Value<bool> isFromUnknownSender;
@@ -848,6 +937,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
     this.unreadCount = const Value.absent(),
     this.isGroup = const Value.absent(),
     this.identityId = const Value.absent(),
+    this.avatarSource = const Value.absent(),
+    this.avatarBytes = const Value.absent(),
     this.canSend = const Value.absent(),
     this.sendingUnavailableReason = const Value.absent(),
     this.isFromUnknownSender = const Value.absent(),
@@ -861,6 +952,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
     this.unreadCount = const Value.absent(),
     this.isGroup = const Value.absent(),
     this.identityId = const Value.absent(),
+    this.avatarSource = const Value.absent(),
+    this.avatarBytes = const Value.absent(),
     this.canSend = const Value.absent(),
     this.sendingUnavailableReason = const Value.absent(),
     this.isFromUnknownSender = const Value.absent(),
@@ -877,6 +970,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
     Expression<int>? unreadCount,
     Expression<bool>? isGroup,
     Expression<String>? identityId,
+    Expression<String>? avatarSource,
+    Expression<Uint8List>? avatarBytes,
     Expression<bool>? canSend,
     Expression<String>? sendingUnavailableReason,
     Expression<bool>? isFromUnknownSender,
@@ -891,6 +986,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
       if (unreadCount != null) 'unread_count': unreadCount,
       if (isGroup != null) 'is_group': isGroup,
       if (identityId != null) 'identity_id': identityId,
+      if (avatarSource != null) 'avatar_source': avatarSource,
+      if (avatarBytes != null) 'avatar_bytes': avatarBytes,
       if (canSend != null) 'can_send': canSend,
       if (sendingUnavailableReason != null)
         'sending_unavailable_reason': sendingUnavailableReason,
@@ -908,6 +1005,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
     Value<int>? unreadCount,
     Value<bool>? isGroup,
     Value<String?>? identityId,
+    Value<String?>? avatarSource,
+    Value<Uint8List?>? avatarBytes,
     Value<bool>? canSend,
     Value<String?>? sendingUnavailableReason,
     Value<bool>? isFromUnknownSender,
@@ -921,6 +1020,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
       unreadCount: unreadCount ?? this.unreadCount,
       isGroup: isGroup ?? this.isGroup,
       identityId: identityId ?? this.identityId,
+      avatarSource: avatarSource ?? this.avatarSource,
+      avatarBytes: avatarBytes ?? this.avatarBytes,
       canSend: canSend ?? this.canSend,
       sendingUnavailableReason:
           sendingUnavailableReason ?? this.sendingUnavailableReason,
@@ -953,6 +1054,12 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
     if (identityId.present) {
       map['identity_id'] = Variable<String>(identityId.value);
     }
+    if (avatarSource.present) {
+      map['avatar_source'] = Variable<String>(avatarSource.value);
+    }
+    if (avatarBytes.present) {
+      map['avatar_bytes'] = Variable<Uint8List>(avatarBytes.value);
+    }
     if (canSend.present) {
       map['can_send'] = Variable<bool>(canSend.value);
     }
@@ -980,6 +1087,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationRow> {
           ..write('unreadCount: $unreadCount, ')
           ..write('isGroup: $isGroup, ')
           ..write('identityId: $identityId, ')
+          ..write('avatarSource: $avatarSource, ')
+          ..write('avatarBytes: $avatarBytes, ')
           ..write('canSend: $canSend, ')
           ..write('sendingUnavailableReason: $sendingUnavailableReason, ')
           ..write('isFromUnknownSender: $isFromUnknownSender, ')
@@ -5008,6 +5117,8 @@ typedef $$ConversationsTableCreateCompanionBuilder =
       Value<int> unreadCount,
       Value<bool> isGroup,
       Value<String?> identityId,
+      Value<String?> avatarSource,
+      Value<Uint8List?> avatarBytes,
       Value<bool> canSend,
       Value<String?> sendingUnavailableReason,
       Value<bool> isFromUnknownSender,
@@ -5022,6 +5133,8 @@ typedef $$ConversationsTableUpdateCompanionBuilder =
       Value<int> unreadCount,
       Value<bool> isGroup,
       Value<String?> identityId,
+      Value<String?> avatarSource,
+      Value<Uint8List?> avatarBytes,
       Value<bool> canSend,
       Value<String?> sendingUnavailableReason,
       Value<bool> isFromUnknownSender,
@@ -5095,6 +5208,16 @@ class $$ConversationsTableFilterComposer
 
   ColumnFilters<String> get identityId => $composableBuilder(
     column: $table.identityId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get avatarSource => $composableBuilder(
+    column: $table.avatarSource,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get avatarBytes => $composableBuilder(
+    column: $table.avatarBytes,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5176,6 +5299,16 @@ class $$ConversationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get avatarSource => $composableBuilder(
+    column: $table.avatarSource,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get avatarBytes => $composableBuilder(
+    column: $table.avatarBytes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get canSend => $composableBuilder(
     column: $table.canSend,
     builder: (column) => ColumnOrderings(column),
@@ -5247,6 +5380,16 @@ class $$ConversationsTableAnnotationComposer
 
   GeneratedColumn<String> get identityId => $composableBuilder(
     column: $table.identityId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get avatarSource => $composableBuilder(
+    column: $table.avatarSource,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<Uint8List> get avatarBytes => $composableBuilder(
+    column: $table.avatarBytes,
     builder: (column) => column,
   );
 
@@ -5324,6 +5467,8 @@ class $$ConversationsTableTableManager
                 Value<int> unreadCount = const Value.absent(),
                 Value<bool> isGroup = const Value.absent(),
                 Value<String?> identityId = const Value.absent(),
+                Value<String?> avatarSource = const Value.absent(),
+                Value<Uint8List?> avatarBytes = const Value.absent(),
                 Value<bool> canSend = const Value.absent(),
                 Value<String?> sendingUnavailableReason = const Value.absent(),
                 Value<bool> isFromUnknownSender = const Value.absent(),
@@ -5336,6 +5481,8 @@ class $$ConversationsTableTableManager
                 unreadCount: unreadCount,
                 isGroup: isGroup,
                 identityId: identityId,
+                avatarSource: avatarSource,
+                avatarBytes: avatarBytes,
                 canSend: canSend,
                 sendingUnavailableReason: sendingUnavailableReason,
                 isFromUnknownSender: isFromUnknownSender,
@@ -5350,6 +5497,8 @@ class $$ConversationsTableTableManager
                 Value<int> unreadCount = const Value.absent(),
                 Value<bool> isGroup = const Value.absent(),
                 Value<String?> identityId = const Value.absent(),
+                Value<String?> avatarSource = const Value.absent(),
+                Value<Uint8List?> avatarBytes = const Value.absent(),
                 Value<bool> canSend = const Value.absent(),
                 Value<String?> sendingUnavailableReason = const Value.absent(),
                 Value<bool> isFromUnknownSender = const Value.absent(),
@@ -5362,6 +5511,8 @@ class $$ConversationsTableTableManager
                 unreadCount: unreadCount,
                 isGroup: isGroup,
                 identityId: identityId,
+                avatarSource: avatarSource,
+                avatarBytes: avatarBytes,
                 canSend: canSend,
                 sendingUnavailableReason: sendingUnavailableReason,
                 isFromUnknownSender: isFromUnknownSender,
