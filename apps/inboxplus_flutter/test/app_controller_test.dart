@@ -52,6 +52,7 @@ void main() {
     _FakeEngine? engine,
     String profileName = 'default',
     DateTime Function()? now,
+    bool waitForStartup = true,
   }) async {
     final value = AppController(
       store: store,
@@ -65,7 +66,8 @@ void main() {
       now: now ?? () => instant,
     );
     controller = value;
-    await value.initialize();
+    final startup = value.initialize();
+    if (waitForStartup) await startup;
     return value;
   }
 
@@ -608,7 +610,7 @@ void main() {
       });
       await _eventually(() => app.conversations.isNotEmpty);
       app.selectConversation(route);
-      await _eventually(() => !app.isBusy);
+      await app.whenIdle();
       expect(
         engine.commands.where((command) => command['op'] == 'history'),
         isEmpty,
@@ -1133,6 +1135,86 @@ void main() {
     },
   );
 
+  for (final previewFails in [false, true]) {
+    test(
+      previewFails
+          ? 'a failed shared post preview keeps the link card without an error'
+          : 'shared post previews download once in the background',
+      () async {
+        await seed(firstRoute);
+        final engine = _FakeEngine(
+          onDownload: (command) async {
+            if (previewFails) {
+              throw const ConnectorException('operation_failed');
+            }
+            return {
+              'bytes': base64Encode([0xff, 0xd8, 0xff]),
+              'mime_type': 'image/jpeg',
+            };
+          },
+        );
+        final app = await start(engine: engine);
+        final share = {
+          'type': 'message',
+          'account_id': firstRoute.accountId,
+          'conversation_id': firstRoute.conversationId,
+          'id': 'share',
+          'body': 'Fixture caption',
+          'kind': 'link',
+          'timestamp': instant.millisecondsSinceEpoch,
+          'attachments': [
+            {
+              'id': 'share/link',
+              'kind': 'link',
+              'name': 'fixture.author',
+              'deep_link': 'https://www.instagram.com/p/fixture/',
+              'downloadable': false,
+              'preview_id': 'share/preview',
+            },
+          ],
+        };
+        engine.emit(share);
+        await _eventually(
+          () => engine.commands.any((c) => c['op'] == 'download_attachment'),
+        );
+        await _eventually(
+          () =>
+              previewFails ||
+              app.messagesFor(firstRoute).single.attachments.first.localPath !=
+                  null,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        final saved = app.messagesFor(firstRoute).single;
+        expect(saved.body, 'Fixture caption');
+        expect(saved.attachments.map((a) => a.kind), ['preview', 'link']);
+        final preview = saved.attachments.first;
+        expect(preview.id, 'share/preview');
+        expect(saved.attachments.last.fileName, 'fixture.author');
+        expect(app.error, isNull);
+        if (previewFails) {
+          expect(preview.localPath, isNull);
+          return;
+        }
+        expect(await File(preview.localPath!).readAsBytes(), [
+          0xff,
+          0xd8,
+          0xff,
+        ]);
+        engine.commands.clear();
+        engine.emit(share);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(
+          engine.commands.where((c) => c['op'] == 'download_attachment'),
+          isEmpty,
+        );
+        expect(
+          app.messagesFor(firstRoute).single.attachments.first.localPath,
+          preview.localPath,
+        );
+      },
+    );
+  }
+
   test(
     'incoming replies retain authors and quotes after message edits',
     () async {
@@ -1477,7 +1559,7 @@ void main() {
         'id': 'same-chat',
         'unread_count': 0,
       });
-      await _eventually(() => !app.isBusy);
+      await app.whenIdle();
       expect(app.conversations.single.unreadCount, 1);
       app.selectConversation(firstRoute);
       await _eventually(() => !app.preferencesFor(firstRoute).markedUnread);
@@ -2207,7 +2289,7 @@ void main() {
     await store.enqueueDraft(firstRoute, sendId: 'protected-queued');
     final engine = _FakeEngine();
     final app = await start(engine: engine);
-    await _eventually(() => !app.isBusy);
+    await app.whenIdle();
 
     expect(engine.sends, isEmpty);
     expect(
@@ -2584,6 +2666,81 @@ void main() {
       picker.pickGate!.complete(null);
       await staging;
       expect(await store.loadAccounts(), hasLength(1));
+    },
+  );
+
+  test('a background mailbox sync leaves controls available', () async {
+    await seed(firstRoute, platform: 'instagram');
+    final pages = <Completer<void>>[];
+    final engine = _FakeEngine(
+      onListChats: (command) async {
+        final page = Completer<void>();
+        pages.add(page);
+        await page.future;
+        return {
+          'chats': [
+            {'id': 'chat-${pages.length}', 'title': 'Fixture'},
+          ],
+          'has_more': pages.length < 2,
+          'cursor': 'page-${pages.length}',
+        };
+      },
+    );
+    final app = await start(engine: engine, waitForStartup: false);
+    await _eventually(() => pages.isNotEmpty);
+
+    expect(app.isBusy, isFalse);
+    await app.setPreference('appearance', 'dark');
+    expect(app.preferences.appearance, 'dark');
+    pages.first.complete();
+    await _eventually(() => pages.length == 2);
+    expect(app.isBusy, isFalse);
+    pages.last.complete();
+    await app.whenIdle();
+
+    expect(pages, hasLength(2));
+    expect(
+      app.conversations.map((c) => c.route.conversationId),
+      containsAll(['chat-1', 'chat-2']),
+    );
+  });
+
+  test(
+    'account removal stops a mailbox sync before deleting the account',
+    () async {
+      await seed(firstRoute, platform: 'instagram');
+      final page = Completer<void>();
+      final engine = _FakeEngine(
+        onListChats: (command) async {
+          await page.future;
+          return {
+            'chats': [
+              {'id': 'late-chat', 'title': 'Fixture'},
+            ],
+            'has_more': true,
+            'cursor': 'page-2',
+          };
+        },
+      );
+      final app = await start(engine: engine, waitForStartup: false);
+      await _eventually(
+        () => engine.commands.any((c) => c['op'] == 'list_chats'),
+      );
+
+      final removal = app.removeAccount('first');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(engine.commands.where((c) => c['op'] == 'logout'), isEmpty);
+      page.complete();
+      await removal;
+      await app.whenIdle();
+
+      expect(
+        engine.commands.where((c) => c['op'] == 'list_chats'),
+        hasLength(1),
+      );
+      expect(app.accounts, isEmpty);
+      expect(app.conversations, isEmpty);
+      expect(await store.loadAccounts(), isEmpty);
     },
   );
 

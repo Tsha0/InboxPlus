@@ -1914,54 +1914,62 @@ class _MessageBubble extends StatelessWidget {
                                 ),
                               ),
                             for (final attachment in message.attachments)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: _AttachmentTile(
-                                  attachment: attachment,
-                                  foreground: own
-                                      ? scheme.onPrimary
-                                      : scheme.onSurface,
-                                  onDownload: () =>
-                                      controller.downloadAttachment(
-                                        message.route,
-                                        message.id,
-                                        attachment.id,
-                                      ),
-                                  imageLoad: controller.attachmentLoadState(
-                                    message.route,
-                                    attachment.id,
-                                  ),
-                                  onLoadImage: () => controller.loadInlineImage(
-                                    message.route,
-                                    message.id,
-                                    attachment.id,
-                                  ),
-                                  onOpen: () => controller.openAttachment(
-                                    attachment.localPath!,
-                                  ),
-                                  onSave:
-                                      desktop && attachment.localPath != null
-                                      ? () => controller.saveAttachment(
+                              if (attachment.kind != 'preview')
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 6),
+                                  child: _AttachmentTile(
+                                    attachment: attachment,
+                                    preview: attachment.deepLink == null
+                                        ? null
+                                        : message.attachments
+                                              .where((a) => a.kind == 'preview')
+                                              .firstOrNull,
+                                    caption: message.body,
+                                    foreground: own
+                                        ? scheme.onPrimary
+                                        : scheme.onSurface,
+                                    onDownload: () =>
+                                        controller.downloadAttachment(
                                           message.route,
                                           message.id,
                                           attachment.id,
-                                        )
-                                      : null,
-                                  linkPlatform: _accountFor(
-                                    controller,
-                                    message.route,
-                                  )?.platform,
-                                  playsInstagramReels: controller
-                                      .preferences
-                                      .playsInstagramReels,
-                                  onOpenLink: () =>
-                                      controller.openAttachmentLink(
-                                        message.route,
-                                        message.id,
-                                        attachment.id,
-                                      ),
+                                        ),
+                                    imageLoad: controller.attachmentLoadState(
+                                      message.route,
+                                      attachment.id,
+                                    ),
+                                    onLoadImage: () =>
+                                        controller.loadInlineImage(
+                                          message.route,
+                                          message.id,
+                                          attachment.id,
+                                        ),
+                                    onOpen: () => controller.openAttachment(
+                                      attachment.localPath!,
+                                    ),
+                                    onSave:
+                                        desktop && attachment.localPath != null
+                                        ? () => controller.saveAttachment(
+                                            message.route,
+                                            message.id,
+                                            attachment.id,
+                                          )
+                                        : null,
+                                    linkPlatform: _accountFor(
+                                      controller,
+                                      message.route,
+                                    )?.platform,
+                                    playsInstagramReels: controller
+                                        .preferences
+                                        .playsInstagramReels,
+                                    onOpenLink: () =>
+                                        controller.openAttachmentLink(
+                                          message.route,
+                                          message.id,
+                                          attachment.id,
+                                        ),
+                                  ),
                                 ),
-                              ),
                             if (message.body.isNotEmpty)
                               SelectableText(
                                 message.body,
@@ -2821,6 +2829,8 @@ class _ComposerState extends State<_Composer> {
 class _AttachmentTile extends StatelessWidget {
   const _AttachmentTile({
     required this.attachment,
+    this.preview,
+    this.caption = '',
     required this.foreground,
     required this.onDownload,
     required this.onLoadImage,
@@ -2833,6 +2843,8 @@ class _AttachmentTile extends StatelessWidget {
   });
 
   final AttachmentRecord attachment;
+  final AttachmentRecord? preview;
+  final String caption;
   final Color foreground;
   final Future<void> Function() onDownload;
   final Future<void> Function() onLoadImage;
@@ -2843,6 +2855,12 @@ class _AttachmentTile extends StatelessWidget {
   final String? linkPlatform;
   final bool playsInstagramReels;
 
+  String? get _destination => switch (linkPlatform) {
+    'instagram' => 'Instagram',
+    'messenger' => 'Facebook',
+    _ => null,
+  };
+
   @override
   Widget build(BuildContext context) {
     final link = Uri.tryParse(attachment.deepLink ?? '');
@@ -2851,6 +2869,26 @@ class _AttachmentTile extends StatelessWidget {
         (attachment.kind == 'reel' ||
             link?.pathSegments.firstOrNull == 'reel' ||
             link?.pathSegments.firstOrNull == 'reels');
+    final playable =
+        isReel &&
+        playsInstagramReels &&
+        (attachment.isDownloadable || attachment.localPath != null);
+    if (attachment.deepLink?.isNotEmpty == true &&
+        _destination != null &&
+        (preview?.localPath != null || playable)) {
+      return _SharedPostCard(
+        attachment: attachment,
+        previewPath: preview?.localPath,
+        isReel: isReel,
+        playable: playable,
+        author: attachment.fileName == caption ? null : attachment.fileName,
+        destination: _destination!,
+        foreground: foreground,
+        onDownload: onDownload,
+        onOpenLink: onOpenLink,
+        onSave: onSave,
+      );
+    }
     if ((!attachment.isDownloadable && attachment.localPath == null) ||
         (isReel && !playsInstagramReels)) {
       return _linkedContent(context);
@@ -2999,11 +3037,7 @@ class _AttachmentTile extends StatelessWidget {
   }
 
   Widget _linkedContent(BuildContext context) {
-    final destination = switch (linkPlatform) {
-      'instagram' => 'Instagram',
-      'messenger' => 'Facebook',
-      _ => null,
-    };
+    final destination = _destination;
     return SizedBox(
       width: 280,
       child: Column(
@@ -3013,7 +3047,10 @@ class _AttachmentTile extends StatelessWidget {
           _fileCard(
             context,
             Icons.link,
-            attachment.fileName ?? 'Shared content',
+            attachment.fileName == null ||
+                    (attachment.fileName == caption && caption.isNotEmpty)
+                ? 'Shared content'
+                : attachment.fileName!,
           ),
           const SizedBox(height: 8),
           if (attachment.deepLink?.isNotEmpty == true && destination != null)
@@ -3140,6 +3177,201 @@ class _LoadOnFirstBuildState extends State<_LoadOnFirstBuild> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+class _SharedPostCard extends StatefulWidget {
+  const _SharedPostCard({
+    required this.attachment,
+    required this.previewPath,
+    required this.isReel,
+    required this.playable,
+    required this.author,
+    required this.destination,
+    required this.foreground,
+    required this.onDownload,
+    required this.onOpenLink,
+    required this.onSave,
+  });
+
+  final AttachmentRecord attachment;
+  final String? previewPath;
+  final bool isReel;
+  final bool playable;
+  final String? author;
+  final String destination;
+  final Color foreground;
+  final Future<void> Function() onDownload;
+  final Future<void> Function() onOpenLink;
+  final Future<void> Function()? onSave;
+
+  @override
+  State<_SharedPostCard> createState() => _SharedPostCardState();
+}
+
+class _SharedPostCardState extends State<_SharedPostCard> {
+  bool _loading = false;
+
+  Future<void> _play() async {
+    if (widget.attachment.localPath == null) {
+      setState(() => _loading = true);
+      await widget.onDownload();
+      // The downloaded file reaches this card on the next rebuild.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+    if (widget.attachment.localPath != null) _showPlayer(widget.attachment);
+  }
+
+  void _showPlayer(AttachmentRecord attachment) => showDialog<void>(
+    context: context,
+    builder: (context) =>
+        MediaPreviewDialog(attachment: attachment, onSave: widget.onSave),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final height = widget.isReel ? 380.0 : 280.0;
+    final previewPath = widget.previewPath;
+    final placeholder = Container(
+      color: Colors.black,
+      alignment: Alignment.center,
+      child: Icon(
+        widget.isReel ? Icons.movie_outlined : Icons.image_outlined,
+        size: 40,
+        color: Colors.white54,
+      ),
+    );
+    final label = widget.isReel
+        ? (widget.playable ? 'Play Reel' : 'Open Reel in ${widget.destination}')
+        : 'Open post in ${widget.destination}';
+    return SizedBox(
+      width: 280,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            button: true,
+            label: widget.author == null
+                ? label
+                : '$label from ${widget.author}',
+            excludeSemantics: true,
+            child: InkWell(
+              key: Key('shared-preview-${widget.attachment.id}'),
+              borderRadius: BorderRadius.circular(12),
+              onTap: _loading
+                  ? null
+                  : widget.playable
+                  ? _play
+                  : widget.onOpenLink,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  height: height,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (previewPath == null)
+                        placeholder
+                      else
+                        Image.file(
+                          File(previewPath),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => placeholder,
+                        ),
+                      if (widget.isReel)
+                        Positioned(
+                          top: 10,
+                          left: 10,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: .6),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.movie_outlined,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Reel',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      if (widget.playable)
+                        Center(
+                          child: Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: .55),
+                              shape: BoxShape.circle,
+                            ),
+                            child: _loading
+                                ? const Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.play_arrow_rounded,
+                                    size: 36,
+                                    color: Colors.white,
+                                  ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (widget.author != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                widget.author!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: widget.foreground,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: widget.onOpenLink,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: widget.foreground,
+              side: BorderSide(color: widget.foreground.withValues(alpha: .4)),
+            ),
+            icon: const Icon(Icons.open_in_new, size: 17),
+            label: Text('Open in ${widget.destination}'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _EmptyState extends StatelessWidget {

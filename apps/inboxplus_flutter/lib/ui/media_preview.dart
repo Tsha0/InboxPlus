@@ -30,10 +30,21 @@ class _MediaPreviewDialogState extends State<MediaPreviewDialog> {
     super.initState();
     _player = Player();
     _video = VideoController(_player);
-    _errors = _player.stream.error.listen((_) {
-      if (mounted) setState(() => _failed = true);
-    });
+    _errors = _player.stream.error.listen((_) => _failIfUnplayable());
     _open();
+  }
+
+  // The player also reports recoverable problems, such as having no audio
+  // output, so only media that never loads counts as a failure.
+  Future<void> _failIfUnplayable() async {
+    if (_player.state.duration > Duration.zero) return;
+    final duration = await _player.stream.duration
+        .firstWhere(
+          (value) => value > Duration.zero,
+          orElse: () => Duration.zero,
+        )
+        .timeout(const Duration(seconds: 3), onTimeout: () => Duration.zero);
+    if (duration == Duration.zero && mounted) setState(() => _failed = true);
   }
 
   Future<void> _open() async {

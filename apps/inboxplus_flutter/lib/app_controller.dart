@@ -97,10 +97,13 @@ class AppController extends InboxUiController {
   bool _isClosing = false;
   Future<void>? _closing;
   final _operations = <Future<void>>{};
+  final _accountWork = <String, Set<Future<void>>>{};
+  Future<void>? _refreshing;
   bool _syncingIMessage = false;
   int _busy = 0;
   String? _error;
   int _maxAttachmentBytes = 32 * 1024 * 1024;
+  Future<void> _previewDownloads = Future.value();
 
   static Future<Object?> _invokeNative(
     String method,
@@ -190,7 +193,7 @@ class AppController extends InboxUiController {
         notificationSound: legacy['notification_sound'] as bool? ?? true,
         messageRetentionDays: legacy['message_retention_days'] as int? ?? 90,
         iMessageHistory: legacy['imessage_history'] as String? ?? 'year',
-        playsInstagramReels: legacy['plays_instagram_reels'] as bool? ?? false,
+        playsInstagramReels: legacy['plays_instagram_reels'] as bool? ?? true,
         showsUnreadBadge: legacy['shows_unread_badge'] as bool? ?? true,
         themePreset: legacy['theme_preset'] as String? ?? 'classic',
         customColors: legacy['custom_colors'] == null
@@ -331,7 +334,12 @@ class AppController extends InboxUiController {
     if (hasIMessage) {
       _imessageTimer = Timer.periodic(const Duration(seconds: 15), (_) {
         if (_accounts['imessage-local']?.isConnected == true) {
-          unawaited(_perform(() => _syncIMessage()));
+          unawaited(
+            _perform(
+              () => _accountTask('imessage-local', _syncIMessage),
+              background: true,
+            ),
+          );
         }
       });
     }
@@ -546,57 +554,83 @@ class AppController extends InboxUiController {
             }, local: true);
           }
           final account = _accounts[route.accountId];
-          if (account?.isConnected != true) return;
-          if (account!.platform == 'imessage') {
-            await _imessage('imessageMarkRead', {
-              'conversation_id': route.conversationId,
-            });
-            await _syncIMessage(route: route);
-          } else if (!{'whatsapp', 'wechat'}.contains(account.platform)) {
-            await engine!.request({
-              'op': 'history',
-              'account_id': route.accountId,
-              'conversation_id': route.conversationId,
-              'limit': 50,
-            });
+          if (account?.isConnected != true ||
+              _changingAccounts.contains(route.accountId)) {
+            return;
           }
-        }),
+          await _accountTask(route.accountId, () async {
+            if (account!.platform == 'imessage') {
+              await _imessage('imessageMarkRead', {
+                'conversation_id': route.conversationId,
+              });
+              await _syncIMessage(route: route);
+            } else if (!{'whatsapp', 'wechat'}.contains(account.platform)) {
+              await engine!.request({
+                'op': 'history',
+                'account_id': route.accountId,
+                'conversation_id': route.conversationId,
+                'limit': 50,
+              });
+            }
+          });
+        }, background: true),
       );
     }
   }
 
   @override
-  Future<void> refresh() => _perform(() async {
+  Future<void> refresh() => _refreshing ??= _perform(() async {
     for (final account in _accounts.values.toList()) {
       if (_preferences.disconnectedAccountIds.contains(account.id)) continue;
       if (account.platform == 'legacy') continue;
-      try {
-        if (account.platform == 'imessage') {
-          await _syncIMessage();
-          await _setConnection(account.id, true);
-          continue;
-        }
-        if (engine == null) continue;
-        await _initializeAccount(account);
-        final credentials = await _telegramCredentials(account.id);
-        final result = await engine!.request({
-          'op': 'connect',
-          'account_id': account.id,
-          ...credentials,
-        });
-        if (result['state'] == 'connected' || result['connected'] == true) {
-          await _setConnection(account.id, true);
-        }
-        if (account.isConnected || result['state'] == 'connected') {
-          await _syncAccount(account);
-        }
-      } catch (error) {
-        _networkProblems[account.id] = AccountNetworkProblem.failed;
-        await _setConnection(account.id, false);
-        _error = _safeError(error);
-      }
+      if (_changingAccounts.contains(account.id)) continue;
+      if (account.platform != 'imessage' && engine == null) continue;
+      await _accountTask(account.id, () => _refreshAccount(account));
     }
-  });
+  }, background: true).whenComplete(() => _refreshing = null);
+
+  Future<void> _refreshAccount(AccountRecord account) async {
+    try {
+      if (account.platform == 'imessage') {
+        await _syncIMessage();
+        await _setConnection(account.id, true);
+        return;
+      }
+      await _initializeAccount(account);
+      final credentials = await _telegramCredentials(account.id);
+      final result = await engine!.request({
+        'op': 'connect',
+        'account_id': account.id,
+        ...credentials,
+      });
+      if (result['state'] == 'connected' || result['connected'] == true) {
+        await _setConnection(account.id, true, sync: false);
+      }
+      if (account.isConnected || result['state'] == 'connected') {
+        await _syncAccount(account);
+      }
+    } catch (error) {
+      _networkProblems[account.id] = AccountNetworkProblem.failed;
+      await _setConnection(account.id, false);
+      _error = _safeError(error);
+    }
+  }
+
+  Future<void> _accountTask(String accountId, Future<void> Function() work) {
+    final task = work();
+    final tasks = _accountWork.putIfAbsent(accountId, () => {})..add(task);
+    unawaited(
+      task
+          .then((_) {}, onError: (Object _) {})
+          .whenComplete(() => tasks.remove(task)),
+    );
+    return task;
+  }
+
+  Future<void> _accountWorkSettled(String accountId) => Future.wait([
+    for (final task in _accountWork[accountId] ?? const <Future<void>>{})
+      task.then((_) {}, onError: (Object _) {}),
+  ]);
 
   Future<void> _initializeAccount(AccountRecord account) async {
     if (_initialized.contains(account.id)) return;
@@ -712,6 +746,7 @@ class AppController extends InboxUiController {
     if (!_changingAccounts.add(accountId)) return Future.value();
     return _perform(() async {
       try {
+        await _accountWorkSettled(accountId);
         await operation();
       } finally {
         _changingAccounts.remove(accountId);
@@ -731,6 +766,7 @@ class AppController extends InboxUiController {
     }
     final generation = ++_loginGeneration;
     await _cancelCurrentLogin();
+    if (accountId != null) await _accountWorkSettled(accountId);
     if (generation != _loginGeneration) return;
     final id =
         accountId ?? (networkId == 'imessage' ? 'imessage-local' : _uuid.v4());
@@ -1713,14 +1749,30 @@ class AppController extends InboxUiController {
     return future;
   }
 
+  // Previews are fetched one at a time without surfacing errors; a missing preview leaves the plain
+  // link card in place.
+  void _fetchPreview(
+    ConversationRoute route,
+    String messageId,
+    String attachmentId,
+  ) {
+    final future = _previewDownloads.then((_) async {
+      if (_closed || _isClosing) return;
+      try {
+        await _downloadAttachment(route, messageId, attachmentId);
+      } catch (_) {}
+    });
+    _previewDownloads = future;
+    _operations.add(future);
+    unawaited(future.whenComplete(() => _operations.remove(future)));
+  }
+
   Future<void> _downloadAttachment(
     ConversationRoute route,
     String messageId,
     String attachmentId,
   ) async {
-    final message = _messages[route]
-        ?.where((m) => m.id == messageId)
-        .firstOrNull;
+    final message = await store.loadMessage(route, messageId);
     final attachment = message?.attachments
         .where((a) => a.id == attachmentId)
         .firstOrNull;
@@ -1747,7 +1799,8 @@ class AppController extends InboxUiController {
       p.join(
         environment.directory.path,
         'media',
-        '${_uuid.v4()}${_safeExtension(attachment.fileName ?? '')}',
+        // A Reel's name is its author, not a file name.
+        '${_uuid.v4()}${attachment.kind == 'reel' ? '.mp4' : _safeExtension(attachment.fileName ?? '')}',
       ),
     );
     await environment.writePrivate(file, bytes);
@@ -1761,10 +1814,11 @@ class AppController extends InboxUiController {
       deepLink: attachment.deepLink,
       isDownloadable: attachment.isDownloadable,
     );
+    final current = await store.loadMessage(route, messageId) ?? message;
     final updated = _copyMessage(
-      message,
+      current,
       attachments: [
-        for (final a in message.attachments)
+        for (final a in current.attachments)
           if (a.id == attachmentId) downloaded else a,
       ],
     );
@@ -2419,7 +2473,11 @@ class AppController extends InboxUiController {
     }
   }
 
-  Future<void> _setConnection(String id, bool connected) async {
+  Future<void> _setConnection(
+    String id,
+    bool connected, {
+    bool sync = true,
+  }) async {
     final old = _accounts[id];
     if (old == null) return;
     if (connected && _preferences.disconnectedAccountIds.contains(id)) {
@@ -2437,8 +2495,13 @@ class AppController extends InboxUiController {
     if (connected) {
       _networkProblems.remove(id);
       _newLoginAccounts.remove(id);
-      if (!old.isConnected && account.platform != 'imessage') {
-        unawaited(_perform(() => _syncAccount(account)));
+      if (sync && !old.isConnected && account.platform != 'imessage') {
+        unawaited(
+          _perform(
+            () => _accountTask(id, () => _syncAccount(account)),
+            background: true,
+          ),
+        );
       }
       for (final send
           in _pending
@@ -2456,13 +2519,16 @@ class AppController extends InboxUiController {
   Future<void> _syncAccount(AccountRecord account) async {
     String? cursor;
     final cursors = <String>{};
+    bool stopped() => _isClosing || _changingAccounts.contains(account.id);
     do {
+      if (stopped()) return;
       final result = await engine!.request({
         'op': account.platform == 'telegram' ? 'sync' : 'list_chats',
         'account_id': account.id,
         'cursor': ?cursor,
       });
       for (final raw in result['chats'] as List? ?? []) {
+        if (stopped()) return;
         await _saveChat({
           ...Map<String, Object?>.from(raw as Map),
           'account_id': account.id,
@@ -2690,6 +2756,21 @@ class AppController extends InboxUiController {
           }
         }
       }
+      final previewId = raw['preview_id'];
+      if (previewId is String && previewId.isNotEmpty) {
+        attachments.add(
+          AttachmentRecord(
+            id: previewId,
+            kind: 'preview',
+            fileName: 'Preview.jpg',
+            mimeType: 'image/jpeg',
+            localPath: existing?.attachments
+                .where((a) => a.id == previewId)
+                .firstOrNull
+                ?.localPath,
+          ),
+        );
+      }
       attachments.add(
         AttachmentRecord(
           id: raw['id'] as String,
@@ -2732,6 +2813,11 @@ class AppController extends InboxUiController {
       );
     }
     _messages[route] = await store.loadRecentMessages(route);
+    for (final preview in message.attachments) {
+      if (preview.kind == 'preview' && preview.localPath == null) {
+        _fetchPreview(route, message.id, preview.id);
+      }
+    }
     final chat = _conversations[route]!;
     final isNewIncoming =
         existing == null && !message.isOutgoing && data['historical'] != true;
@@ -2904,12 +2990,26 @@ class AppController extends InboxUiController {
 
   Future<void> flushBeforeClose() => _waitForDrafts();
 
+  @visibleForTesting
+  Future<void> whenIdle() async {
+    while (_operations.isNotEmpty) {
+      await Future.wait(_operations.toList());
+    }
+  }
+
+  // Background syncs can page through a whole mailbox, so they must not
+  // disable controls the way user-started operations do.
   Future<void> _perform(
     Future<void> Function() operation, {
     bool loginOperation = false,
+    bool background = false,
   }) {
     if (_closed || _isClosing) return Future.value();
-    final future = _runOperation(operation, loginOperation: loginOperation);
+    final future = _runOperation(
+      operation,
+      loginOperation: loginOperation,
+      background: background,
+    );
     _operations.add(future);
     unawaited(future.whenComplete(() => _operations.remove(future)));
     return future;
@@ -2918,8 +3018,9 @@ class AppController extends InboxUiController {
   Future<void> _runOperation(
     Future<void> Function() operation, {
     bool loginOperation = false,
+    bool background = false,
   }) async {
-    _busy++;
+    if (!background) _busy++;
     _error = null;
     _publish();
     try {
@@ -2951,7 +3052,7 @@ class AppController extends InboxUiController {
         );
       }
     } finally {
-      _busy--;
+      if (!background) _busy--;
       _publish();
     }
   }
