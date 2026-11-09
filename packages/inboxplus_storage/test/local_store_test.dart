@@ -416,6 +416,35 @@ void main() {
     },
   );
 
+  test(
+    'expanded history includes the target boundary and stays route scoped',
+    () async {
+      const other = ConversationRoute('other', 'chat');
+      const otherChat = ConversationRoute('instagram', 'other-chat');
+      for (final target in [route, other, otherChat]) {
+        await seed(target);
+        for (var i = 0; i < 60; i++) {
+          await store!.saveMessage(
+            message(
+              target,
+              'm$i',
+              timestamp: instant.add(Duration(seconds: i)),
+            ),
+          );
+        }
+      }
+      final expanded = await store!.loadRecentMessages(
+        route,
+        since: instant.add(const Duration(seconds: 5)),
+      );
+      expect(expanded.length, 55);
+      expect(expanded.first.id, 'm5');
+      expect(expanded.last.id, 'm59');
+      expect(expanded.every((message) => message.route == route), isTrue);
+      expect((await store!.loadRecentMessages(other)).length, 50);
+    },
+  );
+
   test('send completion is atomic and cannot erase a newer draft', () async {
     await seed(route);
     final captured = await store!.saveDraft(route, 'First draft');

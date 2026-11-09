@@ -727,21 +727,29 @@ class LocalStore {
   Future<List<MessageRecord>> loadRecentMessages(
     ConversationRoute route, {
     int limit = 50,
+    DateTime? since,
   }) => _read(() async {
     if (limit <= 0) throw const StorageException(StorageErrorCode.invalidData);
-    final rows =
-        await (_db.select(_db.messages)
-              ..where(
-                (t) =>
-                    t.accountId.equals(route.accountId) &
-                    t.conversationId.equals(route.conversationId),
-              )
-              ..orderBy([
-                (t) => OrderingTerm.desc(t.timestampMicros),
-                (t) => OrderingTerm.desc(t.id),
-              ])
-              ..limit(limit))
-            .get();
+    final query = _db.select(_db.messages)
+      ..where(
+        (t) =>
+            t.accountId.equals(route.accountId) &
+            t.conversationId.equals(route.conversationId),
+      )
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.timestampMicros),
+        (t) => OrderingTerm.desc(t.id),
+      ]);
+    if (since == null) {
+      query.limit(limit);
+    } else {
+      query.where(
+        (t) => t.timestampMicros.isBiggerOrEqualValue(
+          since.microsecondsSinceEpoch,
+        ),
+      );
+    }
+    final rows = await query.get();
     return rows.reversed.map(_message).toList();
   });
 
