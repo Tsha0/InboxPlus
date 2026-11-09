@@ -1025,6 +1025,86 @@ void main() {
     },
   );
 
+  for (final previewFails in [false, true]) {
+    test(
+      previewFails
+          ? 'a failed shared post preview keeps the link card without an error'
+          : 'shared post previews download once in the background',
+      () async {
+        await seed(firstRoute);
+        final engine = _FakeEngine(
+          onDownload: (command) async {
+            if (previewFails) {
+              throw const ConnectorException('operation_failed');
+            }
+            return {
+              'bytes': base64Encode([0xff, 0xd8, 0xff]),
+              'mime_type': 'image/jpeg',
+            };
+          },
+        );
+        final app = await start(engine: engine);
+        final share = {
+          'type': 'message',
+          'account_id': firstRoute.accountId,
+          'conversation_id': firstRoute.conversationId,
+          'id': 'share',
+          'body': 'Fixture caption',
+          'kind': 'link',
+          'timestamp': instant.millisecondsSinceEpoch,
+          'attachments': [
+            {
+              'id': 'share/link',
+              'kind': 'link',
+              'name': 'fixture.author',
+              'deep_link': 'https://www.instagram.com/p/fixture/',
+              'downloadable': false,
+              'preview_id': 'share/preview',
+            },
+          ],
+        };
+        engine.emit(share);
+        await _eventually(
+          () => engine.commands.any((c) => c['op'] == 'download_attachment'),
+        );
+        await _eventually(
+          () =>
+              previewFails ||
+              app.messagesFor(firstRoute).single.attachments.first.localPath !=
+                  null,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        final saved = app.messagesFor(firstRoute).single;
+        expect(saved.body, 'Fixture caption');
+        expect(saved.attachments.map((a) => a.kind), ['preview', 'link']);
+        final preview = saved.attachments.first;
+        expect(preview.id, 'share/preview');
+        expect(saved.attachments.last.fileName, 'fixture.author');
+        expect(app.error, isNull);
+        if (previewFails) {
+          expect(preview.localPath, isNull);
+          return;
+        }
+        expect(await File(preview.localPath!).readAsBytes(), [
+          0xff,
+          0xd8,
+          0xff,
+        ]);
+        engine.commands.clear();
+        engine.emit(share);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(
+          engine.commands.where((c) => c['op'] == 'download_attachment'),
+          isEmpty,
+        );
+        expect(
+          app.messagesFor(firstRoute).single.attachments.first.localPath,
+          preview.localPath,
+        );
+      },
+    );
+  }
+
   test(
     'incoming replies retain authors and quotes after message edits',
     () async {

@@ -98,6 +98,7 @@ class AppController extends InboxUiController {
   int _busy = 0;
   String? _error;
   int _maxAttachmentBytes = 32 * 1024 * 1024;
+  Future<void> _previewDownloads = Future.value();
 
   static Future<Object?> _invokeNative(
     String method,
@@ -187,7 +188,7 @@ class AppController extends InboxUiController {
         notificationSound: legacy['notification_sound'] as bool? ?? true,
         messageRetentionDays: legacy['message_retention_days'] as int? ?? 90,
         iMessageHistory: legacy['imessage_history'] as String? ?? 'year',
-        playsInstagramReels: legacy['plays_instagram_reels'] as bool? ?? false,
+        playsInstagramReels: legacy['plays_instagram_reels'] as bool? ?? true,
         showsUnreadBadge: legacy['shows_unread_badge'] as bool? ?? true,
         themePreset: legacy['theme_preset'] as String? ?? 'classic',
         customColors: legacy['custom_colors'] == null
@@ -1710,14 +1711,30 @@ class AppController extends InboxUiController {
     return future;
   }
 
+  // Previews are fetched one at a time without surfacing errors; a missing preview leaves the plain
+  // link card in place.
+  void _fetchPreview(
+    ConversationRoute route,
+    String messageId,
+    String attachmentId,
+  ) {
+    final future = _previewDownloads.then((_) async {
+      if (_closed || _isClosing) return;
+      try {
+        await _downloadAttachment(route, messageId, attachmentId);
+      } catch (_) {}
+    });
+    _previewDownloads = future;
+    _operations.add(future);
+    unawaited(future.whenComplete(() => _operations.remove(future)));
+  }
+
   Future<void> _downloadAttachment(
     ConversationRoute route,
     String messageId,
     String attachmentId,
   ) async {
-    final message = _messages[route]
-        ?.where((m) => m.id == messageId)
-        .firstOrNull;
+    final message = await store.loadMessage(route, messageId);
     final attachment = message?.attachments
         .where((a) => a.id == attachmentId)
         .firstOrNull;
@@ -1744,7 +1761,8 @@ class AppController extends InboxUiController {
       p.join(
         environment.directory.path,
         'media',
-        '${_uuid.v4()}${_safeExtension(attachment.fileName ?? '')}',
+        // A Reel's name is its author, not a file name.
+        '${_uuid.v4()}${attachment.kind == 'reel' ? '.mp4' : _safeExtension(attachment.fileName ?? '')}',
       ),
     );
     await environment.writePrivate(file, bytes);
@@ -1758,10 +1776,11 @@ class AppController extends InboxUiController {
       deepLink: attachment.deepLink,
       isDownloadable: attachment.isDownloadable,
     );
+    final current = await store.loadMessage(route, messageId) ?? message;
     final updated = _copyMessage(
-      message,
+      current,
       attachments: [
-        for (final a in message.attachments)
+        for (final a in current.attachments)
           if (a.id == attachmentId) downloaded else a,
       ],
     );
@@ -2604,6 +2623,21 @@ class AppController extends InboxUiController {
           }
         }
       }
+      final previewId = raw['preview_id'];
+      if (previewId is String && previewId.isNotEmpty) {
+        attachments.add(
+          AttachmentRecord(
+            id: previewId,
+            kind: 'preview',
+            fileName: 'Preview.jpg',
+            mimeType: 'image/jpeg',
+            localPath: existing?.attachments
+                .where((a) => a.id == previewId)
+                .firstOrNull
+                ?.localPath,
+          ),
+        );
+      }
       attachments.add(
         AttachmentRecord(
           id: raw['id'] as String,
@@ -2646,6 +2680,11 @@ class AppController extends InboxUiController {
       );
     }
     _messages[route] = await store.loadRecentMessages(route);
+    for (final preview in message.attachments) {
+      if (preview.kind == 'preview' && preview.localPath == null) {
+        _fetchPreview(route, message.id, preview.id);
+      }
+    }
     final chat = _conversations[route]!;
     final isNewIncoming =
         existing == null && !message.isOutgoing && data['historical'] != true;

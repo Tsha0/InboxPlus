@@ -229,7 +229,7 @@ class PreferencesRecord {
     this.customColors = const [0xe8e8ed, 0x000000, 0x000000],
     this.messageRetentionDays = 7,
     this.iMessageHistory = 'year',
-    this.playsInstagramReels = false,
+    this.playsInstagramReels = true,
     this.showsUnreadBadge = true,
     this.disconnectedAccountIds = const [],
   });
@@ -269,7 +269,7 @@ class PreferencesRecord {
         themePreset: value['themePreset'] as String? ?? 'classic',
         messageRetentionDays: value['messageRetentionDays'] as int? ?? 7,
         iMessageHistory: value['iMessageHistory'] as String? ?? 'year',
-        playsInstagramReels: value['playsInstagramReels'] as bool? ?? false,
+        playsInstagramReels: value['playsInstagramReels'] as bool? ?? true,
         showsUnreadBadge: value['showsUnreadBadge'] as bool? ?? true,
         disconnectedAccountIds: List<String>.unmodifiable(
           (value['disconnectedAccountIds'] as List? ?? []).cast<String>(),

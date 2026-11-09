@@ -5,6 +5,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +18,7 @@ import (
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/responses"
 	"go.mau.fi/util/jsontime"
 )
 
@@ -397,5 +402,101 @@ func TestRepeatedConnectReportsTheExistingTransportState(t *testing.T) {
 		if err != nil || result.(map[string]any)["state"] != "connected" {
 			t.Fatal("repeated connect incorrectly made a connected account appear offline")
 		}
+	}
+}
+
+func TestInstagramSharedPostKeepsPreviewAndShowsCaptionOnce(t *testing.T) {
+	c, err := New(accountRequest(t.TempDir()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := &slidetypes.Message{ID: "message", Content: slidetypes.MessageContentWrapper{Content: &slidetypes.MessageContentXMA{XMA: &slidetypes.XMAContent{
+		TitleText: "Fixture caption", HeaderTitleText: "fixture.author", TargetURL: "https://www.instagram.com/p/fixture/",
+		PreviewImage: &slidetypes.XMAPreviewImage{URL: "https://scontent.cdninstagram.com/preview.jpg?token=private"},
+	}}}}
+	event := c.instagramMessage("thread", message)
+	attachment := event["attachments"].([]any)[0].(map[string]any)
+	if event["body"] != "Fixture caption" || attachment["name"] != "fixture.author" || attachment["kind"] != "link" || attachment["downloadable"] != false {
+		t.Fatalf("unexpected shared post: %#v", event)
+	}
+	if attachment["preview_id"] != "message/preview" || c.media["message/preview"].URL == "" {
+		t.Fatal("shared post preview was not kept")
+	}
+	encoded, _ := json.Marshal(event)
+	if bytes.Contains(encoded, []byte("token=private")) {
+		t.Fatal("normalized event exposed the preview URL")
+	}
+}
+
+func TestInstagramSharedReelResolvesPlayableVideoOnDownload(t *testing.T) {
+	c, err := New(accountRequest(t.TempDir()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	video := []byte("fixture video")
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/720.mp4" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(video)
+	}))
+	defer server.Close()
+	served, _ := url.Parse(server.URL)
+	transport := server.Client().Transport.(*http.Transport).Clone()
+	transport.TLSClientConfig.InsecureSkipVerify = true
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, served.Host)
+	}
+	previous := http.DefaultTransport
+	http.DefaultTransport = transport
+	defer func() { http.DefaultTransport = previous }()
+	var requested []string
+	c.fetchMedia = func(_ context.Context, mediaID, shortcode string) (*responses.FetchMediaResponse, error) {
+		requested = append(requested, mediaID, shortcode)
+		return &responses.FetchMediaResponse{Items: []*responses.Items{{VideoVersions: []responses.VideoVersions{
+			{Width: 1080, URL: "https://scontent.cdninstagram.com/1080.mp4"},
+			{Width: 720, URL: "https://scontent.cdninstagram.com/720.mp4"},
+			{Width: 480, URL: "https://scontent.cdninstagram.com/480.mp4"},
+		}}}}, nil
+	}
+	message := &slidetypes.Message{ID: "message", Content: slidetypes.MessageContentWrapper{Content: &slidetypes.MessageContentXMA{XMA: &slidetypes.XMAContent{
+		TargetID: "123", TargetURL: "https://www.instagram.com/reel/Fixture_1/",
+		PreviewImage: &slidetypes.XMAPreviewImage{URL: "https://scontent.cdninstagram.com/preview.jpg"},
+	}}}}
+	event := c.instagramMessage("thread", message)
+	attachment := event["attachments"].([]any)[0].(map[string]any)
+	if attachment["kind"] != "reel" || attachment["downloadable"] != true || attachment["mime_type"] != "video/mp4" || attachment["preview_id"] != "message/preview" {
+		t.Fatalf("reel is not playable: %#v", attachment)
+	}
+	if len(requested) != 0 {
+		t.Fatal("reel video was fetched before the user asked to play it")
+	}
+	result, err := c.download(context.Background(), "message/link")
+	if err != nil {
+		t.Fatal(err)
+	}
+	downloaded := result.(map[string]any)
+	if downloaded["mime_type"] != "video/mp4" || downloaded["bytes"] != base64.StdEncoding.EncodeToString(video) {
+		t.Fatalf("unexpected reel download: %#v", downloaded)
+	}
+	if strings.Join(requested, ",") != "123,Fixture_1" {
+		t.Fatalf("unexpected media lookup: %v", requested)
+	}
+}
+
+func TestInstagramReelWithoutPlayableVideoReportsUnavailable(t *testing.T) {
+	c, err := New(accountRequest(t.TempDir()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.fetchMedia = func(context.Context, string, string) (*responses.FetchMediaResponse, error) {
+		return &responses.FetchMediaResponse{Items: []*responses.Items{{VideoVersions: []responses.VideoVersions{{Width: 720, URL: "http://evil.test/video.mp4"}}}}}, nil
+	}
+	c.instagramMessage("thread", &slidetypes.Message{ID: "message", Content: slidetypes.MessageContentWrapper{Content: &slidetypes.MessageContentXMA{XMA: &slidetypes.XMAContent{
+		TargetID: "123", TargetURL: "https://www.instagram.com/reel/fixture/",
+	}}}})
+	if _, err := c.download(context.Background(), "message/link"); err == nil || !strings.Contains(err.Error(), "open it in Instagram") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
