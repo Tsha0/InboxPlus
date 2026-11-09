@@ -91,7 +91,10 @@ Use the absolute path to this checkout's fixture. The preview uses a temporary e
 fake connectors; the normal app entry never loads these fixtures. Compare inbox, contacts,
 transcript, Settings, light/dark themes and window sizes without a live network account or the real
 Messages database. A phone preview can pass the fixture contents with
-`--dart-define=INBOXPLUS_PREVIEW_FIXTURE_JSON='<fixture JSON>'` instead.
+`--dart-define=INBOXPLUS_PREVIEW_FIXTURE_JSON='<fixture JSON>'` instead. Add
+`--dart-define=INBOXPLUS_PREVIEW_CONVERSATION=<account>/<conversation>` (for example `instagram/nora`)
+to open a fixture conversation on launch. A fixture attachment with `"remote": true` starts without
+a local copy and is served by the preview connector, like a newly received photo.
 
 When building `lib/desktop_preview.dart` directly, use
 `--dart-define=INBOXPLUS_PREVIEW_NOTIFICATION_STATUS=denied` or `not_determined` to inspect permission

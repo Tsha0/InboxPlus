@@ -1909,6 +1909,15 @@ class _MessageBubble extends StatelessWidget {
                                         message.id,
                                         attachment.id,
                                       ),
+                                  imageLoad: controller.attachmentLoadState(
+                                    message.route,
+                                    attachment.id,
+                                  ),
+                                  onLoadImage: () => controller.loadInlineImage(
+                                    message.route,
+                                    message.id,
+                                    attachment.id,
+                                  ),
                                   onOpen: () => controller.openAttachment(
                                     attachment.localPath!,
                                   ),
@@ -2796,8 +2805,10 @@ class _AttachmentTile extends StatelessWidget {
     required this.attachment,
     required this.foreground,
     required this.onDownload,
+    required this.onLoadImage,
     required this.onOpen,
     required this.onOpenLink,
+    this.imageLoad,
     this.onSave,
     this.linkPlatform,
     this.playsInstagramReels = false,
@@ -2806,6 +2817,8 @@ class _AttachmentTile extends StatelessWidget {
   final AttachmentRecord attachment;
   final Color foreground;
   final Future<void> Function() onDownload;
+  final Future<void> Function() onLoadImage;
+  final AttachmentLoadState? imageLoad;
   final Future<void> Function() onOpen;
   final Future<void> Function() onOpenLink;
   final Future<void> Function()? onSave;
@@ -2891,6 +2904,12 @@ class _AttachmentTile extends StatelessWidget {
             ),
           ),
         ),
+      );
+    }
+    if (image && attachment.localPath == null) {
+      return _LoadOnFirstBuild(
+        onLoad: imageLoad == null ? onLoadImage : null,
+        child: _inlineImageStatus(context),
       );
     }
     final VoidCallback activate = attachment.localPath == null
@@ -3002,6 +3021,54 @@ class _AttachmentTile extends StatelessWidget {
     );
   }
 
+  Widget _inlineImageStatus(BuildContext context) => switch (imageLoad) {
+    AttachmentLoadState.failed => SizedBox(
+      width: 280,
+      child: Row(
+        children: [
+          Expanded(
+            child: _fileCard(
+              context,
+              Icons.broken_image_outlined,
+              'Image unavailable',
+            ),
+          ),
+          TextButton(
+            onPressed: onLoadImage,
+            style: TextButton.styleFrom(foregroundColor: foreground),
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    ),
+    AttachmentLoadState.tooLarge => SizedBox(
+      width: 280,
+      child: _fileCard(
+        context,
+        Icons.image_not_supported_outlined,
+        'Image too large to preview',
+      ),
+    ),
+    _ => Semantics(
+      container: true,
+      image: true,
+      label: 'Loading image',
+      child: Container(
+        width: 280,
+        height: 190,
+        decoration: BoxDecoration(
+          color: foreground.withValues(alpha: .08),
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Icon(
+          Icons.image_outlined,
+          size: 36,
+          color: foreground.withValues(alpha: .35),
+        ),
+      ),
+    ),
+  };
+
   Widget _fileCard(BuildContext context, IconData icon, String name) => Row(
     children: [
       Icon(icon, size: 30, color: foreground),
@@ -3029,6 +3096,32 @@ class _AttachmentTile extends StatelessWidget {
       ),
     ],
   );
+}
+
+class _LoadOnFirstBuild extends StatefulWidget {
+  const _LoadOnFirstBuild({required this.onLoad, required this.child});
+
+  final Future<void> Function()? onLoad;
+  final Widget child;
+
+  @override
+  State<_LoadOnFirstBuild> createState() => _LoadOnFirstBuildState();
+}
+
+class _LoadOnFirstBuildState extends State<_LoadOnFirstBuild> {
+  @override
+  void initState() {
+    super.initState();
+    final load = widget.onLoad;
+    if (load != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) load();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _EmptyState extends StatelessWidget {

@@ -11,6 +11,7 @@ import 'package:inboxplus_flutter/connectors/connector_engine.dart';
 import 'package:inboxplus_flutter/platform/app_environment.dart';
 import 'package:inboxplus_flutter/ui/inbox_ui_controller.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -2282,6 +2283,105 @@ void main() {
     }
   });
 
+  group('inline images', () {
+    Future<AppController> openPhoto(
+      _FakeEngine engine, {
+      int? byteCount,
+    }) async {
+      await seed(firstRoute, platform: 'instagram');
+      await store.saveMessage(
+        MessageRecord(
+          id: 'photo-message',
+          route: firstRoute,
+          body: '',
+          timestamp: instant,
+          isOutgoing: false,
+          attachments: [
+            AttachmentRecord(
+              id: 'photo',
+              kind: 'image',
+              fileName: 'image',
+              mimeType: 'image/jpeg',
+              byteCount: byteCount,
+            ),
+          ],
+        ),
+      );
+      final app = await start(engine: engine);
+      app.selectConversation(firstRoute);
+      await _eventually(() => app.messagesFor(firstRoute).isNotEmpty);
+      return app;
+    }
+
+    AttachmentRecord photo(AppController app) =>
+        app.messagesFor(firstRoute).single.attachments.single;
+
+    test('loads a received photo into the private media store', () async {
+      final engine = _FakeEngine(
+        onDownload: (_) async => {
+          'bytes': base64Encode([255, 216, 255]),
+        },
+      );
+      final app = await openPhoto(engine);
+      final load = app.loadInlineImage(firstRoute, 'photo-message', 'photo');
+      expect(
+        app.attachmentLoadState(firstRoute, 'photo'),
+        AttachmentLoadState.loading,
+      );
+      await load;
+
+      expect(app.attachmentLoadState(firstRoute, 'photo'), isNull);
+      expect(app.error, isNull);
+      final file = File(photo(app).localPath!);
+      expect(await file.readAsBytes(), [255, 216, 255]);
+      expect(p.isWithin(directory.path, file.path), isTrue);
+      if (!Platform.isWindows) {
+        expect((await file.stat()).mode & 0x1ff, 0x180);
+      }
+    });
+
+    test('a failed load is reported on the image, not globally', () async {
+      var fail = true;
+      final engine = _FakeEngine(
+        onDownload: (_) async {
+          if (fail) throw const ConnectorException('operation_failed');
+          return {
+            'bytes': base64Encode([1]),
+          };
+        },
+      );
+      final app = await openPhoto(engine);
+      await app.loadInlineImage(firstRoute, 'photo-message', 'photo');
+      expect(
+        app.attachmentLoadState(firstRoute, 'photo'),
+        AttachmentLoadState.failed,
+      );
+      expect(app.error, isNull);
+      expect(photo(app).localPath, isNull);
+
+      fail = false;
+      await app.loadInlineImage(firstRoute, 'photo-message', 'photo');
+      expect(app.attachmentLoadState(firstRoute, 'photo'), isNull);
+      expect(photo(app).localPath, isNotNull);
+    });
+
+    test('an oversized photo is not fetched', () async {
+      final engine = _FakeEngine(
+        onDownload: (_) async => fail('should not download'),
+      );
+      final app = await openPhoto(engine, byteCount: 64 * 1024 * 1024);
+      await app.loadInlineImage(firstRoute, 'photo-message', 'photo');
+      expect(
+        app.attachmentLoadState(firstRoute, 'photo'),
+        AttachmentLoadState.tooLarge,
+      );
+      expect(
+        engine.commands.where((c) => c['op'] == 'download_attachment'),
+        isEmpty,
+      );
+    });
+  });
+
   test(
     'removing an account signs out first and deletes its downloads',
     () async {
@@ -3034,6 +3134,7 @@ class _FakeEngine implements ConnectorEngine {
     this.onPairPhone,
     this.onLogout,
     this.onListChats,
+    this.onDownload,
   });
   String connectState;
   bool failLogout = false;
@@ -3049,6 +3150,7 @@ class _FakeEngine implements ConnectorEngine {
   final List<Map<String, Object?>> chats;
   final Future<Map<String, Object?>> Function(Map<String, Object?>)? onSend;
   final Future<Map<String, Object?>> Function(Map<String, Object?>)? onReact;
+  final Future<Map<String, Object?>> Function(Map<String, Object?>)? onDownload;
   final commands = <Map<String, Object?>>[];
   final _events = StreamController<ConnectorEvent>.broadcast();
 
@@ -3158,6 +3260,8 @@ class _FakeEngine implements ConnectorEngine {
                 'timestamp': DateTime.now().millisecondsSinceEpoch,
               }
             : onSend!(command);
+      case 'download_attachment':
+        return onDownload == null ? {} : onDownload!(command);
       default:
         return {};
     }

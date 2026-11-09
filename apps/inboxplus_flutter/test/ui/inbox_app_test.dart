@@ -1427,6 +1427,72 @@ void main() {
     }),
   );
 
+  group('received remote image', () {
+    const route = ConversationRoute('first', 'alice');
+    _FakeController remoteImage() => _FakeController(
+      messages: {
+        route: [
+          MessageRecord(
+            id: 'photo-message',
+            route: route,
+            body: '',
+            timestamp: DateTime(2026, 11, 5),
+            isOutgoing: false,
+            attachments: const [
+              AttachmentRecord(
+                id: 'photo',
+                kind: 'image',
+                fileName: 'image',
+                mimeType: 'image/jpeg',
+              ),
+            ],
+          ),
+        ],
+      },
+    );
+
+    testWidgets('loads inline without a manual download', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final controller = remoteImage();
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(controller.loadedImages, [
+        (route: route, messageId: 'photo-message', attachmentId: 'photo'),
+      ]);
+      expect(find.bySemanticsLabel('Loading image'), findsOneWidget);
+      expect(find.byTooltip('Download attachment'), findsNothing);
+      expect(controller.downloadedAttachments, isEmpty);
+      semantics.dispose();
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+    testWidgets('a failed load offers a retry instead of reloading', (
+      tester,
+    ) async {
+      final controller = remoteImage()
+        ..imageLoadStates['photo'] = AttachmentLoadState.failed;
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(find.text('Image unavailable'), findsOneWidget);
+      expect(controller.loadedImages, isEmpty);
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(controller.loadedImages, hasLength(1));
+    });
+
+    testWidgets('an oversized image says so without loading', (tester) async {
+      final controller = remoteImage()
+        ..imageLoadStates['photo'] = AttachmentLoadState.tooLarge;
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(find.text('Image too large to preview'), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+      expect(controller.loadedImages, isEmpty);
+    });
+  });
+
   testWidgets(
     'desktop local image preview saves and closes back to the draft',
     (tester) async {
@@ -3228,6 +3294,9 @@ class _FakeController extends InboxUiController {
   final downloadedAttachments =
       <({ConversationRoute route, String messageId, String attachmentId})>[];
   final openedAttachments = <String>[];
+  final imageLoadStates = <String, AttachmentLoadState>{};
+  final loadedImages =
+      <({ConversationRoute route, String messageId, String attachmentId})>[];
   final savedAttachments =
       <({ConversationRoute route, String messageId, String attachmentId})>[];
   String? contactSaveError;
@@ -3457,6 +3526,25 @@ class _FakeController extends InboxUiController {
     String attachmentId,
   ) async {
     downloadedAttachments.add((
+      route: route,
+      messageId: messageId,
+      attachmentId: attachmentId,
+    ));
+  }
+
+  @override
+  AttachmentLoadState? attachmentLoadState(
+    ConversationRoute route,
+    String attachmentId,
+  ) => imageLoadStates[attachmentId];
+
+  @override
+  Future<void> loadInlineImage(
+    ConversationRoute route,
+    String messageId,
+    String attachmentId,
+  ) async {
+    loadedImages.add((
       route: route,
       messageId: messageId,
       attachmentId: attachmentId,

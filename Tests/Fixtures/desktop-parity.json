@@ -36,7 +36,7 @@
     {"id":"team-2","account":"whatsapp","conversation":"team","body":"Let's meet at the park entrance at 10.","minutesAgo":20,"outgoing":true,"sender":""},
     {"id":"team-3","account":"whatsapp","conversation":"team","body":"I'll bring the snacks.","minutesAgo":18,"outgoing":false,"sender":"Maya Chen"},
     {"id":"maya-1","account":"telegram","conversation":"maya","body":"The photos turned out great.","minutesAgo":40,"outgoing":false,"sender":"Maya Chen"},
-    {"id":"nora-1","account":"instagram","conversation":"nora","body":"Have a look at this place.","minutesAgo":90,"outgoing":false,"sender":"Nora Williams"},
+    {"id":"nora-1","account":"instagram","conversation":"nora","body":"Have a look at this place.","minutesAgo":90,"outgoing":false,"sender":"Nora Williams","attachments":[{"id":"nora-photo","kind":"image","name":"image","mimeType":"image/png","asset":"inboxplus-logo.png","remote":true}]},
     {"id":"alex-tg-1","account":"telegram","conversation":"alex-tg-chat","body":"I've sent the document here too.","minutesAgo":140,"outgoing":false,"sender":"Alex Morgan"},
     {"id":"sam-1","account":"messenger","conversation":"sam","body":"Thanks for the update!","minutesAgo":180,"outgoing":false,"sender":"Sam Rivera"},
     {"id":"riley-wa-1","account":"whatsapp","conversation":"riley-wa","body":"The plan looks good.","minutesAgo":200,"outgoing":false,"sender":"Riley Park"},

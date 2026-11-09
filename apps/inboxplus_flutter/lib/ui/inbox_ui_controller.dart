@@ -9,6 +9,8 @@ enum LocalRecipientStatus { available, accessUnavailable, failed }
 
 enum AccountNetworkProblem { connecting, reconnecting, signedOut, failed }
 
+enum AttachmentLoadState { loading, failed, tooLarge }
+
 enum NotificationAuthorization { unavailable, notDetermined, denied, allowed }
 
 @immutable
@@ -346,6 +348,15 @@ abstract class InboxUiController extends ChangeNotifier {
   });
   Future<void> react(ConversationRoute route, String messageId, String emoji);
   Future<void> downloadAttachment(
+    ConversationRoute route,
+    String messageId,
+    String attachmentId,
+  );
+  AttachmentLoadState? attachmentLoadState(
+    ConversationRoute route,
+    String attachmentId,
+  );
+  Future<void> loadInlineImage(
     ConversationRoute route,
     String messageId,
     String attachmentId,

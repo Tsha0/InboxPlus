@@ -46,6 +46,8 @@ class AppController extends InboxUiController {
   final _reactions =
       <ConversationRoute, Map<String, List<MessageReactionRecord>>>{};
   final _reacting = <(ConversationRoute, String)>{};
+  final _inlineImageLoads =
+      <(ConversationRoute, String), AttachmentLoadState>{};
   final _drafts = <ConversationRoute, DraftRecord>{};
   final _conversationPreferences =
       <ConversationRoute, ConversationPreferencesRecord>{};
@@ -1670,7 +1672,49 @@ class AppController extends InboxUiController {
     ConversationRoute route,
     String messageId,
     String attachmentId,
-  ) => _perform(() async {
+  ) => _perform(() => _downloadAttachment(route, messageId, attachmentId));
+
+  @override
+  AttachmentLoadState? attachmentLoadState(
+    ConversationRoute route,
+    String attachmentId,
+  ) => _inlineImageLoads[(route, attachmentId)];
+
+  @override
+  Future<void> loadInlineImage(
+    ConversationRoute route,
+    String messageId,
+    String attachmentId,
+  ) {
+    final key = (route, attachmentId);
+    if (_closed ||
+        _isClosing ||
+        _inlineImageLoads[key] == AttachmentLoadState.loading) {
+      return Future.value();
+    }
+    _inlineImageLoads[key] = AttachmentLoadState.loading;
+    _publish();
+    final future = () async {
+      try {
+        await _downloadAttachment(route, messageId, attachmentId);
+        _inlineImageLoads.remove(key);
+      } on _AttachmentTooLarge {
+        _inlineImageLoads[key] = AttachmentLoadState.tooLarge;
+      } catch (_) {
+        _inlineImageLoads[key] = AttachmentLoadState.failed;
+      }
+      _publish();
+    }();
+    _operations.add(future);
+    unawaited(future.whenComplete(() => _operations.remove(future)));
+    return future;
+  }
+
+  Future<void> _downloadAttachment(
+    ConversationRoute route,
+    String messageId,
+    String attachmentId,
+  ) async {
     final message = _messages[route]
         ?.where((m) => m.id == messageId)
         .firstOrNull;
@@ -1684,6 +1728,9 @@ class AppController extends InboxUiController {
             await File(attachment.localPath!).exists())) {
       return;
     }
+    if ((attachment.byteCount ?? 0) > _maxAttachmentBytes) {
+      throw const _AttachmentTooLarge();
+    }
     final result = await engine!.request({
       'op': 'download_attachment',
       'account_id': route.accountId,
@@ -1691,7 +1738,7 @@ class AppController extends InboxUiController {
     });
     final bytes = base64Decode(result['bytes'] as String);
     if (bytes.length > _maxAttachmentBytes) {
-      throw const AppStorageException('The attachment exceeds the size limit.');
+      throw const _AttachmentTooLarge();
     }
     final file = File(
       p.join(
@@ -1722,7 +1769,7 @@ class AppController extends InboxUiController {
     _messages[route] = await store.loadRecentMessages(route);
     _scheduleStatistics();
     _publish();
-  });
+  }
 
   @override
   Future<void> saveAttachment(
@@ -2982,4 +3029,8 @@ class AppController extends InboxUiController {
         '.txt' => 'text/plain',
         _ => 'application/octet-stream',
       };
+}
+
+class _AttachmentTooLarge extends AppStorageException {
+  const _AttachmentTooLarge() : super('The attachment exceeds the size limit.');
 }
