@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 class ConversationRoute {
   const ConversationRoute(this.accountId, this.conversationId);
 
@@ -39,6 +41,8 @@ class ConversationRecord {
     this.canSend = true,
     this.sendingUnavailableReason,
     this.isFromUnknownSender = false,
+    this.avatarSource,
+    this.avatarBytes,
   });
 
   final ConversationRoute route;
@@ -50,19 +54,26 @@ class ConversationRecord {
   final bool canSend;
   final String? sendingUnavailableReason;
   final bool isFromUnknownSender;
+  final String? avatarSource;
+  final Uint8List? avatarBytes;
 
-  ConversationRecord copyWith({int? unreadCount, DateTime? latestActivity}) =>
-      ConversationRecord(
-        route: route,
-        title: title,
-        latestActivity: latestActivity ?? this.latestActivity,
-        unreadCount: unreadCount ?? this.unreadCount,
-        isGroup: isGroup,
-        identityId: identityId,
-        canSend: canSend,
-        sendingUnavailableReason: sendingUnavailableReason,
-        isFromUnknownSender: isFromUnknownSender,
-      );
+  ConversationRecord copyWith({
+    int? unreadCount,
+    DateTime? latestActivity,
+    Uint8List? avatarBytes,
+  }) => ConversationRecord(
+    route: route,
+    title: title,
+    latestActivity: latestActivity ?? this.latestActivity,
+    unreadCount: unreadCount ?? this.unreadCount,
+    isGroup: isGroup,
+    identityId: identityId,
+    canSend: canSend,
+    sendingUnavailableReason: sendingUnavailableReason,
+    isFromUnknownSender: isFromUnknownSender,
+    avatarSource: avatarSource,
+    avatarBytes: avatarBytes ?? this.avatarBytes,
+  );
 }
 
 enum DeliveryState { pending, acknowledged, failed }

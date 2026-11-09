@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -184,5 +187,31 @@ func TestMediaHostsRejectExternalTargetsAndDowngrade(t *testing.T) {
 	}
 	if !MediaURL("https://cdn.discordapp.com/file?private=fixture", "discordapp.com") {
 		t.Fatal("network attachment rejected")
+	}
+}
+
+type avatarTransport func(*http.Request) (*http.Response, error)
+
+func (f avatarTransport) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func TestAvatarDownloadsEnforceHostRedirectAndStreamingLimits(t *testing.T) {
+	original := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = original })
+	calls := 0
+	http.DefaultTransport = avatarTransport(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.Path == "/redirect" {
+			return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": []string{"https://untrusted.example/avatar"}}, Body: io.NopCloser(strings.NewReader("")), Request: req}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(strings.Repeat("x", (2<<20)+1))), ContentLength: -1, Request: req}, nil
+	})
+	if _, err := DownloadAvatar(context.Background(), "https://untrusted.example/avatar", "example.test"); err == nil || calls != 0 {
+		t.Fatal("untrusted host was fetched")
+	}
+	if _, err := DownloadAvatar(context.Background(), "https://example.test/redirect", "example.test"); err == nil || calls != 1 {
+		t.Fatal("redirect escaped host validation")
+	}
+	if _, err := DownloadAvatar(context.Background(), "https://example.test/large", "example.test"); err == nil {
+		t.Fatal("oversized streaming avatar accepted")
 	}
 }

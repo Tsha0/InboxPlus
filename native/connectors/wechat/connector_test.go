@@ -72,3 +72,18 @@ func TestWeChatContactTitlesAndGroupIdentityArePreserved(t *testing.T) {
 		t.Fatal("contact and group identities were mixed")
 	}
 }
+
+func TestProfilePhotoReferencesChangeWithoutExposingSessionURLs(t *testing.T) {
+	user := &openwechat.User{UserName: "@friend", HeadImgUrl: "/head?session=private-one"}
+	first := chat(user)["avatar_source"]
+	user.HeadImgUrl = "/head?session=private-two"
+	second := chat(user)
+	encoded, _ := json.Marshal(second)
+	if first == second["avatar_source"] || bytes.Contains(encoded, []byte("private-")) {
+		t.Fatal("photo update was lost or leaked a session URL")
+	}
+	user.HeadImgUrl = ""
+	if chat(user)["avatar_source"] != "" {
+		t.Fatal("photo removal was lost")
+	}
+}

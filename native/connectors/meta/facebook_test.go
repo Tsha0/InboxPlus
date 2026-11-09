@@ -174,3 +174,18 @@ func TestFacebookMessageWithoutThreadMetadataDoesNotInventAContact(t *testing.T)
 		t.Fatal("unknown thread was assigned a person")
 	}
 }
+
+func TestFacebookContactPhotoUpdatesRefreshTheExistingThread(t *testing.T) {
+	var emitted []map[string]any
+	c := &Connector{accountID: "fixture", media: make(map[string]mediaReference), emit: func(e map[string]any) { emitted = append(emitted, e) }}
+	f := &fbAdapter{c: c}
+	f.handleTable(&table.LSTable{LSDeleteThenInsertContact: []*table.LSDeleteThenInsertContact{{Id: 2, Name: "Fixture", ProfilePictureUrl: "https://scontent.fbcdn.net/first.jpg?secret=private"}}, LSDeleteThenInsertThread: []*table.LSDeleteThenInsertThread{{ThreadKey: 2, ThreadType: table.ONE_TO_ONE}}}, true)
+	first := emitted[0]["avatar_source"].(string)
+	if first == "" || c.media[first].URL == "" {
+		t.Fatal("contact photo missing")
+	}
+	f.handleTable(&table.LSTable{LSDeleteThenInsertContact: []*table.LSDeleteThenInsertContact{{Id: 2, ProfilePictureUrl: "https://scontent.fbcdn.net/second.jpg"}}}, false)
+	if len(emitted) != 2 || emitted[1]["avatar_source"] == first {
+		t.Fatal("contact photo change did not update the conversation")
+	}
+}

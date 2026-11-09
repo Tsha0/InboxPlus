@@ -108,6 +108,114 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  test('iOS downloads and caches account-scoped photos without blocking chat updates', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    const route = firstRoute;
+    await seed(route);
+    final download = Completer<Map<String, Object?>>();
+    final engine = _FakeEngine(onDownload: (_) => download.future);
+    final app = await start(engine: engine);
+    engine.emit({
+      'type': 'chat',
+      'account_id': route.accountId,
+      'id': route.conversationId,
+      'avatar_source': 'avatar:first',
+    });
+    await _eventually(
+      () => engine.commands.any((c) => c['id'] == 'avatar:first'),
+    );
+    engine.emit({
+      'type': 'chat',
+      'account_id': route.accountId,
+      'id': route.conversationId,
+      'title': 'Updated while downloading',
+    });
+    await _eventually(
+      () => app.conversations.single.title == 'Updated while downloading',
+    );
+    download.complete({
+      'bytes': 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+    });
+    await _eventually(
+      () => app.conversations.single.avatarBytes?.isNotEmpty == true,
+    );
+    expect(
+      (await store.loadConversations()).single.avatarBytes,
+      app.conversations.single.avatarBytes,
+    );
+    expect(
+      engine.commands.singleWhere(
+        (c) => c['id'] == 'avatar:first',
+      )['account_id'],
+      route.accountId,
+    );
+    engine.emit({
+      'type': 'chat',
+      'account_id': route.accountId,
+      'id': route.conversationId,
+      'avatar_source': '',
+    });
+    await _eventually(() => app.conversations.single.avatarBytes == null);
+    expect(app.conversations.single.title, 'Updated while downloading');
+    engine.emit({
+      'type': 'chat',
+      'account_id': route.accountId,
+      'id': route.conversationId,
+      'avatar_source': 'avatar:first',
+    });
+    await _eventually(
+      () => app.conversations.single.avatarBytes?.isNotEmpty == true,
+    );
+    expect(
+      engine.commands.where((c) => c['id'] == 'avatar:first'),
+      hasLength(2),
+    );
+  });
+
+  test(
+    'iOS discards stale and failed photos while keeping conversations usable',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      const route = firstRoute;
+      await seed(route);
+      final download = Completer<Map<String, Object?>>();
+      final engine = _FakeEngine(
+        onDownload: (command) async {
+          if (command['id'] == 'avatar:old') return download.future;
+          throw StateError('fixture download failed');
+        },
+      );
+      final app = await start(engine: engine);
+      engine.emit({
+        'type': 'chat',
+        'account_id': route.accountId,
+        'id': route.conversationId,
+        'avatar_source': 'avatar:old',
+      });
+      await _eventually(
+        () => engine.commands.any((c) => c['id'] == 'avatar:old'),
+      );
+      engine.emit({
+        'type': 'chat',
+        'account_id': route.accountId,
+        'id': route.conversationId,
+        'avatar_source': 'avatar:new',
+      });
+      await _eventually(
+        () => app.conversations.single.avatarSource == 'avatar:new',
+      );
+      download.complete({
+        'bytes': 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+      });
+      await _eventually(
+        () => engine.commands.any((c) => c['id'] == 'avatar:new'),
+      );
+      expect(app.conversations.single.avatarBytes, isNull);
+      expect(app.error, isNull);
+      expect((await store.loadConversations()).single.avatarBytes, isNull);
+    },
+  );
+
   test('WhatsApp mobile linking validates and normalizes phone inputs without losing the form', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     final engine = _FakeEngine(connectState: 'started');

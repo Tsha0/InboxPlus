@@ -45,6 +45,7 @@ type gotdBackend struct {
 	selfID        int64
 	peers         map[string]tg.InputPeerClass
 	names         map[string]string
+	avatars       map[string]string
 	attachments   map[string]attachmentReference
 	messageRoutes map[int]map[string]struct{}
 }
@@ -52,7 +53,7 @@ type gotdBackend struct {
 func newGotdBackend(accountID string, apiID int, apiHash string, storage *sessionStorage, emit func(map[string]any)) *gotdBackend {
 	b := &gotdBackend{accountID: accountID, emit: emit, authorized: make(chan int64, 1),
 		peers: make(map[string]tg.InputPeerClass), names: make(map[string]string),
-		attachments: make(map[string]attachmentReference)}
+		avatars: make(map[string]string), attachments: make(map[string]attachmentReference)}
 	b.updates = updates.New(updates.Config{Handler: gotd.UpdateHandlerFunc(b.handleUpdates), MaxChannelDifferenceConcurrency: 2})
 	b.client = gotd.NewClient(apiID, apiHash, gotd.Options{
 		SessionStorage: storage,
@@ -197,6 +198,7 @@ func (b *gotdBackend) syncDialogs(ctx context.Context, fetch func(context.Contex
 			if strings.HasPrefix(id, "user:") {
 				chat["identity_id"] = id
 			}
+			b.addAvatar(chat, id)
 			b.emit(chat)
 		}
 		for _, item := range dialogs.GetMessages() {
@@ -294,6 +296,7 @@ func (b *gotdBackend) Resolve(ctx context.Context, recipient string) (any, error
 	if strings.HasPrefix(id, "user:") {
 		chat["identity_id"] = id
 	}
+	b.addAvatar(chat, id)
 	b.emit(chat)
 	return chat, nil
 }
@@ -439,7 +442,11 @@ func (b *gotdBackend) Download(ctx context.Context, attachmentID string) (any, e
 		return nil, err
 	}
 	defer pool.Close()
-	output := limitedBuffer{limit: maxAttachmentBytes}
+	limit := maxAttachmentBytes
+	if strings.HasPrefix(attachmentID, "avatar:") {
+		limit = 2 << 20
+	}
+	output := limitedBuffer{limit: limit}
 	if _, err := downloader.NewDownloader().Download(tg.NewClient(pool), reference.location).Stream(ctx, &output); err != nil {
 		return nil, err
 	}
@@ -470,7 +477,25 @@ func (b *gotdBackend) peer(id string) (tg.InputPeerClass, error) {
 
 func (b *gotdBackend) remember(users []tg.UserClass, chats []tg.ChatClass) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
+	previous := make(map[string]string, len(b.avatars))
+	for id, source := range b.avatars {
+		previous[id] = source
+	}
+	defer func() {
+		changed := []map[string]any{}
+		for id, source := range b.avatars {
+			if old, known := previous[id]; known && old != source {
+				changed = append(changed, map[string]any{"type": "chat", "account_id": b.accountID, "id": id, "avatar_source": source})
+			}
+		}
+		b.mu.Unlock()
+		for _, event := range changed {
+			b.emit(event)
+		}
+	}()
+	if b.avatars == nil {
+		b.avatars = make(map[string]string)
+	}
 	for _, item := range users {
 		user, ok := item.(*tg.User)
 		if !ok {
@@ -478,6 +503,11 @@ func (b *gotdBackend) remember(users []tg.UserClass, chats []tg.ChatClass) {
 		}
 		id := "user:" + strconv.FormatInt(user.ID, 10)
 		b.names[id] = strings.TrimSpace(user.FirstName + " " + user.LastName)
+		if photo, ok := user.Photo.(*tg.UserProfilePhoto); ok && !user.Min {
+			b.rememberAvatar(id, photo.PhotoID, photo.DCID, &tg.InputPeerUser{UserID: user.ID, AccessHash: user.AccessHash})
+		} else if !user.Min {
+			b.avatars[id] = ""
+		}
 		if user.Self {
 			b.peers[id] = &tg.InputPeerSelf{}
 		} else if !user.Min && user.AccessHash != 0 {
@@ -489,11 +519,21 @@ func (b *gotdBackend) remember(users []tg.UserClass, chats []tg.ChatClass) {
 		case *tg.Chat:
 			id := "chat:" + strconv.FormatInt(chat.ID, 10)
 			b.peers[id], b.names[id] = &tg.InputPeerChat{ChatID: chat.ID}, chat.Title
+			if photo, ok := chat.Photo.(*tg.ChatPhoto); ok {
+				b.rememberAvatar(id, photo.PhotoID, photo.DCID, b.peers[id])
+			} else {
+				b.avatars[id] = ""
+			}
 		case *tg.Channel:
 			id := "channel:" + strconv.FormatInt(chat.ID, 10)
 			b.names[id] = chat.Title
 			if !chat.Min && chat.AccessHash != 0 {
 				b.peers[id] = &tg.InputPeerChannel{ChannelID: chat.ID, AccessHash: chat.AccessHash}
+				if photo, ok := chat.Photo.(*tg.ChatPhoto); ok {
+					b.rememberAvatar(id, photo.PhotoID, photo.DCID, b.peers[id])
+				} else {
+					b.avatars[id] = ""
+				}
 			}
 		}
 	}
@@ -584,6 +624,7 @@ func (b *gotdBackend) deliver(m *tg.Message, historical bool) {
 	name := b.names[peerKey(m.FromID)]
 	b.mu.Unlock()
 	event := normalizeMessage(b.accountID, m, name)
+	b.addAvatar(event, peerKey(m.PeerID))
 	event["historical"] = historical
 	if location, size, ok := mediaLocation(m.Media); ok {
 		attachments, _ := event["attachments"].([]map[string]any)
@@ -720,4 +761,24 @@ func sendError(err error) error {
 		return sanitizeError(err)
 	}
 	return errSendOutcomeUnknown
+}
+
+func (b *gotdBackend) rememberAvatar(id string, photoID int64, dc int, peer tg.InputPeerClass) {
+	if b.avatars == nil {
+		b.avatars = make(map[string]string)
+	}
+	source := "avatar:" + id + ":" + strconv.FormatInt(photoID, 10)
+	b.avatars[id] = source
+	b.attachments[source] = attachmentReference{
+		location: &tg.InputPeerPhotoFileLocation{Peer: peer, PhotoID: photoID},
+		dc:       dc, size: 2 << 20, name: "avatar.jpg", mime: "image/jpeg",
+	}
+}
+
+func (b *gotdBackend) addAvatar(chat map[string]any, id string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if source, ok := b.avatars[id]; ok {
+		chat["avatar_source"] = source
+	}
 }

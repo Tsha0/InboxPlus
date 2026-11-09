@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Tsha0/InboxPlus/native/connectors/internal/direct"
 	"github.com/Tsha0/InboxPlus/native/connectors/internal/securedb"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -183,12 +184,12 @@ func (c *Connector) Handle(ctx context.Context, req map[string]any) (any, error)
 		if err != nil || len(users) != 1 || !users[0].IsIn {
 			return nil, errors.New("This WhatsApp recipient could not be found")
 		}
-		chat := map[string]any{"id": users[0].JID.String(), "title": "+" + phone, "is_group": false, "timestamp": time.Now().UnixMilli()}
+		chat := map[string]any{"avatar_source": "avatar:" + users[0].JID.String(), "id": users[0].JID.String(), "title": "+" + phone, "is_group": false, "timestamp": time.Now().UnixMilli()}
 		chat["identity_id"] = users[0].JID.String()
 		if err := c.recordChat(users[0].JID, "+"+phone, chat["timestamp"].(int64), -1); err != nil {
 			return nil, err
 		}
-		c.event(map[string]any{"type": "chat", "id": users[0].JID.String(), "identity_id": users[0].JID.String(), "title": "+" + phone, "is_group": false, "timestamp": chat["timestamp"]})
+		c.event(map[string]any{"avatar_source": chat["avatar_source"], "type": "chat", "id": users[0].JID.String(), "identity_id": users[0].JID.String(), "title": "+" + phone, "is_group": false, "timestamp": chat["timestamp"]})
 		return chat, nil
 	case "send_text":
 		body := text(req, "body")
@@ -224,6 +225,21 @@ func (c *Connector) Handle(ctx context.Context, req map[string]any) (any, error)
 		return map[string]any{"applied": true, "type": "reaction", "account_id": c.accountID, "conversation_id": chat.String(), "id": id,
 			"sender_id": c.client.Store.ID.ToNonAD().String(), "outgoing": true, "emoji": emoji, "timestamp": message.GetReactionMessage().GetSenderTimestampMS()}, nil
 	case "download_attachment":
+		if raw, ok := strings.CutPrefix(text(req, "id"), "avatar:"); ok {
+			address, _, _ := strings.Cut(raw, "#")
+			jid, err := types.ParseJID(address)
+			if err != nil {
+				return nil, errors.New("avatar_unavailable")
+			}
+			info, err := c.client.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{Preview: true})
+			if errors.Is(err, whatsmeow.ErrProfilePictureNotSet) || errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
+				return map[string]any{"bytes": ""}, nil
+			}
+			if err != nil || info == nil {
+				return nil, errors.New("avatar_unavailable")
+			}
+			return direct.DownloadAvatar(ctx, info.URL, "whatsapp.net", "fbcdn.net")
+		}
 		var encoded []byte
 		if err := c.db.QueryRowContext(ctx, "SELECT message FROM inboxplus_media WHERE id=?", text(req, "id")).Scan(&encoded); err != nil {
 			return nil, errors.New("The attachment is not available locally")
@@ -414,7 +430,7 @@ func (c *Connector) listChats(ctx context.Context) (any, error) {
 		if title == "" {
 			title = jid.User
 		}
-		chat := map[string]any{"id": id, "title": title, "timestamp": timestamp, "unread_count": unread, "is_group": group}
+		chat := map[string]any{"avatar_source": "avatar:" + id, "id": id, "title": title, "timestamp": timestamp, "unread_count": unread, "is_group": group}
 		if !group {
 			chat["identity_id"] = id
 		}
@@ -448,6 +464,12 @@ func (c *Connector) handleEvent(raw any) {
 		c.event(map[string]any{"type": "connection", "state": "logged_out"})
 	case *events.ConnectFailure, *events.StreamError:
 		c.event(map[string]any{"type": "connection", "state": "error", "message": "WhatsApp connection failed"})
+	case *events.Picture:
+		source := ""
+		if !event.Remove {
+			source = "avatar:" + event.JID.String() + "#" + event.PictureID
+		}
+		c.event(map[string]any{"type": "chat", "id": event.JID.String(), "avatar_source": source})
 	case *events.Message:
 		c.message(event)
 	case *events.HistorySync:
@@ -460,7 +482,7 @@ func (c *Connector) handleEvent(raw any) {
 				c.event(map[string]any{"type": "error", "code": "storage_failed"})
 				return
 			}
-			chat := map[string]any{"type": "chat", "id": jid.String(), "title": conversation.GetName(), "timestamp": int64(conversation.GetConversationTimestamp()) * 1000, "unread_count": conversation.GetUnreadCount(), "is_group": jid.Server == types.GroupServer}
+			chat := map[string]any{"avatar_source": "avatar:" + jid.String(), "type": "chat", "id": jid.String(), "title": conversation.GetName(), "timestamp": int64(conversation.GetConversationTimestamp()) * 1000, "unread_count": conversation.GetUnreadCount(), "is_group": jid.Server == types.GroupServer}
 			if jid.Server != types.GroupServer {
 				chat["identity_id"] = jid.String()
 			}
@@ -568,7 +590,7 @@ func (c *Connector) emitMessage(event *events.Message, historical bool) {
 		kind = "unsupported"
 		body = "Unsupported WhatsApp message"
 	}
-	normalized := map[string]any{"type": "message", "conversation_id": event.Info.Chat.String(), "id": event.Info.ID, "body": body, "timestamp": event.Info.Timestamp.UnixMilli(), "outgoing": event.Info.IsFromMe, "sender_id": event.Info.Sender.String(), "sender_name": event.Info.PushName, "kind": kind, "attachments": attachments, "historical": historical}
+	normalized := map[string]any{"avatar_source": "avatar:" + event.Info.Chat.String(), "type": "message", "conversation_id": event.Info.Chat.String(), "id": event.Info.ID, "body": body, "timestamp": event.Info.Timestamp.UnixMilli(), "outgoing": event.Info.IsFromMe, "sender_id": event.Info.Sender.String(), "sender_name": event.Info.PushName, "kind": kind, "attachments": attachments, "historical": historical}
 	if context := messageContext(message); context != nil && context.GetStanzaID() != "" {
 		if remote := context.GetRemoteJID(); remote == "" || remote == event.Info.Chat.ToNonAD().String() {
 			normalized["reply_to_message_id"] = context.GetStanzaID()

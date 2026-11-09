@@ -71,6 +71,78 @@ void main() {
   });
 
   test(
+    'avatars survive reopen and stale downloads cannot cross routes or replace a new photo',
+    () async {
+      await seed(route);
+      const other = ConversationRoute('other-account', 'chat');
+      await seed(other);
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      for (final target in [route, other]) {
+        await store!.saveConversation(
+          ConversationRecord(
+            route: target,
+            title: 'Photo',
+            latestActivity: instant,
+            avatarSource: 'avatar:new',
+          ),
+        );
+      }
+      await store!.saveAvatar(route, 'avatar:old', bytes);
+      expect(
+        (await store!.loadConversations())
+            .firstWhere((c) => c.route == route)
+            .avatarBytes,
+        isNull,
+      );
+      await store!.saveAvatar(route, 'avatar:new', bytes);
+      await reopen();
+      final conversations = await store!.loadConversations();
+      expect(
+        conversations.firstWhere((c) => c.route == route).avatarBytes,
+        bytes,
+      );
+      expect(
+        conversations.firstWhere((c) => c.route == other).avatarBytes,
+        isNull,
+      );
+      await store!.removeAccount(route.accountId);
+      expect((await store!.loadConversations()).single.route, other);
+    },
+  );
+
+  test(
+    'schema six upgrade preserves conversations and drafts with empty avatar fields',
+    () async {
+      await seed(route);
+      await store!.saveDraft(route, 'Keep draft');
+      await store!.close();
+      store = null;
+      final raw = sqlite.sqlite3.open(file.path);
+      final hex = key.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      raw.execute("PRAGMA cipher = 'chacha20'");
+      raw.execute("PRAGMA key = 'raw:$hex'");
+      raw.execute('ALTER TABLE conversations DROP COLUMN avatar_source');
+      raw.execute('ALTER TABLE conversations DROP COLUMN avatar_bytes');
+      raw.execute('PRAGMA user_version = 6');
+      raw.close();
+      store = await LocalStore.open(file: file, key: key);
+      expect((await store!.loadDraft(route))!.body, 'Keep draft');
+      expect((await store!.loadConversations()).single.avatarBytes, isNull);
+      await store!.saveConversation(
+        ConversationRecord(
+          route: route,
+          title: 'Photo',
+          latestActivity: instant,
+          avatarSource: 'avatar:new',
+        ),
+      );
+      await store!.saveAvatar(route, 'avatar:new', Uint8List.fromList([1]));
+      await reopen();
+      expect((await store!.loadConversations()).single.avatarBytes, [1]);
+    },
+  );
+
+  test(
     'encrypted data and attachment metadata survive a file-backed reopen',
     () async {
       await seed(route);
@@ -1219,6 +1291,8 @@ void main() {
       raw.execute(
         'ALTER TABLE conversation_preferences DROP COLUMN read_through_micros',
       );
+      raw.execute('ALTER TABLE conversations DROP COLUMN avatar_source');
+      raw.execute('ALTER TABLE conversations DROP COLUMN avatar_bytes');
       raw.execute('PRAGMA user_version = 5');
       raw.close();
       store = await LocalStore.open(file: file, key: key);
@@ -1474,6 +1548,8 @@ void main() {
       raw.execute(
         'ALTER TABLE conversation_preferences DROP COLUMN read_through_micros',
       );
+      raw.execute('ALTER TABLE conversations DROP COLUMN avatar_source');
+      raw.execute('ALTER TABLE conversations DROP COLUMN avatar_bytes');
       raw.execute('PRAGMA user_version = 4');
       raw.close();
       store = await LocalStore.open(file: file, key: key);
@@ -1524,6 +1600,8 @@ void main() {
       raw.execute(
         'ALTER TABLE conversation_preferences DROP COLUMN read_through_micros',
       );
+      raw.execute('ALTER TABLE conversations DROP COLUMN avatar_source');
+      raw.execute('ALTER TABLE conversations DROP COLUMN avatar_bytes');
       raw.execute('PRAGMA user_version = 3');
       raw.close();
       store = await LocalStore.open(file: file, key: key);
@@ -1570,6 +1648,8 @@ void main() {
       raw.execute(
         'ALTER TABLE conversation_preferences DROP COLUMN read_through_micros',
       );
+      raw.execute('ALTER TABLE conversations DROP COLUMN avatar_source');
+      raw.execute('ALTER TABLE conversations DROP COLUMN avatar_bytes');
       raw.execute('PRAGMA user_version = 1');
       raw.close();
 

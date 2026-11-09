@@ -31,6 +31,8 @@ class Conversations extends Table {
   IntColumn get unreadCount => integer().withDefault(const Constant(0))();
   BoolColumn get isGroup => boolean().withDefault(const Constant(false))();
   TextColumn get identityId => text().nullable()();
+  TextColumn get avatarSource => text().nullable()();
+  BlobColumn get avatarBytes => blob().nullable()();
   BoolColumn get canSend => boolean().withDefault(const Constant(true))();
   TextColumn get sendingUnavailableReason => text().nullable()();
   BoolColumn get isFromUnknownSender =>
@@ -169,7 +171,7 @@ class MessageReactions extends Table {
 }
 
 const _applicationId = 0x494e4250;
-const _schemaVersion = 6;
+const _schemaVersion = 7;
 
 @DriftDatabase(
   tables: [
@@ -221,6 +223,10 @@ class StorageDatabase extends _$StorageDatabase {
           conversationPreferences,
           conversationPreferences.readThroughMicros,
         );
+      }
+      if (from < 7) {
+        await migrator.addColumn(conversations, conversations.avatarSource);
+        await migrator.addColumn(conversations, conversations.avatarBytes);
       }
     },
     beforeOpen: (_) async {
@@ -445,6 +451,8 @@ class LocalStore {
                 unreadCount: conversation.unreadCount,
                 isGroup: conversation.isGroup,
                 identityId: conversation.identityId,
+                avatarSource: conversation.avatarSource,
+                avatarBytes: conversation.avatarBytes,
                 canSend: conversation.canSend,
                 sendingUnavailableReason: conversation.sendingUnavailableReason,
                 isFromUnknownSender: conversation.isFromUnknownSender,
@@ -469,12 +477,28 @@ class LocalStore {
             unreadCount: r.unreadCount,
             isGroup: r.isGroup,
             identityId: r.identityId,
+            avatarSource: r.avatarSource,
+            avatarBytes: r.avatarBytes,
             canSend: r.canSend,
             sendingUnavailableReason: r.sendingUnavailableReason,
             isFromUnknownSender: r.isFromUnknownSender,
           ),
         )
         .toList();
+  });
+
+  Future<void> saveAvatar(
+    ConversationRoute route,
+    String source,
+    Uint8List bytes,
+  ) => _write(() async {
+    await (_db.update(_db.conversations)..where(
+          (t) =>
+              t.accountId.equals(route.accountId) &
+              t.conversationId.equals(route.conversationId) &
+              t.avatarSource.equals(source),
+        ))
+        .write(ConversationsCompanion(avatarBytes: Value(bytes)));
   });
 
   Future<void> saveMessage(MessageRecord message) =>

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
@@ -90,6 +91,8 @@ class AppController extends InboxUiController {
   Timer? _loginExpiryTimer;
   int _loginGeneration = 0;
   bool _loading = true;
+  Future<void> _avatarQueue = Future.value();
+  final _requestedAvatars = <ConversationRoute, String>{};
   bool _closed = false;
   bool _isClosing = false;
   Future<void>? _closing;
@@ -2507,6 +2510,12 @@ class AppController extends InboxUiController {
       sendingUnavailableReason: data['send_supported'] == false
           ? 'This encrypted conversation is unavailable in Inbox+. Open the original app to reply.'
           : old?.sendingUnavailableReason,
+      avatarSource: data['avatar_source'] as String? ?? old?.avatarSource,
+      avatarBytes:
+          data.containsKey('avatar_source') &&
+              data['avatar_source'] != old?.avatarSource
+          ? null
+          : old?.avatarBytes,
       isFromUnknownSender:
           data['is_from_unknown_sender'] as bool? ??
           old?.isFromUnknownSender ??
@@ -2514,6 +2523,81 @@ class AppController extends InboxUiController {
     );
     await store.saveConversation(conversation);
     _conversations[route] = conversation;
+    final source = conversation.avatarSource;
+    if (source == null || source.isEmpty) {
+      _requestedAvatars.remove(route);
+    } else if (defaultTargetPlatform == TargetPlatform.iOS &&
+        _requestedAvatars[route] != source) {
+      _requestedAvatars[route] = source;
+      _avatarQueue = _avatarQueue
+          .then((_) => _downloadAvatar(route, source))
+          .catchError((Object error) {
+            _error = _safeError(error);
+            if (!_closed && !_isClosing) notifyListeners();
+          });
+    }
+  }
+
+  Future<void> _downloadAvatar(ConversationRoute route, String source) async {
+    if (_closed ||
+        _isClosing ||
+        _conversations[route]?.avatarSource != source) {
+      return;
+    }
+    Uint8List bytes;
+    try {
+      final result = await engine!.request({
+        'op': 'download_attachment',
+        'account_id': route.accountId,
+        'id': source,
+      });
+      final encoded = result['bytes'] as String?;
+      if (encoded == null || encoded.length > 3 * 1024 * 1024) {
+        throw const FormatException();
+      }
+      bytes = base64Decode(encoded);
+      if (bytes.length > 2 * 1024 * 1024) throw const FormatException();
+      if (bytes.isNotEmpty) {
+        final codec = await ui.instantiateImageCodec(
+          bytes,
+          targetWidth: 128,
+          targetHeight: 128,
+          allowUpscaling: false,
+        );
+        try {
+          final frame = await codec.getNextFrame();
+          try {
+            final data = await frame.image.toByteData(
+              format: ui.ImageByteFormat.png,
+            );
+            bytes = data!.buffer.asUint8List(
+              data.offsetInBytes,
+              data.lengthInBytes,
+            );
+          } finally {
+            frame.image.dispose();
+          }
+        } finally {
+          codec.dispose();
+        }
+      }
+    } catch (_) {
+      if (_requestedAvatars[route] == source) _requestedAvatars.remove(route);
+      return;
+    }
+    _eventQueue = _eventQueue.then((_) async {
+      if (_closed ||
+          _isClosing ||
+          _conversations[route]?.avatarSource != source) {
+        return;
+      }
+      await store.saveAvatar(route, source, bytes);
+      final current = _conversations[route];
+      if (current == null || current.avatarSource != source) return;
+      _conversations[route] = current.copyWith(avatarBytes: bytes);
+      notifyListeners();
+    });
+    await _eventQueue;
   }
 
   Future<void> _saveReactions(
@@ -2572,6 +2656,8 @@ class AppController extends InboxUiController {
         'timestamp': data['timestamp'],
         if (data['is_group'] is bool) 'is_group': data['is_group'],
         'identity_id': data['identity_id'],
+        if (data['avatar_source'] is String)
+          'avatar_source': data['avatar_source'],
       });
     }
     final existing = await store.loadMessage(route, id);
@@ -2960,6 +3046,7 @@ class AppController extends InboxUiController {
     await _eventQueue;
     _statisticsTimer?.cancel();
     await _statisticsFuture;
+    await _avatarQueue;
     await engine?.close();
     await store.close();
     _closed = true;
