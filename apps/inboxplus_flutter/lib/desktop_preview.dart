@@ -44,6 +44,7 @@ Future<void> main() async {
     key: Uint8List.fromList(List.generate(32, (index) => index + 1)),
   );
   final now = DateTime.parse(fixture['referenceTime'] as String);
+  final remoteMedia = <String, Uint8List>{};
   final platforms = {
     'whatsApp': 'whatsapp',
     'facebookMessenger': 'messenger',
@@ -86,10 +87,14 @@ Future<void> main() async {
             ? Uint8List.fromList(utf8.encode(attachment['text'] as String))
             : (await rootBundle.load('assets/${attachment['asset']}')).buffer
                   .asUint8List();
-        file = File(
-          p.join(directory.path, 'media', attachment['name'] as String),
-        );
-        await environment.writePrivate(file, bytes);
+        if (attachment['remote'] == true) {
+          remoteMedia[attachment['id'] as String] = bytes;
+        } else {
+          file = File(
+            p.join(directory.path, 'media', attachment['name'] as String),
+          );
+          await environment.writePrivate(file, bytes);
+        }
       }
       attachments.add(
         AttachmentRecord(
@@ -100,7 +105,7 @@ Future<void> main() async {
           byteCount: bytes?.length,
           localPath: file?.path,
           deepLink: attachment['deepLink'] as String?,
-          isDownloadable: false,
+          isDownloadable: attachment['remote'] == true,
         ),
       );
     }
@@ -177,7 +182,7 @@ Future<void> main() async {
   final controller = AppController(
     store: store,
     environment: environment,
-    engine: _PreviewEngine(reactionStates),
+    engine: _PreviewEngine(reactionStates, remoteMedia),
     nativeCall: (method, arguments) async {
       switch (method) {
         case 'setWindowTheme':
@@ -228,6 +233,18 @@ Future<void> main() async {
     },
   );
   await controller.initialize();
+  const openConversation = String.fromEnvironment(
+    'INBOXPLUS_PREVIEW_CONVERSATION',
+  );
+  if (openConversation.isNotEmpty) {
+    final separator = openConversation.indexOf('/');
+    controller.selectConversation(
+      ConversationRoute(
+        openConversation.substring(0, separator),
+        openConversation.substring(separator + 1),
+      ),
+    );
+  }
   AppEnvironment.native.setMethodCallHandler((call) async {
     if (call.method == 'notificationActivated') {
       await controller.openPendingNotification();
@@ -262,8 +279,9 @@ class _PreviewSecrets implements SecretStore {
 }
 
 class _PreviewEngine implements ConnectorEngine {
-  _PreviewEngine(this._reactions);
+  _PreviewEngine(this._reactions, this._remoteMedia);
   final Map<(String, String, String), List<MessageReactionRecord>> _reactions;
+  final Map<String, Uint8List> _remoteMedia;
   final _events = StreamController<ConnectorEvent>.broadcast();
   @override
   Stream<ConnectorEvent> get events => _events.stream;
@@ -362,6 +380,10 @@ class _PreviewEngine implements ConnectorEngine {
               },
           ],
         };
+      case 'download_attachment':
+        final bytes = _remoteMedia[command['id']];
+        if (bytes == null) throw const ConnectorException('not_found');
+        return {'bytes': base64Encode(bytes)};
       case 'logout':
         return {'logged_out': true, 'remote_session_revoked': true};
       case 'close':

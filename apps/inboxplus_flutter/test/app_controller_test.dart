@@ -11,6 +11,7 @@ import 'package:inboxplus_flutter/connectors/connector_engine.dart';
 import 'package:inboxplus_flutter/platform/app_environment.dart';
 import 'package:inboxplus_flutter/ui/inbox_ui_controller.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -51,6 +52,7 @@ void main() {
     _FakeEngine? engine,
     String profileName = 'default',
     DateTime Function()? now,
+    bool waitForStartup = true,
   }) async {
     final value = AppController(
       store: store,
@@ -64,7 +66,8 @@ void main() {
       now: now ?? () => instant,
     );
     controller = value;
-    await value.initialize();
+    final startup = value.initialize();
+    if (waitForStartup) await startup;
     return value;
   }
 
@@ -499,7 +502,7 @@ void main() {
       });
       await _eventually(() => app.conversations.isNotEmpty);
       app.selectConversation(route);
-      await _eventually(() => !app.isBusy);
+      await app.whenIdle();
       expect(
         engine.commands.where((command) => command['op'] == 'history'),
         isEmpty,
@@ -1024,6 +1027,86 @@ void main() {
     },
   );
 
+  for (final previewFails in [false, true]) {
+    test(
+      previewFails
+          ? 'a failed shared post preview keeps the link card without an error'
+          : 'shared post previews download once in the background',
+      () async {
+        await seed(firstRoute);
+        final engine = _FakeEngine(
+          onDownload: (command) async {
+            if (previewFails) {
+              throw const ConnectorException('operation_failed');
+            }
+            return {
+              'bytes': base64Encode([0xff, 0xd8, 0xff]),
+              'mime_type': 'image/jpeg',
+            };
+          },
+        );
+        final app = await start(engine: engine);
+        final share = {
+          'type': 'message',
+          'account_id': firstRoute.accountId,
+          'conversation_id': firstRoute.conversationId,
+          'id': 'share',
+          'body': 'Fixture caption',
+          'kind': 'link',
+          'timestamp': instant.millisecondsSinceEpoch,
+          'attachments': [
+            {
+              'id': 'share/link',
+              'kind': 'link',
+              'name': 'fixture.author',
+              'deep_link': 'https://www.instagram.com/p/fixture/',
+              'downloadable': false,
+              'preview_id': 'share/preview',
+            },
+          ],
+        };
+        engine.emit(share);
+        await _eventually(
+          () => engine.commands.any((c) => c['op'] == 'download_attachment'),
+        );
+        await _eventually(
+          () =>
+              previewFails ||
+              app.messagesFor(firstRoute).single.attachments.first.localPath !=
+                  null,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        final saved = app.messagesFor(firstRoute).single;
+        expect(saved.body, 'Fixture caption');
+        expect(saved.attachments.map((a) => a.kind), ['preview', 'link']);
+        final preview = saved.attachments.first;
+        expect(preview.id, 'share/preview');
+        expect(saved.attachments.last.fileName, 'fixture.author');
+        expect(app.error, isNull);
+        if (previewFails) {
+          expect(preview.localPath, isNull);
+          return;
+        }
+        expect(await File(preview.localPath!).readAsBytes(), [
+          0xff,
+          0xd8,
+          0xff,
+        ]);
+        engine.commands.clear();
+        engine.emit(share);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(
+          engine.commands.where((c) => c['op'] == 'download_attachment'),
+          isEmpty,
+        );
+        expect(
+          app.messagesFor(firstRoute).single.attachments.first.localPath,
+          preview.localPath,
+        );
+      },
+    );
+  }
+
   test(
     'Reel reply targets resolve beyond recent history and stay account scoped',
     () async {
@@ -1525,7 +1608,7 @@ void main() {
         'id': 'same-chat',
         'unread_count': 0,
       });
-      await _eventually(() => !app.isBusy);
+      await app.whenIdle();
       expect(app.conversations.single.unreadCount, 1);
       app.selectConversation(firstRoute);
       await _eventually(() => !app.preferencesFor(firstRoute).markedUnread);
@@ -2255,7 +2338,7 @@ void main() {
     await store.enqueueDraft(firstRoute, sendId: 'protected-queued');
     final engine = _FakeEngine();
     final app = await start(engine: engine);
-    await _eventually(() => !app.isBusy);
+    await app.whenIdle();
 
     expect(engine.sends, isEmpty);
     expect(
@@ -2439,6 +2522,105 @@ void main() {
     }
   });
 
+  group('inline images', () {
+    Future<AppController> openPhoto(
+      _FakeEngine engine, {
+      int? byteCount,
+    }) async {
+      await seed(firstRoute, platform: 'instagram');
+      await store.saveMessage(
+        MessageRecord(
+          id: 'photo-message',
+          route: firstRoute,
+          body: '',
+          timestamp: instant,
+          isOutgoing: false,
+          attachments: [
+            AttachmentRecord(
+              id: 'photo',
+              kind: 'image',
+              fileName: 'image',
+              mimeType: 'image/jpeg',
+              byteCount: byteCount,
+            ),
+          ],
+        ),
+      );
+      final app = await start(engine: engine);
+      app.selectConversation(firstRoute);
+      await _eventually(() => app.messagesFor(firstRoute).isNotEmpty);
+      return app;
+    }
+
+    AttachmentRecord photo(AppController app) =>
+        app.messagesFor(firstRoute).single.attachments.single;
+
+    test('loads a received photo into the private media store', () async {
+      final engine = _FakeEngine(
+        onDownload: (_) async => {
+          'bytes': base64Encode([255, 216, 255]),
+        },
+      );
+      final app = await openPhoto(engine);
+      final load = app.loadInlineImage(firstRoute, 'photo-message', 'photo');
+      expect(
+        app.attachmentLoadState(firstRoute, 'photo'),
+        AttachmentLoadState.loading,
+      );
+      await load;
+
+      expect(app.attachmentLoadState(firstRoute, 'photo'), isNull);
+      expect(app.error, isNull);
+      final file = File(photo(app).localPath!);
+      expect(await file.readAsBytes(), [255, 216, 255]);
+      expect(p.isWithin(directory.path, file.path), isTrue);
+      if (!Platform.isWindows) {
+        expect((await file.stat()).mode & 0x1ff, 0x180);
+      }
+    });
+
+    test('a failed load is reported on the image, not globally', () async {
+      var fail = true;
+      final engine = _FakeEngine(
+        onDownload: (_) async {
+          if (fail) throw const ConnectorException('operation_failed');
+          return {
+            'bytes': base64Encode([1]),
+          };
+        },
+      );
+      final app = await openPhoto(engine);
+      await app.loadInlineImage(firstRoute, 'photo-message', 'photo');
+      expect(
+        app.attachmentLoadState(firstRoute, 'photo'),
+        AttachmentLoadState.failed,
+      );
+      expect(app.error, isNull);
+      expect(photo(app).localPath, isNull);
+
+      fail = false;
+      await app.loadInlineImage(firstRoute, 'photo-message', 'photo');
+      expect(app.attachmentLoadState(firstRoute, 'photo'), isNull);
+      expect(photo(app).localPath, isNotNull);
+    });
+
+    test('an oversized photo is not fetched', () async {
+      final engine = _FakeEngine(
+        onDownload: (_) async => fail('should not download'),
+      );
+      final app = await openPhoto(engine, byteCount: 64 * 1024 * 1024);
+      await app.loadInlineImage(firstRoute, 'photo-message', 'photo');
+      expect(
+        app.attachmentLoadState(firstRoute, 'photo'),
+        AttachmentLoadState.tooLarge,
+      );
+      expect(
+        engine.commands.where((c) => c['op'] == 'download_attachment'),
+        isEmpty,
+      );
+    });
+  });
+
   test(
     'removing an account signs out first and deletes its downloads',
     () async {
@@ -2533,6 +2715,81 @@ void main() {
       picker.pickGate!.complete(null);
       await staging;
       expect(await store.loadAccounts(), hasLength(1));
+    },
+  );
+
+  test('a background mailbox sync leaves controls available', () async {
+    await seed(firstRoute, platform: 'instagram');
+    final pages = <Completer<void>>[];
+    final engine = _FakeEngine(
+      onListChats: (command) async {
+        final page = Completer<void>();
+        pages.add(page);
+        await page.future;
+        return {
+          'chats': [
+            {'id': 'chat-${pages.length}', 'title': 'Fixture'},
+          ],
+          'has_more': pages.length < 2,
+          'cursor': 'page-${pages.length}',
+        };
+      },
+    );
+    final app = await start(engine: engine, waitForStartup: false);
+    await _eventually(() => pages.isNotEmpty);
+
+    expect(app.isBusy, isFalse);
+    await app.setPreference('appearance', 'dark');
+    expect(app.preferences.appearance, 'dark');
+    pages.first.complete();
+    await _eventually(() => pages.length == 2);
+    expect(app.isBusy, isFalse);
+    pages.last.complete();
+    await app.whenIdle();
+
+    expect(pages, hasLength(2));
+    expect(
+      app.conversations.map((c) => c.route.conversationId),
+      containsAll(['chat-1', 'chat-2']),
+    );
+  });
+
+  test(
+    'account removal stops a mailbox sync before deleting the account',
+    () async {
+      await seed(firstRoute, platform: 'instagram');
+      final page = Completer<void>();
+      final engine = _FakeEngine(
+        onListChats: (command) async {
+          await page.future;
+          return {
+            'chats': [
+              {'id': 'late-chat', 'title': 'Fixture'},
+            ],
+            'has_more': true,
+            'cursor': 'page-2',
+          };
+        },
+      );
+      final app = await start(engine: engine, waitForStartup: false);
+      await _eventually(
+        () => engine.commands.any((c) => c['op'] == 'list_chats'),
+      );
+
+      final removal = app.removeAccount('first');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(engine.commands.where((c) => c['op'] == 'logout'), isEmpty);
+      page.complete();
+      await removal;
+      await app.whenIdle();
+
+      expect(
+        engine.commands.where((c) => c['op'] == 'list_chats'),
+        hasLength(1),
+      );
+      expect(app.accounts, isEmpty);
+      expect(app.conversations, isEmpty);
+      expect(await store.loadAccounts(), isEmpty);
     },
   );
 
@@ -3191,6 +3448,7 @@ class _FakeEngine implements ConnectorEngine {
     this.onPairPhone,
     this.onLogout,
     this.onListChats,
+    this.onDownload,
   });
   String connectState;
   bool failLogout = false;
@@ -3206,6 +3464,7 @@ class _FakeEngine implements ConnectorEngine {
   final List<Map<String, Object?>> chats;
   final Future<Map<String, Object?>> Function(Map<String, Object?>)? onSend;
   final Future<Map<String, Object?>> Function(Map<String, Object?>)? onReact;
+  final Future<Map<String, Object?>> Function(Map<String, Object?>)? onDownload;
   final commands = <Map<String, Object?>>[];
   final _events = StreamController<ConnectorEvent>.broadcast();
 
@@ -3315,6 +3574,8 @@ class _FakeEngine implements ConnectorEngine {
                 'timestamp': DateTime.now().millisecondsSinceEpoch,
               }
             : onSend!(command);
+      case 'download_attachment':
+        return onDownload == null ? {} : onDownload!(command);
       default:
         return {};
     }

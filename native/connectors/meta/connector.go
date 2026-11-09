@@ -25,6 +25,7 @@ import (
 	globalLog "github.com/rs/zerolog/log"
 	"go.mau.fi/mautrix-meta/pkg/instameow"
 	"go.mau.fi/mautrix-meta/pkg/messagix/cookies"
+	"go.mau.fi/mautrix-meta/pkg/messagix/responses"
 	"go.mau.fi/mautrix-meta/pkg/messagix/types"
 )
 
@@ -40,9 +41,11 @@ type sessionState struct {
 }
 
 type mediaReference struct {
-	URL      string
-	MimeType string
-	Name     string
+	URL           string
+	MimeType      string
+	Name          string
+	ReelID        string
+	ReelShortcode string
 }
 
 type instagramThread struct {
@@ -72,6 +75,7 @@ type Connector struct {
 	threadKeys       map[string]int64
 	threadMu         sync.RWMutex
 	instagramThreads map[string]instagramThread
+	fetchMedia       func(ctx context.Context, mediaID, shortcode string) (*responses.FetchMediaResponse, error)
 }
 
 func New(req map[string]any, emit func(map[string]any)) (*Connector, error) {
@@ -441,6 +445,13 @@ func (c *Connector) download(ctx context.Context, id string) (any, error) {
 	c.mediaMu.Lock()
 	ref, ok := c.media[id]
 	c.mediaMu.Unlock()
+	if ok && ref.ReelID != "" {
+		resolved, err := c.resolveReelVideo(ctx, ref)
+		if err != nil {
+			return nil, err
+		}
+		ref.URL = resolved
+	}
 	if !ok || !allowedMediaURL(ref.URL) {
 		return nil, errors.New("attachment is unavailable; reload its conversation")
 	}
@@ -471,6 +482,52 @@ func (c *Connector) download(ctx context.Context, id string) (any, error) {
 		mime = http.DetectContentType(data)
 	}
 	return map[string]any{"bytes": base64.StdEncoding.EncodeToString(data), "mime_type": mime, "name": ref.Name}, nil
+}
+
+// Reel video URLs expire quickly, so they are looked up only when the user asks to play one.
+func (c *Connector) resolveReelVideo(ctx context.Context, ref mediaReference) (string, error) {
+	fetch := c.fetchMedia
+	if fetch == nil {
+		client := c.ig
+		if client == nil || !c.ready {
+			return "", errors.New("account is not connected")
+		}
+		fetch = client.FetchMedia
+	}
+	resp, err := fetch(ctx, ref.ReelID, ref.ReelShortcode)
+	if err != nil || resp == nil || len(resp.Items) == 0 || resp.Items[0] == nil {
+		return "", errors.New("this Reel is unavailable; open it in Instagram")
+	}
+	video := playableReelURL(resp.Items[0].VideoVersions)
+	if video == "" {
+		return "", errors.New("this Reel is unavailable; open it in Instagram")
+	}
+	return video, nil
+}
+
+// playableReelURL prefers the sharpest version that fits a phone screen; full-resolution Reels
+// often exceed the attachment size limit.
+func playableReelURL(versions []responses.VideoVersions) string {
+	var best, smallest *responses.VideoVersions
+	for i := range versions {
+		version := &versions[i]
+		if !allowedMediaURL(version.URL) {
+			continue
+		}
+		if smallest == nil || version.Width < smallest.Width {
+			smallest = version
+		}
+		if version.Width <= 720 && (best == nil || version.Width > best.Width) {
+			best = version
+		}
+	}
+	if best == nil {
+		best = smallest
+	}
+	if best == nil {
+		return ""
+	}
+	return best.URL
 }
 
 func (c *Connector) rememberMedia(id, raw, mime, name string) map[string]any {

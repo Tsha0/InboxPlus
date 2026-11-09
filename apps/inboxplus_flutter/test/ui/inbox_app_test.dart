@@ -1427,6 +1427,72 @@ void main() {
     }),
   );
 
+  group('received remote image', () {
+    const route = ConversationRoute('first', 'alice');
+    _FakeController remoteImage() => _FakeController(
+      messages: {
+        route: [
+          MessageRecord(
+            id: 'photo-message',
+            route: route,
+            body: '',
+            timestamp: DateTime(2026, 11, 5),
+            isOutgoing: false,
+            attachments: const [
+              AttachmentRecord(
+                id: 'photo',
+                kind: 'image',
+                fileName: 'image',
+                mimeType: 'image/jpeg',
+              ),
+            ],
+          ),
+        ],
+      },
+    );
+
+    testWidgets('loads inline without a manual download', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final controller = remoteImage();
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(controller.loadedImages, [
+        (route: route, messageId: 'photo-message', attachmentId: 'photo'),
+      ]);
+      expect(find.bySemanticsLabel('Loading image'), findsOneWidget);
+      expect(find.byTooltip('Download attachment'), findsNothing);
+      expect(controller.downloadedAttachments, isEmpty);
+      semantics.dispose();
+    }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+    testWidgets('a failed load offers a retry instead of reloading', (
+      tester,
+    ) async {
+      final controller = remoteImage()
+        ..imageLoadStates['photo'] = AttachmentLoadState.failed;
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(find.text('Image unavailable'), findsOneWidget);
+      expect(controller.loadedImages, isEmpty);
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(controller.loadedImages, hasLength(1));
+    });
+
+    testWidgets('an oversized image says so without loading', (tester) async {
+      final controller = remoteImage()
+        ..imageLoadStates['photo'] = AttachmentLoadState.tooLarge;
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(find.text('Image too large to preview'), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+      expect(controller.loadedImages, isEmpty);
+    });
+  });
+
   testWidgets(
     'desktop local image preview saves and closes back to the draft',
     (tester) async {
@@ -1597,6 +1663,132 @@ void main() {
           (route: route, messageId: 'shared-reel', attachmentId: 'reel'),
         ]);
         expect(controller.downloadedAttachments, isEmpty);
+      },
+    );
+  }
+
+  testWidgets(
+    'shared Instagram posts show their preview, author and caption once',
+    (tester) async {
+      const route = ConversationRoute('first', 'alice');
+      final controller = _FakeController(
+        accounts: const [
+          AccountRecord(
+            id: 'first',
+            platform: 'instagram',
+            displayName: 'My account',
+            isConnected: true,
+          ),
+        ],
+        messages: {
+          route: [
+            MessageRecord(
+              id: 'shared-post',
+              route: route,
+              body: 'Fixture caption',
+              timestamp: DateTime(2026, 11, 9),
+              isOutgoing: false,
+              attachments: const [
+                AttachmentRecord(
+                  id: 'preview',
+                  kind: 'preview',
+                  fileName: 'Preview.jpg',
+                  localPath: '/private/fixture/media/preview',
+                ),
+                AttachmentRecord(
+                  id: 'link',
+                  kind: 'link',
+                  fileName: 'fixture.author',
+                  isDownloadable: false,
+                  deepLink: 'https://www.instagram.com/p/fixture/',
+                ),
+              ],
+            ),
+          ],
+        },
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 900));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Fixture caption'), findsOneWidget);
+      expect(find.text('fixture.author'), findsOneWidget);
+      expect(find.text('Reel'), findsNothing);
+      expect(find.byTooltip('Download attachment'), findsNothing);
+      await tester.tap(find.byKey(const Key('shared-preview-link')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open in Instagram'));
+      await tester.pumpAndSettle();
+      expect(controller.openedAttachmentLinks, [
+        (route: route, messageId: 'shared-post', attachmentId: 'link'),
+        (route: route, messageId: 'shared-post', attachmentId: 'link'),
+      ]);
+      expect(controller.downloadedAttachments, isEmpty);
+    },
+  );
+
+  for (final plays in [true, false]) {
+    testWidgets(
+      plays ? 'shared Instagram Reels play as video with an Instagram link' : 'shared Instagram Reels stay labeled thumbnails when playback is off',
+      (tester) async {
+        const route = ConversationRoute('first', 'alice');
+        final controller = _FakeController(
+          accounts: const [
+            AccountRecord(
+              id: 'first',
+              platform: 'instagram',
+              displayName: 'My account',
+              isConnected: true,
+            ),
+          ],
+          messages: {
+            route: [
+              MessageRecord(
+                id: 'shared-reel',
+                route: route,
+                body: '',
+                timestamp: DateTime(2026, 11, 9),
+                isOutgoing: false,
+                attachments: const [
+                  AttachmentRecord(
+                    id: 'preview',
+                    kind: 'preview',
+                    localPath: '/private/fixture/media/preview',
+                  ),
+                  AttachmentRecord(
+                    id: 'reel',
+                    kind: 'reel',
+                    mimeType: 'video/mp4',
+                    deepLink: 'https://www.instagram.com/reel/fixture/',
+                  ),
+                ],
+              ),
+            ],
+          },
+        )..currentPreferences = PreferencesRecord(playsInstagramReels: plays);
+        await _pumpApp(tester, controller, size: const Size(390, 900));
+        await tester.tap(find.byKey(const Key('conversation-first-alice')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Reel'), findsOneWidget);
+        expect(find.text('Open in Instagram'), findsOneWidget);
+        expect(
+          find.byIcon(Icons.play_arrow_rounded),
+          plays ? findsOneWidget : findsNothing,
+        );
+        await tester.tap(find.byKey(const Key('shared-preview-reel')));
+        await tester.pumpAndSettle();
+        if (plays) {
+          expect(controller.downloadedAttachments, [
+            (route: route, messageId: 'shared-reel', attachmentId: 'reel'),
+          ]);
+          expect(controller.openedAttachmentLinks, isEmpty);
+        } else {
+          expect(controller.downloadedAttachments, isEmpty);
+          expect(controller.openedAttachmentLinks, [
+            (route: route, messageId: 'shared-reel', attachmentId: 'reel'),
+          ]);
+        }
       },
     );
   }
@@ -3443,6 +3635,9 @@ class _FakeController extends InboxUiController {
   final downloadedAttachments =
       <({ConversationRoute route, String messageId, String attachmentId})>[];
   final openedAttachments = <String>[];
+  final imageLoadStates = <String, AttachmentLoadState>{};
+  final loadedImages =
+      <({ConversationRoute route, String messageId, String attachmentId})>[];
   final savedAttachments =
       <({ConversationRoute route, String messageId, String attachmentId})>[];
   String? contactSaveError;
@@ -3679,6 +3874,25 @@ class _FakeController extends InboxUiController {
     String attachmentId,
   ) async {
     downloadedAttachments.add((
+      route: route,
+      messageId: messageId,
+      attachmentId: attachmentId,
+    ));
+  }
+
+  @override
+  AttachmentLoadState? attachmentLoadState(
+    ConversationRoute route,
+    String attachmentId,
+  ) => imageLoadStates[attachmentId];
+
+  @override
+  Future<void> loadInlineImage(
+    ConversationRoute route,
+    String messageId,
+    String attachmentId,
+  ) async {
+    loadedImages.add((
       route: route,
       messageId: messageId,
       attachmentId: attachmentId,

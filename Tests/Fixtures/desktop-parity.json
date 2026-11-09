@@ -36,7 +36,7 @@
     {"id":"team-2","account":"whatsapp","conversation":"team","body":"Let's meet at the park entrance at 10.","minutesAgo":20,"outgoing":true,"sender":""},
     {"id":"team-3","account":"whatsapp","conversation":"team","body":"I'll bring the snacks.","minutesAgo":18,"outgoing":false,"sender":"Maya Chen"},
     {"id":"maya-1","account":"telegram","conversation":"maya","body":"The photos turned out great.","minutesAgo":40,"outgoing":false,"sender":"Maya Chen"},
-    {"id":"nora-1","account":"instagram","conversation":"nora","body":"Have a look at this place.","minutesAgo":90,"outgoing":false,"sender":"Nora Williams"},
+    {"id":"nora-1","account":"instagram","conversation":"nora","body":"Have a look at this place.","minutesAgo":90,"outgoing":false,"sender":"Nora Williams","attachments":[{"id":"nora-photo","kind":"image","name":"image","mimeType":"image/png","asset":"inboxplus-logo.png","remote":true}]},
     {"id":"nora-reel-a","account":"instagram","conversation":"nora","body":"","minutesAgo":85,"outgoing":false,"sender":"Nora Williams","attachments":[{"id":"reel-a-link","kind":"reel","name":"Reel A — mountain hike","mimeType":"text/html","deepLink":"https://www.instagram.com/reel/fixture-mountain/"}]},
     {"id":"nora-reel-b","account":"instagram","conversation":"nora","body":"","minutesAgo":84,"outgoing":false,"sender":"Nora Williams","attachments":[{"id":"reel-b-link","kind":"reel","name":"Reel B — city cafe","mimeType":"text/html","deepLink":"https://www.instagram.com/reel/fixture-cafe/"}]},
     {"id":"nora-reply-a","account":"instagram","conversation":"nora","body":"The mountain view is amazing!","minutesAgo":83,"outgoing":false,"sender":"Nora Williams","replyToMessageId":"nora-reel-a"},

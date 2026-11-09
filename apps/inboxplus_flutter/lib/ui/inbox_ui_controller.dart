@@ -9,6 +9,8 @@ enum LocalRecipientStatus { available, accessUnavailable, failed }
 
 enum AccountNetworkProblem { connecting, reconnecting, signedOut, failed }
 
+enum AttachmentLoadState { loading, failed, tooLarge }
+
 enum NotificationAuthorization { unavailable, notDetermined, denied, allowed }
 
 @immutable
@@ -227,7 +229,7 @@ class PreferencesRecord {
     this.customColors = const [0xe8e8ed, 0x000000, 0x000000],
     this.messageRetentionDays = 7,
     this.iMessageHistory = 'year',
-    this.playsInstagramReels = false,
+    this.playsInstagramReels = true,
     this.showsUnreadBadge = true,
     this.disconnectedAccountIds = const [],
   });
@@ -267,7 +269,7 @@ class PreferencesRecord {
         themePreset: value['themePreset'] as String? ?? 'classic',
         messageRetentionDays: value['messageRetentionDays'] as int? ?? 7,
         iMessageHistory: value['iMessageHistory'] as String? ?? 'year',
-        playsInstagramReels: value['playsInstagramReels'] as bool? ?? false,
+        playsInstagramReels: value['playsInstagramReels'] as bool? ?? true,
         showsUnreadBadge: value['showsUnreadBadge'] as bool? ?? true,
         disconnectedAccountIds: List<String>.unmodifiable(
           (value['disconnectedAccountIds'] as List? ?? []).cast<String>(),
@@ -351,6 +353,15 @@ abstract class InboxUiController extends ChangeNotifier {
   });
   Future<void> react(ConversationRoute route, String messageId, String emoji);
   Future<void> downloadAttachment(
+    ConversationRoute route,
+    String messageId,
+    String attachmentId,
+  );
+  AttachmentLoadState? attachmentLoadState(
+    ConversationRoute route,
+    String attachmentId,
+  );
+  Future<void> loadInlineImage(
     ConversationRoute route,
     String messageId,
     String attachmentId,

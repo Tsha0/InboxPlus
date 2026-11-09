@@ -951,6 +951,21 @@ class InboxSettingsPage extends StatelessWidget {
                         : (value) =>
                               controller.setPreference('enterToSend', value),
                   ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.movie_outlined),
+                    title: const Text('Play Instagram Reels in Inbox+'),
+                    subtitle: const Text(
+                      'When off, Reels appear as labeled thumbnails that open in Instagram.',
+                    ),
+                    value: controller.preferences.playsInstagramReels,
+                    onChanged: controller.isBusy
+                        ? null
+                        : (value) => controller.setPreference(
+                            'playsInstagramReels',
+                            value,
+                          ),
+                  ),
                 ],
               ),
               const SizedBox(height: 24),
