@@ -2,6 +2,7 @@ package meta
 
 import (
 	"net/url"
+	"regexp"
 	"strings"
 
 	"go.mau.fi/mautrix-meta/pkg/instameow/slidetypes"
@@ -113,9 +114,18 @@ func (c *Connector) instagramMessage(conversationID string, message *slidetypes.
 				body = xma.CaptionBodyText
 			}
 			if validInstagramLink(xma.TargetURL) {
-				attachment := map[string]any{"id": message.ID + "/link", "name": body, "kind": "link", "deep_link": xma.TargetURL, "downloadable": false}
-				if strings.Contains(xma.TargetURL, "/reel/") || strings.Contains(xma.TargetURL, "/reels/") {
+				attachment := map[string]any{"id": message.ID + "/link", "kind": "link", "deep_link": xma.TargetURL, "downloadable": false}
+				if xma.HeaderTitleText != "" {
+					attachment["name"] = xma.HeaderTitleText
+				}
+				if shortcode := instagramReelShortcode(xma.TargetURL); shortcode != "" {
 					attachment["kind"] = "reel"
+					if xma.TargetID != "" {
+						c.mediaMu.Lock()
+						c.media[message.ID+"/link"] = mediaReference{MimeType: "video/mp4", Name: "Reel", ReelID: xma.TargetID, ReelShortcode: shortcode}
+						c.mediaMu.Unlock()
+						attachment["mime_type"], attachment["downloadable"] = "video/mp4", true
+					}
 				}
 				preview := xma.PreviewImage
 				if preview == nil {
@@ -163,6 +173,19 @@ func (c *Connector) instagramThreadMetadata(event map[string]any, conversationID
 			event["identity_id"] = thread.identityID
 		}
 	}
+}
+
+var instagramReelPath = regexp.MustCompile(`^/reels?/([A-Za-z0-9_-]+)/?$`)
+
+func instagramReelShortcode(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	if match := instagramReelPath.FindStringSubmatch(u.Path); match != nil {
+		return match[1]
+	}
+	return ""
 }
 
 func validInstagramLink(raw string) bool {
