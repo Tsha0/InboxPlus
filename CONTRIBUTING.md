@@ -315,7 +315,7 @@ postprocessing. Verbose Flutter environment dumps are kept private and discarded
 only phase timings and filtered compiler errors are published.
 
 For a manual full CI run, dispatch **CI**; enable `android_build` to include Android. Manual runs
-check all components. Release delivery, website deployment and advisory OCR review remain separate.
+check all components. Release delivery and website deployment remain separate.
 
 Use **CI passed** as the required branch check. When adopting this workflow, wait for the new check
 to appear on the pull request, then replace **Build and test**, **Generated files are current** and
@@ -369,8 +369,3 @@ Agents must not commit or push without an explicit request, bypass hooks, or ove
 user changes. Before finishing, summarize the change and verification evidence. Update these
 instructions when a change invalidates them; document recurring, non-obvious pitfalls rather than
 adding a rule for every task.
-
-### Automatic code review
-
-[OCR code review](.github/workflows/ocr-review.yml) posts advisory reviews on non-draft pull requests
-from this repository's branches, using the rules in `AGENTS.md`. The existing CI checks remain required.
