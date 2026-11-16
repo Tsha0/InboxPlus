@@ -52,6 +52,18 @@
           <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="1.7"/>
           <path d="m16 16 5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
         </symbol>
+        <symbol id="apple" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M16.6 12.8c0-2 1.6-3 1.7-3.1-1-1.4-2.4-1.6-2.9-1.6-1.3-.1-2.5.8-3.2.8-.6 0-1.6-.8-2.7-.8-1.4 0-2.8.9-3.5 2.1-1.5 2.6-.4 6.4 1 8.5.7 1 1.5 2.1 2.6 2.1 1 0 1.5-.7 2.8-.7s1.7.7 2.8.6c1.2 0 1.9-1 2.6-2.1.8-1.2 1.1-2.3 1.2-2.4-.1 0-2.4-.9-2.4-3.4ZM14.5 6.7c.6-.8 1.1-1.9 1-3-.9.1-2 .6-2.7 1.4-.6.7-1.2 1.9-1 3 1 .1 2-.5 2.7-1.4Z"/>
+        </symbol>
+        <symbol id="windows" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M3 5.3 10.4 4.3v7.1H3V5.3Zm8.4-1.1L21 3v8.4h-9.6V4.2ZM3 12.6h7.4v7.1L3 18.7v-6.1Zm8.4 0H21V21l-9.6-1.3v-7.1Z"/>
+        </symbol>
+        <symbol id="linux" viewBox="0 0 24 24">
+          <path fill="currentColor" fill-rule="evenodd" d="M12 2c-2.2 0-3.5 1.8-3.5 4.2 0 1.3.3 2.2-.4 3.4C6.9 11.4 5.5 13.3 5.5 16c0 .6.1 1.1.3 1.6-.8.3-1.8.8-1.8 1.7 0 1.2 2 1.2 3.3 1.9 1 .5 1.8.8 2.6.3.5-.3.7-.8.7-.8h2.8s.2.5.7.8c.8.5 1.6.2 2.6-.3 1.3-.7 3.3-.7 3.3-1.9 0-.9-1-1.4-1.8-1.7.2-.5.3-1 .3-1.6 0-2.7-1.4-4.6-2.6-6.4-.7-1.2-.4-2.1-.4-3.4C15.5 3.8 14.2 2 12 2Zm-1.4 3.6a.8 1 0 1 0 0 2 .8 1 0 0 0 0-2Zm2.8 0a.8 1 0 1 0 0 2 .8 1 0 0 0 0-2ZM12 11c-1.9 0-3 2.3-3 4.6 0 1.6.8 2.9 3 2.9s3-1.3 3-2.9C15 13.3 13.9 11 12 11Z"/>
+        </symbol>
+        <symbol id="chevron-down" viewBox="0 0 24 24">
+          <path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
         <symbol id="github" viewBox="0 0 24 24">
           <path fill="currentColor" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.03a9.58 9.58 0 0 1 5 0c1.91-1.3 2.75-1.03 2.75-1.03.55 1.38.2 2.4.1 2.65.64.7 1.03 1.6 1.03 2.69 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.6c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/>
         </symbol>
@@ -91,7 +103,7 @@
       <nav aria-label="Main navigation">
         <button class="replay-intro nav-replay" type="button" aria-label="Replay the entrance animation">Replay hello <span aria-hidden="true">↻</span></button>
         <a class="nav-preview" href="#peek">Take a peek <span aria-hidden="true">↓</span></a>
-        <a class="button button-small" href="https://github.com/Tsha0/InboxPlus#build-from-source">Build the app <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
+        <a class="button button-small" href="https://github.com/Tsha0/InboxPlus"><svg aria-hidden="true"><use href="#github"/></svg>GitHub</a>
       </nav>
     </header>
 
@@ -122,8 +134,8 @@
           <div class="hero-copy">
             <p class="hero-tagline">Your people.<br>All together<span class="period">.</span></p>
             <p class="hero-description">All your conversations.<br>One happy little inbox.</p>
-            <a class="button hero-download" href="https://github.com/Tsha0/InboxPlus#build-from-source">Build Inbox+ <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a>
-            <p class="requirements">Desktop development builds · macOS, Windows, Linux</p>
+            <div class="download-menu hero-download"><button class="button download-toggle" type="button" aria-expanded="false" aria-controls="hero-download-options">Download the app <svg class="download-caret" aria-hidden="true"><use href="#chevron-down"/></svg></button><ul class="download-options" id="hero-download-options" hidden><li><a class="download-option" href="https://github.com/Tsha0/InboxPlus/releases/latest" data-mac-download><svg aria-hidden="true"><use href="#apple"/></svg>Mac (Apple silicon)</a></li><li><span class="download-option is-soon"><svg aria-hidden="true"><use href="#windows"/></svg>Windows<small>Coming soon</small></span></li><li><span class="download-option is-soon"><svg aria-hidden="true"><use href="#linux"/></svg>Linux<small>Coming soon</small></span></li></ul></div>
+            <p class="requirements">macOS 15+ · Windows and Linux coming soon</p>
           </div>
         </div>
         <div class="hero-bottom">
@@ -216,7 +228,7 @@
         <div class="closing-top reveal">
           <svg class="closing-star" viewBox="0 0 100 100" aria-hidden="true"><use href="#asterisk"/></svg>
           <div><p class="eyebrow">That’s more like it.</p><h2 id="closing-title">Less app.<br>More hello.</h2></div>
-          <div class="closing-action"><a class="button" href="https://github.com/Tsha0/InboxPlus#build-from-source">Build Inbox+ <svg aria-hidden="true"><use href="#arrow-up-right"/></svg></a><p class="requirements">macOS · Windows · Linux</p><a class="setup-link" href="https://github.com/Tsha0/InboxPlus#build-from-source">Development builds · Setup instructions <span aria-hidden="true">↗</span></a></div>
+          <div class="closing-action"><div class="download-menu"><button class="button download-toggle" type="button" aria-expanded="false" aria-controls="closing-download-options">Download the app <svg class="download-caret" aria-hidden="true"><use href="#chevron-down"/></svg></button><ul class="download-options" id="closing-download-options" hidden><li><a class="download-option" href="https://github.com/Tsha0/InboxPlus/releases/latest" data-mac-download><svg aria-hidden="true"><use href="#apple"/></svg>Mac (Apple silicon)</a></li><li><span class="download-option is-soon"><svg aria-hidden="true"><use href="#windows"/></svg>Windows<small>Coming soon</small></span></li><li><span class="download-option is-soon"><svg aria-hidden="true"><use href="#linux"/></svg>Linux<small>Coming soon</small></span></li></ul></div><p class="requirements">macOS 15+ · Windows and Linux coming soon</p><a class="setup-link" href="https://github.com/Tsha0/InboxPlus#build-from-source">Prefer to build it? Setup instructions <span aria-hidden="true">↗</span></a></div>
         </div>
         <div class="footer-wordmark" aria-hidden="true">Inbox<span>+</span></div>
         <footer class="site-footer"><span>A happy little home for your conversations.</span><div><a href="https://github.com/Tsha0/InboxPlus"><svg aria-hidden="true"><use href="#github"/></svg>Open source</a><button class="replay-intro" type="button">One more hello <span aria-hidden="true">↻</span></button><a href="#top">Back to top <span aria-hidden="true">↑</span></a></div><span>Made for your device. Made for you.</span></footer>

@@ -577,6 +577,47 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+const downloadMenus = document.querySelectorAll(".download-menu");
+function setDownloadMenu(menu, open) {
+  const options = menu.querySelector(".download-options");
+  menu.classList.toggle("is-open", open);
+  menu.querySelector(".download-toggle").setAttribute("aria-expanded", String(open));
+  options.hidden = !open;
+  if (!open) return;
+  menu.classList.remove("opens-up");
+  menu.classList.toggle("opens-up", options.getBoundingClientRect().bottom > Math.min(window.innerHeight, menu.closest("section").getBoundingClientRect().bottom) - 12);
+}
+
+for (const menu of downloadMenus) {
+  menu.querySelector(".download-toggle").addEventListener("click", () => {
+    const open = !menu.classList.contains("is-open");
+    for (const other of downloadMenus) setDownloadMenu(other, false);
+    setDownloadMenu(menu, open);
+  });
+  menu.querySelector("[data-mac-download]").addEventListener("click", () => setDownloadMenu(menu, false));
+}
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".download-menu")) return;
+  for (const menu of downloadMenus) setDownloadMenu(menu, false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  for (const menu of document.querySelectorAll(".download-menu.is-open")) {
+    const hadFocus = menu.contains(document.activeElement);
+    setDownloadMenu(menu, false);
+    if (hadFocus) menu.querySelector(".download-toggle").focus();
+  }
+});
+
+fetch("https://api.github.com/repos/Tsha0/InboxPlus/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
+  .then((response) => (response.ok ? response.json() : null))
+  .then((release) => {
+    const asset = release?.assets.find((item) => /^InboxPlus-.+\.zip$/.test(item.name));
+    if (!asset) return;
+    for (const link of document.querySelectorAll("[data-mac-download]")) link.href = asset.browser_download_url;
+  })
+  .catch(() => {});
+
 const logoCursor = document.querySelector(".logo-cursor");
 const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
 let cursorTurn = 0;

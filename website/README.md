@@ -47,8 +47,9 @@ directory is `.` (also specified in `vercel.json`).
 Demo replies live only in memory in the current tab. Nothing is sent or persisted.
 The preview is an illustration of the native app, not a running messaging client.
 Keep supported networks, requirements, and early-release notes aligned with the main
-repository README. Build links point to the current Flutter setup instructions; change them to
-platform downloads only when those releases are available.
+repository README. The **Download the app** menu's Mac option asks the GitHub API for the latest
+release and links straight to its `InboxPlus-*.zip` asset, falling back to the latest release page.
+Windows and Linux stay marked as coming soon until those releases exist.
 
 The first screen starts in Classic monochrome. Scrolling blends through Grape Soda,
 Bubblegum, Mint Chip, and Sunset on one continuous background. The preview follows
