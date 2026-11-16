@@ -131,8 +131,11 @@ void main() {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(
               AppEnvironment.native,
-              (call) async =>
-                  call.method == 'hasKeychainAccessGroups' ? entitled : null,
+              (call) async => switch (call.method) {
+                'hasKeychainAccessGroups' => entitled,
+                'protectPath' => true,
+                _ => null,
+              },
             );
         final environment = await AppEnvironment.open(
           supportDirectory: temporary,
