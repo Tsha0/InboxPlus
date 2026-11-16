@@ -158,6 +158,57 @@ class MacOSReleaseTests(unittest.TestCase):
                 with self.subTest(field=field, value=value), self.assertRaises(ValueError):
                     self.packaging.release_settings({**self.environment, field: value}, None)
 
+    def test_developer_id_release_needs_notarization_and_a_provisioning_profile(self):
+        from unittest.mock import patch
+        environment = {**self.environment, "INBOXPLUS_RELEASE_SIGNING": "developer-id",
+                       "INBOXPLUS_NOTARY_PROFILE": "fixture-notary",
+                       "INBOXPLUS_PROVISIONING_PROFILE": "/fixture/Inbox+.provisionprofile"}
+        with patch.object(self.packaging.desktop, "version", return_value=("0.9.0", "114")):
+            self.assertEqual(self.packaging.release_settings(environment, None)[4], "developer-id")
+            for field in ("INBOXPLUS_NOTARY_PROFILE", "INBOXPLUS_PROVISIONING_PROFILE"):
+                with self.subTest(field=field), self.assertRaisesRegex(ValueError, field):
+                    self.packaging.release_settings({**environment, field: ""}, None)
+
+    def test_developer_id_profile_must_provision_this_app_on_every_mac(self):
+        profile = {
+            "Platform": ["OSX"],
+            "TeamIdentifier": ["36T8WB4DH2"],
+            "ProvisionsAllDevices": True,
+            "Entitlements": {
+                "com.apple.application-identifier": "36T8WB4DH2.com.inboxplus.app",
+                "com.apple.developer.team-identifier": "36T8WB4DH2",
+                "keychain-access-groups": ["36T8WB4DH2.*"],
+            },
+        }
+        self.packaging.check_provisioning_profile(profile, "36T8WB4DH2")
+        entitlements = profile["Entitlements"]
+        for name, changed in [
+            ("iOS profile", {**profile, "Platform": ["iOS"]}),
+            ("other team", {**profile, "TeamIdentifier": ["0000000000"]}),
+            ("other app", {**profile, "Entitlements": {
+                **entitlements, "com.apple.application-identifier": "36T8WB4DH2.com.example.other"}}),
+            ("development profile", {**profile, "ProvisionsAllDevices": False}),
+            ("listed devices", {**profile, "ProvisionedDevices": ["00008103-000000000000001E"]}),
+            ("no keychain group", {**profile, "Entitlements": {
+                **entitlements, "keychain-access-groups": ["36T8WB4DH2.com.example.other"]}}),
+        ]:
+            with self.subTest(name), self.assertRaises(ValueError):
+                self.packaging.check_provisioning_profile(changed, "36T8WB4DH2")
+        with self.assertRaises(ValueError):
+            self.packaging.check_provisioning_profile(profile, "0000000000")
+
+    def test_developer_id_signature_adds_the_team_keychain_group_to_release_entitlements(self):
+        release = plistlib.loads((ROOT / "apps/inboxplus_flutter/macos/Runner/Release.entitlements").read_bytes())
+        self.assertEqual(self.packaging.developer_id_entitlements("36T8WB4DH2"), {
+            **release,
+            "com.apple.application-identifier": "36T8WB4DH2.com.inboxplus.app",
+            "com.apple.developer.team-identifier": "36T8WB4DH2",
+            "keychain-access-groups": ["36T8WB4DH2.com.inboxplus.app"],
+        })
+        self.assertTrue(release["com.apple.security.network.client"])
+        for restricted in ("keychain-access-groups", "com.apple.application-identifier"):
+            self.assertNotIn(restricted, release, "ad-hoc builds cannot launch with a restricted entitlement")
+
     def test_release_build_must_exceed_all_published_versions(self):
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as directory:

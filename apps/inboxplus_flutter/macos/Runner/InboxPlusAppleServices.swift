@@ -3,6 +3,7 @@ import Foundation
 import UserNotifications
 #if os(macOS)
 import Cocoa
+import Security
 import ServiceManagement
 import FlutterMacOS
 import InboxPlusIMessage
@@ -184,6 +185,8 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             openFile(arguments, result: result)
         #endif
         #if os(macOS)
+        case "hasKeychainAccessGroups":
+            result(Self.hasKeychainAccessGroups())
         case "setWindowTheme":
             guard let window = NSApp.windows.first(where: { $0 is MainFlutterWindow }) else { return result(nil) }
             let background = arguments["background"] as? Int
@@ -447,6 +450,11 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
     }
 
     #if os(macOS)
+    private static func hasKeychainAccessGroups() -> Bool {
+        guard let task = SecTaskCreateFromSelf(nil) else { return false }
+        return SecTaskCopyValueForEntitlement(task, "keychain-access-groups" as CFString, nil) != nil
+    }
+
     private static func legacyRoot() -> URL {
         if let override = ProcessInfo.processInfo.environment["INBOXPLUS_RUNTIME_ROOT"], !override.isEmpty {
             return URL(fileURLWithPath: override, isDirectory: true).standardizedFileURL

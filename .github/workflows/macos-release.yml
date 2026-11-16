@@ -75,6 +75,7 @@ jobs:
         env:
           SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12_BASE64 }}
           SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_P12_PASSWORD }}
+          PROVISIONING_PROFILE: ${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.INBOXPLUS_SPARKLE_PRIVATE_KEY }}
           NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
           NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
@@ -87,10 +88,14 @@ jobs:
           import base64, os
           from pathlib import Path
           root = Path(os.environ['CREDENTIALS_DIR'])
-          for name, data in (
+          credentials = [
               ('certificate.p12', base64.b64decode(os.environ['SIGNING_P12'], validate=True)),
               ('sparkle.key', os.environ['SPARKLE_PRIVATE_KEY'].encode()),
-          ):
+          ]
+          if os.environ['INBOXPLUS_RELEASE_SIGNING'] == 'developer-id':
+              credentials.append(
+                  ('release.provisionprofile', base64.b64decode(os.environ['PROVISIONING_PROFILE'], validate=True)))
+          for name, data in credentials:
               if not data:
                   raise ValueError('Missing release signing credential')
               with os.fdopen(os.open(root / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as stream:
@@ -106,6 +111,7 @@ jobs:
           security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
           echo "INBOXPLUS_SPARKLE_PRIVATE_KEY_FILE=$credentials/sparkle.key" >> "$GITHUB_ENV"
           if [ "$INBOXPLUS_RELEASE_SIGNING" = developer-id ]; then
+            echo "INBOXPLUS_PROVISIONING_PROFILE=$credentials/release.provisionprofile" >> "$GITHUB_ENV"
             xcrun notarytool store-credentials "$INBOXPLUS_NOTARY_PROFILE" --keychain "$keychain" \
               --apple-id "$NOTARY_APPLE_ID" --team-id "$TEAM_ID" --password "$NOTARY_PASSWORD"
           fi

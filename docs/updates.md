@@ -15,10 +15,11 @@ patches are disabled. Older published feed entries and delta URLs remain intact.
 
 The shipped 0.8.5 archive was inspected without running it, and its archive signature was verified.
 Its public compatibility contract is recorded in `native/updates/legacy-release.json`: build 111,
-`com.inboxplus.app`, the existing GitHub Pages feed, Sparkle public key and certificate-based signing
-requirement. The packager refuses a different feed/key, a non-increasing build or a signature that
-does not satisfy that requirement. It stages the production bundle as `Inbox+.app`, independently
-of the development app's `Inbox+v2` name. Profile paths and Keychain identifiers are unchanged.
+`com.inboxplus.app`, the existing GitHub Pages feed, Sparkle public key, certificate-based signing
+requirement and Developer ID team. The packager refuses a different feed or key, a non-increasing
+build, or a signature that fails the requirement for its signing mode. It stages the production
+bundle as `Inbox+.app`, independently of the development app's `Inbox+v2` name. Profile paths and
+Keychain identifiers are unchanged.
 
 Application replacement does not migrate every part of the old runtime. The current Flutter
 migration imports saved contacts and conversation choices, requires reconnecting accounts, and
@@ -28,31 +29,61 @@ A failed migration must keep the old data and must never silently open an empty 
 
 ## Signing setup
 
-Keep the original release certificate/private key and the original Sparkle private signing key.
-A newly generated certificate or update key will not satisfy the existing compatibility checks.
-Never commit private keys or certificate backups.
+Keep the original Sparkle private signing key. A newly generated update key will not satisfy the
+existing compatibility checks. Never commit private keys, certificate backups or provisioning
+profiles.
 
-The original release used a self-signed certificate. Keep `INBOXPLUS_RELEASE_SIGNING=self-signed`
-for this restoration. Those releases are not notarized: new users may need **Open Anyway** in
-System Settings, while the existing Sparkle update path must be tested separately. The packager
-also contains a Developer ID/notarization path, but changing from the original certificate requires
-a separately reviewed identity transition and an updated compatibility contract; toggling the
-signing mode alone does not bypass the existing signing requirement.
+`INBOXPLUS_RELEASE_SIGNING` selects how the packager signs the app:
+
+- `self-signed` uses the original self-signed release certificate and checks the recorded
+  certificate requirement. These releases are not notarized, so new users may need **Open Anyway**
+  in System Settings. Each new build also needs fresh Keychain approval for every saved secret, so
+  users see several Keychain prompts after each update.
+- `developer-id` uses a Developer ID Application certificate from team `36T8WB4DH2`. It embeds a
+  Developer ID provisioning profile, then notarizes and staples the app. The packager checks for an
+  Apple-issued certificate with the recorded team and the `com.inboxplus.app` identifier. The
+  profile grants the keychain access group `36T8WB4DH2.com.inboxplus.app`, so the app stores its
+  secrets in the data protection keychain and opens without Keychain prompts.
+
+To create the profile, add a **Developer ID** provisioning profile for the `com.inboxplus.app` App ID
+in the Apple Developer portal. The packager decodes it with `security cms` and refuses it unless it
+is a macOS Developer ID profile for `36T8WB4DH2.com.inboxplus.app` that allows that keychain group.
+It copies the profile to `Contents/embedded.provisionprofile`. It signs the app with
+`Release.entitlements` plus the application identifier, the team identifier and the keychain group.
+`Release.entitlements` itself has none of these entitlements, because ad-hoc development builds
+cannot launch with them. Those builds keep using the file-based login keychain.
+
+### Switch to Developer ID signing
+
+The first Developer ID release moves each saved secret from the file-based login keychain to the
+data protection keychain, under the same service and account names. Before moving a secret, the app
+must read it, so users see one final round of Keychain prompts. There is one prompt for each saved
+secret: the database key, two profile records, the preferences and each connected account. If a
+user denies a prompt, that secret stays in the old keychain and the next launch asks again. After
+the move, later releases open without prompts.
+
+The new signing identity also changes the app's code requirement. macOS can ask users to grant Full
+Disk Access and Automation access again. Before publishing the first Developer ID release, run the
+Flutter to Flutter installation test below from the latest self-signed release.
 
 For GitHub Actions, configure the `macos-release` environment:
 
 | Setting | Kind | Value |
 | --- | --- | --- |
-| `INBOXPLUS_SIGNING_IDENTITY` | Variable | Original release certificate's name |
-| `INBOXPLUS_RELEASE_SIGNING` | Variable | `self-signed` (default) |
-| `MACOS_SIGNING_P12_BASE64` | Secret | Base64 of the original certificate/private-key P12 backup |
+| `INBOXPLUS_SIGNING_IDENTITY` | Variable | Name of the signing certificate for the selected mode |
+| `INBOXPLUS_RELEASE_SIGNING` | Variable | `self-signed` (default) or `developer-id` |
+| `MACOS_SIGNING_P12_BASE64` | Secret | Base64 of the signing certificate and private key as a P12 file |
 | `MACOS_SIGNING_P12_PASSWORD` | Secret | P12 password |
 | `INBOXPLUS_SPARKLE_PRIVATE_KEY` | Secret | Original Sparkle key exported with `generate_keys -x` |
+| `MACOS_PROVISIONING_PROFILE_BASE64` | Secret | Developer ID only. Base64 of the Developer ID `.provisionprofile` |
+| `MACOS_NOTARY_APPLE_ID` | Secret | Developer ID only. Apple ID used for notarization |
+| `MACOS_NOTARY_PASSWORD` | Secret | Developer ID only. App-specific password for that Apple ID |
+| `MACOS_TEAM_ID` | Variable | Developer ID only. `36T8WB4DH2` |
 
-Credentials are written with mode `0600` in a `0700` temporary directory and imported into an
-isolated temporary Keychain. Cleanup runs even after failure. The public update key comes from the
-committed compatibility contract; it is not a secret. Developer ID mode additionally requires
-`MACOS_NOTARY_APPLE_ID` and `MACOS_NOTARY_PASSWORD` secrets and the `MACOS_TEAM_ID` variable.
+Credentials and the provisioning profile are written with mode `0600` in a `0700` temporary
+directory. Certificates are imported into an isolated temporary Keychain. Cleanup runs even after
+failure. The public update key and the Developer ID team come from the committed compatibility
+contract; they are not secrets.
 
 ## Build a release
 
@@ -92,7 +123,8 @@ Sparkle reads the private key from its existing Keychain entry, or from
 `INBOXPLUS_SPARKLE_PRIVATE_KEY_FILE` pointing to a protected exported key file. Optional
 `INBOXPLUS_RELEASE_NOTES_FILE` supplies an HTML fragment; the migration notice is appended.
 `--bundle` selects an already-built release app, and `--output` selects a fresh artifact directory.
-For Developer ID packaging, `INBOXPLUS_NOTARY_PROFILE` names a configured `notarytool` profile.
+For Developer ID packaging, `INBOXPLUS_NOTARY_PROFILE` names a configured `notarytool` profile, and
+`INBOXPLUS_PROVISIONING_PROFILE` is the path to the Developer ID `.provisionprofile` file.
 
 The local packager never uploads artifacts or publishes the feed. Development archives from
 `Scripts/package-flutter-desktop.py` remain separate and cannot serve as Sparkle release archives.
