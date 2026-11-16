@@ -16,7 +16,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parent.parent
-PUBSPEC = ROOT / "apps/inboxplus_flutter/pubspec.yaml"
+PUBSPEC = ROOT / "apps/inboxplus/pubspec.yaml"
 CONNECTOR_SYMBOLS = ("_inboxplus_request", "_inboxplus_poll_event", "_inboxplus_free")
 
 

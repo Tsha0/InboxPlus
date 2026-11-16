@@ -39,7 +39,7 @@ jobs:
         run: |
           git fetch origin "refs/tags/$INBOXPLUS_RELEASE_TAG:refs/tags/$INBOXPLUS_RELEASE_TAG"
           git show-ref --verify "refs/tags/$INBOXPLUS_RELEASE_TAG"
-          version="$(sed -n 's/^version: *\([^+]*\)+.*$/\1/p' apps/inboxplus_flutter/pubspec.yaml)"
+          version="$(sed -n 's/^version: *\([^+]*\)+.*$/\1/p' apps/inboxplus/pubspec.yaml)"
           test "$INBOXPLUS_RELEASE_TAG" = "v$version"
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
         with:
@@ -60,7 +60,7 @@ jobs:
           python3 -m unittest discover -s Tests/Packaging -v
           swift test --package-path native/updates --force-resolved-versions
       - name: Verify the Flutter application
-        working-directory: apps/inboxplus_flutter
+        working-directory: apps/inboxplus
         run: |
           flutter pub get --enforce-lockfile
           flutter analyze
@@ -115,8 +115,8 @@ jobs:
           fi
       - name: Build, sign and package the macOS release
         run: |
-          (cd apps/inboxplus_flutter && python3 ../../Scripts/retry-sqlite-download.py flutter build macos --release)
-          python3 Scripts/package-macos-release.py --bundle "$GITHUB_WORKSPACE/apps/inboxplus_flutter/build/macos/Build/Products/Release/Inbox+v2.app" --previous-feed "$RUNNER_TEMP/previous-appcast.xml"
+          (cd apps/inboxplus && python3 ../../Scripts/retry-sqlite-download.py flutter build macos --release)
+          python3 Scripts/package-macos-release.py --bundle "$GITHUB_WORKSPACE/apps/inboxplus/build/macos/Build/Products/Release/Inbox+.app" --previous-feed "$RUNNER_TEMP/previous-appcast.xml"
       - name: Attach immutable assets to a draft release
         env:
           GH_TOKEN: ${{ github.token }}

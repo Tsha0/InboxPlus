@@ -42,7 +42,7 @@ class FlutterDesktopPackagingTests(unittest.TestCase):
         self.location = Path(self.temporary.name)
 
     def bundle(self, target):
-        bundle = self.location / ("Inbox+v2.app" if target == "macos" else "bundle")
+        bundle = self.location / ("Inbox+.app" if target == "macos" else "bundle")
         if target == "linux":
             files = {"InboxPlus": elf(), "lib/libinboxplus_connectors.so": elf(),
                      "lib/libflutter_linux_gtk.so": elf(), "lib/libapp.so": elf(),
@@ -53,7 +53,7 @@ class FlutterDesktopPackagingTests(unittest.TestCase):
                      "flutter_windows.dll": pe(), "data/app.so": elf(), "sqlite3mc.dll": pe()}
             assets = "data/flutter_assets"
         else:
-            files = {"Contents/MacOS/Inbox+v2": b"\xcf\xfa\xed\xfe",
+            files = {"Contents/MacOS/Inbox+": b"\xcf\xfa\xed\xfe",
                      "Contents/Frameworks/libinboxplus_connectors.dylib": b"\xcf\xfa\xed\xfe",
                      "Contents/Frameworks/App.framework/App": b"\xcf\xfa\xed\xfe",
                      "Contents/Frameworks/FlutterMacOS.framework/FlutterMacOS": b"\xcf\xfa\xed\xfe"}
@@ -66,14 +66,14 @@ class FlutterDesktopPackagingTests(unittest.TestCase):
         if target == "macos":
             (bundle / "Contents/Info.plist").write_bytes(plistlib.dumps({
                 "CFBundleIdentifier": "com.inboxplus.app",
-                "CFBundleExecutable": "Inbox+v2",
+                "CFBundleExecutable": "Inbox+",
                 "CFBundleShortVersionString": "0.9.0",
                 "CFBundleVersion": "112",
             }))
         for name in ("third_party_notices.txt", "reaction_emoji.json", "inboxplus-logo.png"):
             file = bundle / assets / "assets" / name
             file.parent.mkdir(parents=True, exist_ok=True)
-            file.write_bytes((root / "apps/inboxplus_flutter/assets" / name).read_bytes())
+            file.write_bytes((root / "apps/inboxplus/assets" / name).read_bytes())
         (bundle / assets / "AssetManifest.bin").write_bytes(b"fixture assets")
         if target != "macos":
             (bundle / assets / "NativeAssetsManifest.json").write_text(json.dumps({
@@ -87,17 +87,17 @@ class FlutterDesktopPackagingTests(unittest.TestCase):
         (bundle / "lib/alias.so").symlink_to("libapp.so")
         result = packaging.package("linux", bundle, self.location / "out")
         with tarfile.open(result) as archive:
-            executable = archive.getmember("Inbox+v2/InboxPlus")
+            executable = archive.getmember("Inbox+/InboxPlus")
             self.assertEqual(executable.mode & 0o111, 0o111)
             self.assertEqual(archive.extractfile(executable).read(), elf())
-            link = archive.getmember("Inbox+v2/lib/alias.so")
+            link = archive.getmember("Inbox+/lib/alias.so")
             self.assertTrue(link.issym())
             self.assertEqual(link.linkname, "libapp.so")
-            metadata = json.load(archive.extractfile("Inbox+v2/build-info.json"))
+            metadata = json.load(archive.extractfile("Inbox+/build-info.json"))
             self.assertEqual(metadata["architectures"], ["x64"])
             self.assertTrue(metadata["development"])
-            self.assertIn("Inbox+v2/LICENSE", archive.getnames())
-            self.assertIn("Inbox+v2/sbom.cdx.json", archive.getnames())
+            self.assertIn("Inbox+/LICENSE", archive.getnames())
+            self.assertIn("Inbox+/sbom.cdx.json", archive.getnames())
         checksum = Path(str(result) + ".sha256").read_text()
         self.assertEqual(checksum, hashlib.sha256(result.read_bytes()).hexdigest() + "  " + result.name + "\n")
 
@@ -105,11 +105,11 @@ class FlutterDesktopPackagingTests(unittest.TestCase):
         bundle = self.bundle("windows")
         result = packaging.package("windows", bundle, self.location / "out")
         with zipfile.ZipFile(result) as archive:
-            self.assertEqual(archive.read("Inbox+v2/inboxplus_connectors.dll"), pe())
-            self.assertEqual(archive.read("Inbox+v2/flutter_windows.dll"), pe())
-            self.assertEqual(archive.read("Inbox+v2/data/app.so"), elf())
-            self.assertIn("Inbox+v2/data/flutter_assets/assets/third_party_notices.txt", archive.namelist())
-            metadata = json.loads(archive.read("Inbox+v2/build-info.json"))
+            self.assertEqual(archive.read("Inbox+/inboxplus_connectors.dll"), pe())
+            self.assertEqual(archive.read("Inbox+/flutter_windows.dll"), pe())
+            self.assertEqual(archive.read("Inbox+/data/app.so"), elf())
+            self.assertIn("Inbox+/data/flutter_assets/assets/third_party_notices.txt", archive.namelist())
+            metadata = json.loads(archive.read("Inbox+/build-info.json"))
             self.assertEqual(metadata["entrypoint"], "InboxPlus.exe")
             self.assertNotIn(str(self.location), json.dumps(metadata))
 

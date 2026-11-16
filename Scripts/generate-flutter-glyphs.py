@@ -187,7 +187,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true')
     arguments = parser.parse_args()
-    destination = ROOT / 'apps/inboxplus_flutter/lib/ui/platform_glyphs.dart'
+    destination = ROOT / 'apps/inboxplus/lib/ui/platform_glyphs.dart'
     generated = generate()
     if arguments.check:
         if destination.read_text() != generated:

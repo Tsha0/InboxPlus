@@ -1,4 +1,4 @@
-name: inboxplus_flutter
+name: inboxplus
 description: Standalone, device-local universal messaging inbox.
 publish_to: none
 version: 0.9.1+116

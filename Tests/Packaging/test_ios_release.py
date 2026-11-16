@@ -90,7 +90,7 @@ class IOSArtifactVerificationTests(unittest.TestCase):
                 return verification.problems(app, False)
 
     def test_export_name_matches_bundle_name_in_both_release_steps(self):
-        info = plistlib.loads((ROOT / "apps/inboxplus_flutter/ios/Runner/Info.plist").read_bytes())
+        info = plistlib.loads((ROOT / "apps/inboxplus/ios/Runner/Info.plist").read_bytes())
         workflow = (ROOT / ".github/workflows/ios-release.yml").read_text()
         filenames = re.findall(r"build/ios/ipa/([^\s]+\.ipa)", workflow)
         self.assertEqual(filenames, [info["CFBundleName"] + ".ipa"] * 2)

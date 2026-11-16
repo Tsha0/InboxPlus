@@ -54,7 +54,7 @@ Windows and Linux stay marked as coming soon until those releases exist.
 The first screen starts in Classic monochrome. Scrolling blends through Grape Soda,
 Bubblegum, Mint Chip, and Sunset on one continuous background. The preview follows
 that palette until a visitor chooses a swatch. The theme values match
-`apps/inboxplus_flutter/lib/ui/inbox_ui_controller.dart`; update them together if the app changes.
+`apps/inboxplus/lib/ui/inbox_ui_controller.dart`; update them together if the app changes.
 Surprise me cycles through all ten app presets, including Classic.
 
 The opening animation assembles four strokes into the Inbox+ asterisk, then docks

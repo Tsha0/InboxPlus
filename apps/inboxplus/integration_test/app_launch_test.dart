@@ -1,9 +1,9 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inboxplus_flutter/app_controller.dart';
-import 'package:inboxplus_flutter/ui/account_pages.dart';
-import 'package:inboxplus_flutter/ui/contacts_page.dart';
-import 'package:inboxplus_flutter/ui/inbox_app.dart';
+import 'package:inboxplus/app_controller.dart';
+import 'package:inboxplus/ui/account_pages.dart';
+import 'package:inboxplus/ui/contacts_page.dart';
+import 'package:inboxplus/ui/inbox_app.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:media_kit/media_kit.dart';
 

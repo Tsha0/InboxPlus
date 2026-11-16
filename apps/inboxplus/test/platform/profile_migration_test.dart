@@ -3,8 +3,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inboxplus_flutter/platform/app_environment.dart';
-import 'package:inboxplus_flutter/platform/profile_migration.dart';
+import 'package:inboxplus/platform/app_environment.dart';
+import 'package:inboxplus/platform/profile_migration.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 import 'package:path/path.dart' as p;
 

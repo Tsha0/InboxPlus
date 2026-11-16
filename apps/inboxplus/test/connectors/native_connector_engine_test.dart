@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inboxplus_flutter/connectors/connector_engine.dart';
-import 'package:inboxplus_flutter/connectors/native_connector_engine.dart';
+import 'package:inboxplus/connectors/connector_engine.dart';
+import 'package:inboxplus/connectors/native_connector_engine.dart';
 import 'package:path/path.dart' as p;
 
 void main() {

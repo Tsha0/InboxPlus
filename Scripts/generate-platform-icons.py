@@ -9,7 +9,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = ROOT / "apps/inboxplus_flutter"
+APP = ROOT / "apps/inboxplus"
 ICO_SIZES = (16, 20, 24, 32, 40, 48, 64, 96, 128, 256)
 
 

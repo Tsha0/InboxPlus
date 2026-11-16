@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class MacOSIconTests(unittest.TestCase):
     def test_flutter_runner_declares_an_existing_icon(self):
-        with (ROOT / "apps/inboxplus_flutter/macos/Runner/Info.plist").open("rb") as file:
+        with (ROOT / "apps/inboxplus/macos/Runner/Info.plist").open("rb") as file:
             info = plistlib.load(file)
         self.assertTrue((ROOT / "Resources" / info["CFBundleIconFile"]).is_file())
 

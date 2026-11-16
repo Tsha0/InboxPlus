@@ -6,10 +6,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
-import 'package:inboxplus_flutter/app_controller.dart';
-import 'package:inboxplus_flutter/connectors/connector_engine.dart';
-import 'package:inboxplus_flutter/platform/app_environment.dart';
-import 'package:inboxplus_flutter/ui/inbox_ui_controller.dart';
+import 'package:inboxplus/app_controller.dart';
+import 'package:inboxplus/connectors/connector_engine.dart';
+import 'package:inboxplus/platform/app_environment.dart';
+import 'package:inboxplus/ui/inbox_ui_controller.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 import 'package:path/path.dart' as p;
 

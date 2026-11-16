@@ -11,7 +11,7 @@ python3 Scripts/generate-third-party-notices.py
 
 The generator reads both committed pub lockfiles, `native/connectors/go.mod` / `go.sum`, and the
 Sparkle lock and artifact record in `native/updates`, then applies the reviewed licenses in [`dependency-licenses.json`](dependency-licenses.json). The content-derived serial is deterministic.
-Bundled [third-party notices](../apps/inboxplus_flutter/assets/third_party_notices.txt) are generated
+Bundled [third-party notices](../apps/inboxplus/assets/third_party_notices.txt) are generated
 from the reviewed package license and NOTICE files and exposed through Settings → Open source
 licenses. Resolve both pub lockfiles and run `go -C native/connectors mod download` before
 regenerating notices. `PUB_CACHE` and `GO_BINARY` can select custom cache/toolchain locations.
@@ -30,15 +30,15 @@ license). It is included in the inventory as a build tool and is not part of the
 ## Flutter application
 
 Direct dependency pins live in
-[`pubspec.yaml`](../apps/inboxplus_flutter/pubspec.yaml) and
-[`pubspec.lock`](../apps/inboxplus_flutter/pubspec.lock). The reusable storage package has its own
+[`pubspec.yaml`](../apps/inboxplus/pubspec.yaml) and
+[`pubspec.lock`](../apps/inboxplus/pubspec.lock). The reusable storage package has its own
 [`pubspec.yaml`](../packages/inboxplus_storage/pubspec.yaml) and
 [`lockfile`](../packages/inboxplus_storage/pubspec.lock). Use `pub get --enforce-lockfile` in CI and
 include both lockfiles when updating dependencies.
 
 Android's Maven graph, including Gradle plugin classpaths, is additionally pinned by
-[`android/gradle/locks`](../apps/inboxplus_flutter/android/gradle/locks) and authenticated by
-[`verification-metadata.xml`](../apps/inboxplus_flutter/android/gradle/verification-metadata.xml).
+[`android/gradle/locks`](../apps/inboxplus/android/gradle/locks) and authenticated by
+[`verification-metadata.xml`](../apps/inboxplus/android/gradle/verification-metadata.xml).
 Gradle enforces both during normal builds. See the Android lock refresh workflow in
 [Contributing](../CONTRIBUTING.md#packaging-checks) when updating Android dependencies.
 
