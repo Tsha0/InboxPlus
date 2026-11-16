@@ -1297,10 +1297,9 @@ class _DesktopHomeState extends State<_DesktopHome> {
               children: [
                 PersonAvatar(
                   name: item.title,
-                  bytes: item.chats
-                      .where((c) => c.avatarBytes?.isNotEmpty == true)
-                      .firstOrNull
-                      ?.avatarBytes,
+                  bytes: item.person == null
+                      ? chat.avatarBytes
+                      : personPhoto(item.chats),
                   network: network,
                   isGroup: item.person == null && chat.isGroup,
                   size: 32,
@@ -1606,12 +1605,7 @@ class _DesktopHomeState extends State<_DesktopHome> {
               children: [
                 PersonAvatar(
                   name: person.displayName,
-                  bytes: chats
-                      .where(
-                        (c) => !c.isGroup && c.avatarBytes?.isNotEmpty == true,
-                      )
-                      .firstOrNull
-                      ?.avatarBytes,
+                  bytes: personPhoto(chats),
                   size: 32,
                 ),
                 const SizedBox(width: 10),

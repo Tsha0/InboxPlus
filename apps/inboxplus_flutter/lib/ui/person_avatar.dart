@@ -1,8 +1,14 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:inboxplus_storage/inboxplus_storage.dart';
 
 import 'network_badge.dart';
+
+Uint8List? personPhoto(Iterable<ConversationRecord> chats) => chats
+    .where((chat) => !chat.isGroup && chat.avatarBytes?.isNotEmpty == true)
+    .firstOrNull
+    ?.avatarBytes;
 
 class PersonAvatar extends StatelessWidget {
   const PersonAvatar({

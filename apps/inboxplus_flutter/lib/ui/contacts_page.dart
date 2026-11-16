@@ -167,24 +167,21 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
                         .whereType<String>()
                         .map(_networkName)
                         .toSet();
-                    final photo = contact.identities
-                        .expand(
-                          (identity) => widget.controller.conversations.where(
-                            (conversation) =>
-                                !conversation.isGroup &&
-                                conversation.route.accountId ==
-                                    identity.accountId &&
-                                conversation.identityId ==
-                                    identity.identityId &&
-                                conversation.avatarBytes?.isNotEmpty == true,
-                          ),
-                        )
-                        .firstOrNull;
+                    final photo = personPhoto(
+                      contact.identities.expand(
+                        (identity) => widget.controller.conversations.where(
+                          (conversation) =>
+                              conversation.route.accountId ==
+                                  identity.accountId &&
+                              conversation.identityId == identity.identityId,
+                        ),
+                      ),
+                    );
                     return ListTile(
                       key: Key('contact-${contact.id}'),
                       leading: PersonAvatar(
                         name: contact.displayName,
-                        bytes: photo?.avatarBytes,
+                        bytes: photo,
                       ),
                       title: Text(contact.displayName),
                       subtitle: Text(networks.join(' · ')),

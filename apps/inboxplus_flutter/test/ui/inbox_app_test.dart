@@ -156,8 +156,17 @@ void main() {
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
       );
       final carolPhoto = Uint8List.fromList(alicePhoto);
+      final groupPhoto = Uint8List.fromList(alicePhoto);
       final controller = _FakeController(
         conversations: [
+          ConversationRecord(
+            route: const ConversationRoute('first', 'alice-group'),
+            identityId: 'alice',
+            title: 'Alice and friends',
+            latestActivity: DateTime(2026, 10, 30),
+            isGroup: true,
+            avatarBytes: groupPhoto,
+          ),
           ConversationRecord(
             route: const ConversationRoute('first', 'alice-latest'),
             identityId: 'alice',
@@ -199,7 +208,7 @@ void main() {
       );
       expect(aliceRow.bytes, same(alicePhoto));
       expect(aliceRow.network, 'whatsapp');
-      expect(find.text('+1'), findsOneWidget);
+      expect(find.text('+2'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('conversation-second-carol')));
       await tester.pumpAndSettle();
