@@ -2000,6 +2000,83 @@ void main() {
     );
   }
 
+  testWidgets('videos show their own poster inline and play on tap', (
+    tester,
+  ) async {
+    const route = ConversationRoute('first', 'alice');
+    final controller = _FakeController(
+      accounts: const [
+        AccountRecord(
+          id: 'first',
+          platform: 'instagram',
+          displayName: 'My account',
+          isConnected: true,
+        ),
+      ],
+      messages: {
+        route: [
+          MessageRecord(
+            id: 'media',
+            route: route,
+            body: '',
+            timestamp: DateTime(2026, 11, 16),
+            isOutgoing: true,
+            attachments: const [
+              AttachmentRecord(
+                id: 'media/first/preview',
+                kind: 'preview',
+                localPath: '/private/fixture/media/first-poster',
+              ),
+              AttachmentRecord(
+                id: 'media/first',
+                kind: 'video',
+                fileName: 'Video',
+                mimeType: 'video/mp4',
+              ),
+              AttachmentRecord(
+                id: 'media/second/preview',
+                kind: 'preview',
+                localPath: '/private/fixture/media/second-poster',
+              ),
+              AttachmentRecord(
+                id: 'media/second',
+                kind: 'video',
+                fileName: 'Video',
+                mimeType: 'video/mp4',
+              ),
+            ],
+          ),
+        ],
+      },
+    );
+    await _pumpApp(tester, controller, size: const Size(390, 900));
+    await tester.tap(find.byKey(const Key('conversation-first-alice')));
+    await tester.pumpAndSettle();
+
+    String posterOf(String id) =>
+        ((tester
+                    .widget<Image>(
+                      find.descendant(
+                        of: find.byKey(Key('inline-video-$id')),
+                        matching: find.byType(Image),
+                      ),
+                    )
+                    .image)
+                as FileImage)
+            .file
+            .path;
+    expect(posterOf('media/first'), '/private/fixture/media/first-poster');
+    expect(posterOf('media/second'), '/private/fixture/media/second-poster');
+    expect(find.byTooltip('Download attachment'), findsNothing);
+    expect(find.bySemanticsLabel('Play Video'), findsNWidgets(2));
+
+    await tester.tap(find.byKey(const Key('inline-video-media/second')));
+    await tester.pumpAndSettle();
+    expect(controller.downloadedAttachments, [
+      (route: route, messageId: 'media', attachmentId: 'media/second'),
+    ]);
+  });
+
   testWidgets(
     'non-downloadable content without a link has no open or download action',
     (tester) async {
