@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 
 import 'confirmation.dart';
@@ -168,36 +167,22 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
                         .whereType<String>()
                         .map(_networkName)
                         .toSet();
-                    final photo = contact.identities
-                        .expand(
-                          (identity) => widget.controller.conversations.where(
-                            (conversation) =>
-                                !conversation.isGroup &&
-                                conversation.route.accountId ==
-                                    identity.accountId &&
-                                conversation.identityId ==
-                                    identity.identityId &&
-                                conversation.avatarBytes?.isNotEmpty == true,
-                          ),
-                        )
-                        .firstOrNull;
+                    final photo = personPhoto(
+                      contact.identities.expand(
+                        (identity) => widget.controller.conversations.where(
+                          (conversation) =>
+                              conversation.route.accountId ==
+                                  identity.accountId &&
+                              conversation.identityId == identity.identityId,
+                        ),
+                      ),
+                    );
                     return ListTile(
                       key: Key('contact-${contact.id}'),
-                      leading: defaultTargetPlatform == TargetPlatform.iOS
-                          ? PersonAvatar(
-                              name: contact.displayName,
-                              bytes: photo?.avatarBytes,
-                            )
-                          : CircleAvatar(
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
-                              child: Text(
-                                contact.displayName.characters.firstOrNull
-                                        ?.toUpperCase() ??
-                                    '?',
-                              ),
-                            ),
+                      leading: PersonAvatar(
+                        name: contact.displayName,
+                        bytes: photo,
+                      ),
                       title: Text(contact.displayName),
                       subtitle: Text(networks.join(' · ')),
                       onTap: () => _open(contact),

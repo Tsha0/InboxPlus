@@ -2635,8 +2635,7 @@ class AppController extends InboxUiController {
     final source = conversation.avatarSource;
     if (source == null || source.isEmpty) {
       _requestedAvatars.remove(route);
-    } else if (defaultTargetPlatform == TargetPlatform.iOS &&
-        _requestedAvatars[route] != source) {
+    } else if (_requestedAvatars[route] != source) {
       _requestedAvatars[route] = source;
       _avatarQueue = _avatarQueue
           .then((_) => _downloadAvatar(route, source))
