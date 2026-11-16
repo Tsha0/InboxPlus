@@ -2046,17 +2046,22 @@ class _MessageBubble extends StatelessWidget {
                                         message.replyToMessageId!,
                                       ),
                               ),
-                            for (final attachment in message.attachments)
+                            for (final (index, attachment)
+                                in message.attachments.indexed)
                               if (attachment.kind != 'preview')
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 6),
                                   child: _AttachmentTile(
                                     attachment: attachment,
-                                    preview: attachment.deepLink == null
-                                        ? null
-                                        : message.attachments
-                                              .where((a) => a.kind == 'preview')
-                                              .firstOrNull,
+                                    // Ingestion stores a preview directly before the attachment it shows.
+                                    preview:
+                                        index > 0 &&
+                                            message
+                                                    .attachments[index - 1]
+                                                    .kind ==
+                                                'preview'
+                                        ? message.attachments[index - 1]
+                                        : null,
                                     caption: message.body,
                                     foreground: own
                                         ? scheme.onPrimary
@@ -3036,6 +3041,14 @@ class _AttachmentTile extends StatelessWidget {
     final audio =
         attachment.kind == 'audio' ||
         (attachment.mimeType?.startsWith('audio/') ?? false);
+    if (video && preview != null) {
+      return _InlineVideo(
+        attachment: attachment,
+        posterPath: preview!.localPath,
+        onDownload: onDownload,
+        onSave: onSave,
+      );
+    }
     if (image && attachment.localPath != null) {
       return Semantics(
         button: true,
@@ -3310,6 +3323,104 @@ class _LoadOnFirstBuildState extends State<_LoadOnFirstBuild> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+class _InlineVideo extends StatefulWidget {
+  const _InlineVideo({
+    required this.attachment,
+    required this.posterPath,
+    required this.onDownload,
+    required this.onSave,
+  });
+
+  final AttachmentRecord attachment;
+  final String? posterPath;
+  final Future<void> Function() onDownload;
+  final Future<void> Function()? onSave;
+
+  @override
+  State<_InlineVideo> createState() => _InlineVideoState();
+}
+
+class _InlineVideoState extends State<_InlineVideo> {
+  bool _loading = false;
+
+  Future<void> _play() async {
+    if (widget.attachment.localPath == null) {
+      setState(() => _loading = true);
+      await widget.onDownload();
+      // The downloaded file reaches this tile on the next rebuild.
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+    final attachment = widget.attachment;
+    if (attachment.localPath == null || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) =>
+          MediaPreviewDialog(attachment: attachment, onSave: widget.onSave),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final posterPath = widget.posterPath;
+    final placeholder = Container(color: Colors.black);
+    return Semantics(
+      button: true,
+      label: 'Play ${widget.attachment.fileName ?? 'video'}',
+      excludeSemantics: true,
+      child: InkWell(
+        key: Key('inline-video-${widget.attachment.id}'),
+        borderRadius: BorderRadius.circular(9),
+        onTap: _loading ? null : _play,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(9),
+          child: SizedBox(
+            width: 280,
+            height: 190,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (posterPath == null)
+                  placeholder
+                else
+                  Image.file(
+                    File(posterPath),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, _, _) => placeholder,
+                  ),
+                Center(
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: .55),
+                      shape: BoxShape.circle,
+                    ),
+                    child: _loading
+                        ? const Padding(
+                            padding: EdgeInsets.all(16),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.play_arrow_rounded,
+                            size: 36,
+                            color: Colors.white,
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _SharedPostCard extends StatefulWidget {

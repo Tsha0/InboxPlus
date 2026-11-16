@@ -29,26 +29,41 @@ func (c *Connector) instagramMessage(conversationID string, message *slidetypes.
 	body, kind := message.TextBody, "text"
 	attachments := make([]any, 0)
 	mediaIndex := 0
-	add := func(id, raw, mime, name string) {
+	add := func(id, raw, mime, name string) map[string]any {
 		if id == "" {
 			id = decimal(int64(mediaIndex))
 		}
 		mediaIndex++
-		if attachment := c.rememberMedia(message.ID+"/"+id, raw, mime, name); attachment != nil {
+		attachment := c.rememberMedia(message.ID+"/"+id, raw, mime, name)
+		if attachment != nil {
 			attachments = append(attachments, attachment)
 		}
+		return attachment
 	}
 	addVisual := func(items []*slidetypes.Attachment, mime string) {
 		for _, attachment := range items {
 			if attachment == nil {
 				continue
 			}
-			id := attachment.AttachmentFBID
 			raw := attachment.AttachmentCDNURL
 			if raw == "" {
 				raw = attachment.AttachmentCDNFallbackURL
 			}
-			add(id, raw, mime, kind)
+			if !strings.HasPrefix(mime, "video/") {
+				add(attachment.AttachmentFBID, raw, mime, "Photo")
+				continue
+			}
+			video := add(attachment.AttachmentFBID, raw, mime, "Video")
+			if video == nil {
+				continue
+			}
+			poster := attachment.PreviewCDNURL
+			if poster == "" {
+				poster = attachment.PreviewCDNFallbackURL
+			}
+			if preview := c.rememberMedia(video["id"].(string)+"/preview", poster, "image/jpeg", "Preview"); preview != nil {
+				video["preview_id"] = preview["id"]
+			}
 		}
 	}
 	switch content := message.Content.Content.(type) {
