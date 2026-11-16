@@ -17,18 +17,48 @@ abstract interface class SecretStore {
 }
 
 class PlatformSecretStore implements SecretStore {
-  const PlatformSecretStore();
-  static const _storage = FlutterSecureStorage(
+  const PlatformSecretStore() : _current = _fileKeychain, _legacy = null;
+  const PlatformSecretStore.dataProtection()
+    : _current = _dataProtectionKeychain,
+      _legacy = _fileKeychain;
+
+  static const _fileKeychain = FlutterSecureStorage(
     mOptions: MacOsOptions(usesDataProtectionKeychain: false),
   );
+  static const _dataProtectionKeychain = FlutterSecureStorage(
+    mOptions: MacOsOptions(usesDataProtectionKeychain: true),
+  );
+  final FlutterSecureStorage _current;
+  // Self-signed releases kept secrets in the file-based keychain, which asks
+  // again after every signature change. Entitled builds move each one on read.
+  final FlutterSecureStorage? _legacy;
 
   @override
-  Future<String?> read(String key) => _storage.read(key: key);
+  Future<String?> read(String key) async {
+    final value = await _current.read(key: key);
+    final legacy = _legacy;
+    if (value != null || legacy == null) return value;
+    final moved = await legacy.read(key: key);
+    if (moved == null) return null;
+    await _current.write(key: key, value: moved);
+    if (await _current.read(key: key) != moved) {
+      throw const AppStorageException(
+        'A saved credential could not be moved. Your data has been kept.',
+      );
+    }
+    await legacy.delete(key: key);
+    return moved;
+  }
+
   @override
   Future<void> write(String key, String value) =>
-      _storage.write(key: key, value: value);
+      _current.write(key: key, value: value);
+
   @override
-  Future<void> delete(String key) => _storage.delete(key: key);
+  Future<void> delete(String key) async {
+    await _current.delete(key: key);
+    await _legacy?.delete(key: key);
+  }
 }
 
 class AppEnvironment {
@@ -61,7 +91,7 @@ class AppEnvironment {
 
   static Future<AppEnvironment> open({
     Directory? supportDirectory,
-    SecretStore secrets = const PlatformSecretStore(),
+    SecretStore? secrets,
     Map<String, String>? environment,
     bool? isMacOS,
     bool? isIOS,
@@ -129,7 +159,7 @@ class AppEnvironment {
       }
       final result = AppEnvironment(
         directory: Directory(p.join(profile.path, 'flutter')),
-        secrets: secrets,
+        secrets: secrets ?? await _platformSecrets(macOS: macOS),
         profileName: profileName,
         legacyProfileDirectory: legacy,
         isIOS: isIOS,
@@ -267,6 +297,14 @@ class AppEnvironment {
       );
     }
   }
+
+  // The data protection keychain needs a signature whose provisioning profile
+  // grants a keychain access group. Ad-hoc and self-signed builds have none.
+  static Future<SecretStore> _platformSecrets({required bool macOS}) async =>
+      macOS &&
+          await native.invokeMethod<bool>('hasKeychainAccessGroups') == true
+      ? const PlatformSecretStore.dataProtection()
+      : const PlatformSecretStore();
 
   static bool _validProfileName(String name) =>
       RegExp(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$').hasMatch(name);
