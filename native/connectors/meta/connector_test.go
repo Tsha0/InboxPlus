@@ -313,6 +313,30 @@ func TestInstagramMultimediaWithoutUpstreamIDsHasDistinctOpaqueReferences(t *tes
 	}
 }
 
+func TestInstagramVideosCarryTheirPosterAsPreview(t *testing.T) {
+	c, err := New(accountRequest(t.TempDir()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := &slidetypes.Message{ID: "message", Content: slidetypes.MessageContentWrapper{Content: &slidetypes.MessageContentMultiMedia{
+		Attachments: []*slidetypes.Attachment{
+			{AttachmentFBID: "photo", AttachmentCDNURL: "https://scontent.cdninstagram.com/photo", PreviewCDNURL: "https://scontent.cdninstagram.com/photo-preview"},
+			{AttachmentFBID: "clip", AttachmentCDNURL: "https://scontent.cdninstagram.com/clip", AttachmentType: 2, PreviewCDNURL: "https://scontent.cdninstagram.com/clip-poster"},
+		},
+	}}}
+	attachments := c.instagramMessage("thread", message)["attachments"].([]any)
+	photo, video := attachments[0].(map[string]any), attachments[1].(map[string]any)
+	if photo["name"] != "Photo" || photo["preview_id"] != nil {
+		t.Fatalf("photo = %v, want a named photo without a separate preview", photo)
+	}
+	if video["name"] != "Video" || video["preview_id"] != "message/clip/preview" {
+		t.Fatalf("video = %v, want a named video linked to its poster", video)
+	}
+	if poster := c.media["message/clip/preview"]; poster.URL != "https://scontent.cdninstagram.com/clip-poster" || poster.MimeType != "image/jpeg" {
+		t.Fatalf("poster reference = %+v", poster)
+	}
+}
+
 func TestUpdatedCookiesArePersistedWithoutRewritingUnchangedState(t *testing.T) {
 	directory := t.TempDir()
 	c, err := New(accountRequest(directory), nil)
