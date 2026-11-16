@@ -327,7 +327,8 @@ would block merging because those checks no longer run.
 
 The manual [macOS release workflow](.github/workflows/macos-release.yml) builds a matching version
 tag and attaches signed archives, checksums, SBOM and appcast to a draft GitHub Release. It preserves
-the shipped 0.8.5 feed, public update key, signing requirement and application identity. Production
+the shipped 0.8.5 feed, public update key and application identity, and checks the signing
+requirement for its signing mode. Production
 packaging uses `Scripts/package-macos-release.py`; ordinary Flutter builds keep updates disabled.
 See [macOS updates](docs/updates.md) for credentials, local commands and the required two-version
 installation test. Publishing the reviewed stable release triggers

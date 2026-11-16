@@ -2,17 +2,21 @@
 """Build and sign a Flutter macOS release and its Sparkle feed without publishing it."""
 
 import argparse
+import fnmatch
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
+import plistlib
 import shutil
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
+BUNDLE_IDENTIFIER = "com.inboxplus.app"
+RELEASE_ENTITLEMENTS = ROOT / "apps/inboxplus_flutter/macos/Runner/Release.entitlements"
 
 
 def load(name):
@@ -47,6 +51,8 @@ def release_settings(environment, previous_feed):
         raise ValueError("INBOXPLUS_RELEASE_SIGNING must be self-signed or developer-id")
     if mode == "developer-id" and not environment.get("INBOXPLUS_NOTARY_PROFILE"):
         raise ValueError("Developer ID releases need INBOXPLUS_NOTARY_PROFILE")
+    if mode == "developer-id" and not environment.get("INBOXPLUS_PROVISIONING_PROFILE"):
+        raise ValueError("Developer ID releases need INBOXPLUS_PROVISIONING_PROFILE")
     if previous_feed is not None:
         items = ET.parse(previous_feed).getroot().findall("./channel/item")
         if not items:
@@ -63,7 +69,32 @@ def release_settings(environment, previous_feed):
     return version, build, tag, identity, mode
 
 
-def sign_bundle(app, identity, hardened):
+def check_provisioning_profile(profile, team):
+    application = team + "." + BUNDLE_IDENTIFIER
+    entitlements = profile.get("Entitlements", {})
+    if "OSX" not in profile.get("Platform", []):
+        raise ValueError("The provisioning profile must be for macOS")
+    if profile.get("TeamIdentifier") != [team]:
+        raise ValueError("The provisioning profile must belong to team " + team)
+    if entitlements.get("com.apple.application-identifier") != application:
+        raise ValueError("The provisioning profile must be for " + application)
+    if profile.get("ProvisionsAllDevices") is not True or "ProvisionedDevices" in profile:
+        raise ValueError("The provisioning profile must be a Developer ID profile")
+    if not any(fnmatch.fnmatchcase(application, group) for group in entitlements.get("keychain-access-groups", [])):
+        raise ValueError("The provisioning profile must allow the " + application + " keychain group")
+
+
+def developer_id_entitlements(team):
+    application = team + "." + BUNDLE_IDENTIFIER
+    return {
+        **plistlib.loads(RELEASE_ENTITLEMENTS.read_bytes()),
+        "com.apple.application-identifier": application,
+        "com.apple.developer.team-identifier": team,
+        "keychain-access-groups": [application],
+    }
+
+
+def sign_bundle(app, identity, hardened, entitlements):
     flags = ["--timestamp", "--options", "runtime"] if hardened else []
 
     def sign(path, entitlements=None):
@@ -85,7 +116,7 @@ def sign_bundle(app, identity, hardened):
     for path in paths:
         if not path.is_symlink() and path.is_dir() and path.suffix in (".framework", ".xpc", ".app", ".bundle"):
             sign(path)
-    sign(app, ROOT / "apps/inboxplus_flutter/macos/Runner/Release.entitlements")
+    sign(app, entitlements)
     subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True)
     requirement = subprocess.run(["codesign", "-d", "-r-", str(app)], capture_output=True, text=True, check=True)
     if "certificate" not in requirement.stderr + requirement.stdout:
@@ -97,6 +128,12 @@ def package(output, previous_feed, bundle, environment):
     if load("generate-sbom").generate() != (ROOT / "docs/sbom.cdx.json").read_text():
         raise ValueError("Regenerate docs/sbom.cdx.json before packaging a release")
     legacy = json.loads((ROOT / "native/updates/legacy-release.json").read_text())
+    team = legacy["developer_id_team"]
+    if mode == "developer-id":
+        profile = Path(environment["INBOXPLUS_PROVISIONING_PROFILE"])
+        decoded = subprocess.run(["security", "cms", "-D", "-i", str(profile)],
+                                 capture_output=True, check=True).stdout
+        check_provisioning_profile(plistlib.loads(decoded), team)
     environment = {**environment, "INBOXPLUS_BUILD_NUMBER": build, "INBOXPLUS_RELEASE_VERSION": version,
                    "INBOXPLUS_UPDATE_PUBLIC_KEY": legacy["public_key"], "INBOXPLUS_UPDATE_FEED_URL": legacy["feed_url"]}
     subprocess.run(["swift", "package", "--package-path", str(ROOT / "native/updates"),
@@ -119,8 +156,16 @@ def package(output, previous_feed, bundle, environment):
         resources = app / "Contents/Resources"
         shutil.copy2(ROOT / "LICENSE", resources / "LICENSE")
         shutil.copy2(ROOT / "docs/sbom.cdx.json", resources / "sbom.cdx.json")
-        sign_bundle(app, identity, mode == "developer-id")
-        subprocess.run(["codesign", "--verify", "--strict", "-R", "=" + legacy["signing_requirement"], str(app)], check=True)
+        entitlements = RELEASE_ENTITLEMENTS
+        requirement = legacy["signing_requirement"]
+        if mode == "developer-id":
+            shutil.copy2(profile, app / "Contents/embedded.provisionprofile")
+            entitlements = staging / "Release.entitlements"
+            entitlements.write_bytes(plistlib.dumps(developer_id_entitlements(team)))
+            requirement = (f'anchor apple generic and identifier "{BUNDLE_IDENTIFIER}" '
+                           f'and certificate leaf[subject.OU] = "{team}"')
+        sign_bundle(app, identity, mode == "developer-id", entitlements)
+        subprocess.run(["codesign", "--verify", "--strict", "-R", "=" + requirement, str(app)], check=True)
         archive = staging / archive_name
         if mode == "developer-id":
             submission = staging / "notarization.zip"
