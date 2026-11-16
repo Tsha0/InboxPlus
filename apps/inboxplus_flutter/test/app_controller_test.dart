@@ -110,8 +110,8 @@ void main() {
     await directory.delete(recursive: true);
   });
 
-  test('iOS downloads and caches account-scoped photos without blocking chat updates', () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+  test('macOS downloads and caches account-scoped photos without blocking chat updates', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     const route = firstRoute;
     await seed(route);
     final download = Completer<Map<String, Object?>>();
@@ -175,9 +175,9 @@ void main() {
   });
 
   test(
-    'iOS discards stale and failed photos while keeping conversations usable',
+    'macOS discards stale and failed photos while keeping conversations usable',
     () async {
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
       const route = firstRoute;
       await seed(route);
       final download = Completer<Map<String, Object?>>();

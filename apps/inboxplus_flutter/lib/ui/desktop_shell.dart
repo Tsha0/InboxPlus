@@ -1295,7 +1295,16 @@ class _DesktopHomeState extends State<_DesktopHome> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
             child: Row(
               children: [
-                NetworkBadge(network: network, size: 22),
+                PersonAvatar(
+                  name: item.title,
+                  bytes: item.chats
+                      .where((c) => c.avatarBytes?.isNotEmpty == true)
+                      .firstOrNull
+                      ?.avatarBytes,
+                  network: network,
+                  isGroup: item.person == null && chat.isGroup,
+                  size: 32,
+                ),
                 if (item.chats.length > 1)
                   Padding(
                     padding: const EdgeInsets.only(left: 8),
@@ -1396,8 +1405,12 @@ class _DesktopHomeState extends State<_DesktopHome> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         child: Row(
           children: [
-            NetworkBadge(
+            PersonAvatar(
+              name: chat.title,
+              bytes: chat.avatarBytes,
               network: _accountFor(controller, chat.route)?.platform,
+              isGroup: chat.isGroup,
+              size: 32,
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -1565,13 +1578,6 @@ class _DesktopHomeState extends State<_DesktopHome> {
         )
         .join(' · ');
     final description = chats.isEmpty ? 'No linked conversations' : networks;
-    final initials = person.displayName
-        .trim()
-        .split(RegExp(r'\s+'))
-        .map((word) => word.characters.firstOrNull ?? '')
-        .take(2)
-        .join()
-        .toUpperCase();
     void select() {
       setState(() => _personId = person.id);
       controller.selectConversation(null);
@@ -1598,17 +1604,15 @@ class _DesktopHomeState extends State<_DesktopHome> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 14,
-                  backgroundColor: colors.surfaceContainer,
-                  foregroundColor: colors.onSurface,
-                  child: Text(
-                    initials.isEmpty ? '?' : initials,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                PersonAvatar(
+                  name: person.displayName,
+                  bytes: chats
+                      .where(
+                        (c) => !c.isGroup && c.avatarBytes?.isNotEmpty == true,
+                      )
+                      .firstOrNull
+                      ?.avatarBytes,
+                  size: 32,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -2445,7 +2449,13 @@ class _DesktopConversationHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       child: Row(
         children: [
-          NetworkBadge(network: account?.platform),
+          PersonAvatar(
+            name: conversation.title,
+            bytes: conversation.avatarBytes,
+            network: account?.platform,
+            isGroup: conversation.isGroup,
+            size: 32,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

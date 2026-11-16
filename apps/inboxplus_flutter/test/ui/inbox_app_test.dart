@@ -149,6 +149,79 @@ void main() {
     },
   );
 
+  testWidgets(
+    'desktop shows linked photos in rows, the conversation header and contacts',
+    (tester) async {
+      final alicePhoto = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+      );
+      final carolPhoto = Uint8List.fromList(alicePhoto);
+      final controller = _FakeController(
+        conversations: [
+          ConversationRecord(
+            route: const ConversationRoute('first', 'alice-latest'),
+            identityId: 'alice',
+            title: 'Alice',
+            latestActivity: DateTime(2026, 11, 3),
+          ),
+          ConversationRecord(
+            route: const ConversationRoute('second', 'alice-older'),
+            identityId: 'alice',
+            title: 'Alice',
+            latestActivity: DateTime(2026, 11, 2),
+            avatarBytes: alicePhoto,
+          ),
+          ConversationRecord(
+            route: const ConversationRoute('second', 'carol'),
+            title: 'Carol',
+            latestActivity: DateTime(2026, 11, 1),
+            avatarBytes: carolPhoto,
+          ),
+        ],
+        contacts: [
+          ContactRecord(
+            id: 'alice',
+            displayName: 'Alice',
+            identities: const [
+              IdentityLink('first', 'alice'),
+              IdentityLink('second', 'alice'),
+            ],
+          ),
+        ],
+      );
+      await _pumpApp(tester, controller);
+      PersonAvatar avatarIn(Finder parent) => tester.widget<PersonAvatar>(
+        find.descendant(of: parent, matching: find.byType(PersonAvatar)),
+      );
+
+      final aliceRow = avatarIn(
+        find.byKey(const Key('conversation-first-alice-latest')),
+      );
+      expect(aliceRow.bytes, same(alicePhoto));
+      expect(aliceRow.network, 'whatsapp');
+      expect(find.text('+1'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('conversation-second-carol')));
+      await tester.pumpAndSettle();
+      final carol = find.byWidgetPredicate(
+        (widget) =>
+            widget is PersonAvatar &&
+            identical(widget.bytes, carolPhoto) &&
+            widget.network == 'telegram',
+      );
+      expect(carol, findsNWidgets(2));
+
+      await tester.tap(find.byTooltip('Contacts'));
+      await tester.pumpAndSettle();
+      expect(
+        avatarIn(find.byKey(const Key('contact-row-alice'))).bytes,
+        same(alicePhoto),
+      );
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({TargetPlatform.macOS}),
+  );
+
   testWidgets('empty inbox offers account setup without sample conversations', (
     tester,
   ) async {

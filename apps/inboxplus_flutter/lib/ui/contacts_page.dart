@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 
 import 'confirmation.dart';
@@ -183,21 +182,10 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
                         .firstOrNull;
                     return ListTile(
                       key: Key('contact-${contact.id}'),
-                      leading: defaultTargetPlatform == TargetPlatform.iOS
-                          ? PersonAvatar(
-                              name: contact.displayName,
-                              bytes: photo?.avatarBytes,
-                            )
-                          : CircleAvatar(
-                              backgroundColor: Theme.of(context)
-                                  .colorScheme
-                                  .surfaceContainerHighest,
-                              child: Text(
-                                contact.displayName.characters.firstOrNull
-                                        ?.toUpperCase() ??
-                                    '?',
-                              ),
-                            ),
+                      leading: PersonAvatar(
+                        name: contact.displayName,
+                        bytes: photo?.avatarBytes,
+                      ),
                       title: Text(contact.displayName),
                       subtitle: Text(networks.join(' · ')),
                       onTap: () => _open(contact),

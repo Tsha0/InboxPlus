@@ -1026,15 +1026,12 @@ class _PhoneInboxRowState extends State<_PhoneInboxRow> {
                       child: Row(
                         children: [
                           const SizedBox(width: 16),
-                          if (defaultTargetPlatform == TargetPlatform.iOS)
-                            PersonAvatar(
-                              name: item.title,
-                              bytes: item.avatarBytes,
-                              network: account?.platform,
-                              isGroup: item.isGroup,
-                            )
-                          else
-                            NetworkBadge(network: account?.platform, size: 40),
+                          PersonAvatar(
+                            name: item.title,
+                            bytes: item.avatarBytes,
+                            network: account?.platform,
+                            isGroup: item.isGroup,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -1632,16 +1629,13 @@ class _ConversationPaneState extends State<_ConversationPane> {
                   )
                 else
                   const SizedBox(width: 12),
-                if (defaultTargetPlatform == TargetPlatform.iOS)
-                  PersonAvatar(
-                    name: item.title,
-                    bytes: item.avatarBytes,
-                    network: account?.platform,
-                    isGroup: item.isGroup,
-                    size: 32,
-                  )
-                else
-                  NetworkBadge(network: account?.platform, size: 32),
+                PersonAvatar(
+                  name: item.title,
+                  bytes: item.avatarBytes,
+                  network: account?.platform,
+                  isGroup: item.isGroup,
+                  size: 32,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
