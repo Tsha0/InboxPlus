@@ -92,7 +92,7 @@ contract; they are not secrets.
 2. After the change is merged, push a matching version tag (for example `0.9.1+115` uses `v0.9.1`).
    Tags also trigger the separate iOS TestFlight workflow.
 3. Run **macOS release** manually with that tag. The workflow uses Flutter 3.47.9, Go 1.27.3,
-   Python 3.12 and Xcode 27.2. It checks the tag/version, runs tests, downloads the current feed,
+   Python 3.12 and the runner's default Xcode, which it records in the log. It checks the tag/version, runs tests, downloads the current feed,
    builds the native app and signs all nested code before the outer bundle.
 4. It verifies runtime files/architectures and signatures, packages the exact final bundle,
    generates the appcast, cryptographically verifies its archive signature against the embedded
