@@ -51,7 +51,7 @@ Go, Python, Synapse or a separate connector service.
 From the repository root:
 
 ```bash
-cd apps/inboxplus_flutter
+cd apps/inboxplus
 flutter pub get --enforce-lockfile
 flutter run -d macos
 ```
@@ -60,7 +60,7 @@ Use `-d windows`, `-d linux`, or a device ID from `flutter devices` for another 
 runner builds and bundles the connector library. Go, Bash and the relevant C compiler must be on
 its environment's search path; an IDE launched before a toolchain installation may need restarting.
 
-Release build commands, run inside `apps/inboxplus_flutter`:
+Release build commands, run inside `apps/inboxplus`:
 
 ```bash
 flutter build macos --release
@@ -97,14 +97,14 @@ python3 Scripts/package-flutter-desktop.py --target linux
 
 Run the command for the target you built. Packages go to `build/flutter-desktop`, with the version,
 build number, OS and architecture in their names, plus a `.sha256` checksum file. Each archive
-contains an `Inbox+v2` folder with the full runtime, bundled dependency notices, `LICENSE`,
+contains an `Inbox+` folder with the full runtime, bundled dependency notices, `LICENSE`,
 `sbom.cdx.json` and `build-info.json`. The desktop CI jobs also produce these archives.
 
 | Platform | Archive | After extraction |
 | --- | --- | --- |
-| macOS | `.zip` | Open `Inbox+v2/Inbox+v2.app`; Finder or `ditto -x -k` preserves its framework links |
-| Windows | `.zip` | Open `Inbox+v2/InboxPlus.exe`; keep the DLLs and data folder beside it |
-| Linux | `.tar.gz` | Extract with `tar -xzf`, then run `Inbox+v2/InboxPlus`; keep the lib and data folders beside it |
+| macOS | `.zip` | Open `Inbox+/Inbox+.app`; Finder or `ditto -x -k` preserves its framework links |
+| Windows | `.zip` | Open `Inbox+/InboxPlus.exe`; keep the DLLs and data folder beside it |
+| Linux | `.tar.gz` | Extract with `tar -xzf`, then run `Inbox+/InboxPlus`; keep the lib and data folders beside it |
 
 The macOS development app is ad-hoc signed, without notarization. These packages do not install the
 app or provide automatic updates. Linux still requires the GTK, libsecret, libmpv, WebKitGTK and
@@ -193,7 +193,7 @@ account connections and imported choices are verified.
 ## How it fits together
 
 ```text
-apps/inboxplus_flutter          shared Flutter interface and application controller
+apps/inboxplus          shared Flutter interface and application controller
   lib/ui                       responsive inbox, conversations, contacts and settings
   lib/connectors               C ABI worker isolate; normalized account-scoped events
   lib/platform                 credential store, private files and native method channel
@@ -227,7 +227,7 @@ private app directories.
 cd packages/inboxplus_storage
 dart pub get --enforce-lockfile
 dart test
-cd ../../apps/inboxplus_flutter
+cd ../../apps/inboxplus
 flutter pub get --enforce-lockfile
 flutter analyze
 flutter test

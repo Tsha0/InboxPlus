@@ -31,7 +31,7 @@ class CIRoutingTests(unittest.TestCase):
     def test_shared_inputs_reach_every_platform(self):
         for path in (
             "native/connectors/main.go", "packages/inboxplus_storage/lib/store.dart",
-            "apps/inboxplus_flutter/lib/main.dart", "apps/inboxplus_flutter/pubspec.lock",
+            "apps/inboxplus/lib/main.dart", "apps/inboxplus/pubspec.lock",
             "docs/assets/inboxplus-logo.png", "docs/sbom.cdx.json",
             "docs/dependency-licenses.json", "Scripts/package-flutter-desktop.py",
             ".github/workflows/ci.yml", "Tests/Packaging/test_ci.py", "new-component/source.c",
@@ -43,9 +43,9 @@ class CIRoutingTests(unittest.TestCase):
         for path, target in (
             ("native/imessage/Sources/main.swift", "macos"),
             ("native/updates/Package.resolved", "macos"),
-            ("apps/inboxplus_flutter/windows/CMakeLists.txt", "windows"),
-            ("apps/inboxplus_flutter/linux/runner/main.cc", "linux"),
-            ("apps/inboxplus_flutter/ios/Runner/Info.plist", "ios"),
+            ("apps/inboxplus/windows/CMakeLists.txt", "windows"),
+            ("apps/inboxplus/linux/runner/main.cc", "linux"),
+            ("apps/inboxplus/ios/Runner/Info.plist", "ios"),
         ):
             with self.subTest(path=path):
                 result = changes.affected([path])
@@ -53,7 +53,7 @@ class CIRoutingTests(unittest.TestCase):
                 self.assertEqual({key for key, value in result.items() if value}, {target})
 
     def test_android_does_not_enable_automatic_native_builds(self):
-        result = changes.affected(["apps/inboxplus_flutter/android/app/build.gradle.kts"])
+        result = changes.affected(["apps/inboxplus/android/app/build.gradle.kts"])
         self.assertTrue(result.pop("code"))
         self.assertFalse(any(result.values()))
 

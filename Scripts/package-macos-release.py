@@ -16,7 +16,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE_IDENTIFIER = "com.inboxplus.app"
-RELEASE_ENTITLEMENTS = ROOT / "apps/inboxplus_flutter/macos/Runner/Release.entitlements"
+RELEASE_ENTITLEMENTS = ROOT / "apps/inboxplus/macos/Runner/Release.entitlements"
 
 
 def load(name):
@@ -139,7 +139,7 @@ def package(output, previous_feed, bundle, environment):
     subprocess.run(["swift", "package", "--package-path", str(ROOT / "native/updates"),
                     "--force-resolved-versions", "resolve"], check=True)
     if bundle is None:
-        app_root = ROOT / "apps/inboxplus_flutter"
+        app_root = ROOT / "apps/inboxplus"
         subprocess.run(["flutter", "pub", "get", "--enforce-lockfile"], cwd=app_root, check=True)
         subprocess.run(["flutter", "build", "macos", "--release"], cwd=app_root, check=True)
         bundle = desktop.default_bundle("macos")

@@ -18,8 +18,7 @@ Its public compatibility contract is recorded in `native/updates/legacy-release.
 `com.inboxplus.app`, the existing GitHub Pages feed, Sparkle public key, certificate-based signing
 requirement and Developer ID team. The packager refuses a different feed or key, a non-increasing
 build, or a signature that fails the requirement for its signing mode. It stages the production
-bundle as `Inbox+.app`, independently of the development app's `Inbox+v2` name. Profile paths and
-Keychain identifiers are unchanged.
+bundle as `Inbox+.app`. Profile paths and Keychain identifiers are unchanged.
 
 Application replacement does not migrate every part of the old runtime. The current Flutter
 migration imports saved contacts and conversation choices, requires reconnecting accounts, and
@@ -87,7 +86,7 @@ contract; they are not secrets.
 
 ## Build a release
 
-1. Raise `version:` in `apps/inboxplus_flutter/pubspec.yaml`, including a build number greater than
+1. Raise `version:` in `apps/inboxplus/pubspec.yaml`, including a build number greater than
    every published build. Regenerate the SBOM/notices and run the relevant checks.
 2. After the change is merged, push a matching version tag (for example `0.9.1+115` uses `v0.9.1`).
    Tags also trigger the separate iOS TestFlight workflow.

@@ -198,7 +198,7 @@ class MacOSReleaseTests(unittest.TestCase):
             self.packaging.check_provisioning_profile(profile, "0000000000")
 
     def test_developer_id_signature_adds_the_team_keychain_group_to_release_entitlements(self):
-        release = plistlib.loads((ROOT / "apps/inboxplus_flutter/macos/Runner/Release.entitlements").read_bytes())
+        release = plistlib.loads((ROOT / "apps/inboxplus/macos/Runner/Release.entitlements").read_bytes())
         self.assertEqual(self.packaging.developer_id_entitlements("36T8WB4DH2"), {
             **release,
             "com.apple.application-identifier": "36T8WB4DH2.com.inboxplus.app",

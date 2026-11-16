@@ -18,7 +18,7 @@ import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = ROOT / "apps/inboxplus_flutter"
+APP = ROOT / "apps/inboxplus"
 ASSETS = ("third_party_notices.txt", "reaction_emoji.json", "inboxplus-logo.png")
 MACH_MAGIC = {b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"}
 
@@ -182,7 +182,7 @@ def package(target, bundle, output):
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".inboxplus-package-", dir=output) as temporary:
         staging = Path(temporary)
-        container = staging / "Inbox+v2"
+        container = staging / "Inbox+"
         container.mkdir()
         if target == "macos":
             staged_bundle = container / bundle.name

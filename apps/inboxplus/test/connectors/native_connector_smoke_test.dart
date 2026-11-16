@@ -3,11 +3,11 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inboxplus_flutter/app_controller.dart';
-import 'package:inboxplus_flutter/platform/app_environment.dart';
+import 'package:inboxplus/app_controller.dart';
+import 'package:inboxplus/platform/app_environment.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
-import 'package:inboxplus_flutter/connectors/connector_engine.dart';
-import 'package:inboxplus_flutter/connectors/native_connector_engine.dart';
+import 'package:inboxplus/connectors/connector_engine.dart';
+import 'package:inboxplus/connectors/native_connector_engine.dart';
 import 'package:path/path.dart' as p;
 
 void main() {

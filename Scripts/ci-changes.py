@@ -19,7 +19,7 @@ def affected(paths):
         code = True
         if path.startswith("native/imessage/") or path.startswith("native/updates/"):
             targets.add("macos")
-        elif path.startswith("apps/inboxplus_flutter/"):
+        elif path.startswith("apps/inboxplus/"):
             component = path.split("/")[2]
             if component in PLATFORMS:
                 targets.add(component)

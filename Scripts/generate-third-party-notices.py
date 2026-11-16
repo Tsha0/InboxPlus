@@ -83,7 +83,7 @@ def generate(pub_cache, go_cache, go_root):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / "apps/inboxplus_flutter/assets/third_party_notices.txt")
+    parser.add_argument("--output", type=Path, default=ROOT / "apps/inboxplus/assets/third_party_notices.txt")
     arguments = parser.parse_args()
     go_binary = os.environ.get("GO_BINARY", "go")
     go_cache = Path(subprocess.check_output([go_binary, "env", "GOMODCACHE"], text=True).strip())

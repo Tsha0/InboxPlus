@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inboxplus_flutter/contact_suggestions.dart';
+import 'package:inboxplus/contact_suggestions.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 
 const accounts = [

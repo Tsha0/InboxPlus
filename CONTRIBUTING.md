@@ -11,7 +11,7 @@ and the native tools for your target in [README requirements](README.md#requirem
 Run from the repository root:
 
 ```bash
-cd apps/inboxplus_flutter
+cd apps/inboxplus
 flutter pub get --enforce-lockfile
 flutter run -d macos
 ```
@@ -52,7 +52,7 @@ Messages database merely to verify a build.
   that cannot happen. Keep sensitive values out of logs and error descriptions.
 - Add comments only when the reason or constraint is non-obvious. Remove obsolete comments and dead
   code touched by the change; do not narrate obvious assignments or control flow.
-- Reuse the Flutter theme and controls in `apps/inboxplus_flutter/lib/ui`.
+- Reuse the Flutter theme and controls in `apps/inboxplus/lib/ui`.
 
 ## Verification
 
@@ -62,7 +62,7 @@ Document checks you could not run and why; do not present an untested path as ve
 
 | Change | Local verification |
 | --- | --- |
-| Flutter application or UI | `flutter analyze` and `flutter test` inside `apps/inboxplus_flutter`; inspect affected desktop and mobile states |
+| Flutter application or UI | `flutter analyze` and `flutter test` inside `apps/inboxplus`; inspect affected desktop and mobile states |
 | Encrypted storage | `dart analyze` and `dart test` inside `packages/inboxplus_storage` |
 | Embedded connectors | `go mod verify` and `go test ./...` inside `native/connectors`; `build.sh host` for the C ABI |
 | Native runners or packaging | Build the affected Flutter target on its native host; an unsigned build is not installation or signing verification |
@@ -81,7 +81,7 @@ patterns, use existing fixtures and fakes, and test observable behavior rather t
 implementation. Explain when automated coverage is impractical. For UI changes, inspect affected
 loading, empty, error and cancellation states where applicable.
 
-For isolated desktop visual checks, run the debug fixture entry from `apps/inboxplus_flutter`:
+For isolated desktop visual checks, run the debug fixture entry from `apps/inboxplus`:
 
 ```bash
 flutter run -d macos --target lib/desktop_preview.dart --dart-define=INBOXPLUS_DESKTOP_FIXTURE=/absolute/path/to/InboxPlus/Tests/Fixtures/desktop-parity.json
@@ -114,7 +114,7 @@ the job.
 
 ### Packaging checks
 
-Build the affected Flutter target from `apps/inboxplus_flutter` with `flutter build macos`,
+Build the affected Flutter target from `apps/inboxplus` with `flutter build macos`,
 `flutter build windows`, `flutter build linux`, `flutter build apk`, or
 `flutter build ios --no-codesign`. Android requires NDK **28.2.13676358**. Windows needs Git Bash,
 Python 3 and MinGW for Go/cgo in addition to Visual Studio. Linux needs the packages listed in the
@@ -125,7 +125,7 @@ Android Maven artifacts and plugin classpaths use strict checksum verification i
 `android/gradle/verification-metadata.xml` and version locks in `android/gradle/locks` (under the
 Flutter app). Locks for pub plugins stay in this checkout, not the pub cache. After an intentional
 Android dependency update, run `./gradlew resolveDependencyLocks --write-locks
---write-verification-metadata sha256` from `apps/inboxplus_flutter/android`. This also verifies AAPT2
+--write-verification-metadata sha256` from `apps/inboxplus/android`. This also verifies AAPT2
 archives for all three build hosts; keep its version aligned with AGP. For each of debug, profile
 and release, first run `flutter build apk --<mode> --config-only` from the app directory, then
 `./gradlew assemble<Mode> --write-locks --write-verification-metadata sha256` from `android` to capture
@@ -143,7 +143,7 @@ requests. `--platform sparkle` prepares SwiftPM's artifact cache from `sparkle-a
 without changing the SwiftPM target or its checksum verification.
 
 For iOS, `flutter build ipa --release --no-codesign` builds the archive TestFlight receives. Check
-it with `python3 Scripts/verify-ios-app.py apps/inboxplus_flutter/build/ios/archive/Runner.xcarchive`
+it with `python3 Scripts/verify-ios-app.py apps/inboxplus/build/ios/archive/Runner.xcarchive`
 from the repository root. Archiving strips symbols, and the Dart side finds the embedded connectors
 by name, so the Runner target must keep `STRIP_STYLE = non-global`. A stripped app still launches
 but shows every network as unavailable. A plain device or simulator build does not show this.
@@ -232,9 +232,9 @@ Edit the source and regenerate the corresponding output. Never hand-edit generat
 
 | Source change | Generated output |
 | --- | --- |
-| Brand icons in `Scripts/brand-icons` | `apps/inboxplus_flutter/lib/ui/platform_glyphs.dart` |
+| Brand icons in `Scripts/brand-icons` | `apps/inboxplus/lib/ui/platform_glyphs.dart` |
 | Logo at `docs/assets/inboxplus-logo.png` | `Resources/AppIcon.icns` and Flutter Android/iOS/Windows/Linux launcher icons |
-| Dependency lockfiles, toolchains or license reviews | `docs/sbom.cdx.json` and `apps/inboxplus_flutter/assets/third_party_notices.txt` |
+| Dependency lockfiles, toolchains or license reviews | `docs/sbom.cdx.json` and `apps/inboxplus/assets/third_party_notices.txt` |
 | Drift schema | `packages/inboxplus_storage/lib/src/local_store.g.dart` |
 
 ```bash
@@ -260,7 +260,7 @@ rewriting them. It compares decoded pixels and icon dimensions so PNG metadata d
 create false failures. Use Python 3.9 or later with Pillow **10.4.0**; CI uses Python 3.12. The macOS
 icon comes from the standalone Swift icon generator above.
 
-The shared reaction catalog is `apps/inboxplus_flutter/assets/reaction_emoji.json`. Edit that catalog
+The shared reaction catalog is `apps/inboxplus/assets/reaction_emoji.json`. Edit that catalog
 directly when adding emoji names or categories.
 
 ## Pull requests
@@ -343,7 +343,7 @@ evidence and generated SBOM/notices when changing that dependency.
 ### iOS releases
 
 [ios-release.yml](.github/workflows/ios-release.yml) publishes iOS builds to TestFlight. To release,
-raise `version:` in `apps/inboxplus_flutter/pubspec.yaml` on `main`, always with a new build number
+raise `version:` in `apps/inboxplus/pubspec.yaml` on `main`, always with a new build number
 after `+`, and run `python3 Scripts/generate-sbom.py`, which records the version. Then push a
 matching tag: `0.9.1+115` is released by `v0.9.1`. The workflow refuses a tag that does not match.
 Before using a macOS runner, it requires the latest eligible CI run for the exact checked-out

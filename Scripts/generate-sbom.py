@@ -27,7 +27,7 @@ def licensed(component, reviews, key):
 
 def pub_components(reviews):
     components = {}
-    for lock in ("apps/inboxplus_flutter/pubspec.lock", "packages/inboxplus_storage/pubspec.lock"):
+    for lock in ("apps/inboxplus/pubspec.lock", "packages/inboxplus_storage/pubspec.lock"):
         content = (ROOT / lock).read_text()
         blocks = re.findall(r"^  (\w+):\n(.*?)(?=^  \w+:\n|^sdks:|\Z)", content, re.M | re.S)
         for name, block in blocks:
@@ -89,7 +89,7 @@ def sparkle_component(reviews):
         "Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved",
         "Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
     ):
-        xcode_lock = json.loads((ROOT / "apps/inboxplus_flutter/macos" / location).read_text())
+        xcode_lock = json.loads((ROOT / "apps/inboxplus/macos" / location).read_text())
         if xcode_lock["pins"] != lock["pins"]:
             raise ValueError("The Xcode and native updater SwiftPM locks must agree")
     pin, = lock["pins"]
@@ -107,7 +107,7 @@ def sparkle_component(reviews):
 
 def generate():
     reviews = json.loads((ROOT / "docs/dependency-licenses.json").read_text())
-    application_version = re.search(r"^version: (\S+)$", (ROOT / "apps/inboxplus_flutter/pubspec.yaml").read_text(), re.M).group(1)
+    application_version = re.search(r"^version: (\S+)$", (ROOT / "apps/inboxplus/pubspec.yaml").read_text(), re.M).group(1)
     document = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",

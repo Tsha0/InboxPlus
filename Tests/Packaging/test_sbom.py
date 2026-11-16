@@ -37,7 +37,7 @@ class CombinedInventoryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             fixture_root = Path(directory)
-            for location, version in (("apps/inboxplus_flutter", "1.0.0"), ("packages/inboxplus_storage", "2.0.0")):
+            for location, version in (("apps/inboxplus", "1.0.0"), ("packages/inboxplus_storage", "2.0.0")):
                 path = fixture_root / location / "pubspec.lock"
                 path.parent.mkdir(parents=True)
                 path.write_text('packages:\n' + record("shared", version) + record("same", "1.0.0"))
@@ -74,7 +74,7 @@ class CombinedInventoryTests(unittest.TestCase):
             fixture_root = Path(directory)
             (fixture_root / "docs").mkdir()
             (fixture_root / "docs/dependency-licenses.json").write_text("{}")
-            pubspec = fixture_root / "apps/inboxplus_flutter/pubspec.yaml"
+            pubspec = fixture_root / "apps/inboxplus/pubspec.yaml"
             pubspec.parent.mkdir(parents=True)
             with patch.object(sbom, "ROOT", fixture_root), \
                     patch.object(sbom, "pub_components", return_value=[]), \

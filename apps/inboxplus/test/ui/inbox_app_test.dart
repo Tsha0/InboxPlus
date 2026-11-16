@@ -10,13 +10,13 @@ import 'package:flutter/gestures.dart'
     show kSecondaryMouseButton, PointerDeviceKind;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:inboxplus_flutter/contact_suggestions.dart';
-import 'package:inboxplus_flutter/ui/account_pages.dart'
+import 'package:inboxplus/contact_suggestions.dart';
+import 'package:inboxplus/ui/account_pages.dart'
     show ConnectAccountsDialog, formatByteCount, loginQrImageBytes;
-import 'package:inboxplus_flutter/ui/inbox_app.dart';
-import 'package:inboxplus_flutter/ui/person_avatar.dart';
-import 'package:inboxplus_flutter/ui/contacts_page.dart';
-import 'package:inboxplus_flutter/ui/inbox_ui_controller.dart';
+import 'package:inboxplus/ui/inbox_app.dart';
+import 'package:inboxplus/ui/person_avatar.dart';
+import 'package:inboxplus/ui/contacts_page.dart';
+import 'package:inboxplus/ui/inbox_ui_controller.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
