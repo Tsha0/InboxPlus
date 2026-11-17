@@ -5,6 +5,20 @@ import '../contact_suggestions.dart';
 
 enum LoginStep { preparing, qr, pairingCode, fields, complete, failed }
 
+/// Why connecting iMessage stopped, and so which guidance the sheet shows.
+enum IMessageSetupProblem {
+  fullDiskAccessNeeded,
+  finishInSettings,
+  stillBlocked,
+  messagesNotSetUp,
+  unreadable;
+
+  bool get needsFullDiskAccess =>
+      this == fullDiskAccessNeeded ||
+      this == finishInSettings ||
+      this == stillBlocked;
+}
+
 enum LocalRecipientStatus { available, accessUnavailable, failed }
 
 enum AccountNetworkProblem { connecting, reconnecting, signedOut, failed }
@@ -161,6 +175,7 @@ class LoginState {
     this.fields = const [],
     this.error,
     this.busy = false,
+    this.imessageProblem,
   });
 
   final String networkId;
@@ -174,6 +189,7 @@ class LoginState {
   final List<LoginField> fields;
   final String? error;
   final bool busy;
+  final IMessageSetupProblem? imessageProblem;
 }
 
 @immutable
@@ -453,6 +469,8 @@ abstract class InboxUiController extends ChangeNotifier {
   Future<void> refreshNotificationStatus();
   Future<void> requestNotificationPermission();
   Future<void> openNotificationSettings();
+  Future<void> openFullDiskAccessSettings();
+  Future<void> openMessages();
   Future<void> setPreference(String key, Object value);
   Future<void> clearMediaCache();
   Future<void> exportDiagnostics();

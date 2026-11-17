@@ -809,6 +809,8 @@ class AppController extends InboxUiController {
     if (capability?.available != true) {
       throw const ConnectorException('platform_unavailable');
     }
+    final retryingFullDiskAccess =
+        _login?.imessageProblem?.needsFullDiskAccess == true;
     final generation = ++_loginGeneration;
     await _cancelCurrentLogin();
     if (accountId != null) await _accountWorkSettled(accountId);
@@ -821,12 +823,19 @@ class AppController extends InboxUiController {
         useQr ??
         (defaultTargetPlatform != TargetPlatform.iOS &&
             defaultTargetPlatform != TargetPlatform.android);
-    _login = LoginState(
-      networkId: networkId,
-      step: LoginStep.preparing,
-      instructions: 'Preparing secure account storage…',
-      busy: true,
-    );
+    _login = networkId == 'imessage'
+        ? const LoginState(
+            networkId: 'imessage',
+            step: LoginStep.preparing,
+            title: 'Connect iMessage',
+            busy: true,
+          )
+        : LoginState(
+            networkId: networkId,
+            step: LoginStep.preparing,
+            instructions: 'Preparing secure account storage…',
+            busy: true,
+          );
     _publish();
     final account = AccountRecord(
       id: id,
@@ -835,7 +844,29 @@ class AppController extends InboxUiController {
     );
     try {
       if (networkId == 'imessage') {
-        final snapshot = await _imessage('imessageSnapshot');
+        final Object? snapshot;
+        try {
+          snapshot = await _imessage('imessageSnapshot');
+        } on PlatformException catch (error) {
+          final problem = switch (error.code) {
+            'imessage_full_disk_access' =>
+              retryingFullDiskAccess
+                  ? IMessageSetupProblem.stillBlocked
+                  : IMessageSetupProblem.fullDiskAccessNeeded,
+            'imessage_not_set_up' => IMessageSetupProblem.messagesNotSetUp,
+            'imessage_unreadable' => IMessageSetupProblem.unreadable,
+            _ => null,
+          };
+          if (problem == null) rethrow;
+          if (generation != _loginGeneration) return;
+          _login = LoginState(
+            networkId: 'imessage',
+            step: LoginStep.failed,
+            title: 'Connect iMessage',
+            imessageProblem: problem,
+          );
+          return;
+        }
         if (generation != _loginGeneration) return;
         await store.saveAccount(account);
         _accounts[id] = account;
@@ -2268,6 +2299,23 @@ class AppController extends InboxUiController {
   });
 
   @override
+  Future<void> openFullDiskAccessSettings() => _perform(() async {
+    await _nativeCall('openFullDiskAccessSettings', {});
+    if (_login?.imessageProblem?.needsFullDiskAccess == true) {
+      _login = const LoginState(
+        networkId: 'imessage',
+        step: LoginStep.failed,
+        title: 'Connect iMessage',
+        imessageProblem: IMessageSetupProblem.finishInSettings,
+      );
+    }
+  });
+
+  @override
+  Future<void> openMessages() =>
+      _perform(() => _nativeCall('openMessages', {}));
+
+  @override
   Future<void> setPreference(String key, Object value) => _perform(() async {
     final values = _preferences.toJson();
     switch (key) {
@@ -3189,6 +3237,17 @@ class AppController extends InboxUiController {
     }
     if (error is PlatformException && error.code == 'cancelled') {
       return 'Sign-in was cancelled.';
+    }
+    if (error is PlatformException) {
+      final message = switch (error.code) {
+        'imessage_full_disk_access' => 'Inbox+ can no longer read Messages. Turn on Inbox+ in System Settings › Privacy & Security › Full Disk Access, then reopen Inbox+.',
+        'imessage_not_set_up' => 'Messages isn\'t set up on this Mac. Open Messages and sign in, then try again.',
+        'imessage_unreadable' => 'Inbox+ couldn\'t read your Messages history. Wait a moment and try again.',
+        'settings_unavailable' => 'System Settings could not be opened.',
+        'messages_unavailable' => 'Messages could not be opened.',
+        _ => null,
+      };
+      if (message != null) return message;
     }
     if (error is PlatformException && error.code == 'photos_denied') {
       return 'Allow Inbox+ to add photos in iOS Settings, or use Share QR code to display the code on another screen.';

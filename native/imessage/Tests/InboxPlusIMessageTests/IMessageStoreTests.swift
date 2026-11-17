@@ -242,6 +242,21 @@ let nanoseconds = "731_160_000_000_000_000".replacingOccurrences(of: "_", with: 
     }
 }
 
+@Test func eachStoreFailureReportsItsOwnCodeWithoutDetails() {
+    let errors: [IMessageStoreError] = [
+        .fullDiskAccessRequired("/Users/private/Library/Messages/chat.db"),
+        .databaseMissing("/Users/private/Library/Messages/chat.db"),
+        .openFailed("PRIVATE_SQLITE_DETAIL"),
+        .queryFailed("PRIVATE_SQLITE_DETAIL"),
+    ]
+    #expect(errors.map(\.code) == [
+        "imessage_full_disk_access",
+        "imessage_not_set_up",
+        "imessage_unreadable",
+        "imessage_unreadable",
+    ])
+}
+
 // MARK: - Fixture helper
 
 /// Builds a blob shaped like the archive Messages writes: the class name, a short run of type

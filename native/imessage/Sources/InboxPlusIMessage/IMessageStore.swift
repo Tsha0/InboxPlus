@@ -19,6 +19,15 @@ public enum IMessageStoreError: Error, Equatable, CustomStringConvertible {
             "could not read the Messages database: \(message)"
         }
     }
+
+    /// What the app reports across the process boundary. It never carries the path or SQLite's message.
+    public var code: String {
+        switch self {
+        case .fullDiskAccessRequired: "imessage_full_disk_access"
+        case .databaseMissing: "imessage_not_set_up"
+        case .openFailed, .queryFailed: "imessage_unreadable"
+        }
+    }
 }
 
 public struct IMessageChat: Equatable, Sendable {

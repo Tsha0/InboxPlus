@@ -258,6 +258,66 @@ void main() {
     },
   );
 
+  test('iMessage asks for Full Disk Access and guides each retry until it connects', () async {
+    native.imessageAvailable = true;
+    native.imessageSnapshotError = 'imessage_full_disk_access';
+    final app = await start();
+
+    await app.beginLogin('imessage');
+    expect(app.login?.step, LoginStep.failed);
+    expect(
+      app.login?.imessageProblem,
+      IMessageSetupProblem.fullDiskAccessNeeded,
+    );
+    expect(app.login?.instructions, isEmpty);
+    expect(app.login?.error, isNull);
+    expect(app.error, isNull);
+    expect(app.accounts, isEmpty);
+
+    await app.openFullDiskAccessSettings();
+    expect(
+      native.calls.map((call) => call['method']),
+      contains('openFullDiskAccessSettings'),
+    );
+    expect(app.login?.imessageProblem, IMessageSetupProblem.finishInSettings);
+
+    await app.beginLogin('imessage');
+    expect(app.login?.imessageProblem, IMessageSetupProblem.stillBlocked);
+
+    native.imessageSnapshotError = null;
+    await app.beginLogin('imessage');
+    expect(app.login?.step, LoginStep.complete);
+    expect(app.login?.imessageProblem, isNull);
+    expect(app.accounts.single.platform, 'imessage');
+  });
+
+  test('iMessage tells a missing or unreadable Messages history apart from permission', () async {
+    native.imessageAvailable = true;
+    final app = await start();
+    for (final (code, problem) in [
+      ('imessage_not_set_up', IMessageSetupProblem.messagesNotSetUp),
+      ('imessage_unreadable', IMessageSetupProblem.unreadable),
+    ]) {
+      native.imessageSnapshotError = code;
+      await app.beginLogin('imessage');
+      expect(app.login?.imessageProblem, problem, reason: code);
+      expect(app.error, isNull, reason: code);
+    }
+
+    await app.openMessages();
+    expect(
+      native.calls.map((call) => call['method']),
+      contains('openMessages'),
+    );
+
+    native.imessageSnapshotError = 'imessage_failed';
+    await app.beginLogin('imessage');
+    expect(app.login?.step, LoginStep.failed);
+    expect(app.login?.imessageProblem, isNull);
+    expect(app.login?.error, isNot(contains('PRIVATE')));
+    expect(app.accounts, isEmpty);
+  });
+
   test('WhatsApp mobile linking validates and normalizes phone inputs without losing the form', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     final engine = _FakeEngine(connectState: 'started');
@@ -3666,6 +3726,7 @@ class _NativeFixture {
   bool failRecipientContacts = false;
   Map<String, Object?> imessageStartResult = {};
   Map<String, Object?> imessageSnapshot = {'conversations': [], 'messages': []};
+  String? imessageSnapshotError;
   Map<String, Object?> imessageSendResult = {};
   Uint8List contactPhoto = Uint8List(0);
   final notifications = <Map<String, Object?>>[];
@@ -3706,6 +3767,12 @@ class _NativeFixture {
         launchAtLogin = arguments['enabled'] as bool;
         return {'status': launchAtLogin ? 'on' : 'off'};
       case 'imessageSnapshot':
+        if (imessageSnapshotError case final code?) {
+          throw PlatformException(
+            code: code,
+            message: 'PRIVATE_DATABASE_DETAIL',
+          );
+        }
         return imessageSnapshot;
       case 'imessageRecipientContacts':
         if (failRecipientContacts) {

@@ -100,6 +100,9 @@ When building `lib/desktop_preview.dart` directly, use
 `--dart-define=INBOXPLUS_PREVIEW_NOTIFICATION_STATUS=denied` or `not_determined` to inspect permission
 guidance, or `--dart-define=INBOXPLUS_PREVIEW_NOTIFICATION_SOUND=false` for blocked sounds. These
 fixture values do not read or change the operating system's notification permissions.
+Add `--dart-define=INBOXPLUS_PREVIEW_IMESSAGE=imessage_full_disk_access` (or `imessage_not_set_up`,
+`imessage_unreadable`) to see the guidance shown when connecting iMessage fails. The preview never
+reads the Messages database or opens System Settings.
 The preview never contacts the feedback relay. **Send feedback** succeeds after a short delay and
 links issue reports to a placeholder GitHub issue. Add `--dart-define=INBOXPLUS_PREVIEW_FEEDBACK=fail`
 to see the relay-unavailable error instead.
