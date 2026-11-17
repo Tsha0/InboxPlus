@@ -15,6 +15,8 @@
   changed, which checks ran and their results, and any remaining uncertainty. Fixture tests do not
   establish that a live network works.
 - Do not commit or push unless requested, and never bypass hooks. Preserve unrelated user changes.
+- Before merging a pull request, reply to every review comment, either describing the fix or
+  explaining why nothing changed, and resolve each thread.
 
 ## UI findings
 
