@@ -91,6 +91,18 @@ void main() {
     expect(selected.profileName, 'work');
   });
 
+  test('opens the default profile when other profiles exist', () async {
+    final profile = await legacyProfile('default');
+    await legacyProfile('preview');
+    final first = await open();
+    expect(first.profileName, 'default');
+    expect(first.directory.path, p.join(profile.path, 'flutter'));
+    final relaunched = await open();
+    expect(relaunched.secretName('db'), first.secretName('db'));
+    final selected = await open(variables: {'INBOXPLUS_PROFILE': 'preview'});
+    expect(selected.profileName, 'preview');
+  });
+
   test(
     'a compiled preview profile stays separate from existing profiles',
     () async {
