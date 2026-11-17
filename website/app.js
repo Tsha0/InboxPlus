@@ -505,6 +505,13 @@ window.addEventListener("resize", measureJourney, { passive: true });
 new ResizeObserver(measureJourney).observe(document.querySelector("main"));
 document.fonts.ready.then(measureJourney);
 
+// Safari applies page zoom on top of viewport units in font-size, so the hero and footer wordmarks use this instead.
+function measureViewport() {
+  document.documentElement.style.setProperty("--vw", `${document.documentElement.clientWidth / 100}px`);
+}
+measureViewport();
+window.addEventListener("resize", measureViewport, { passive: true });
+
 const particleLayer = document.querySelector(".joy-particles");
 function scatterStars(x, y, count = 16) {
   if (reducedMotion.matches || particleLayer.children.length > 50) return;
