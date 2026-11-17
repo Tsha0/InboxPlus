@@ -62,8 +62,7 @@ user denies a prompt, that secret stays in the old keychain and the next launch 
 the move, later releases open without prompts.
 
 The new signing identity also changes the app's code requirement. macOS can ask users to grant Full
-Disk Access and Automation access again. Before publishing the first Developer ID release, run the
-Flutter to Flutter installation test below from the latest self-signed release.
+Disk Access and Automation access again.
 
 For GitHub Actions, configure the `macos-release` environment:
 
@@ -97,15 +96,14 @@ contract; they are not secrets.
    generates the appcast, cryptographically verifies its archive signature against the embedded
    public key, and attaches ZIP, SBOM, appcast and checksums to a draft GitHub Release. Existing
    assets are never overwritten. A published release cannot be reused as the output target.
-5. Perform the installation tests below, review the artifacts and publish the stable release.
+5. Review the artifacts and publish the stable release.
    **Publish update feed** then validates and deploys its appcast to the existing GitHub Pages URL.
    It refuses prereleases, drafts, rollback to an older build, or changes/removal of existing feed
    entries. Assets must already exist before the feed becomes discoverable. GitHub Pages must use
    **GitHub Actions** as its publishing source.
 
 If the release was published by automation that suppresses subsequent workflow events, manually
-run **Publish update feed** with its published stable tag. Do not enable stable publication until
-the migration behavior and two-version installation test have been reviewed.
+run **Publish update feed** with its published stable tag.
 
 Local packaging uses the same script, with the original certificate available in Keychain:
 
@@ -136,14 +134,6 @@ has an `Inbox+.app` at its root, keeps framework symlinks and executable permiss
 strict code-signature and runtime checks. A Developer ID release must also pass notarization,
 stapling and Gatekeeper assessment.
 
-On a separate Mac/user account with isolated test profiles, test an actual installed 0.8.5 → Flutter
-update and a Flutter → Flutter update. Use a controlled feed with the original trust credentials;
-do not publish a production feed merely to test installation. Confirm discovery, compatible
-macOS/architecture filtering, download, restart, app path, permission grants and profile access.
-Verify reconnect/import messaging, old data retention, and that a migration failure keeps data.
-Test postponing/cancelling a restart with drafts, staged attachments and pending sends, restoring
-them after upgrade, interrupted downloads and invalid signatures. No live account is needed.
-
 A successful development build or fixture suite does not establish production signing, Gatekeeper
-acceptance or a working end-to-end update. Those checks need the original signing credentials and
-the installed-release test above.
+acceptance or a working end-to-end update. Signing and Gatekeeper checks need the original signing
+credentials. An installed update is not tested as part of a release.
