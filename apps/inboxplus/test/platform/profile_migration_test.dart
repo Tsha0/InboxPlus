@@ -282,14 +282,22 @@ void main() {
         ],
       ),
     );
+    final stagedAttachment = AttachmentRecord(
+      id: 'staged',
+      kind: 'file',
+      localPath: staged.path,
+    );
+    await store.saveDraft(
+      route,
+      'Keep this draft',
+      attachments: [stagedAttachment],
+    );
+    await store.enqueueDraft(route, sendId: 'saved-send', now: instant);
     final draft = await store.saveDraft(
       route,
       'Keep this draft',
-      attachments: [
-        AttachmentRecord(id: 'staged', kind: 'file', localPath: staged.path),
-      ],
+      attachments: [stagedAttachment],
     );
-    await store.enqueueDraft(route, sendId: 'saved-send', now: instant);
     await store.savePendingSendStatus('saved-send', PendingSendStatus.unknown);
     final originalResult = await ProfileMigration(original).run(store);
     expect(originalResult.didMigrate, isFalse);

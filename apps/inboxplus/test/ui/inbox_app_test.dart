@@ -2707,6 +2707,53 @@ void main() {
   }, variant: TargetPlatformVariant({TargetPlatform.macOS}));
 
   testWidgets(
+    'outgoing messages label sending, sent, not sent and unconfirmed apart',
+    (tester) async {
+      const route = ConversationRoute('first', 'alice');
+      MessageRecord outgoing(String id, int hour, DeliveryState state) =>
+          MessageRecord(
+            id: id,
+            route: route,
+            body: 'Body $id',
+            timestamp: DateTime(2026, 11, 5, hour),
+            isOutgoing: true,
+            deliveryState: state,
+          );
+      final controller = _FakeController(
+        unconfirmedMessages: {
+          route: {'unconfirmed'},
+        },
+        messages: {
+          route: [
+            outgoing('older', 1, DeliveryState.acknowledged),
+            outgoing('latest', 2, DeliveryState.acknowledged),
+            outgoing('failed', 3, DeliveryState.failed),
+            outgoing('unconfirmed', 4, DeliveryState.failed),
+            outgoing('pending', 5, DeliveryState.pending),
+          ],
+        },
+      );
+      await _pumpApp(tester, controller);
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sent'), findsOneWidget);
+      expect(find.text('Sending…'), findsOneWidget);
+      expect(find.text('Not sent'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('Delivery unconfirmed'), findsOneWidget);
+      expect(find.text('Check delivery'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.macOS,
+      TargetPlatform.windows,
+      TargetPlatform.linux,
+      TargetPlatform.android,
+      TargetPlatform.iOS,
+    }),
+  );
+
+  testWidgets(
     'desktop Reply focuses the composer and preserves text when canceled',
     (tester) async {
       const route = ConversationRoute('first', 'alice');

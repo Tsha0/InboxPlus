@@ -171,7 +171,7 @@ class MessageReactions extends Table {
 }
 
 const _applicationId = 0x494e4250;
-const _schemaVersion = 7;
+const _schemaVersion = 8;
 
 @DriftDatabase(
   tables: [
@@ -227,6 +227,16 @@ class StorageDatabase extends _$StorageDatabase {
       if (from < 7) {
         await migrator.addColumn(conversations, conversations.avatarSource);
         await migrator.addColumn(conversations, conversations.avatarBytes);
+      }
+      if (from < 8) {
+        await customStatement(
+          "UPDATE drafts SET body = '', revision = revision + 1, "
+          "reply_to_message_id = NULL, attachments_json = '[]' "
+          'WHERE EXISTS (SELECT 1 FROM pending_sends p '
+          'WHERE p.account_id = drafts.account_id '
+          'AND p.conversation_id = drafts.conversation_id '
+          'AND p.draft_revision = drafts.revision)',
+        );
       }
     },
     beforeOpen: (_) async {
@@ -1055,6 +1065,7 @@ class LocalStore {
         attachmentsJson: _encodeAttachments(draft.attachments),
       );
       await _db.into(_db.pendingSends).insert(row);
+      await _clearDraft(route, draft.revision);
       return _pending(row);
     }),
   );
@@ -1080,6 +1091,48 @@ class LocalStore {
       _db.pendingSends,
     )..where((t) => t.id.equals(sendId))).go();
   });
+
+  Future<DraftRecord?> restorePendingReply(String sendId) => _write(
+    () => _db.transaction(() async {
+      final row = await (_db.select(
+        _db.pendingSends,
+      )..where((t) => t.id.equals(sendId))).getSingleOrNull();
+      if (row == null ||
+          ![
+            PendingSendStatus.queued.name,
+            PendingSendStatus.failed.name,
+          ].contains(row.status))
+        return null;
+      final route = ConversationRoute(row.accountId, row.conversationId);
+      final draft = await _loadDraft(route);
+      if (draft != null &&
+          (draft.body.isNotEmpty ||
+              draft.attachments.isNotEmpty ||
+              draft.replyToMessageId != null))
+        return null;
+      final revision = (draft?.revision ?? 0) + 1;
+      await _db
+          .into(_db.drafts)
+          .insertOnConflictUpdate(
+            DraftRow(
+              accountId: route.accountId,
+              conversationId: route.conversationId,
+              body: row.body,
+              revision: revision,
+              attachmentsJson: row.attachmentsJson,
+            ),
+          );
+      await (_db.delete(
+        _db.pendingSends,
+      )..where((t) => t.id.equals(sendId))).go();
+      return DraftRecord(
+        route: route,
+        body: row.body,
+        revision: revision,
+        attachments: _decodeAttachments(row.attachmentsJson),
+      );
+    }),
+  );
 
   Future<bool> resolvePendingSend(
     String sendId, {

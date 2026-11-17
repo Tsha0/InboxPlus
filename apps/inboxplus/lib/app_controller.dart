@@ -1482,6 +1482,14 @@ class AppController extends InboxUiController {
       }
       final send = await store.enqueueDraft(route, sendId: _uuid.v4());
       _pending = await store.loadPendingSends();
+      final cleared = await store.loadDraft(route);
+      if (_drafts[route]?.revision == send.draftRevision) {
+        if (cleared == null) {
+          _drafts.remove(route);
+        } else {
+          _drafts[route] = cleared;
+        }
+      }
       await _updateCloseGuard();
       _publish();
       if (_accounts[route.accountId]?.isConnected == true) {
@@ -1514,31 +1522,61 @@ class AppController extends InboxUiController {
                 (network) =>
                     network.id == account?.platform && network.canReply,
               ))) {
-        await store.savePendingSendStatus(send.id, PendingSendStatus.failed);
+        var restored = false;
+        final previous = _draftWrites[send.route] ?? Future.value();
+        final recovery = previous.then((_) async {
+          final current = _drafts[send.route];
+          if (current != null &&
+              (current.body.isNotEmpty ||
+                  current.attachments.isNotEmpty ||
+                  current.replyToMessageId != null)) {
+            return;
+          }
+          final saved = await store.restorePendingReply(send.id);
+          if (saved == null) return;
+          restored = true;
+          if (identical(_drafts[send.route], current)) {
+            _drafts[send.route] = saved;
+          }
+        });
+        _draftWrites[send.route] = recovery;
+        await recovery;
+        if (!restored) {
+          await store.savePendingSendStatus(send.id, PendingSendStatus.failed);
+        }
         _pending = await store.loadPendingSends();
-        throw const AppStorageException(
-          'The reply target is unavailable. Your draft has been kept.',
+        await _updateCloseGuard();
+        throw AppStorageException(
+          restored
+              ? 'The reply target is unavailable. Your message is back in the composer without the reply.'
+              : 'The reply target is unavailable. Send or clear your current draft, then Retry to move this message back into the composer.',
         );
       }
       if (send.attachments.isNotEmpty) {
-        final attachment = send.attachments.single;
-        final path = attachment.localPath;
-        if (path == null || !p.isWithin(environment.directory.path, path)) {
-          throw const AppStorageException(
-            'The staged attachment is unavailable. Your draft has been kept.',
-          );
+        try {
+          final attachment = send.attachments.single;
+          final path = attachment.localPath;
+          if (path == null || !p.isWithin(environment.directory.path, path)) {
+            throw const AppStorageException(
+              'The staged attachment is unavailable, so the message was not sent.',
+            );
+          }
+          final file = File(path);
+          if (await file.length() > _attachmentLimit(send.route)) {
+            throw const AppStorageException(
+              'The attachment exceeds the size limit.',
+            );
+          }
+          attachmentCommand = {
+            'bytes': base64Encode(await file.readAsBytes()),
+            'name': attachment.fileName ?? 'Attachment',
+            'mime_type': attachment.mimeType ?? 'application/octet-stream',
+          };
+        } catch (_) {
+          await store.savePendingSendStatus(send.id, PendingSendStatus.failed);
+          _pending = await store.loadPendingSends();
+          rethrow;
         }
-        final file = File(path);
-        if (await file.length() > _attachmentLimit(send.route)) {
-          throw const AppStorageException(
-            'The attachment exceeds the size limit.',
-          );
-        }
-        attachmentCommand = {
-          'bytes': base64Encode(await file.readAsBytes()),
-          'name': attachment.fileName ?? 'Attachment',
-          'mime_type': attachment.mimeType ?? 'application/octet-stream',
-        };
       }
       await store.savePendingSendStatus(send.id, PendingSendStatus.sending);
       _pending = await store.loadPendingSends();
@@ -1577,7 +1615,7 @@ class AppController extends InboxUiController {
         await store.savePendingSendStatus(send.id, PendingSendStatus.unknown);
         _pending = await store.loadPendingSends();
         throw const AppStorageException(
-          'Delivery could not be confirmed. Check the conversation in the original app before sending again. Your draft has been kept.',
+          'Delivery could not be confirmed. Check the conversation in the original app before sending again.',
         );
       }
       final message = MessageRecord(
