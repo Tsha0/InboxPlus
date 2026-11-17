@@ -294,6 +294,8 @@ class _DesktopHomeState extends State<_DesktopHome> {
   _Section _section = _Section.inbox;
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
+  final _feedback = FeedbackForm();
+  final _feedbackCapture = GlobalKey();
   final _networks = <String>{};
   bool _unreadOnly = false;
   bool _unknownOnly = false;
@@ -336,6 +338,7 @@ class _DesktopHomeState extends State<_DesktopHome> {
     _lifecycle.dispose();
     _search.dispose();
     _searchFocus.dispose();
+    _feedback.dispose();
     super.dispose();
   }
 
@@ -356,6 +359,15 @@ class _DesktopHomeState extends State<_DesktopHome> {
       });
     }
   }
+
+  Future<void> _sendFeedback() => showDialog<void>(
+    context: context,
+    builder: (_) => FeedbackDialog(
+      controller: controller,
+      form: _feedback,
+      captureBoundary: _feedbackCapture,
+    ),
+  );
 
   void _sectionChanged(_Section section) {
     setState(() => _section = section);
@@ -649,7 +661,10 @@ class _DesktopHomeState extends State<_DesktopHome> {
   );
 
   Widget _withMenus(Widget child) {
-    child = _DesktopWindowActive(active: _windowActive, child: child);
+    child = RepaintBoundary(
+      key: _feedbackCapture,
+      child: _DesktopWindowActive(active: _windowActive, child: child),
+    );
     final mac = defaultTargetPlatform == TargetPlatform.macOS;
     SingleActivator shortcut(
       LogicalKeyboardKey key, {
@@ -833,6 +848,7 @@ class _DesktopHomeState extends State<_DesktopHome> {
               Uri.parse('https://github.com/Tsha0/InboxPlus#readme'),
             ),
           ),
+          PlatformMenuItem(label: 'Send Feedback…', onSelected: _sendFeedback),
         ],
       ),
     ];
@@ -972,6 +988,34 @@ class _DesktopHomeState extends State<_DesktopHome> {
           ),
         ),
         const Spacer(),
+        Semantics(
+          label: 'Send feedback',
+          button: true,
+          onTap: _sendFeedback,
+          excludeSemantics: true,
+          child: IconButton(
+            key: const Key('desktop-rail-feedback'),
+            tooltip: 'Send feedback',
+            onPressed: _sendFeedback,
+            style: IconButton.styleFrom(
+              minimumSize: const Size(30, 30),
+              maximumSize: const Size(30, 30),
+              foregroundColor: _legibleOn(
+                _DesktopPalette.forPreferences(controller.preferences)
+                        ?.background ??
+                    Theme.of(context).colorScheme.surface,
+              ).withValues(alpha: .55),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            icon: const Icon(
+              CupertinoIcons.exclamationmark_bubble_fill,
+              size: 17,
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
         _railButton(
           _Section.settings,
           'Settings',

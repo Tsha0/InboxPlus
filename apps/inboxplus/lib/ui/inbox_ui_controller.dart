@@ -297,6 +297,62 @@ class PreferencesRecord {
   };
 }
 
+enum FeedbackKind {
+  bug('bug', 'Bug', expectsScreenshot: true),
+  feature('feature', 'Feature request'),
+  needsWork('needsWork', 'Needs work'),
+  praise('praise', 'Praise', isPublic: false);
+
+  const FeedbackKind(
+    this.wireName,
+    this.label, {
+    this.isPublic = true,
+    this.expectsScreenshot = false,
+  });
+
+  final String wireName;
+  final String label;
+  final bool isPublic;
+  final bool expectsScreenshot;
+}
+
+@immutable
+class FeedbackDraft {
+  const FeedbackDraft({
+    required this.kind,
+    required this.text,
+    this.includeDiagnostics = false,
+    this.image,
+  });
+
+  final FeedbackKind kind;
+  final String text;
+  final bool includeDiagnostics;
+  final Uint8List? image;
+}
+
+@immutable
+class FeedbackReceipt {
+  const FeedbackReceipt({this.issueUrl});
+
+  final Uri? issueUrl;
+}
+
+enum FeedbackFailure implements Exception {
+  offline(
+    'Inbox+ couldn’t reach the feedback service. Check your connection and try again.',
+  ),
+  unavailable('Feedback can’t be sent right now. Try again in a few minutes.'),
+  tooLarge(
+    'This feedback is too large to send. Remove the screenshot and try again.',
+  ),
+  rejected('The feedback service didn’t accept this report.');
+
+  const FeedbackFailure(this.message);
+
+  final String message;
+}
+
 abstract class InboxUiController extends ChangeNotifier {
   bool get isLoading;
   bool get isBusy;
@@ -400,5 +456,7 @@ abstract class InboxUiController extends ChangeNotifier {
   Future<void> setPreference(String key, Object value);
   Future<void> clearMediaCache();
   Future<void> exportDiagnostics();
+  Future<FeedbackReceipt> sendFeedback(FeedbackDraft draft);
+  Future<Uint8List?> pickFeedbackImage();
   Future<void> requestQuit();
 }

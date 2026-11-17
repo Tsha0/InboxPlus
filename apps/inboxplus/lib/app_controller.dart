@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 import 'connectors/connector_engine.dart';
 import 'connectors/native_connector_engine.dart';
 import 'contact_suggestions.dart';
+import 'feedback_relay.dart';
 import 'platform/app_environment.dart';
 import 'platform/profile_migration.dart';
 import 'ui/inbox_ui_controller.dart';
@@ -30,14 +31,17 @@ class AppController extends InboxUiController {
     required this.environment,
     this.engine,
     NativeCall? nativeCall,
+    FeedbackSubmitter? submitFeedback,
     DateTime Function()? now,
   }) : _nativeCall = nativeCall ?? _invokeNative,
+       _submitFeedback = submitFeedback ?? FeedbackRelay().submit,
        _now = now ?? DateTime.now;
 
   final LocalStore store;
   final AppEnvironment environment;
   final ConnectorEngine? engine;
   final NativeCall _nativeCall;
+  final FeedbackSubmitter _submitFeedback;
   final DateTime Function() _now;
   late DateTime _messageCutoff;
   final _uuid = const Uuid();
@@ -2308,7 +2312,10 @@ class AppController extends InboxUiController {
     await _reloadStatistics();
   });
 
-  String diagnosticsJson() => const JsonEncoder.withIndent('  ').convert({
+  String diagnosticsJson() =>
+      const JsonEncoder.withIndent('  ').convert(_diagnostics());
+
+  Map<String, Object?> _diagnostics() => {
     'application': 'Inbox+',
     'version': inboxPlusVersion,
     'build': inboxPlusBuild,
@@ -2346,7 +2353,7 @@ class AppController extends InboxUiController {
       'messageRetentionDays': _preferences.messageRetentionDays,
       'iMessageHistory': _preferences.iMessageHistory,
     },
-  });
+  };
 
   @override
   Future<void> exportDiagnostics() => _perform(() async {
@@ -2359,6 +2366,21 @@ class AppController extends InboxUiController {
       bytes: Uint8List.fromList(utf8.encode(diagnosticsJson())),
     );
   });
+
+  @override
+  Future<FeedbackReceipt> sendFeedback(FeedbackDraft draft) =>
+      _submitFeedback(draft, draft.includeDiagnostics ? _diagnostics() : null);
+
+  @override
+  Future<Uint8List?> pickFeedbackImage() async {
+    await _prepareFilePicker();
+    final source = await FilePicker.pickFile(
+      dialogTitle: 'Choose a Screenshot',
+      type: FileType.image,
+    );
+    final path = source?.path;
+    return path == null ? null : File(path).readAsBytes();
+  }
 
   Future<void> _prepareFilePicker() async {
     // The macOS runner is unsandboxed; this configures the plugin's sandbox-only preflight.

@@ -47,8 +47,10 @@ The P1 severity below applies only to the Code Review Rules, not ordinary style 
 Treat a violation of any rule below as P1.
 
 - Flutter views use `InboxUiController`; the app controller owns state and persistence. Network clients
-  stay in `native/connectors` behind the account-scoped C ABI. The local macOS Messages adapter stays
-  in `native/imessage`; native platform services belong in the Flutter runners.
+  stay in `native/connectors` behind the account-scoped C ABI. The one exception is the feedback relay
+  client in `apps/inboxplus/lib/feedback_relay.dart`, which holds no account and posts only feedback
+  the user sends; every messaging network client still follows this rule. The local macOS Messages
+  adapter stays in `native/imessage`; native platform services belong in the Flutter runners.
 - Nothing unverified is executed. Dependencies and toolchains stay pinned to exact versions with
   committed integrity locks. Native binary downloads are SHA-256 verified before extraction or use.
 - Secrets stay private: configs, registrations and cached media are `0600` inside `0700` directories, and
