@@ -56,62 +56,15 @@ hooks:
 - Authentication tokens and connector session secrets belong in the platform credential store or
   a connector-owned store, not here.
 
-## Behavior
+## Caller responsibilities
 
-Messages:
+`test/local_store_test.dart` documents the store's behavior. A caller must also:
 
-- Accounts, conversations and messages use account-scoped conversation routes. The same network
-  ID in two accounts cannot overwrite the other.
-- Recent messages return in chronological order, 50 by default.
-- `loadMessage` finds one account-scoped message, including one outside the recent window. Repeated
-  events and old edits stay distinct.
-- `loadStorageSummary` counts every retained message and its attachment metadata. Cached byte
-  counts belong to the application's private media directory.
-- A conversation's send availability persists with its explanation. An unsupported encrypted
-  thread stays unavailable after the app reopens.
-- Timestamps are UTC microseconds since the Unix epoch.
-
-Drafts and sends:
-
-- Each draft update increments a durable revision. `clearDraft` clears only the revision you pass,
-  and revisions keep increasing after a clear.
-- `enqueueDraft` captures an immutable draft payload under a command ID from the caller. The same
-  command ID returns the existing pending send.
-- `completeSend` records the acknowledged message and removes its pending send in one transaction.
-  It clears the draft only when no newer revision exists.
-- A failed or uncertain pending send stays durable. Storage never resends. The application must
-  reconcile an interrupted `sending` operation with the connector before it retries.
-- `resolvePendingSend` removes a command after the user resolves it. It can clear only the captured
-  draft revision, keeps newer edits and creates no acknowledged message.
-
-Media paths:
-
-- `clearDownloadedMediaPaths` clears downloadable cache paths across all messages in one
-  transaction and returns the files that the caller may delete. It never deletes a file itself.
-- It requires a canonical private media directory, and rejects symlinks and paths outside that
-  directory. It keeps files that a draft, a pending send or non-downloadable media still uses.
-- Link and download availability metadata survive a reopen.
-- `rebaseAttachmentPaths` updates private media and staging references after an OS restore moves
-  the profile directory. It changes messages, drafts and pending sends together, and keeps
-  payloads and revisions. It rejects symbolic links and leaves external paths and file bytes alone.
-- The caller records the previous profile directory in the same secure namespace as its key.
-
-Contacts and preferences:
-
-- Contact changes are transactional. An account-scoped remote identity links to only one person.
-- Removing an account removes its links and keeps the people and the other accounts.
-- Favorites, unread overrides, mute expiry and hide thresholds persist even for a conversation
-  that is not in the local cache yet.
-
-Legacy import:
-
-- `importLegacy` commits imported accounts, contacts and preferences together. A failed import
-  rolls back every change. A successful import can be retried before the interface sees the
-  profile.
-- The package does not open or migrate the earlier Swift application's profile, JSON stores,
-  database, Keychain entries or runtime. An importer converts those first.
-- An importer must convert Swift Codable dates from their 2001 epoch and keep the source data on
-  failure.
+- Reconcile an interrupted `sending` operation with the connector before it retries. Storage never
+  resends.
+- Delete the files that `clearDownloadedMediaPaths` returns. The store never deletes a file.
+- Record the previous profile directory in the same secure namespace as the key, so that
+  `rebaseAttachmentPaths` can move references after an OS restore.
 
 ## Development
 

@@ -61,8 +61,6 @@ Flutter.
   the menu bar and Command shortcuts.
 - iMessage's **New message** can search this Mac's Contacts when you allow access. You can always
   type an address instead.
-- Updating from 0.8.5 keeps contacts and conversation choices, but you reconnect each account. See
-  [Upgrading from 0.8.5](docs/updates.md#upgrading-from-085).
 
 ## Requirements
 

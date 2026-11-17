@@ -296,7 +296,8 @@ The [CI workflow](.github/workflows/ci.yml) runs on every pull request.
 
 ### macOS releases
 
-Follow [macOS updates](docs/updates.md) for credentials, the release steps and local packaging.
+Follow [macOS updates](docs/updates.md) for credentials, the release steps, local packaging and
+the installed-update test.
 
 When you change Sparkle, keep `native/updates/Package.swift` and both Xcode `Package.resolved`
 files aligned. Update `native/updates/sparkle-artifact.json`, the reviewed license evidence and
