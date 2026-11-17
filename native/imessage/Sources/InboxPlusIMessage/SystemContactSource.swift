@@ -1,7 +1,7 @@
 import Contacts
 import Foundation
 
-/// Reads names from the Mac's Contacts, asking for access the first time iMessage loads.
+/// Reads names and photos from the Mac's Contacts, asking for access the first time iMessage loads.
 ///
 /// Access is optional: without it every handle is still shown, as a formatted number or address.
 public struct SystemContactSource: IMessageContactSource {
@@ -34,7 +34,16 @@ public struct SystemContactSource: IMessageContactSource {
         }
     }
 
-    private func readContacts() async throws -> [IMessageContactBook.Contact]? {
+    /// A saved photo sized for a list row, or empty data when the contact has none.
+    public func thumbnailImageData(forContactID id: String) async throws -> Data {
+        guard let store = await authorizedStore() else { throw CNError(.authorizationDenied) }
+        let contact = try store.unifiedContact(
+            withIdentifier: id, keysToFetch: [CNContactThumbnailImageDataKey as CNKeyDescriptor]
+        )
+        return contact.thumbnailImageData ?? Data()
+    }
+
+    private func authorizedStore() async -> CNContactStore? {
         // macOS terminates a process that touches Contacts without a usage description, and a bare
         // `swift run` build has no Info.plist to carry one.
         guard Bundle.main.object(forInfoDictionaryKey: "NSContactsUsageDescription") != nil else {
@@ -44,9 +53,11 @@ public struct SystemContactSource: IMessageContactSource {
         if CNContactStore.authorizationStatus(for: .contacts) == .notDetermined {
             _ = try? await store.requestAccess(for: .contacts)
         }
-        guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
-            return nil
-        }
+        return CNContactStore.authorizationStatus(for: .contacts) == .authorized ? store : nil
+    }
+
+    private func readContacts() async throws -> [IMessageContactBook.Contact]? {
+        guard let store = await authorizedStore() else { return nil }
 
         let request = CNContactFetchRequest(keysToFetch: [
             CNContactFormatter.descriptorForRequiredKeys(for: .fullName),
@@ -54,6 +65,8 @@ public struct SystemContactSource: IMessageContactSource {
             CNContactOrganizationNameKey as CNKeyDescriptor,
             CNContactPhoneNumbersKey as CNKeyDescriptor,
             CNContactEmailAddressesKey as CNKeyDescriptor,
+            CNContactIdentifierKey as CNKeyDescriptor,
+            CNContactImageDataAvailableKey as CNKeyDescriptor,
         ])
         var contacts: [IMessageContactBook.Contact] = []
         try store.enumerateContacts(with: request) { contact, _ in
@@ -63,7 +76,8 @@ public struct SystemContactSource: IMessageContactSource {
                 name: name,
                 shortName: contact.givenName.isEmpty ? nil : contact.givenName,
                 phoneNumbers: contact.phoneNumbers.map(\.value.stringValue),
-                emailAddresses: contact.emailAddresses.map { $0.value as String }
+                emailAddresses: contact.emailAddresses.map { $0.value as String },
+                photoID: contact.imageDataAvailable ? contact.identifier : nil
             ))
         }
         return contacts
