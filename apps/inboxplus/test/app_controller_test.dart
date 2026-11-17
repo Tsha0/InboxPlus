@@ -1115,21 +1115,114 @@ void main() {
     },
   );
 
-  test('a missing reply target keeps the failed message without sending plain text', () async {
-    await seed(firstRoute);
-    final engine = _FakeEngine();
-    final app = await start(engine: engine);
-    app.setReplyTo(firstRoute, 'missing');
-    app.updateDraft(firstRoute, 'Keep this reply');
-    await app.sendDraft(firstRoute);
-    expect(engine.sends, isEmpty);
-    final failed = (await store.loadPendingSends()).single;
-    expect(failed.body, 'Keep this reply');
-    expect(failed.replyToMessageId, 'missing');
-    expect(failed.status, PendingSendStatus.failed);
-    expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
-    expect(app.error, contains('reply target'));
-  });
+  test(
+    'a missing reply target restores the message and attachment for editing',
+    () async {
+      await seed(firstRoute);
+      final engine = _FakeEngine();
+      final app = await start(engine: engine);
+      const attachment = AttachmentRecord(id: 'photo', kind: 'image');
+      await store.saveDraft(
+        firstRoute,
+        'Keep this reply',
+        replyToMessageId: 'missing',
+        attachments: [attachment],
+      );
+      await app.sendDraft(firstRoute);
+      expect(engine.sends, isEmpty);
+      expect(await store.loadPendingSends(), isEmpty);
+      expect(app.draftFor(firstRoute)?.body, 'Keep this reply');
+      expect(app.draftFor(firstRoute)?.attachments.single.id, 'photo');
+      expect(app.draftFor(firstRoute)?.replyToMessageId, isNull);
+      expect(app.error, contains('reply target'));
+      app.removeDraftAttachment(firstRoute, 'photo');
+      await app.sendDraft(firstRoute);
+      expect(engine.sends.single['body'], 'Keep this reply');
+    },
+  );
+
+  test(
+    'reply recovery preserves a newer draft until the composer is empty',
+    () async {
+      await seed(firstRoute);
+      await store.saveDraft(
+        firstRoute,
+        'Original reply',
+        replyToMessageId: 'missing',
+      );
+      await store.enqueueDraft(firstRoute, sendId: 'missing-reply');
+      await store.saveDraft(firstRoute, 'Newer draft');
+      final engine = _FakeEngine();
+      final app = await start(engine: engine);
+      await app.whenIdle();
+      expect(engine.sends, isEmpty);
+      expect(app.draftFor(firstRoute)?.body, 'Newer draft');
+      expect(
+        (await store.loadPendingSends()).single.status,
+        PendingSendStatus.failed,
+      );
+      app.updateDraft(firstRoute, '');
+      await app.retryMessage(firstRoute, 'missing-reply');
+      expect(app.draftFor(firstRoute)?.body, 'Original reply');
+      expect(app.draftFor(firstRoute)?.replyToMessageId, isNull);
+      expect(await store.loadPendingSends(), isEmpty);
+    },
+  );
+
+  for (final problem in [
+    'missing path',
+    'outside profile',
+    'deleted file',
+    'oversized',
+  ]) {
+    test(
+      'attachment validation marks $problem as failed and allows retry',
+      () async {
+        await seed(firstRoute);
+        final engine = _FakeEngine();
+        final app = await start(engine: engine);
+        final file = File('${directory.path}/staging/photo.jpg');
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes([1]);
+        if (problem == 'deleted file') await file.delete();
+        if (problem == 'oversized') {
+          final handle = await file.open(mode: FileMode.write);
+          await handle.truncate(32 * 1024 * 1024 + 1);
+          await handle.close();
+        }
+        await store.saveDraft(
+          firstRoute,
+          'Attachment',
+          attachments: [
+            AttachmentRecord(
+              id: 'photo',
+              kind: 'image',
+              localPath: problem == 'missing path'
+                  ? null
+                  : problem == 'outside profile'
+                  ? directory.parent.path
+                  : file.path,
+            ),
+          ],
+        );
+        await app.sendDraft(firstRoute);
+        expect(engine.sends, isEmpty);
+        final failed = (await store.loadPendingSends()).single;
+        expect(failed.status, PendingSendStatus.failed);
+        expect(
+          app.messagesFor(firstRoute).single.deliveryState,
+          DeliveryState.failed,
+        );
+        expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
+        if (problem == 'deleted file' || problem == 'oversized') {
+          await file.writeAsBytes([1, 2]);
+          await app.retryMessage(firstRoute, failed.id);
+          expect(engine.sends.single['body'], 'Attachment');
+          expect(await store.loadPendingSends(), isEmpty);
+        }
+      },
+    );
+  }
 
   for (final previewFails in [false, true]) {
     test(

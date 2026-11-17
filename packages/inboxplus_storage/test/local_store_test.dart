@@ -111,6 +111,117 @@ void main() {
   );
 
   test(
+    'reply recovery is atomic and refuses newer drafts or uncertain sends',
+    () async {
+      await seed(route);
+      const attachment = AttachmentRecord(id: 'photo', kind: 'image');
+      await store!.saveDraft(
+        route,
+        'Recover me',
+        replyToMessageId: 'missing',
+        attachments: [attachment],
+      );
+      await store!.enqueueDraft(route, sendId: 'reply');
+      final empty = (await store!.loadDraft(route))!;
+      await store!.saveDraft(route, 'Newer');
+      expect(await store!.restorePendingReply('reply'), isNull);
+      expect((await store!.loadDraft(route))!.body, 'Newer');
+      expect(await store!.loadPendingSends(), hasLength(1));
+      await store!.saveDraft(route, '', replyToMessageId: 'new-target');
+      expect(await store!.restorePendingReply('reply'), isNull);
+      await store!.clearDraft(
+        route,
+        expectedRevision: (await store!.loadDraft(route))!.revision,
+      );
+      await store!.saveDraft(route, '', attachments: [attachment]);
+      expect(await store!.restorePendingReply('reply'), isNull);
+      await store!.saveDraft(route, '');
+      await store!.savePendingSendStatus('reply', PendingSendStatus.unknown);
+      expect(await store!.restorePendingReply('reply'), isNull);
+      await store!.savePendingSendStatus('reply', PendingSendStatus.failed);
+      final restored = (await store!.restorePendingReply('reply'))!;
+      expect(restored.body, 'Recover me');
+      expect(restored.replyToMessageId, isNull);
+      expect(restored.attachments.single.id, 'photo');
+      expect(restored.revision, greaterThan(empty.revision));
+      await reopen();
+      expect(await store!.loadPendingSends(), isEmpty);
+      expect((await store!.loadDraft(route))!.body, 'Recover me');
+      expect((await store!.loadDraft(route))!.attachments.single.id, 'photo');
+    },
+  );
+
+  test('schema seven clears only drafts captured by pending sends', () async {
+    final statuses = [
+      PendingSendStatus.queued,
+      PendingSendStatus.failed,
+      PendingSendStatus.unknown,
+    ];
+    for (final status in statuses) {
+      final target = ConversationRoute(status.name, 'chat');
+      await seed(target);
+      await store!.saveDraft(
+        target,
+        'Captured',
+        replyToMessageId: 'original',
+        attachments: [const AttachmentRecord(id: 'photo', kind: 'image')],
+      );
+      await store!.enqueueDraft(target, sendId: status.name);
+      await store!.savePendingSendStatus(status.name, status);
+    }
+    await seed(route);
+    await store!.saveDraft(route, 'Older');
+    await store!.enqueueDraft(route, sendId: 'newer');
+    final newer = await store!.saveDraft(
+      route,
+      'Newer',
+      replyToMessageId: 'keep',
+    );
+    const other = ConversationRoute('queued', 'other-chat');
+    await seed(other);
+    await store!.saveDraft(other, 'Unrelated');
+    await store!.close();
+    store = null;
+    final raw = sqlite.sqlite3.open(file.path);
+    final hex = key.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    raw.execute("PRAGMA cipher = 'chacha20'");
+    raw.execute("PRAGMA key = 'raw:$hex'");
+    for (final status in statuses) {
+      raw.execute(
+        "UPDATE drafts SET body = 'Captured', revision = 1, reply_to_message_id = 'original', attachments_json = (SELECT attachments_json FROM pending_sends WHERE id = ?) WHERE account_id = ? AND conversation_id = 'chat'",
+        [status.name, status.name],
+      );
+    }
+    raw.execute('PRAGMA user_version = 7');
+    raw.close();
+    store = await LocalStore.open(file: file, key: key);
+    for (final status in statuses) {
+      final draft = (await store!.loadDraft(
+        ConversationRoute(status.name, 'chat'),
+      ))!;
+      expect(draft.body, isEmpty);
+      expect(draft.revision, 2);
+      expect(draft.attachments, isEmpty);
+      expect(draft.replyToMessageId, isNull);
+    }
+    expect((await store!.loadDraft(route))!.revision, newer.revision);
+    expect((await store!.loadDraft(route))!.body, 'Newer');
+    expect((await store!.loadDraft(route))!.replyToMessageId, 'keep');
+    expect((await store!.loadDraft(other))!.body, 'Unrelated');
+    final pending = await store!.loadPendingSends();
+    expect(pending, hasLength(4));
+    for (final status in statuses) {
+      final send = pending.singleWhere((s) => s.id == status.name);
+      expect(send.status, status);
+      expect(send.body, 'Captured');
+      expect(send.attachments.single.id, 'photo');
+      expect(send.replyToMessageId, 'original');
+    }
+    await reopen();
+    expect((await store!.loadDraft(route))!.body, 'Newer');
+  });
+
+  test(
     'schema six upgrade preserves conversations and drafts with empty avatar fields',
     () async {
       await seed(route);
