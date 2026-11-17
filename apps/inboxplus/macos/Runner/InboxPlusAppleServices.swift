@@ -243,7 +243,11 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             guard let source = arguments["avatar_source"] as? String,
                   let id = IMessageContactBook.photoID(fromAvatarSource: source) else { return result(Self.failure("invalid_request")) }
             Task { @MainActor in
-                result(FlutterStandardTypedData(bytes: await SystemContactSource().thumbnailImageData(forContactID: id)))
+                do {
+                    result(FlutterStandardTypedData(bytes: try await SystemContactSource().thumbnailImageData(forContactID: id)))
+                } catch {
+                    result(Self.failure("contact_photo_unavailable"))
+                }
             }
         case "imessageSnapshot", "imessageSend", "imessageStartConversation", "imessageMarkRead", "imessageDisconnect":
             handleIMessage(call.method, arguments: arguments, result: result)

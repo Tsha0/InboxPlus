@@ -34,13 +34,12 @@ public struct SystemContactSource: IMessageContactSource {
         }
     }
 
-    /// A saved photo sized for a list row, or empty data when there is none to show.
-    public func thumbnailImageData(forContactID id: String) async -> Data {
-        guard let store = await authorizedStore(),
-              let contact = try? store.unifiedContact(
-                  withIdentifier: id, keysToFetch: [CNContactThumbnailImageDataKey as CNKeyDescriptor]
-              )
-        else { return Data() }
+    /// A saved photo sized for a list row, or empty data when the contact has none.
+    public func thumbnailImageData(forContactID id: String) async throws -> Data {
+        guard let store = await authorizedStore() else { throw CNError(.authorizationDenied) }
+        let contact = try store.unifiedContact(
+            withIdentifier: id, keysToFetch: [CNContactThumbnailImageDataKey as CNKeyDescriptor]
+        )
         return contact.thumbnailImageData ?? Data()
     }
 
