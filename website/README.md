@@ -51,7 +51,7 @@ Demo replies live only in memory in the current tab. Nothing is sent or persiste
 The preview is an illustration of the native app, not a running messaging client.
 Keep supported networks, requirements, and early-release notes aligned with the main
 repository README. The **Download the app** menu's Mac option asks the GitHub API for the latest
-release and links straight to its `InboxPlus-*.zip` asset, falling back to the latest release page.
+release and links straight to its `InboxPlus-*.dmg` installer, falling back to the latest release page.
 Windows and Linux stay marked as coming soon until those releases exist.
 
 The first screen starts in Classic monochrome. Scrolling blends through Grape Soda,

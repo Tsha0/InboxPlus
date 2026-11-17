@@ -56,6 +56,8 @@ jobs:
       - name: Prepare verified updater artifact
         run: python3 Scripts/verify-media-artifacts.py --platform sparkle --cache-dir "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
       - name: Verify packaging and updater
+        env:
+          INBOXPLUS_TEST_DMG: '1'
         run: |
           python3 -m unittest discover -s Tests/Packaging -v
           swift test --package-path native/updates --force-resolved-versions

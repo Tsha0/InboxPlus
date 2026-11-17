@@ -282,13 +282,14 @@ The single [CI workflow](.github/workflows/ci.yml) defines these jobs:
 | **Generated files / macOS** | The macOS app icon matches its source |
 | **Messages adapter** | Swift tests for the local macOS Messages adapter |
 | **Updater** | Swift tests for the macOS updater |
-| **Packaging checks / Linux, Windows, macOS** | Common fixtures on Linux, Windows filesystem behavior and macOS icon fixtures |
+| **Packaging checks / Linux, Windows, macOS** | Common fixtures on Linux, Windows filesystem behavior, macOS icons and a real Finder DMG fixture |
 | **Platform tests and builds / macOS, Linux, Windows** | Go, storage, Flutter and real connector smoke tests, native builds and verified development archives |
 | **Platform tests and builds / iOS** | Unsigned App Store archive with connector symbols, privacy manifest and pubspec version verified |
 | **Platform tests and builds / Android** | Deferred release APK build; manual opt-in only |
 | **CI passed** | Every selected job succeeded and all other jobs were intentionally skipped |
 
 Documentation and website changes run change detection, Lint's whitespace check and **CI passed**.
+The website's Bricolage font also feeds the DMG artwork, so changing it selects macOS checks.
 Shared Dart, storage, connector, asset and packaging inputs affect every consuming platform;
 platform runner changes affect that platform. Unknown inputs conservatively select every platform.
 Native jobs wait for their relevant fast checks. Each desktop has an independent job: macOS
@@ -332,7 +333,10 @@ The manual [macOS release workflow](.github/workflows/macos-release.yml) builds 
 tag and attaches signed archives, checksums, SBOM and appcast to a draft GitHub Release. It preserves
 the shipped 0.8.5 feed, public update key and application identity, and checks the signing
 requirement for its signing mode. Production
-packaging uses `Scripts/package-macos-release.py`; ordinary Flutter builds keep updates disabled.
+packaging uses `Scripts/package-macos-release.py`, producing a drag-to-Applications DMG for new
+installations and a signed ZIP for Sparkle. DMG layout creation needs a logged-in macOS desktop
+session with Finder automation permission; its optional fixture check is in
+[macOS updates](docs/updates.md#verification-before-publishing). Ordinary Flutter builds keep updates disabled.
 See [macOS updates](docs/updates.md) for credentials, local commands and the required two-version
 installation test. Publishing the reviewed stable release triggers
 [feed publication](.github/workflows/update-feed.yml); it refuses stale or rewritten feed entries.

@@ -619,7 +619,7 @@ document.addEventListener("keydown", (event) => {
 fetch("https://api.github.com/repos/Tsha0/InboxPlus/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
   .then((response) => (response.ok ? response.json() : null))
   .then((release) => {
-    const asset = release?.assets.find((item) => /^InboxPlus-.+\.zip$/.test(item.name));
+    const asset = release?.assets.find((item) => /^InboxPlus-.+\.dmg$/.test(item.name));
     if (!asset) return;
     for (const link of document.querySelectorAll("[data-mac-download]")) link.href = asset.browser_download_url;
   })
