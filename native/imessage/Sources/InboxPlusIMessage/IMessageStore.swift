@@ -78,12 +78,14 @@ public final class IMessageStore {
 
     public init(url: URL = IMessageStore.defaultDatabaseURL) throws {
         self.url = url
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            throw IMessageStoreError.databaseMissing(url.path)
-        }
         // The only honest test for Full Disk Access is to attempt the read it gates; macOS exposes
-        // no API that answers the question directly.
-        guard (try? FileHandle(forReadingFrom: url)) != nil else {
+        // no API that answers the question directly. Only "no such file" means Messages is not set
+        // up, so a blocked lookup is never mistaken for a missing database.
+        do {
+            _ = try FileHandle(forReadingFrom: url)
+        } catch CocoaError.fileReadNoSuchFile, CocoaError.fileNoSuchFile {
+            throw IMessageStoreError.databaseMissing(url.path)
+        } catch {
             throw IMessageStoreError.fullDiskAccessRequired(url.path)
         }
 
