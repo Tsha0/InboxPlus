@@ -169,7 +169,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
 .demo-search input { width: 100%; min-width: 0; padding: 4px 0; border: 0; outline: 0; background: transparent; color: var(--app-text); font-size: 10px; }
 .demo-search:focus-within { outline: 2px solid var(--app-accent); outline-offset: 1px; }
 .demo-search input::placeholder { color: var(--app-muted); opacity: 1; }
-.inbox-filters { display: flex; gap: 5px; margin: 0 6px 15px; }
+.inbox-filters { display: flex; gap: 8px; margin: 0 6px 15px; }
 .inbox-filters button { min-height: 29px; padding: 5px 10px; border-radius: 20px; font-size: 10px; }
 .inbox-filters button.is-active { background: var(--app-wash); font-weight: 600; }
 .conversation-list { display: flex; flex-direction: column; gap: 3px; }
@@ -227,7 +227,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
 .demo-bottom { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 25px; }
 .demo-disclaimer { color: var(--scene-muted); font-size: 10px; line-height: 1.7; }
 .demo-disclaimer span { font-size: 9px; }
-.theme-picker { position: relative; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin: 0; }
+.theme-picker { position: relative; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; }
 .theme-picker legend { float: left; margin: 0 9px 0 0; padding: 0; font-size: 11px; line-height: 36px; }
 .theme-swatch { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid transparent; border-radius: 50%; }
 .theme-swatch > span { position: relative; width: 22px; height: 22px; overflow: hidden; border: 1px solid #2424241c; border-radius: 50%; background: var(--swatch); transform: rotate(-35deg); }
@@ -293,7 +293,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
 .journey-hint { margin-left: 5px; color: var(--scene-muted); font-size: 9px; opacity: calc(1 - var(--color-progress)); }
 .palette-picker { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 29px 0 0; }
 .palette-picker legend { float: left; margin-right: 8px; padding: 0; font-size: 11px; line-height: 34px; }
-#palette-options { display: flex; align-items: center; gap: 5px; }
+#palette-options { display: flex; align-items: center; gap: 13px; }
 .palette-swatch { display: grid; width: 31px; height: 31px; place-items: center; border: 1px solid transparent; border-radius: 50%; }
 .palette-swatch > span { width: 21px; height: 21px; border: 1px solid #00000020; border-radius: 50%; background: linear-gradient(135deg, var(--palette-background) 50%, var(--palette-logo) 50%); transition: transform .2s; }
 .palette-swatch:hover > span { transform: rotate(75deg); }
@@ -302,6 +302,9 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
 .surprise-theme { display: flex; align-items: center; gap: 7px; min-height: 34px; font-size: 10px; }
 .surprise-theme > span { font-size: 21px; }
 .surprise-theme:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* An invisible layer grows small controls to a 44×44 touch area without enlarging what is drawn. */
+.network-pill, .inbox-filters button, .demo-composer button, .theme-swatch, .palette-swatch, .surprise-theme { position: relative; }
+.network-pill::before, .inbox-filters button::before, .demo-composer button::before, .theme-swatch::before, .palette-swatch::before, .surprise-theme::before { content: ""; position: absolute; inset: min(0px, (100% - 44px) / 2); }
 .mac-hello { position: absolute; top: 60px; left: 20px; width: calc(100% - 25px); max-width: 380px; height: 260px; border-radius: 20px; transform: rotate(-7deg); }
 .mac-hello:focus-visible { outline-offset: 10px; }
 .mac-hello:hover ~ .little-bubble { rotate: -3deg; }
@@ -479,7 +482,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .postcard > span { font-size: 19px; }
   .demo-composer { margin-inline: 14px; }
   .demo-note { display: none; }
-  .theme-picker { gap: 2px; }
+  .theme-picker { gap: 12px; }
   .theme-picker legend { margin-right: 4px; font-size: 10px; }
   .theme-swatch { width: 32px; height: 32px; }
   .theme-picker output { min-width: 59px; font-size: 9px; }
@@ -553,7 +556,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .eyebrow { font-size: 9px; }
   .section-heading h2 { margin-top: 21px; font-size: 47px; }
   .section-heading > p:last-child { margin-top: 18px; font-size: 12px; }
-  .network-picker { gap: 6px; margin: 28px auto 27px; }
+  .network-picker { gap: 8px 6px; margin: 28px auto 27px; }
   .network-pill { min-height: 37px; padding: 8px 11px; gap: 6px; font-size: 10px; }
   .network-pill img { width: 14px; height: 14px; }
   .network-count { width: 15px; height: 15px; font-size: 8px; }
@@ -598,7 +601,6 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .demo-composer input { font-size: 16px; }
   .demo-bottom { flex-direction: column-reverse; gap: 17px; margin-top: 20px; text-align: center; }
   .theme-picker legend { margin-right: 8px; font-size: 10px; }
-  .theme-picker { gap: 4px; }
   .theme-picker output { min-width: 60px; text-align: left; }
   .demo-disclaimer { font-size: 9px; }
   .network-note { margin-top: 22px; }
@@ -634,7 +636,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .site-footer > div { gap: 24px; }
   .journey-caption { left: 22px; bottom: 18px; font-size: 9px; }
   .journey-hint { font-size: 8px; }
-  .palette-picker { gap: 5px 9px; flex-wrap: wrap; margin-top: 24px; }
+  .palette-picker { gap: 12px 9px; flex-wrap: wrap; margin-top: 24px; }
   .palette-picker legend { float: none; margin: 0 0 8px; font-size: 11px; line-height: 1.4; text-align: center; }
   #palette-name { min-width: 61px; font-size: 9px; }
   .surprise-theme { font-size: 9px; }
@@ -652,7 +654,6 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .hero-tagline { font-size: 35px; }
   .hero { min-height: 730px; }
   .network-pill { padding-inline: 9px; font-size: 9px; }
-  .theme-picker { gap: 1px; }
   .theme-picker legend { margin-right: 3px; font-size: 9px; }
   .theme-picker output { min-width: 55px; }
   .privacy h2 { font-size: 51px; }
