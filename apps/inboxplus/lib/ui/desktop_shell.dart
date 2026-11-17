@@ -296,6 +296,7 @@ class _DesktopHomeState extends State<_DesktopHome> {
   final _searchFocus = FocusNode();
   final _feedback = FeedbackForm();
   final _feedbackCapture = GlobalKey();
+  bool _feedbackOpen = false;
   final _networks = <String>{};
   bool _unreadOnly = false;
   bool _unknownOnly = false;
@@ -360,14 +361,22 @@ class _DesktopHomeState extends State<_DesktopHome> {
     }
   }
 
-  Future<void> _sendFeedback() => showDialog<void>(
-    context: context,
-    builder: (_) => FeedbackDialog(
-      controller: controller,
-      form: _feedback,
-      captureBoundary: _feedbackCapture,
-    ),
-  );
+  Future<void> _sendFeedback() async {
+    if (_feedbackOpen) return;
+    _feedbackOpen = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (_) => FeedbackDialog(
+          controller: controller,
+          form: _feedback,
+          captureBoundary: _feedbackCapture,
+        ),
+      );
+    } finally {
+      _feedbackOpen = false;
+    }
+  }
 
   void _sectionChanged(_Section section) {
     setState(() => _section = section);

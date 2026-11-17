@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { handleFeedback } from "../../website/api/feedback.mjs";
 
 const env = {
+  FEEDBACK_DISABLED: "0",
   FEEDBACK_GITHUB_ISSUES_TOKEN: "issues-token-secret",
   FEEDBACK_GITHUB_MEDIA_TOKEN: "media-token-secret",
   FEEDBACK_MEDIA_REPO: "Tsha0/InboxPlus-feedback-media",
@@ -216,6 +217,18 @@ test("text at the length limit and the largest image are accepted", async () => 
   assert.equal(response.status, 200);
 });
 
+for (const character of ["😀", "𠀀", "e\u0301", "👨‍👩‍👧‍👦"]) {
+  test(`text limit counts grapheme clusters for ${character}`, async () => {
+    for (const text of ["x".repeat(4999) + character, character.repeat(5000)]) {
+      const { response } = await post(request({ text }));
+      assert.equal(response.status, 200);
+    }
+    const { response, calls } = await post(request({ text: character.repeat(5001) }));
+    assert.equal(response.status, 400);
+    assert.equal(calls.length, 0);
+  });
+}
+
 const rejections = [
   ["malformed JSON", "{", 400],
   ["a JSON array", "[]", 400],
@@ -268,6 +281,18 @@ test("FEEDBACK_DISABLED turns every kind away with 503", async () => {
   }
 });
 
+test("relay stays disabled unless explicitly enabled after firewall verification", async () => {
+  for (const value of [undefined, "", "1", "false"]) {
+    for (const kind of ["bug", "feature", "needsWork", "praise"]) {
+      const { response, calls } = await post(request({ kind }), {
+        env: { ...env, FEEDBACK_DISABLED: value },
+      });
+      assert.deepEqual(response, { status: 503, body: { error: "unavailable" } });
+      assert.equal(calls.length, 0);
+    }
+  }
+});
+
 const requiredEnv = [
   ["bug", "FEEDBACK_GITHUB_ISSUES_TOKEN"],
   ["bug", "FEEDBACK_GITHUB_MEDIA_TOKEN"],
@@ -306,7 +331,10 @@ for (const [name, body, failures, status] of upstreamFailures) {
     const logged = log.mock.calls.map((call) => call.arguments.join(" ")).join("\n");
     assert.match(logged, new RegExp(body.kind));
     if (status) assert.match(logged, new RegExp(`HTTP ${status}`));
-    for (const secret of [upstreamSecret, body.text, ...Object.values(env)]) {
+    const privateSettings = Object.entries(env)
+      .filter(([name]) => name !== "FEEDBACK_DISABLED")
+      .map(([, value]) => value);
+    for (const secret of [upstreamSecret, body.text, ...privateSettings]) {
       assert.ok(!logged.includes(secret), "log line holds no upstream body, user text, or env");
       assert.ok(!JSON.stringify(response).includes(secret));
     }

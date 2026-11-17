@@ -82,8 +82,8 @@ cannot hold a GitHub token, so `api/feedback.mjs` holds the secrets and forwards
 | `needsWork` | New issue titled `[Needs work] …` | `external` |
 | `praise` | Email to `FEEDBACK_EMAIL_TO` through Resend | None |
 
-The request body is JSON with `kind`, `text` (1 to 5,000 characters after trimming), `app`
-(`version`, `build`, and `platform`, each up to 32 characters), an optional `diagnostics` object
+The request body is JSON with `kind`, `text` (1 to 5,000 grapheme clusters after trimming, matching
+the app), `app` (`version`, `build`, and `platform`, each up to 32 characters), an optional `diagnostics` object
 of up to 16 KB, and an optional `image`. The image is a base64 PNG of up to 3 MB.
 
 For an issue with a screenshot, the function first commits the PNG to a private media repository
@@ -123,7 +123,7 @@ names only the feedback kind, the failed step, and the upstream HTTP status.
 | `FEEDBACK_RESEND_API_KEY` | Resend API key |
 | `FEEDBACK_EMAIL_TO` | Address that receives praise |
 | `FEEDBACK_EMAIL_FROM` | Optional sender. The default is `Inbox+ Feedback <onboarding@resend.dev>`. |
-| `FEEDBACK_DISABLED` | Optional. Any non-empty value turns the relay off. |
+| `FEEDBACK_DISABLED` | Disabled by default. Only `0` enables delivery; set it only after verifying the firewall rate limit. Missing, empty and all other values return 503. |
 
 The issue kinds need the first three variables. Praise needs `FEEDBACK_RESEND_API_KEY` and
 `FEEDBACK_EMAIL_TO`. If a kind's variables are missing, requests of that kind return 503.
@@ -132,17 +132,19 @@ The issue kinds need the first three variables. Praise needs `FEEDBACK_RESEND_AP
 
 The function has no secrets until the owner completes these steps once.
 
-1. Create a private repository for screenshots, such as `Tsha0/InboxPlus-feedback-media`.
+1. Set `FEEDBACK_DISABLED=1` in the Vercel project’s Production and Preview environments before
+   adding credentials. The code also rejects delivery when this variable is missing.
+2. Create a private repository for screenshots, such as `Tsha0/InboxPlus-feedback-media`.
    Initialize it with a README so that it has a default branch.
-2. Create a fine-grained personal access token for issues. Limit its repository access to
+3. Create a fine-grained personal access token for issues. Limit its repository access to
    `Tsha0/InboxPlus` and grant **Issues: Read and write**. The token's owner needs push access to
    `Tsha0/InboxPlus`. Without push access, GitHub creates the issue but drops the labels.
-3. Create a second fine-grained token for screenshots. Limit its repository access to the media
+4. Create a second fine-grained token for screenshots. Limit its repository access to the media
    repository and grant **Contents: Read and write**.
-4. Create a Resend API key with sending access. With the default sender, `onboarding@resend.dev`,
+5. Create a Resend API key with sending access. With the default sender, `onboarding@resend.dev`,
    Resend delivers only to the email address of the Resend account. To send praise to another
    address, verify a domain in Resend and set `FEEDBACK_EMAIL_FROM` to an address on that domain.
-5. Add each variable to the Vercel project's Production environment as a Secret, which is
+6. Add each variable to the Vercel project's Production environment as a Secret, which is
    write-only after saving. Run this from `website` once per variable, and paste the value when
    prompted:
 
@@ -150,16 +152,19 @@ The function has no secrets until the owner completes these steps once.
    npm exec --yes --package=vercel@65.11.0 -- vercel env add FEEDBACK_GITHUB_ISSUES_TOKEN production --sensitive --scope tsha0s-projects
    ```
 
-6. Deploy with the commands in [Vercel](#vercel). Vercel applies changed environment variables
+7. Deploy with the commands in [Vercel](#vercel). Vercel applies changed environment variables
    only to new deployments.
-7. Confirm the function runs and that Vercel does not serve its source:
+8. Confirm the disabled function runs and that Vercel does not serve its source:
 
    ```bash
    curl -s -X POST https://inboxplus.chat/api/feedback -H 'Content-Type: application/json' -d '{}'
    curl -s -o /dev/null -w '%{http_code}\n' https://inboxplus.chat/api/feedback.mjs
    ```
 
-   The first command prints `{"error":"invalid_request"}`. The second prints `404`.
+   The first command prints `{"error":"unavailable"}` with status 503. The second prints `404`.
+9. Configure and verify the [firewall rate limit](#limit-abuse). Keep `FEEDBACK_DISABLED=1` until
+   this succeeds. Only then set `FEEDBACK_DISABLED=0` in the protected environment and redeploy.
+   Repeating the first command should now return `{"error":"invalid_request"}` with status 400.
 
 Fine-grained tokens expire. Replace each token before its expiry date. An expired issues token
 makes bug, feature, and needs-work reports return 503.
@@ -167,14 +172,24 @@ makes bug, feature, and needs-work reports return 503.
 ### Turn the relay off
 
 Set `FEEDBACK_DISABLED` to `1` in the Vercel project and redeploy. Every request then returns
-503 and the function calls neither GitHub nor Resend. To turn the relay back on, remove the
-variable and redeploy.
+503 and the function calls neither GitHub nor Resend. To turn the relay back on, verify the firewall
+again, then set `FEEDBACK_DISABLED=0` and redeploy.
 
 ### Limit abuse
 
-The function has no rate limiting. Anyone can post to `/api/feedback`, so add a Vercel Firewall
-rate-limit rule for that path. Nobody has yet checked that the project's Vercel plan supports
-such a rule or tested one against this function.
+The function has no in-code rate limiting and stays disabled by default. Before enabling it:
+
+1. Confirm the project's Vercel plan supports a Firewall rate-limit rule, then configure one for
+   `/api/feedback` by client IP, covering POST requests and every deployment that will be enabled.
+2. While `FEEDBACK_DISABLED=1`, send a bounded sequence of empty JSON requests to that path and
+   verify requests over the configured threshold are blocked with 429 in both the response and
+   Firewall events. These probes must not create issues, upload screenshots or send email.
+3. Record the tested deployment, rule, threshold and result in the deployment change before setting
+   `FEEDBACK_DISABLED=0`. Leave Preview disabled unless it has equivalent protection.
+
+No plan support or live rule has been verified yet. If Firewall rate limits are unavailable, keep
+`FEEDBACK_DISABLED=1` until a durable per-IP limiter is implemented and tested before delivery.
+Deleting issues does not reclaim screenshot commits in the media repository.
 
 ### Run the tests
 

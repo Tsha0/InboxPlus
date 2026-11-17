@@ -47,7 +47,9 @@ The P1 severity below applies only to the Code Review Rules, not ordinary style 
 Treat a violation of any rule below as P1.
 
 - Flutter views use `InboxUiController`; the app controller owns state and persistence. Network clients
-  stay in `native/connectors` behind the account-scoped C ABI. The one exception is the feedback relay
+  stay in `native/connectors` behind the account-scoped C ABI. Feedback form text, kind, diagnostics
+  choice, staged screenshot and send phase are an explicit exception to controller-owned state:
+  they stay in widget memory for the current app session. The one network exception is the feedback relay
   client in `apps/inboxplus/lib/feedback_relay.dart`, which holds no account and posts only feedback
   the user sends; every messaging network client still follows this rule. The local macOS Messages
   adapter stays in `native/imessage`; native platform services belong in the Flutter runners.
@@ -59,6 +61,9 @@ Treat a violation of any rule below as P1.
 - Web sign-ins use a non-persistent web view and capture only the credentials the connector declared.
   **Open in app** follows only `https` links on a domain the named platform owns.
 - Installing an update or quitting never discards an unsent draft, staged attachment or pending send.
+  Feedback is an explicit exception: its unsent text, staged screenshot and in-flight submission are
+  temporary and may be lost when quitting or installing an update; they are not persisted or counted
+  by the shutdown guard. Messaging drafts, attachments and sends retain the full guarantee.
   Shutdown never force-kills a database writer or stops a process started outside the app.
 - `com.inboxplus.app`, profile paths and Keychain identifiers stay unchanged between releases. A change to
   a storage or connector-state contract needs a profile migration, and a failed migration never silently

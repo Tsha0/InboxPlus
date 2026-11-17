@@ -14,6 +14,7 @@ import 'package:inboxplus/contact_suggestions.dart';
 import 'package:inboxplus/ui/account_pages.dart'
     show ConnectAccountsDialog, formatByteCount, loginQrImageBytes;
 import 'package:inboxplus/ui/inbox_app.dart';
+import 'package:inboxplus/ui/feedback_dialog.dart';
 import 'package:inboxplus/ui/person_avatar.dart';
 import 'package:inboxplus/ui/contacts_page.dart';
 import 'package:inboxplus/ui/inbox_ui_controller.dart';
@@ -4053,6 +4054,44 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('View on GitHub'), findsNothing);
+    }, variant: macOS);
+
+    testWidgets('native Help menu keeps one feedback dialog during a send', (
+      tester,
+    ) async {
+      final pending = Completer<FeedbackReceipt>();
+      final controller = _FakeController()
+        ..onSendFeedback = (_) => pending.future;
+      await _pumpApp(tester, controller);
+      final bar = tester.widget<PlatformMenuBar>(find.byType(PlatformMenuBar));
+      final help = bar.menus.whereType<PlatformMenu>().singleWhere(
+        (menu) => menu.label == 'Help',
+      );
+      final feedback = help.menus.singleWhere(
+        (item) => item.label == 'Send Feedback…',
+      );
+      feedback.onSelected!();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('feedback-kind-praise')));
+      await tester.enterText(find.byKey(text), 'Love the unified inbox');
+      feedback.onSelected!();
+      await tester.pumpAndSettle();
+      expect(find.byType(FeedbackDialog, skipOffstage: false), findsOneWidget);
+      expect(feedbackText(tester), 'Love the unified inbox');
+      await tester.tap(find.byKey(send));
+      await tester.pump();
+      feedback.onSelected!();
+      await tester.pump();
+      expect(find.byType(FeedbackDialog, skipOffstage: false), findsOneWidget);
+      expect(controller.sentFeedback, hasLength(1));
+      pending.complete(const FeedbackReceipt());
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('feedback-done')));
+      await tester.pumpAndSettle();
+      feedback.onSelected!();
+      await tester.pumpAndSettle();
+      expect(find.byKey(text), findsOneWidget);
+      expect(feedbackText(tester), isEmpty);
     }, variant: macOS);
 
     testWidgets('the Help menu opens the feedback form', (tester) async {

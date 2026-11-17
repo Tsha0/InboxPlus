@@ -42,7 +42,7 @@ const routes = {
 
 export async function handleFeedback({ method, bodyText }, env, fetchImpl) {
   if (method !== "POST") return methodNotAllowed;
-  if (env.FEEDBACK_DISABLED) return unavailable;
+  if (env.FEEDBACK_DISABLED !== "0") return unavailable;
   if (Buffer.byteLength(bodyText) > maxBodyBytes) return tooLarge;
 
   const { feedback, rejection } = parseFeedback(bodyText);
@@ -67,7 +67,8 @@ function parseFeedback(bodyText) {
   }
 
   const text = typeof request.text === "string" ? request.text.trim() : "";
-  if (text.length === 0 || text.length > maxTextLength) return { rejection: invalidRequest };
+  const length = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)].length;
+  if (length === 0 || length > maxTextLength) return { rejection: invalidRequest };
 
   const { app } = request;
   const appFields = ["version", "build", "platform"];
