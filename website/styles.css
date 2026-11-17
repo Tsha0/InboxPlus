@@ -95,14 +95,14 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
 .hero { position: relative; display: flex; flex-direction: column; justify-content: center; min-height: min(900px, 100svh); height: 100svh; max-height: 1080px; padding: 155px 4.5vw 125px; overflow: clip; isolation: isolate; }
 .hero-main { position: relative; z-index: 1; display: grid; grid-template-columns: 1.4fr 1fr; align-items: center; gap: 5vw; width: 100%; max-width: 1600px; margin: 0 auto; }
 .hero-name { position: relative; align-self: center; padding-bottom: 28px; }
-.hero h1 { margin-left: -.035em; font-family: var(--display-font); font-size: clamp(110px, 17.5vw, 290px); font-weight: 700; font-variation-settings: "opsz" 48; letter-spacing: -.055em; line-height: .85; white-space: nowrap; }
+.hero h1 { margin-left: -.035em; font-family: var(--display-font); font-size: clamp(110px, 17.5 * var(--vw, 1vw), 290px); font-weight: 700; font-variation-settings: "opsz" 48; letter-spacing: -.055em; line-height: .85; white-space: nowrap; }
 .hero-plus { display: inline-block; margin-left: .015em; font: inherit; font-weight: 500; letter-spacing: inherit; line-height: inherit; transform: translateY(-.02em); transition: rotate .6s cubic-bezier(.2,.8,.2,1); }
 .hero-plus:hover { rotate: 12deg; }
 .hero-name .eyebrow { position: absolute; left: 0; bottom: -4px; font-size: 10px; letter-spacing: .12em; }
 .hero-copy { padding-top: 4px; }
-.hero-tagline { font-family: var(--display-font); font-size: clamp(32px, 3.65vw, 58px); font-weight: 500; letter-spacing: -.055em; line-height: 1.03; }
+.hero-tagline { font-family: var(--display-font); font-size: clamp(32px, 3.65 * var(--vw, 1vw), 58px); font-weight: 500; letter-spacing: -.055em; line-height: 1.03; }
 .period { color: var(--scene-accent); }
-.hero-description { margin-top: 23px; font-size: clamp(15px, 1.3vw, 19px); letter-spacing: -.025em; line-height: 1.45; }
+.hero-description { margin-top: 23px; font-size: clamp(15px, 1.3 * var(--vw, 1vw), 19px); letter-spacing: -.025em; line-height: 1.45; }
 .hero-download { margin-top: 30px; }
 .hero-main:has(.download-menu.is-open) { z-index: 3; }
 .hero-bottom { position: absolute; z-index: 2; bottom: 63px; left: 36px; right: 36px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
@@ -432,7 +432,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
 @media (max-width: 1200px) {
   .hero { padding-inline: 4vw; }
   .hero-main { gap: 4vw; }
-  .hero-tagline { font-size: 4vw; }
+  .hero-tagline { font-size: calc(4 * var(--vw, 1vw)); }
   .hero-download .button { gap: 9px; padding-inline: 18px; font-size: 13px; }
   .demo-note { left: -7px; top: -20px; font-size: 12px; }
   .demo-note svg { top: 16px; left: 12px; width: 47px; height: 39px; }
@@ -443,7 +443,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
 @media (max-width: 900px) {
   .hero { min-height: 720px; max-height: 1000px; padding-top: 135px; padding-bottom: 140px; }
   .hero-main { grid-template-columns: 1fr; gap: 35px; max-width: 660px; text-align: center; }
-  .hero h1 { font-size: min(28vw, 230px); }
+  .hero h1 { font-size: min(28 * var(--vw, 1vw), 230px); }
   .hero-name { padding-bottom: 25px; }
   .hero-name .eyebrow { left: 0; right: 0; }
   .hero-copy { padding-top: 0; }
@@ -520,7 +520,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .button-small svg { width: 15px; height: 15px; }
   .hero { min-height: 760px; height: 100svh; max-height: 950px; padding: 160px 20px 145px; }
   .hero-main { gap: 38px; transform: translateY(-4px); }
-  .hero h1 { margin-left: -.06em; font-size: 29.5vw; }
+  .hero h1 { margin-left: -.06em; font-size: calc(29.5 * var(--vw, 1vw)); }
   .hero-name { padding-bottom: 25px; }
   .hero-name .eyebrow { bottom: -2px; font-size: 8px; letter-spacing: .12em; }
   .hero-tagline { font-size: 39px; line-height: 1; }
