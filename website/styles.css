@@ -660,6 +660,24 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .mac-illustration { width: 230px; }
 }
 
+@media (orientation: landscape) and (max-width: 900px) and (max-height: 500px) {
+  .hero { min-height: 100svh; height: auto; max-height: none; padding: 84px 4vw 56px; }
+  .hero-main { grid-template-columns: 1.4fr 1fr; gap: 4vw; max-width: none; text-align: left; transform: none; }
+  .hero h1 { margin-left: -.035em; font-size: 17.5vw; }
+  .hero-name .eyebrow { right: auto; }
+  .hero-tagline { font-size: 4vw; }
+  .hero-tagline br, .hero-description br { display: block; }
+  .hero-description { font-size: 14px; }
+  .hero-download .download-options { left: 0; translate: none; }
+  .hero-bottom { display: none; }
+  .floater-instagram { top: 25%; left: 4%; }
+  .floater-whatsapp { top: 24%; right: 3%; }
+  .floater-telegram { top: 44%; right: -15px; }
+  .floater-imessage { bottom: 6%; left: 36%; }
+  .floater-messenger { bottom: 2%; right: 7%; }
+  .star-two { bottom: 18%; left: 3%; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
