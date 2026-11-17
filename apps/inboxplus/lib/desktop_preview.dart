@@ -31,6 +31,41 @@ Future<void> main() async {
         : await File(const String.fromEnvironment('INBOXPLUS_DESKTOP_FIXTURE'))
               .readAsString(),
   ) as Map;
+  final controller = await createPreviewController(fixture);
+  const openConversation = String.fromEnvironment(
+    'INBOXPLUS_PREVIEW_CONVERSATION',
+  );
+  if (openConversation.isNotEmpty) {
+    final separator = openConversation.indexOf('/');
+    controller.selectConversation(
+      ConversationRoute(
+        openConversation.substring(0, separator),
+        openConversation.substring(separator + 1),
+      ),
+    );
+  }
+  AppEnvironment.native.setMethodCallHandler((call) async {
+    if (call.method == 'notificationActivated') {
+      await controller.openPendingNotification();
+      return null;
+    }
+    if (call.method == 'prepareToTerminate') {
+      await controller.close();
+      return true;
+    }
+    if (call.method == 'prepareToClose') {
+      await controller.flushBeforeClose();
+      return true;
+    }
+    return null;
+  });
+  runApp(InboxPlusApp(controller: controller));
+}
+
+Future<AppController> createPreviewController(
+  Map fixture, {
+  DateTime Function()? clock,
+}) async {
   final temporary = await Directory.systemTemp.createTemp(
     'inboxplus-desktop-preview-',
   );
@@ -43,7 +78,7 @@ Future<void> main() async {
     file: File(p.join(directory.path, 'inbox.sqlite')),
     key: Uint8List.fromList(List.generate(32, (index) => index + 1)),
   );
-  final now = DateTime.parse(fixture['referenceTime'] as String);
+  final now = (clock ?? DateTime.now)();
   final remoteMedia = <String, Uint8List>{};
   final platforms = {
     'whatsApp': 'whatsapp',
@@ -186,6 +221,7 @@ Future<void> main() async {
     store: store,
     environment: environment,
     engine: _PreviewEngine(reactionStates, remoteMedia),
+    now: clock,
     nativeCall: (method, arguments) async {
       switch (method) {
         case 'setWindowTheme':
@@ -236,34 +272,7 @@ Future<void> main() async {
     },
   );
   await controller.initialize();
-  const openConversation = String.fromEnvironment(
-    'INBOXPLUS_PREVIEW_CONVERSATION',
-  );
-  if (openConversation.isNotEmpty) {
-    final separator = openConversation.indexOf('/');
-    controller.selectConversation(
-      ConversationRoute(
-        openConversation.substring(0, separator),
-        openConversation.substring(separator + 1),
-      ),
-    );
-  }
-  AppEnvironment.native.setMethodCallHandler((call) async {
-    if (call.method == 'notificationActivated') {
-      await controller.openPendingNotification();
-      return null;
-    }
-    if (call.method == 'prepareToTerminate') {
-      await controller.close();
-      return true;
-    }
-    if (call.method == 'prepareToClose') {
-      await controller.flushBeforeClose();
-      return true;
-    }
-    return null;
-  });
-  runApp(InboxPlusApp(controller: controller));
+  return controller;
 }
 
 class _PreviewSecrets implements SecretStore {
