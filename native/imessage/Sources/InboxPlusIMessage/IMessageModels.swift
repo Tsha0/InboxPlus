@@ -32,6 +32,7 @@ public struct RemoteConversation: Sendable {
     public var unreadCount: Int
     public var isGroup: Bool
     public var isFromUnknownSender: Bool
+    public var avatarSource: String?
 
     public var route: ConversationRoute { .init(accountID: accountID, conversationID: id) }
 
@@ -44,7 +45,8 @@ public struct RemoteConversation: Sendable {
         latestActivity: Date,
         unreadCount: Int,
         isGroup: Bool = false,
-        isFromUnknownSender: Bool = false
+        isFromUnknownSender: Bool = false,
+        avatarSource: String? = nil
     ) {
         self.id = id
         self.accountID = accountID
@@ -55,6 +57,7 @@ public struct RemoteConversation: Sendable {
         self.unreadCount = unreadCount
         self.isGroup = isGroup
         self.isFromUnknownSender = isFromUnknownSender
+        self.avatarSource = avatarSource
     }
 }
 

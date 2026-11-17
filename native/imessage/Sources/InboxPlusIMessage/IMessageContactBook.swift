@@ -18,19 +18,25 @@ public struct IMessageContactBook: IMessageContactSource {
         public let shortName: String
         public let phoneNumbers: [String]
         public let emailAddresses: [String]
+        /// The Contacts identifier of someone saved with a photo.
+        public let photoID: String?
 
         public init(
             name: String,
             shortName: String? = nil,
             phoneNumbers: [String] = [],
-            emailAddresses: [String] = []
+            emailAddresses: [String] = [],
+            photoID: String? = nil
         ) {
             self.name = name
             self.shortName = shortName ?? name
             self.phoneNumbers = phoneNumbers
             self.emailAddresses = emailAddresses
+            self.photoID = photoID
         }
     }
+
+    private static let photoSourcePrefix = "contact:"
 
     private var byPhoneDigits: [String: Contact] = [:]
     private var byEmail: [String: Contact] = [:]
@@ -63,6 +69,15 @@ public struct IMessageContactBook: IMessageContactSource {
         guard !names.isEmpty else { return nil }
         guard names.count > 3 else { return names.joined(separator: ", ") }
         return names.prefix(2).joined(separator: ", ") + " +\(names.count - 2)"
+    }
+
+    func avatarSource(forHandle handle: String) -> String? {
+        contact(forHandle: handle)?.photoID.map { Self.photoSourcePrefix + $0 }
+    }
+
+    public static func photoID(fromAvatarSource source: String) -> String? {
+        guard source.hasPrefix(photoSourcePrefix), source.count > photoSourcePrefix.count else { return nil }
+        return String(source.dropFirst(photoSourcePrefix.count))
     }
 
     func contact(forHandle handle: String) -> Contact? {

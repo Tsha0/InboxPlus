@@ -239,6 +239,12 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
                 case .failed: result(["status": "failed"])
                 }
             }
+        case "imessageContactPhoto":
+            guard let source = arguments["avatar_source"] as? String,
+                  let id = IMessageContactBook.photoID(fromAvatarSource: source) else { return result(Self.failure("invalid_request")) }
+            Task { @MainActor in
+                result(FlutterStandardTypedData(bytes: await SystemContactSource().thumbnailImageData(forContactID: id)))
+            }
         case "imessageSnapshot", "imessageSend", "imessageStartConversation", "imessageMarkRead", "imessageDisconnect":
             handleIMessage(call.method, arguments: arguments, result: result)
         #endif
@@ -630,6 +636,7 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             "identity_id": conversation.identityID, "timestamp": Int64(conversation.latestActivity.timeIntervalSince1970 * 1000),
             "unread_count": conversation.unreadCount, "is_group": conversation.isGroup,
             "is_from_unknown_sender": conversation.isFromUnknownSender,
+            "avatar_source": conversation.avatarSource ?? "",
         ]
     }
 

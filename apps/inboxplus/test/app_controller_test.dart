@@ -218,6 +218,43 @@ void main() {
     },
   );
 
+  test(
+    'iMessage shows the photo saved in Contacts without a connector engine',
+    () async {
+      native.imessageAvailable = true;
+      native.contactPhoto = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+      );
+      native.imessageSnapshot = {
+        'conversations': [
+          {
+            'id': 'local-chat',
+            'title': 'Local fixture',
+            'timestamp': instant.millisecondsSinceEpoch,
+            'avatar_source': 'contact:abc',
+          },
+        ],
+        'messages': [],
+      };
+      final app = await start();
+      await app.beginLogin('imessage');
+      await _eventually(
+        () => app.conversations.single.avatarBytes?.isNotEmpty == true,
+      );
+      expect(
+        native.calls
+            .where((call) => call['method'] == 'imessageContactPhoto')
+            .map((call) => (call['arguments'] as Map)['avatar_source']),
+        ['contact:abc'],
+      );
+      expect(
+        (await store.loadConversations()).single.avatarBytes,
+        app.conversations.single.avatarBytes,
+      );
+      expect(app.error, isNull);
+    },
+  );
+
   test('WhatsApp mobile linking validates and normalizes phone inputs without losing the form', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     final engine = _FakeEngine(connectState: 'started');
@@ -3444,6 +3481,7 @@ class _NativeFixture {
   Map<String, Object?> imessageStartResult = {};
   Map<String, Object?> imessageSnapshot = {'conversations': [], 'messages': []};
   Map<String, Object?> imessageSendResult = {};
+  Uint8List contactPhoto = Uint8List(0);
   final notifications = <Map<String, Object?>>[];
   Object? notificationRoute;
   bool failNotificationRoute = false;
@@ -3495,6 +3533,8 @@ class _NativeFixture {
         return imessageStartResult;
       case 'imessageSend':
         return imessageSendResult;
+      case 'imessageContactPhoto':
+        return contactPhoto;
       case 'webLogin':
         webLoginActive = true;
         return webLoginResponse?.future;

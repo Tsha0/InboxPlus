@@ -2654,16 +2654,22 @@ class AppController extends InboxUiController {
     }
     Uint8List bytes;
     try {
-      final result = await engine!.request({
-        'op': 'download_attachment',
-        'account_id': route.accountId,
-        'id': source,
-      });
-      final encoded = result['bytes'] as String?;
-      if (encoded == null || encoded.length > 3 * 1024 * 1024) {
-        throw const FormatException();
+      if (_accounts[route.accountId]?.platform == 'imessage') {
+        bytes = await _imessage('imessageContactPhoto', {
+          'avatar_source': source,
+        }) as Uint8List;
+      } else {
+        final result = await engine!.request({
+          'op': 'download_attachment',
+          'account_id': route.accountId,
+          'id': source,
+        });
+        final encoded = result['bytes'] as String?;
+        if (encoded == null || encoded.length > 3 * 1024 * 1024) {
+          throw const FormatException();
+        }
+        bytes = base64Decode(encoded);
       }
-      bytes = base64Decode(encoded);
       if (bytes.length > 2 * 1024 * 1024) throw const FormatException();
       if (bytes.isNotEmpty) {
         final codec = await ui.instantiateImageCodec(

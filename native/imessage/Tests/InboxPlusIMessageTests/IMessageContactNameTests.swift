@@ -43,8 +43,10 @@ INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 1), (3, 2), (3, 3
 /// Yesterday, in the nanoseconds since 2001 that Messages writes. Chats quiet for a year are hidden.
 private let recent = Int64((Date().timeIntervalSince1970 - 86_400 - AppleTimestamp.referenceOffset) * 1_000_000_000)
 
-private func snapshot(contacts: any IMessageContactSource) async throws -> MessagingSnapshot {
-    let url = try makeDatabase(namingFixture)
+private func snapshot(
+    contacts: any IMessageContactSource, fixture: String = namingFixture
+) async throws -> MessagingSnapshot {
+    let url = try makeDatabase(fixture)
     defer { cleanUp(url) }
     let gateway = IMessageGateway(store: try IMessageStore(url: url), contacts: contacts, pollInterval: .seconds(3600))
     return try await gateway.loadSnapshot()
@@ -93,6 +95,61 @@ private func titles(_ snapshot: MessagingSnapshot) -> [String: String] {
     let store = try IMessageStore(url: url)
     #expect(try store.participants(inChat: 3) == ["+15550100100", "friend@example.com", "+15550100101"])
     #expect(try store.participants(inChat: 1).isEmpty)
+}
+
+// MARK: - Photos
+
+private let contactsWithPhotos: [IMessageContactBook.Contact] = [
+    .init(name: "Alex Rivera", shortName: "Alex", phoneNumbers: ["(555) 010-0100"], photoID: "alex-card"),
+    .init(name: "Sam Lee", shortName: "Sam", emailAddresses: ["Friend@Example.com"]),
+]
+
+private func avatarSources(_ snapshot: MessagingSnapshot) -> [String: String?] {
+    Dictionary(uniqueKeysWithValues: snapshot.conversations.map { ($0.id, $0.avatarSource) })
+}
+
+@Test func aOneToOneChatShowsThePhotoSavedInContacts() async throws {
+    // Saved under the digits of a group's internal id, which must not give the group a face.
+    let lookalike = IMessageContactBook.Contact(name: "Lookalike", phoneNumbers: ["123456789"], photoID: "lookalike-card")
+    let sources = avatarSources(try await snapshot(contacts: FakeContacts(contacts: contactsWithPhotos + [lookalike])))
+    #expect(sources == [
+        "iMessage;-;+15550100100": "contact:alex-card",
+        "iMessage;-;friend@example.com": nil,
+        "iMessage;+;chat123456789": nil,
+        hexGroupGUID: nil,
+        "iMessage;+;chat987654321": nil,
+    ])
+}
+
+@Test func someoneMissingFromContactsHasNoPhoto() async throws {
+    let sources = avatarSources(try await snapshot(
+        contacts: FakeContacts(contacts: contactsWithPhotos), fixture: strangerFixture
+    ))
+    #expect(sources["iMessage;-;+15550100100"] == "contact:alex-card")
+    #expect(sources["SMS;-;+15550100150"] == .some(nil))
+    #expect(sources["SMS;-;262966"] == .some(nil))
+}
+
+@Test func aStartedConversationShowsThePhotoSavedInContacts() async throws {
+    let url = try makeDatabase(namingFixture)
+    defer { cleanUp(url) }
+    let gateway = IMessageGateway(
+        store: try IMessageStore(url: url), contacts: FakeContacts(contacts: contactsWithPhotos),
+        pollInterval: .seconds(3600)
+    )
+    _ = try await gateway.loadSnapshot()
+    let existing = try await gateway.startConversation(accountID: IMessageGateway.accountID, recipient: "+15550100100")
+    let saved = try await gateway.startConversation(accountID: IMessageGateway.accountID, recipient: "friend@example.com")
+    let stranger = try await gateway.startConversation(accountID: IMessageGateway.accountID, recipient: "+15550100199")
+    #expect(existing.conversation.avatarSource == "contact:alex-card")
+    #expect(saved.conversation.avatarSource == nil)
+    #expect(stranger.conversation.avatarSource == nil)
+}
+
+@Test func onlyAContactsPhotoSourceNamesAContact() {
+    #expect(IMessageContactBook.photoID(fromAvatarSource: "contact:alex-card") == "alex-card")
+    #expect(IMessageContactBook.photoID(fromAvatarSource: "contact:") == nil)
+    #expect(IMessageContactBook.photoID(fromAvatarSource: "avatar:alex-card") == nil)
 }
 
 // MARK: - Unknown senders
