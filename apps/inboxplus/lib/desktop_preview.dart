@@ -13,6 +13,7 @@ import 'app_controller.dart';
 import 'connectors/connector_engine.dart';
 import 'platform/app_environment.dart';
 import 'ui/inbox_app.dart';
+import 'ui/inbox_ui_controller.dart';
 
 Future<void> main() async {
   if (kReleaseMode) {
@@ -233,6 +234,18 @@ Future<void> main() async {
         default:
           return null;
       }
+    },
+    submitFeedback: (draft, diagnostics) async {
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      if (const String.fromEnvironment('INBOXPLUS_PREVIEW_FEEDBACK') ==
+          'fail') {
+        throw FeedbackFailure.unavailable;
+      }
+      return FeedbackReceipt(
+        issueUrl: draft.kind.isPublic
+            ? Uri.parse('https://github.com/Tsha0/InboxPlus/issues/1')
+            : null,
+      );
     },
   );
   await controller.initialize();

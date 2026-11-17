@@ -243,6 +243,10 @@ tests. Do not treat fixture coverage as live-network certification.
 ## Privacy and security
 
 - No operated Inbox+ cloud or host computer. Each device talks directly to the networks it connects.
+  Feedback you choose to send goes through `inboxplus.chat` with your text, the app version and
+  platform, and any screenshot or diagnostics you attach; praise is emailed to the developer and
+  everything else becomes a public GitHub issue. Screenshots go to a private repository that only
+  the developer can open.
 - Credentials and database keys belong in the OS credential store. Diagnostic messages must not
   expose tokens, cookies, message bodies or attachment URLs.
 - Files and directories containing private app data use owner-only access. Cached media is private,

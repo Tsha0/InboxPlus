@@ -100,6 +100,9 @@ When building `lib/desktop_preview.dart` directly, use
 `--dart-define=INBOXPLUS_PREVIEW_NOTIFICATION_STATUS=denied` or `not_determined` to inspect permission
 guidance, or `--dart-define=INBOXPLUS_PREVIEW_NOTIFICATION_SOUND=false` for blocked sounds. These
 fixture values do not read or change the operating system's notification permissions.
+The preview never contacts the feedback relay. **Send feedback** succeeds after a short delay and
+links issue reports to a placeholder GitHub issue. Add `--dart-define=INBOXPLUS_PREVIEW_FEEDBACK=fail`
+to see the relay-unavailable error instead.
 
 Tests use isolated fixtures and do not touch real network accounts. Passing fixtures does not
 certify a network's live login or messaging behavior. Timeouts for real processes must be generous
