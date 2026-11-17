@@ -529,7 +529,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .hero-description br { display: block; }
   .hero-download { margin-top: 24px; }
   .hero-download .button { min-height: 49px; padding-inline: 20px; font-size: 13px; }
-  .hero-copy .requirements { font-size: 9px; }
+  .hero-copy .requirements { font-size: 12px; }
   .hero-bottom { left: 22px; right: 22px; bottom: 61px; }
   .hero-note { font-size: 9px; gap: 7px; }
   .hero-source { display: none; }
@@ -573,12 +573,12 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .inbox-filters { position: absolute; top: 49px; right: 45px; margin: 0; }
   .inbox-filters button { min-height: 26px; font-size: 9px; }
   .conversation-list { flex-direction: row; gap: 5px; overflow-x: auto; margin-inline: -4px; padding: 3px 4px 5px; scrollbar-width: thin; scrollbar-color: #24242425 transparent; }
-  .conversation-row { flex: 0 0 69px; flex-direction: column; justify-content: center; gap: 7px; min-height: 81px; padding: 8px 4px; border: 1px solid transparent; border-radius: 9px; text-align: center; }
+  .conversation-row { flex: 0 0 92px; flex-direction: column; justify-content: center; gap: 7px; min-height: 81px; padding: 8px 4px; border: 1px solid transparent; border-radius: 9px; text-align: center; }
   .conversation-row.is-selected { border-color: #24242417; }
   .row-avatar .avatar { width: 32px; height: 32px; font-size: 15px; }
   .platform-dot { width: 15px; height: 15px; }
   .platform-dot img { width: 9px; height: 9px; }
-  .row-name { max-width: 63px; font-size: 8px; }
+  .row-name { max-width: 84px; font-size: 12px; }
   .row-copy { flex: 0 0 auto; }
   .row-preview, .row-time { display: none; }
   .row-meta { position: absolute; top: 4px; right: 3px; padding: 0; }
@@ -586,12 +586,13 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .empty-conversations { width: 100%; margin: 20px 8px; }
   .chat-pane { height: 405px; }
   .chat-heading { min-height: 63px; padding: 13px 18px; }
-  .chat-heading h3 { font-size: 11px; }
+  .chat-heading h3 { font-size: 15px; }
   .chat-heading .avatar { flex-basis: 30px; width: 30px; height: 30px; font-size: 14px; }
-  .chat-network { font-size: 8px; }
+  .chat-network { font-size: 12px; }
   .chat-messages { gap: 10px; padding: 15px 19px; }
-  .chat-day { margin-bottom: 6px; font-size: 8px; }
-  .message { max-width: 90%; padding: 10px 12px; font-size: 11px; }
+  .chat-day { margin-bottom: 6px; font-size: 12px; }
+  .message { max-width: 90%; padding: 10px 12px; font-size: 15px; }
+  .message-receipt { font-size: 11px; }
   .postcard { width: 184px; height: 85px; }
   .postcard > span { font-size: 19px; }
   .demo-composer { min-height: 41px; margin: 7px 14px 15px; }
@@ -600,9 +601,9 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .theme-picker legend { margin-right: 8px; font-size: 10px; }
   .theme-picker { gap: 4px; }
   .theme-picker output { min-width: 60px; text-align: left; }
-  .demo-disclaimer { font-size: 9px; }
-  .network-note { margin-top: 22px; }
-  .network-note p { font-size: 10px; text-align: left; }
+  .demo-disclaimer, .demo-disclaimer span { font-size: 13px; }
+  .network-note { margin-top: 22px; font-size: 13px; }
+  .network-note p { font-size: 14px; text-align: left; }
   .privacy { grid-template-columns: 1fr; gap: 50px; min-height: 0; padding: 65px 27px 80px; }
   .privacy-copy { text-align: center; }
   .privacy-copy h2 { margin-top: 21px; font-size: 56px; }
@@ -627,8 +628,8 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .closing-star { top: 8px; right: 1px; left: auto; width: 30px; height: 30px; }
   .closing-action { padding-top: 0; }
   .closing-action .button { min-height: 51px; padding-inline: 22px; font-size: 13px; }
-  .closing-action .requirements { margin-top: 13px; font-size: 10px; }
-  .setup-link { font-size: 9px; }
+  .closing-action .requirements { margin-top: 13px; font-size: 12px; }
+  .setup-link { font-size: 12px; }
   .footer-wordmark { margin-top: 58px; margin-bottom: 0; margin-left: -.035em; font-size: 31.5vw; }
   .site-footer { flex-direction: column; justify-content: center; gap: 3px; min-height: 111px; padding: 19px 0 16px; font-size: 9px; }
   .site-footer > div { gap: 24px; }
