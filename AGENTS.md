@@ -2,49 +2,41 @@
 
 ## Development workflow
 
-- Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing code. It owns the shared code-style,
-  verification, generated-file and pull-request workflow for humans and agents.
-- Inspect the relevant implementation and nearby tests before editing. Use the
-  [module overview](README.md#how-it-fits-together) to find the owning target; search source and tests
-  rather than `.build` or packaged output.
-- Keep changes focused on the requested behavior. Reuse established patterns and avoid unrelated
-  refactoring, speculative abstractions or compatibility shims.
-- For a bug fix, reproduce the failure and add a focused regression test when practical. Test feature
-  behavior through existing connector and platform fakes instead of requiring a live account.
-- Use the [verification guide](CONTRIBUTING.md#verification) for the affected change. Report what
-  changed, which checks ran and their results, and any remaining uncertainty. Fixture tests do not
-  establish that a live network works.
-- Do not commit or push unless requested, and never bypass hooks. Preserve unrelated user changes.
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before you change code. It owns scope, code style,
+  verification, generated files and the pull-request workflow for humans and agents.
+- Read the implementation and nearby tests before you edit. Find the owning target in the
+  [module overview](README.md#how-it-fits-together). Search source and tests, not `.build` or
+  packaged output.
+- For a bug fix, reproduce the failure and add a focused regression test when practical. Test
+  through the existing connector and platform fakes, never a live account.
+- Run the checks in the [verification guide](CONTRIBUTING.md#verification). Report what changed,
+  which checks ran with their results, and what is still uncertain.
+- Do not commit or push unless asked, and never bypass hooks. Preserve unrelated user changes.
 
 ## UI findings
 
-Whenever UI exploration reveals an actionable bug, usability or accessibility problem, or worthwhile
-feature gap, follow [Reporting UI findings](CONTRIBUTING.md#reporting-ui-findings). Verify the
-observation, search existing issues and related PRs, and open an issue in `Tsha0/InboxPlus` for each
-distinct new finding without requesting separate approval. After filing, notify the user with a
-one-sentence summary and the issue link; do not repeat the issue description or evidence in chat. Separate
-observations from hypotheses and proposals, use sanitized evidence, and keep the original task's
-scope. Filing an issue does not authorize implementing unrelated changes or taking destructive or
-externally visible actions to reproduce a finding. Report security-sensitive findings privately to
-the user; if filing fails, briefly report the failure and any required user action.
+When UI exploration reveals an actionable bug, a usability or accessibility problem, or a
+worthwhile feature gap, follow [Reporting UI findings](CONTRIBUTING.md#reporting-ui-findings).
 
-Store all issue information in the GitHub issue description, including reproduction steps,
-environment, observations, investigation, acceptance criteria and sanitized evidence. Prefer
-screenshots and visual aids, with brief text explaining what they show. Embed GitHub-hosted
-screenshots and recordings, or inline diagrams, directly in the issue description. Never create local
-files or directories for issue screenshots, recordings, reports, notes or drafts, inside or outside
-the repository.
+- Verify the finding, search existing issues and PRs, and open an issue in `Tsha0/InboxPlus` for
+  each new finding. Do not ask for approval first.
+- Tell the user in one sentence with the issue link. Do not repeat the issue in chat.
+- Keep all evidence in the issue description. Never create local files or directories for it.
+- Report a security-sensitive finding privately to the user.
+- An issue does not authorize an unrelated fix, or a destructive or externally visible action to
+  reproduce the finding.
 
 ## Maintaining these instructions
 
-Record concrete, recurring pitfalls that are not obvious from nearby code. Keep shared style and
-commands in `CONTRIBUTING.md`; add directory-specific instructions only when a component needs them.
-Update existing guidance when its contract changes rather than accumulating contradictory rules.
-The P1 severity below applies only to the Code Review Rules, not ordinary style preferences.
+- Record concrete, recurring pitfalls that nearby code does not make obvious.
+- Shared style and commands live in `CONTRIBUTING.md`. Add directory-specific instructions only
+  when a component needs them.
+- When a contract changes, update the existing guidance. Do not add a rule that contradicts it.
 
 ## Code Review Rules
 
-Treat a violation of any rule below as P1.
+Treat a violation of any rule below as P1. That severity applies only to these rules, not to
+ordinary style preferences.
 
 - Flutter views use `InboxUiController`; the app controller owns state and persistence. Network clients
   stay in `native/connectors` behind the account-scoped C ABI. The local macOS Messages adapter stays

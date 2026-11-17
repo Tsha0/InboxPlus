@@ -31,13 +31,12 @@ Note any verification limited by privacy or side effects.
 
 ## Evidence and related work
 
-Prefer screenshots, recordings or inline diagrams with brief captions. Embed them directly in this
-issue description using GitHub-hosted attachments or inline Markdown. Keep all issue information
-here; do not create local files or directories for it.
+Embed sanitized screenshots, recordings or inline diagrams here, with short captions. Link related
+issues or PRs and say what you searched for duplicates. Keep suspected causes separate from
+observations.
 
-Include sanitized evidence and links to related issues or PRs. State what was searched for duplicates.
-Keep suspected causes separate from observations. Do not include private messages, contact details,
-credentials or attachment URLs. Report security-sensitive findings privately to the maintainer.
+Do not include private messages, contact details, credentials or attachment URLs. Report a
+security-sensitive finding privately to the maintainer.
 
 ## Acceptance criteria
 
