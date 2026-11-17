@@ -141,13 +141,15 @@ class AppEnvironment {
         );
         await _rejectLinks(root);
         final profiles = await _existingProfiles(root);
-        if (requested == null && profiles.length > 1) {
+        final hasDefault = profiles.contains('default');
+        if (requested == null && profiles.length > 1 && !hasDefault) {
           throw const AppStorageException(
             'Several existing profiles were found. Set INBOXPLUS_PROFILE to the profile to open. Your data has been kept.',
           );
         }
         profileName =
-            requested ?? (profiles.isEmpty ? 'default' : profiles.single);
+            requested ??
+            (profiles.isEmpty || hasDefault ? 'default' : profiles.single);
         profile = Directory(p.join(root.path, profileName));
         await _rejectLinks(profile);
         if (await _hasLegacyState(profile)) legacy = profile;

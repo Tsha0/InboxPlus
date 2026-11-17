@@ -175,8 +175,8 @@ changed or their data silently replaced. The encrypted Flutter store is applicat
 not a new reader for Synapse or Matrix SDK database files.
 
 With one existing macOS profile, the app selects it and creates its encrypted store in that
-profile's `flutter` subdirectory. With several profiles, set `INBOXPLUS_PROFILE` explicitly; an
-ambiguous choice stops startup. `INBOXPLUS_RUNTIME_ROOT` can select an existing absolute root.
+profile's `flutter` subdirectory. With several profiles, the app opens `default`. When none is
+named `default`, set `INBOXPLUS_PROFILE` explicitly; an ambiguous choice stops startup. `INBOXPLUS_RUNTIME_ROOT` can select an existing absolute root.
 On other systems, profiles live in the OS application-support directory.
 
 iOS keys use a stable profile identity. When the operating system relocates an app container,
