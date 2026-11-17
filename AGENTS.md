@@ -5,7 +5,7 @@
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) before you change code. It owns scope, code style,
   verification, generated files and the pull-request workflow for humans and agents.
 - Read the implementation and nearby tests before you edit. Find the owning target in the
-  [module overview](README.md#how-it-fits-together). Search source and tests, not `.build` or
+  [repository layout](README.md#repository-layout). Search source and tests, not `.build` or
   packaged output.
 - For a bug fix, reproduce the failure and add a focused regression test when practical. Test
   through the existing connector and platform fakes, never a live account.

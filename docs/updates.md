@@ -1,20 +1,15 @@
 # macOS updates
 
-Production macOS releases update through Sparkle. Development and preview builds do not enable
-updates. The release logic lives in `Scripts/package-macos-release.py`,
+How to release a macOS update. The release scripts are `Scripts/package-macos-release.py`,
 [macos-release.yml](../.github/workflows/macos-release.yml) and
 [update-feed.yml](../.github/workflows/update-feed.yml).
 
 ## Keys and certificates
 
-- Keep the original Sparkle private key. A new key fails the packager's compatibility check, and
-  installed apps would reject its updates.
+- Keep the original Sparkle private key. Installed apps reject updates signed with any other key.
 - Never commit private keys, certificate backups or provisioning profiles.
-- Releases sign with a Developer ID Application certificate from team `36T8WB4DH2`, then notarize
-  and staple the app.
-- The Developer ID provisioning profile grants the keychain group `36T8WB4DH2.com.inboxplus.app`.
-  To create or renew it, add a **Developer ID** profile for the `com.inboxplus.app` App ID in the
-  Apple Developer portal.
+- To create or renew the provisioning profile, add a **Developer ID** profile for the
+  `com.inboxplus.app` App ID in the Apple Developer portal.
 
 ## GitHub Actions settings
 
@@ -38,15 +33,12 @@ GitHub Pages must use **GitHub Actions** as its publishing source.
 
 1. Raise `version:` in `apps/inboxplus/pubspec.yaml`. The build number must be greater than every
    published build. Regenerate the SBOM and notices.
-2. After the change merges, push the matching tag. `v0.9.1` releases `0.9.1+115`. The tag also
-   starts the iOS TestFlight workflow.
-3. Run **macOS release** with that tag. It attaches the ZIP, SBOM, appcast and checksums to a
-   draft GitHub Release.
+2. After the change merges, push the matching tag. `v0.9.1` releases `0.9.1+115`.
+3. Run **macOS release** with that tag. It creates a draft GitHub Release.
 4. Run the [installed-update test](#test-an-installed-update) with the draft's ZIP.
-5. Review the draft and publish it as a stable release. **Publish update feed** then deploys the
-   appcast.
+5. Review the draft and publish it as a stable release.
 
-If **Publish update feed** did not start, run it manually with the published tag.
+If **Publish update feed** did not start after you published, run it manually with the tag.
 
 ## Test an installed update
 
@@ -76,21 +68,16 @@ python3 Scripts/package-macos-release.py --previous-feed build/previous-appcast.
 ```
 
 - Use Python 3.12 with the pinned Flutter and Go toolchains on `PATH`.
-- `self-signed` builds are not notarized, and each new build asks again for Keychain access to
-  every saved secret. Use `developer-id` for anything you hand to someone else.
-- For `developer-id`, also set `INBOXPLUS_NOTARY_PROFILE` to a configured `notarytool` profile and
+- Use `developer-id` for any build you hand to someone else. Then also set
+  `INBOXPLUS_NOTARY_PROFILE` to a configured `notarytool` profile and
   `INBOXPLUS_PROVISIONING_PROFILE` to the `.provisionprofile` path.
-- Sparkle reads its private key from Keychain, or from the file that
-  `INBOXPLUS_SPARKLE_PRIVATE_KEY_FILE` names.
+- `INBOXPLUS_SPARKLE_PRIVATE_KEY_FILE` names a key file if the Sparkle key is not in Keychain.
 - `INBOXPLUS_RELEASE_NOTES_FILE` optionally supplies an HTML fragment for the update notes.
-- The local packager never uploads artifacts or publishes the feed.
 
 ## Verify before publishing
 
 - Run the packaging suite, `swift test --package-path native/updates --force-resolved-versions`,
   Flutter analysis and tests, and a native macOS release build.
-- Extract the release ZIP. It must have `Inbox+.app` at its root, keep framework symlinks and
-  executable permissions, and pass strict code-signature checks, notarization, stapling and
-  Gatekeeper assessment.
-- A development build or a fixture suite does not prove production signing or a working update.
-  Only the signed release and the installed-update test do.
+- Extract the release ZIP. Check that `Inbox+.app` is at its root and that it passes strict
+  code-signature checks, notarization, stapling and Gatekeeper assessment.
+- Only the signed release and the installed-update test prove that an update works.
