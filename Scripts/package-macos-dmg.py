@@ -41,6 +41,15 @@ end run
 '''
 
 
+def detach(device):
+    for attempt in range(5):
+        if subprocess.run(["hdiutil", "detach", device], timeout=120).returncode == 0:
+            return
+        if attempt < 4:
+            time.sleep(2)
+    subprocess.run(["hdiutil", "detach", "-force", device], check=True, timeout=120)
+
+
 def create(app, output):
     if output.exists():
         raise ValueError("The disk image already exists; use a fresh output path")
@@ -75,8 +84,14 @@ def create(app, output):
             subprocess.run(["sync"], check=True, timeout=30)
             if not (mount / ".DS_Store").is_file():
                 raise ValueError("Finder did not save the installer layout")
-        finally:
-            subprocess.run(["hdiutil", "detach", device], check=True, timeout=120)
+        except BaseException as error:
+            try:
+                detach(device)
+            except (OSError, subprocess.SubprocessError) as cleanup_error:
+                error.add_note(f"Installer volume cleanup also failed: {cleanup_error}")
+            raise
+        else:
+            detach(device)
         subprocess.run(["hdiutil", "convert", str(writable), "-format", "UDZO", "-o", str(output)],
                        check=True, timeout=300)
         subprocess.run(["hdiutil", "verify", str(output)], check=True, timeout=120)

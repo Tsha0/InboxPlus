@@ -44,6 +44,45 @@ class MacOSDiskImageTests(unittest.TestCase):
                 dmg.create(self.directory, self.output)
             run.assert_not_called()
 
+    def test_busy_volume_is_retried_without_forcing_a_successful_detach(self):
+        with patch.object(dmg.subprocess, "run", side_effect=[
+            subprocess.CompletedProcess([], 1), subprocess.CompletedProcess([], 0),
+        ]) as run, patch.object(dmg.time, "sleep") as sleep:
+            dmg.detach("/dev/fixture")
+        self.assertEqual([call.args[0] for call in run.call_args_list], [
+            ["hdiutil", "detach", "/dev/fixture"], ["hdiutil", "detach", "/dev/fixture"],
+        ])
+        sleep.assert_called_once_with(2)
+
+    def test_persistently_busy_volume_is_forced_only_after_bounded_retries(self):
+        with patch.object(dmg.subprocess, "run", side_effect=[
+            *[subprocess.CompletedProcess([], 1) for _ in range(5)],
+            subprocess.CompletedProcess([], 0),
+        ]) as run, patch.object(dmg.time, "sleep") as sleep:
+            dmg.detach("/dev/fixture")
+        self.assertEqual(run.call_count, 6)
+        self.assertEqual(run.call_args.args[0], ["hdiutil", "detach", "-force", "/dev/fixture"])
+        self.assertEqual(sleep.call_count, 4)
+
+    def test_cleanup_failure_does_not_replace_the_layout_error(self):
+        layout_error = subprocess.CalledProcessError(1, ["osascript"])
+        cleanup_error = subprocess.CalledProcessError(1, ["hdiutil", "detach", "-force"])
+
+        def run(command, **kwargs):
+            if command[0] == "osascript":
+                raise layout_error
+            return subprocess.CompletedProcess(command, 0, stdout=plistlib.dumps({
+                "system-entities": [{"dev-entry": "/dev/fixture", "mount-point": "/fixture"}],
+            }))
+
+        with patch.object(dmg.subprocess, "run", side_effect=run), \
+                patch.object(dmg, "detach", side_effect=cleanup_error):
+            with self.assertRaises(subprocess.CalledProcessError) as raised:
+                dmg.create(self.app, self.output)
+        self.assertIs(raised.exception, layout_error)
+        self.assertIn("cleanup also failed", layout_error.__notes__[0])
+        self.assertFalse(self.output.exists())
+
     def test_layout_failure_detaches_the_owned_volume_without_creating_an_image(self):
         calls = []
 
@@ -121,7 +160,7 @@ end run
 ''')
             self.assertEqual(layout.stdout.strip(), "112, 210, 228, 490, 228")
         finally:
-            subprocess.run(["hdiutil", "detach", str(mount)], check=True, timeout=120)
+            dmg.detach(str(mount))
 
 
 if __name__ == "__main__":
