@@ -330,8 +330,8 @@ tag and attaches signed archives, checksums, SBOM and appcast to a draft GitHub 
 the shipped 0.8.5 feed, public update key and application identity, and checks the signing
 requirement for its signing mode. Production
 packaging uses `Scripts/package-macos-release.py`; ordinary Flutter builds keep updates disabled.
-See [macOS updates](docs/updates.md) for credentials, local commands and the required two-version
-installation test. Publishing the reviewed stable release triggers
+See [macOS updates](docs/updates.md) for credentials and local commands. Publishing the reviewed
+stable release triggers
 [feed publication](.github/workflows/update-feed.yml); it refuses stale or rewritten feed entries.
 
 Run `swift test --package-path native/updates --force-resolved-versions` for updater changes, plus
