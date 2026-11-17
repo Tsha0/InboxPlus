@@ -3525,6 +3525,61 @@ void main() {
     variant: TargetPlatformVariant({TargetPlatform.macOS}),
   );
 
+  testWidgets(
+    'iMessage setup links to Full Disk Access instead of a generic error',
+    (tester) async {
+      final controller = _FakeController(accounts: [], conversations: []);
+      controller.login = const LoginState(
+        networkId: 'imessage',
+        step: LoginStep.failed,
+        title: 'Connect iMessage',
+        imessageProblem: IMessageSetupProblem.fullDiskAccessNeeded,
+      );
+      await _pumpApp(tester, controller, size: const Size(800, 1000));
+      await tester.tap(find.text('Connect an account'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Allow Inbox+ to read your messages'), findsOneWidget);
+      expect(find.text('Could not connect this account'), findsNothing);
+      await tester.tap(find.text('Open System Settings'));
+      final link = find.text(
+        'System Settings › Privacy & Security › Full Disk Access',
+      );
+      await tester.ensureVisible(link);
+      await tester.tap(link);
+      expect(controller.fullDiskAccessSettingsRequests, 2);
+      await tester.tap(find.text('Try again'));
+      expect(controller.beginLoginCalls, ['imessage']);
+
+      controller.login = const LoginState(
+        networkId: 'imessage',
+        step: LoginStep.failed,
+        title: 'Connect iMessage',
+        imessageProblem: IMessageSetupProblem.stillBlocked,
+      );
+      controller.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('quit and reopen Inbox+, then try again'),
+        findsOneWidget,
+      );
+
+      controller.login = const LoginState(
+        networkId: 'imessage',
+        step: LoginStep.failed,
+        title: 'Connect iMessage',
+        imessageProblem: IMessageSetupProblem.messagesNotSetUp,
+      );
+      controller.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(find.text("Messages isn't set up on this Mac"), findsOneWidget);
+      expect(find.text('Open System Settings'), findsNothing);
+      await tester.tap(find.text('Open Messages'));
+      expect(controller.messagesRequests, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('WhatsApp phone pairing shows a selectable linking code', (
     tester,
   ) async {
@@ -4377,6 +4432,8 @@ class _FakeController extends InboxUiController {
   );
   int notificationRefreshes = 0;
   int notificationSettingsRequests = 0;
+  int fullDiskAccessSettingsRequests = 0;
+  int messagesRequests = 0;
   int notificationPermissionRequests = 0;
   VoidCallback? onNotificationRefresh;
   VoidCallback? onNotificationPermission;
@@ -4698,6 +4755,16 @@ class _FakeController extends InboxUiController {
   @override
   Future<void> openNotificationSettings() async {
     notificationSettingsRequests++;
+  }
+
+  @override
+  Future<void> openFullDiskAccessSettings() async {
+    fullDiskAccessSettingsRequests++;
+  }
+
+  @override
+  Future<void> openMessages() async {
+    messagesRequests++;
   }
 
   @override

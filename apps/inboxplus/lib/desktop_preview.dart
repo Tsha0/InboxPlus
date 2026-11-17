@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show PlatformException, rootBundle;
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path/path.dart' as p;
@@ -217,6 +217,8 @@ Future<void> main() async {
         case 'setLaunchAtLogin':
           return {'status': arguments['enabled'] == true ? 'on' : 'off'};
         case 'imessageSnapshot':
+          const failure = String.fromEnvironment('INBOXPLUS_PREVIEW_IMESSAGE');
+          if (failure.isNotEmpty) throw PlatformException(code: failure);
           return {'conversations': appleChats, 'messages': []};
         case 'imessageRecipientContacts':
           return {'status': 'available', 'recipients': fixture['recipients']};
