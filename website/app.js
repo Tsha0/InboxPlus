@@ -505,9 +505,9 @@ window.addEventListener("resize", measureJourney, { passive: true });
 new ResizeObserver(measureJourney).observe(document.querySelector("main"));
 document.fonts.ready.then(measureJourney);
 
-// Safari applies page zoom on top of viewport units in font-size, so the hero type uses this instead.
+// Safari applies page zoom on top of viewport units in font-size, so the hero and footer wordmarks use this instead.
 function measureViewport() {
-  document.documentElement.style.setProperty("--vw", `${window.innerWidth / 100}px`);
+  document.documentElement.style.setProperty("--vw", `${document.documentElement.clientWidth / 100}px`);
 }
 measureViewport();
 window.addEventListener("resize", measureViewport, { passive: true });

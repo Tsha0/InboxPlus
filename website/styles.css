@@ -280,7 +280,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
 .closing .button:hover { background: transparent; }
 .setup-link { margin-top: 8px; font-size: 10px; text-decoration: underline; text-underline-offset: 3px; }
 .setup-link:hover { text-decoration: none; }
-.footer-wordmark { margin: 50px 0 -12px -.025em; font-family: var(--display-font); font-size: 33.5vw; font-weight: 700; font-variation-settings: "opsz" 48; letter-spacing: -.055em; line-height: .9; white-space: nowrap; }
+.footer-wordmark { margin: 50px 0 -12px -.025em; font-family: var(--display-font); font-size: calc(33.5 * var(--vw, 1vw)); font-weight: 700; font-variation-settings: "opsz" 48; letter-spacing: -.055em; line-height: .9; white-space: nowrap; }
 .footer-wordmark > span { display: inline-block; margin-left: .015em; color: var(--scene-accent); font-weight: 500; transform: translateY(-.02em); }
 .site-footer { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 20px; min-height: 95px; padding-top: 10px; font-size: 10px; }
 .site-footer > div { display: flex; align-items: center; gap: 25px; }
@@ -426,7 +426,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
 @media (min-width: 1700px) {
   .hero-main { grid-template-columns: 1.3fr 1fr; gap: 100px; }
   .hero h1 { font-size: 290px; }
-  .footer-wordmark { text-align: center; font-size: min(33.5vw, 650px); }
+  .footer-wordmark { text-align: center; font-size: min(33.5 * var(--vw, 1vw), 650px); }
 }
 
 @media (max-width: 1200px) {
@@ -629,7 +629,7 @@ a.download-option:focus-visible { outline-color: var(--cream); outline-offset: -
   .closing-action .button { min-height: 51px; padding-inline: 22px; font-size: 13px; }
   .closing-action .requirements { margin-top: 13px; font-size: 10px; }
   .setup-link { font-size: 9px; }
-  .footer-wordmark { margin-top: 58px; margin-bottom: 0; margin-left: -.035em; font-size: 31.5vw; }
+  .footer-wordmark { margin-top: 58px; margin-bottom: 0; margin-left: -.035em; font-size: calc(31.5 * var(--vw, 1vw)); }
   .site-footer { flex-direction: column; justify-content: center; gap: 3px; min-height: 111px; padding: 19px 0 16px; font-size: 9px; }
   .site-footer > div { gap: 24px; }
   .journey-caption { left: 22px; bottom: 18px; font-size: 9px; }
