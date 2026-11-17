@@ -1575,6 +1575,11 @@ class _ConversationPaneState extends State<_ConversationPane> {
     final controller = widget.controller;
     final item = widget.conversation;
     final messages = controller.messagesFor(item.route);
+    final latestSent = messages.lastIndexWhere(
+      (message) =>
+          message.isOutgoing &&
+          message.deliveryState == DeliveryState.acknowledged,
+    );
     if (_externalHighlightedMessageId != widget.highlightedMessageId) {
       _externalHighlightedMessageId = widget.highlightedMessageId;
       _highlightedMessageId = widget.highlightedMessageId;
@@ -1768,6 +1773,7 @@ class _ConversationPaneState extends State<_ConversationPane> {
                                 !widget.desktop ||
                                 index + 1 == messages.length ||
                                 !_sameMessageRun(message, messages[index + 1]),
+                            showsSent: index == latestSent,
                             showsSender:
                                 !widget.desktop ||
                                 index == 0 ||
@@ -1941,6 +1947,7 @@ class _MessageBubble extends StatelessWidget {
     this.replyTarget,
     required this.onRevealReply,
     this.showsTimestamp = true,
+    this.showsSent = false,
     this.showsSender = true,
   });
 
@@ -1952,6 +1959,7 @@ class _MessageBubble extends StatelessWidget {
   final MessageRecord? replyTarget;
   final Future<void> Function(String) onRevealReply;
   final bool showsTimestamp;
+  final bool showsSent;
   final bool showsSender;
 
   @override
@@ -1970,6 +1978,35 @@ class _MessageBubble extends StatelessWidget {
       message.route,
       message.id,
     );
+    final unconfirmedColor = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xfff2b84b)
+        : const Color(0xff8a5a00);
+    final undelivered =
+        !own || message.deliveryState == DeliveryState.acknowledged
+        ? null
+        : message.deliveryState == DeliveryState.pending
+        ? (
+            label: 'Sending…',
+            icon: Icons.schedule,
+            color: scheme.onSurfaceVariant,
+            outline: scheme.primary.withValues(alpha: .5),
+          )
+        : deliveryUnconfirmed
+        ? (
+            label: 'Delivery unconfirmed',
+            icon: Icons.error_outline,
+            color: unconfirmedColor,
+            outline: unconfirmedColor,
+          )
+        : (
+            label: 'Not sent',
+            icon: Icons.error_outline,
+            color: scheme.error,
+            outline: scheme.error,
+          );
+    final foreground = own && undelivered == null
+        ? scheme.onPrimary
+        : scheme.onSurface;
     final savableAttachments = message.attachments
         .where(
           (attachment) =>
@@ -2012,7 +2049,16 @@ class _MessageBubble extends StatelessWidget {
                         vertical: desktop ? 8 : 10,
                       ),
                       decoration: BoxDecoration(
-                        color: own ? scheme.primary : scheme.surfaceContainer,
+                        color: !own
+                            ? scheme.surfaceContainer
+                            : undelivered == null
+                            ? scheme.primary
+                            : null,
+                        border: own
+                            ? Border.all(
+                                color: undelivered?.outline ?? scheme.primary,
+                              )
+                            : null,
                         borderRadius: BorderRadius.circular(desktop ? 12 : 17),
                       ),
                       child: DefaultTextStyle(
@@ -2026,7 +2072,7 @@ class _MessageBubble extends StatelessWidget {
                               : null,
                           letterSpacing: desktop ? 0 : null,
                           height: desktop ? 1.2 : 1.45,
-                          color: own ? scheme.onPrimary : scheme.onSurface,
+                          color: foreground,
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2037,9 +2083,7 @@ class _MessageBubble extends StatelessWidget {
                                 key: ValueKey('reply-quote-${message.id}'),
                                 target: replyTarget,
                                 conversation: conversation,
-                                foreground: own
-                                    ? scheme.onPrimary
-                                    : scheme.onSurface,
+                                foreground: foreground,
                                 onTap: replyTarget == null
                                     ? null
                                     : () => onRevealReply(
@@ -2063,9 +2107,7 @@ class _MessageBubble extends StatelessWidget {
                                         ? message.attachments[index - 1]
                                         : null,
                                     caption: message.body,
-                                    foreground: own
-                                        ? scheme.onPrimary
-                                        : scheme.onSurface,
+                                    foreground: foreground,
                                     onDownload: () =>
                                         controller.downloadAttachment(
                                           message.route,
@@ -2248,8 +2290,7 @@ class _MessageBubble extends StatelessWidget {
                               ),
                         ],
                       ),
-                    if (showsTimestamp ||
-                        message.deliveryState != DeliveryState.acknowledged)
+                    if (showsTimestamp || showsSent || undelivered != null)
                       Padding(
                         padding: EdgeInsets.fromLTRB(
                           desktop ? 0 : 6,
@@ -2261,37 +2302,48 @@ class _MessageBubble extends StatelessWidget {
                           spacing: 5,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Text(
-                              desktop
-                                  ? MaterialLocalizations.of(context)
-                                        .formatTimeOfDay(
-                                          TimeOfDay.fromDateTime(
-                                            message.timestamp.toLocal(),
-                                          ),
-                                        )
-                                  : _time(message.timestamp),
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                            if (own &&
-                                (!desktop ||
-                                    message.deliveryState !=
-                                        DeliveryState.acknowledged)) ...[
+                            if (undelivered != null) ...[
                               Icon(
-                                switch (message.deliveryState) {
-                                  DeliveryState.pending => Icons.schedule,
-                                  DeliveryState.acknowledged => Icons.done,
-                                  DeliveryState.failed => Icons.error_outline,
-                                },
+                                undelivered.icon,
                                 size: 12,
-                                color:
-                                    message.deliveryState ==
-                                        DeliveryState.failed
-                                    ? scheme.error
-                                    : scheme.onSurfaceVariant,
+                                color: undelivered.color,
                               ),
+                              Text(
+                                undelivered.label,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: undelivered.color,
+                                ),
+                              ),
+                            ] else ...[
+                              Text(
+                                desktop
+                                    ? MaterialLocalizations.of(context)
+                                          .formatTimeOfDay(
+                                            TimeOfDay.fromDateTime(
+                                              message.timestamp.toLocal(),
+                                            ),
+                                          )
+                                    : _time(message.timestamp),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                              if (showsSent) ...[
+                                Icon(
+                                  Icons.done,
+                                  size: 12,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                                Text(
+                                  'Sent',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ],
                             if (message.deliveryState == DeliveryState.failed)
                               TextButton(

@@ -1055,6 +1055,7 @@ class LocalStore {
         attachmentsJson: _encodeAttachments(draft.attachments),
       );
       await _db.into(_db.pendingSends).insert(row);
+      await _clearDraft(route, draft.revision);
       return _pending(row);
     }),
   );

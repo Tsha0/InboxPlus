@@ -1478,6 +1478,14 @@ class AppController extends InboxUiController {
       }
       final send = await store.enqueueDraft(route, sendId: _uuid.v4());
       _pending = await store.loadPendingSends();
+      final cleared = await store.loadDraft(route);
+      if (_drafts[route]?.revision == send.draftRevision) {
+        if (cleared == null) {
+          _drafts.remove(route);
+        } else {
+          _drafts[route] = cleared;
+        }
+      }
       await _updateCloseGuard();
       _publish();
       if (_accounts[route.accountId]?.isConnected == true) {
@@ -1513,7 +1521,7 @@ class AppController extends InboxUiController {
         await store.savePendingSendStatus(send.id, PendingSendStatus.failed);
         _pending = await store.loadPendingSends();
         throw const AppStorageException(
-          'The reply target is unavailable. Your draft has been kept.',
+          'The reply target is unavailable, so the message was not sent.',
         );
       }
       if (send.attachments.isNotEmpty) {
@@ -1521,7 +1529,7 @@ class AppController extends InboxUiController {
         final path = attachment.localPath;
         if (path == null || !p.isWithin(environment.directory.path, path)) {
           throw const AppStorageException(
-            'The staged attachment is unavailable. Your draft has been kept.',
+            'The staged attachment is unavailable, so the message was not sent.',
           );
         }
         final file = File(path);
@@ -1573,7 +1581,7 @@ class AppController extends InboxUiController {
         await store.savePendingSendStatus(send.id, PendingSendStatus.unknown);
         _pending = await store.loadPendingSends();
         throw const AppStorageException(
-          'Delivery could not be confirmed. Check the conversation in the original app before sending again. Your draft has been kept.',
+          'Delivery could not be confirmed. Check the conversation in the original app before sending again.',
         );
       }
       final message = MessageRecord(

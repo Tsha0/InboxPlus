@@ -602,7 +602,7 @@ void main() {
   );
 
   test(
-    'resolving an uncertain send preserves the chosen draft and never replays',
+    'resolving an uncertain send keeps a newer draft and never replays',
     () async {
       await seed(route);
       await store!.saveDraft(route, 'Unconfirmed send');
@@ -611,6 +611,7 @@ void main() {
         'unknown-send',
         PendingSendStatus.unknown,
       );
+      expect((await store!.loadDraft(route))!.body, isEmpty);
       expect(
         await store!.resolvePendingSend(
           'unknown-send',
@@ -618,7 +619,6 @@ void main() {
         ),
         isTrue,
       );
-      expect((await store!.loadDraft(route))!.body, 'Unconfirmed send');
       await reopen();
       expect(await store!.loadPendingSends(), isEmpty);
       expect(await store!.loadRecentMessages(route), isEmpty);
@@ -629,14 +629,7 @@ void main() {
         ),
         isFalse,
       );
-      expect((await store!.loadDraft(route))!.body, 'Unconfirmed send');
 
-      await store!.enqueueDraft(route, sendId: 'clear-send');
-      expect(
-        await store!.resolvePendingSend('clear-send', clearCapturedDraft: true),
-        isTrue,
-      );
-      expect((await store!.loadDraft(route))!.body, isEmpty);
       await store!.saveDraft(route, 'Another unconfirmed send');
       await store!.enqueueDraft(route, sendId: 'newer-send');
       await store!.saveDraft(route, 'Newer draft');
@@ -660,11 +653,10 @@ void main() {
       PendingSendStatus.unknown,
     );
     await reopen();
-    expect(
-      (await store!.loadPendingSends()).single.status,
-      PendingSendStatus.unknown,
-    );
-    expect((await store!.loadDraft(route))!.body, 'Keep me');
+    final pending = (await store!.loadPendingSends()).single;
+    expect(pending.status, PendingSendStatus.unknown);
+    expect(pending.body, 'Keep me');
+    expect((await store!.loadDraft(route))!.body, isEmpty);
     await store!.savePendingSendStatus(
       'unknown-send',
       PendingSendStatus.failed,
@@ -899,8 +891,9 @@ void main() {
         includesMe: true,
         timestamp: instant,
       );
-      await store!.saveDraft(target, 'Draft');
+      await store!.saveDraft(target, 'Queued');
       await store!.enqueueDraft(target, sendId: 'pending-${target.accountId}');
+      await store!.saveDraft(target, 'Draft');
       await store!.saveConversationPreferences(
         ConversationPreferencesRecord(route: target, isFavorite: true),
       );
@@ -1386,18 +1379,22 @@ void main() {
           ],
         ),
       );
+      final stagedAttachment = AttachmentRecord(
+        id: 'staged',
+        kind: 'file',
+        localPath: previousStaged,
+      );
+      final queued = await store!.saveDraft(
+        route,
+        'Saved draft',
+        attachments: [stagedAttachment],
+      );
+      await store!.enqueueDraft(route, sendId: 'restored-send', now: instant);
       final draft = await store!.saveDraft(
         route,
         'Saved draft',
-        attachments: [
-          AttachmentRecord(
-            id: 'staged',
-            kind: 'file',
-            localPath: previousStaged,
-          ),
-        ],
+        attachments: [stagedAttachment],
       );
-      await store!.enqueueDraft(route, sendId: 'restored-send', now: instant);
       await store!.savePendingSendStatus(
         'restored-send',
         PendingSendStatus.unknown,
@@ -1427,7 +1424,7 @@ void main() {
       expect(savedDraft.attachments.single.localPath, staged.path);
       final pending = (await store!.loadPendingSends()).single;
       expect(pending.body, 'Saved draft');
-      expect(pending.draftRevision, draft.revision);
+      expect(pending.draftRevision, queued.revision);
       expect(pending.status, PendingSendStatus.unknown);
       expect(pending.createdAt, instant);
       expect(pending.attachments.single.localPath, staged.path);
@@ -1567,6 +1564,11 @@ void main() {
         replyToMessageId: 'original',
       );
       await store!.enqueueDraft(route, sendId: 'queued-reply');
+      await store!.saveDraft(
+        route,
+        'Reply draft',
+        replyToMessageId: 'original',
+      );
       await store!.close();
       store = null;
       final raw = sqlite.sqlite3.open(file.path);
@@ -1618,6 +1620,11 @@ void main() {
         replyToMessageId: 'original',
       );
       await store!.enqueueDraft(route, sendId: 'queued-reply');
+      await store!.saveDraft(
+        route,
+        'Reply draft',
+        replyToMessageId: 'original',
+      );
       await store!.close();
       store = null;
       final raw = sqlite.sqlite3.open(file.path);
@@ -1651,8 +1658,9 @@ void main() {
     () async {
       await seed(route);
       await store!.saveMessage(message(route, 'm1'));
-      await store!.saveDraft(route, 'Keep draft');
+      await store!.saveDraft(route, 'Queued');
       await store!.enqueueDraft(route, sendId: 'pending');
+      await store!.saveDraft(route, 'Keep draft');
       await store!.saveContact(
         ContactRecord(id: 'person', displayName: 'Person'),
       );

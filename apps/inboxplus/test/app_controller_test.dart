@@ -1115,25 +1115,21 @@ void main() {
     },
   );
 
-  test(
-    'a missing reply target preserves the draft without sending plain text',
-    () async {
-      await seed(firstRoute);
-      final engine = _FakeEngine();
-      final app = await start(engine: engine);
-      app.setReplyTo(firstRoute, 'missing');
-      app.updateDraft(firstRoute, 'Keep this reply');
-      await app.sendDraft(firstRoute);
-      expect(engine.sends, isEmpty);
-      expect(app.draftFor(firstRoute)?.body, 'Keep this reply');
-      expect(app.draftFor(firstRoute)?.replyToMessageId, 'missing');
-      expect(
-        (await store.loadPendingSends()).single.status,
-        PendingSendStatus.failed,
-      );
-      expect(app.error, contains('reply target'));
-    },
-  );
+  test('a missing reply target keeps the failed message without sending plain text', () async {
+    await seed(firstRoute);
+    final engine = _FakeEngine();
+    final app = await start(engine: engine);
+    app.setReplyTo(firstRoute, 'missing');
+    app.updateDraft(firstRoute, 'Keep this reply');
+    await app.sendDraft(firstRoute);
+    expect(engine.sends, isEmpty);
+    final failed = (await store.loadPendingSends()).single;
+    expect(failed.body, 'Keep this reply');
+    expect(failed.replyToMessageId, 'missing');
+    expect(failed.status, PendingSendStatus.failed);
+    expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
+    expect(app.error, contains('reply target'));
+  });
 
   for (final previewFails in [false, true]) {
     test(
@@ -2071,7 +2067,7 @@ void main() {
     expect(app.conversations.single.unreadCount, 0);
   });
 
-  test('iMessage uses the selected profile and never clears a draft for pending native delivery', () async {
+  test('iMessage uses the selected profile and keeps pending native delivery unconfirmed', () async {
     native.imessageAvailable = true;
     native.imessageSnapshot = {
       'conversations': [
@@ -2114,16 +2110,53 @@ void main() {
       ),
       isTrue,
     );
-    expect(app.draftFor(route)?.body, 'Pending Apple message');
-    expect(
-      (await store.loadPendingSends()).single.status,
-      PendingSendStatus.unknown,
-    );
+    expect(app.draftFor(route)?.body ?? '', isEmpty);
+    final pending = (await store.loadPendingSends()).single;
+    expect(pending.body, 'Pending Apple message');
+    expect(pending.status, PendingSendStatus.unknown);
     expect(
       app.messagesFor(route).single.deliveryState,
       isNot(DeliveryState.acknowledged),
     );
   });
+
+  test(
+    'Send clears the draft once queued, before delivery is confirmed',
+    () async {
+      await seed(firstRoute);
+      final response = Completer<Map<String, Object?>>();
+      final started = Completer<void>();
+      final engine = _FakeEngine(
+        onSend: (_) {
+          started.complete();
+          return response.future;
+        },
+      );
+      final app = await start(engine: engine);
+      app.updateDraft(firstRoute, 'Clear me on Send');
+      final send = app.sendDraft(firstRoute);
+      await started.future;
+
+      expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
+      expect((await store.loadDraft(firstRoute))?.body ?? '', isEmpty);
+      expect(app.messagesFor(firstRoute).single.body, 'Clear me on Send');
+      expect(
+        app.messagesFor(firstRoute).single.deliveryState,
+        DeliveryState.pending,
+      );
+
+      response.complete({
+        'id': 'remote-ack',
+        'timestamp': instant.millisecondsSinceEpoch,
+      });
+      await send;
+      expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
+      expect(
+        app.messagesFor(firstRoute).single.deliveryState,
+        DeliveryState.acknowledged,
+      );
+    },
+  );
 
   test('editing a draft during delivery preserves the newer revision after acknowledgement', () async {
     await seed(firstRoute);
@@ -2177,8 +2210,8 @@ void main() {
       expect(app.isOffline, isTrue);
       expect(engine.sends, isEmpty);
       expect(await store.loadPendingSends(), hasLength(1));
-      expect(app.messagesFor(firstRoute), hasLength(1));
-      expect(app.draftFor(firstRoute)?.body, 'Queued once');
+      expect(app.messagesFor(firstRoute).single.body, 'Queued once');
+      expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
 
       await closeController();
       store = await LocalStore.open(file: database, key: key);
@@ -2186,8 +2219,8 @@ void main() {
       final reopened = await start(
         engine: _FakeEngine(connectState: 'disconnected'),
       );
-      expect(reopened.draftFor(firstRoute)?.body, 'Queued once');
-      expect(reopened.messagesFor(firstRoute), hasLength(1));
+      expect(reopened.draftFor(firstRoute)?.body ?? '', isEmpty);
+      expect(reopened.messagesFor(firstRoute).single.body, 'Queued once');
       expect(
         (await store.loadPendingSends()).single.status,
         PendingSendStatus.queued,
@@ -2195,7 +2228,7 @@ void main() {
     },
   );
 
-  test('uncertain delivery keeps the draft and never resends automatically or through Retry', () async {
+  test('uncertain delivery keeps the message and never resends automatically or through Retry', () async {
     await seed(firstRoute);
     const secret = 'private-token-that-must-not-escape';
     final engine = _FakeEngine(
@@ -2212,7 +2245,8 @@ void main() {
     expect(app.error, contains('Delivery could not be confirmed'));
     expect(app.error, isNot(contains(secret)));
     expect(app.error, isNot(contains('Private fixture body')));
-    expect(app.draftFor(firstRoute)?.body, 'Private fixture body');
+    expect(pending.body, 'Private fixture body');
+    expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
     expect(
       app.messagesFor(firstRoute).single.deliveryState,
       DeliveryState.failed,
@@ -2244,7 +2278,8 @@ void main() {
       PendingSendStatus.unknown,
     );
     expect(engine.sends, isEmpty);
-    expect(app.draftFor(firstRoute)?.body, 'Interrupted delivery');
+    expect(app.messagesFor(firstRoute).single.body, 'Interrupted delivery');
+    expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
   });
 
   test('confirming an uncertain message was not sent retains its command and waits for explicit Retry', () async {
@@ -2269,7 +2304,8 @@ void main() {
       (await store.loadPendingSends()).single.status,
       PendingSendStatus.failed,
     );
-    expect(app.draftFor(firstRoute)?.body, 'Checked draft');
+    expect(app.messagesFor(firstRoute).single.body, 'Checked draft');
+    expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
     expect(app.isDeliveryUnconfirmed(firstRoute, 'checked-send'), isFalse);
 
     await app.refresh();
@@ -2454,7 +2490,7 @@ void main() {
       PendingSendStatus.failed,
     );
     expect(
-      (await store.loadDraft(firstRoute))?.body,
+      app.messagesFor(firstRoute).single.body,
       'Previously queued message',
     );
     expect(app.sendingUnavailableReason(firstRoute), isNotNull);
@@ -3308,11 +3344,10 @@ void main() {
 
     app.updateDraft(firstRoute, 'Edited offline');
     await app.sendDraft(firstRoute);
-    expect((await store.loadDraft(firstRoute))?.body, 'Edited offline');
-    expect(
-      (await store.loadPendingSends()).single.status,
-      PendingSendStatus.queued,
-    );
+    expect((await store.loadDraft(firstRoute))?.body ?? '', isEmpty);
+    final queued = (await store.loadPendingSends()).single;
+    expect(queued.body, 'Edited offline');
+    expect(queued.status, PendingSendStatus.queued);
   });
 
   test(
