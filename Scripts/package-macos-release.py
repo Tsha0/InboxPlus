@@ -29,6 +29,7 @@ def load(name):
 desktop = load("package-flutter-desktop")
 configuration = load("configure-updates")
 feed = load("validate-update-feed")
+dmg = load("package-macos-dmg")
 
 
 def release_settings(environment, previous_feed):
@@ -146,7 +147,8 @@ def package(output, previous_feed, bundle, environment):
     desktop.verify_bundle("macos", bundle)
     output.mkdir(parents=True, exist_ok=True)
     archive_name = f"InboxPlus-{version}-{build}.zip"
-    if (output / archive_name).exists():
+    image_name = f"InboxPlus-{version}-{build}.dmg"
+    if any((output / name).exists() for name in (archive_name, image_name)):
         raise ValueError("Use a fresh output directory; published archive bytes must never be replaced")
     with tempfile.TemporaryDirectory(prefix=".macos-release-", dir=output) as temporary:
         staging = Path(temporary)
@@ -200,7 +202,19 @@ def package(output, previous_feed, bundle, environment):
                         "--force-resolved-versions", "verify-update", str(archive),
                         environment["INBOXPLUS_UPDATE_PUBLIC_KEY"], enclosure.get(f"{{{feed.SPARKLE}}}edSignature")], check=True)
         shutil.copy2(ROOT / "docs/sbom.cdx.json", staging / f"inboxplus-{version}.cdx.json")
-        assets = [archive, staging / "appcast.xml", staging / f"inboxplus-{version}.cdx.json"]
+        image = staging / image_name
+        dmg.create(app, image)
+        image_flags = ["--timestamp"] if mode == "developer-id" else []
+        subprocess.run(["codesign", "--sign", identity, *image_flags, str(image)], check=True)
+        subprocess.run(["codesign", "--verify", "--strict", str(image)], check=True)
+        if mode == "developer-id":
+            subprocess.run(["xcrun", "notarytool", "submit", str(image), "--keychain-profile",
+                            environment["INBOXPLUS_NOTARY_PROFILE"], "--wait"], check=True)
+            subprocess.run(["xcrun", "stapler", "staple", str(image)], check=True)
+            subprocess.run(["xcrun", "stapler", "validate", str(image)], check=True)
+            subprocess.run(["spctl", "--assess", "--type", "open", "--context", "context:primary-signature",
+                            str(image)], check=True)
+        assets = [archive, image, staging / "appcast.xml", staging / f"inboxplus-{version}.cdx.json"]
         (staging / "SHA256SUMS.txt").write_text("".join(
             hashlib.sha256(path.read_bytes()).hexdigest() + "  " + path.name + "\n" for path in assets
         ))
@@ -218,5 +232,5 @@ if __name__ == "__main__":
     arguments = parser.parse_args()
     try:
         print(package(arguments.output.resolve(), arguments.previous_feed, arguments.bundle, dict(os.environ)))
-    except (OSError, ValueError, RuntimeError, ET.ParseError, subprocess.CalledProcessError) as error:
+    except (OSError, ValueError, RuntimeError, ET.ParseError, subprocess.SubprocessError) as error:
         parser.exit(1, str(error) + "\n")

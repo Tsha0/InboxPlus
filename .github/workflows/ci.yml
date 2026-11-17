@@ -198,6 +198,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: python3 -m unittest discover -s Tests/Packaging -p test_icons.py -v
+      - name: Verify the real drag-to-Applications disk image
+        env:
+          INBOXPLUS_TEST_DMG: '1'
+        run: python3 -m unittest discover -s Tests/Packaging -p test_macos_dmg.py -v
 
   macos:
     name: Platform tests and builds / macOS

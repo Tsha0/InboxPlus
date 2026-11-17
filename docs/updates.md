@@ -7,6 +7,11 @@ gate: flush drafts, confirm closing with unfinished work, wait for connector ope
 and close encrypted storage. A failed shutdown cancels termination; no writer is force-killed.
 Ordinary development and preview builds do not enable updates.
 
+New installations use `InboxPlus-<version>-<build>.dmg`. Open it, drag **Inbox+** onto
+**Applications**, then open the copied app from Applications and eject the disk. The Finder window
+uses the website's charcoal dot pattern, Bricolage wordmark and pastel asterisks. The website's Mac
+download selects this DMG; the signed ZIP stays available for Sparkle updates.
+
 ## Upgrading from 0.8.5
 
 A Sparkle-enabled 0.8.5 installation can receive the Flutter app directly. Users do not need to
@@ -95,7 +100,7 @@ contract; they are not secrets.
    builds the native app and signs all nested code before the outer bundle.
 4. It verifies runtime files/architectures and signatures, packages the exact final bundle,
    generates the appcast, cryptographically verifies its archive signature against the embedded
-   public key, and attaches ZIP, SBOM, appcast and checksums to a draft GitHub Release. Existing
+   public key, and attaches DMG, ZIP, SBOM, appcast and checksums to a draft GitHub Release. Existing
    assets are never overwritten. A published release cannot be reused as the output target.
 5. Perform the installation tests below, review the artifacts and publish the stable release.
    **Publish update feed** then validates and deploys its appcast to the existing GitHub Pages URL.
@@ -125,6 +130,24 @@ Sparkle reads the private key from its existing Keychain entry, or from
 For Developer ID packaging, `INBOXPLUS_NOTARY_PROFILE` names a configured `notarytool` profile, and
 `INBOXPLUS_PROVISIONING_PROFILE` is the path to the Developer ID `.provisionprofile` file.
 
+DMG creation uses macOS's `hdiutil`, AppKit and Finder, with no downloaded packaging tools. Run it
+in a logged-in macOS desktop session that permits `osascript` to automate Finder. Finder saves
+the background, fixed icon positions and window size before the image becomes read-only. Both
+signing modes sign the DMG; Developer ID mode also notarizes, staples and assesses it separately
+from the app. The DMG and ZIP contain the same final app bundle.
+
+To build an installer for a local app without release credentials:
+
+```bash
+python3 Scripts/package-macos-dmg.py '/absolute/path/Inbox+.app' build/InboxPlus-preview.dmg
+```
+
+This standalone command does not sign or notarize the disk image or alter the supplied app.
+Its background is rendered at 2× resolution from `Scripts/make-dmg-background.swift`, using the
+existing website font. No generated background needs to be committed.
+The artwork has no subtitle chips beneath the icons. The draggable items keep their native Finder
+filenames; Finder does not offer a supported option to hide those labels.
+
 The local packager never uploads artifacts or publishes the feed. Development archives from
 `Scripts/package-flutter-desktop.py` remain separate and cannot serve as Sparkle release archives.
 
@@ -135,6 +158,15 @@ Flutter analysis/tests, and a native macOS release build. Verify that the extrac
 has an `Inbox+.app` at its root, keeps framework symlinks and executable permissions, and passes
 strict code-signature and runtime checks. A Developer ID release must also pass notarization,
 stapling and Gatekeeper assessment.
+
+Open the DMG in Finder and check its artwork and icon alignment in light and dark appearances.
+Drag the app into an isolated installation folder, verify its signature and framework symlinks,
+and launch it with an isolated test profile. Eject and reopen the image to check that the layout
+and background survive remounting. Run the optional real-image fixture check on a macOS desktop:
+
+```bash
+INBOXPLUS_TEST_DMG=1 python3 -m unittest discover -s Tests/Packaging -p test_macos_dmg.py -v
+```
 
 On a separate Mac/user account with isolated test profiles, test an actual installed 0.8.5 → Flutter
 update and a Flutter → Flutter update. Use a controlled feed with the original trust credentials;
