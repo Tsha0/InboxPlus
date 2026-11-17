@@ -217,11 +217,6 @@ public actor IMessageGateway {
         pollTask = nil
     }
 
-    /// Reads again from where `pausePolling()` stopped, so nothing that arrived meanwhile is missed.
-    public func resumePolling() {
-        startPolling()
-    }
-
     func pollOnce() async {
         guard let watermark = try? store.maxMessageRowID(),
               let rows = try? store.messages(afterRowID: lastSeenRowID) else { return }
