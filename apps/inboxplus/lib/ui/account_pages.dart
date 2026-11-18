@@ -1,18 +1,20 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
+import 'package:inboxplus_storage/inboxplus_storage.dart'
+    show ConversationRoute;
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'confirmation.dart';
+import 'feedback_dialog.dart' show FeedbackForm;
+import 'feedback_image.dart';
 import 'inbox_ui_controller.dart';
 import 'network_badge.dart';
 
@@ -850,10 +852,12 @@ class InboxSettingsPage extends StatelessWidget {
     super.key,
     required this.controller,
     required this.onConnect,
+    required this.onOpenConversation,
   });
 
   final InboxUiController controller;
   final VoidCallback onConnect;
+  final ValueChanged<ConversationRoute> onOpenConversation;
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(

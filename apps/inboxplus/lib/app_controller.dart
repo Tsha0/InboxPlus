@@ -1417,11 +1417,17 @@ class AppController extends InboxUiController {
       );
       if (source?.path == null) return;
       final file = File(source!.path!);
-      final limit = _attachmentLimit(route);
-      if (await file.length() > limit) {
-        throw AppStorageException(
-          'Attachments must be ${limit ~/ (1024 * 1024)} MiB or smaller.',
-        );
+      final Uint8List bytes;
+      try {
+        final limit = _attachmentLimit(route);
+        if (await file.length() > limit) {
+          throw AppStorageException(
+            'Attachments must be ${limit ~/ (1024 * 1024)} MiB or smaller.',
+          );
+        }
+        bytes = await file.readAsBytes();
+      } finally {
+        await _discardPickerCopy(file);
       }
       final id = _uuid.v4();
       final target = File(
@@ -1431,7 +1437,7 @@ class AppController extends InboxUiController {
           '$id${_safeExtension(source.name)}',
         ),
       );
-      await environment.writePrivate(target, await file.readAsBytes());
+      await environment.writePrivate(target, bytes);
       final mime = _mimeFor(source.name);
       final attachment = AttachmentRecord(
         id: id,
@@ -2483,7 +2489,24 @@ class AppController extends InboxUiController {
       type: FileType.image,
     );
     final path = source?.path;
-    return path == null ? null : File(path).readAsBytes();
+    if (path == null) return null;
+    final file = File(path);
+    try {
+      return await file.readAsBytes();
+    } finally {
+      await _discardPickerCopy(file);
+    }
+  }
+
+  // The picker returns a temporary copy on iOS and Android, but the selected
+  // file itself on desktop.
+  Future<void> _discardPickerCopy(File file) async {
+    if (defaultTargetPlatform != TargetPlatform.iOS &&
+        defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    await file.delete();
+    if (await file.parent.list().isEmpty) await file.parent.delete();
   }
 
   Future<void> _prepareFilePicker() async {

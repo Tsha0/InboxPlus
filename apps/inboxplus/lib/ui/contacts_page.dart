@@ -264,7 +264,9 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
                   ),
                 )
               : ListView(
-                  padding: const EdgeInsets.only(bottom: 120),
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.paddingOf(context).bottom + 24,
+                  ),
                   children: rows,
                 ),
         ),
@@ -491,12 +493,7 @@ class _ContactEditorState extends State<_ContactEditor> {
                       size: 20,
                       labelled: false,
                     ),
-                    label: Text(
-                      'Message on ${switch (_platformOf(widget.controller, identity.accountId)) {
-                        final platform? => _networkLabel(widget.controller, platform),
-                        null => 'Disconnected account',
-                      }}',
-                    ),
+                    label: Text(_messageLabel(identity, saved)),
                     onPressed: () => widget.onMessage!(identity),
                   ),
               ],
@@ -520,6 +517,19 @@ class _ContactEditorState extends State<_ContactEditor> {
         ],
       ),
     );
+  }
+
+  String _messageLabel(IdentityLink identity, List<IdentityLink> saved) {
+    final platform = _platformOf(widget.controller, identity.accountId);
+    final network = platform == null
+        ? 'Disconnected account'
+        : _networkLabel(widget.controller, platform);
+    final shared = saved.where(
+      (other) => _platformOf(widget.controller, other.accountId) == platform,
+    );
+    return shared.length > 1
+        ? 'Message ${identity.identityId} on $network'
+        : 'Message on $network';
   }
 
   Widget _form(BuildContext context) => Form(

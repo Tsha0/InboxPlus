@@ -552,7 +552,9 @@ class _PhoneAttachMenu extends StatelessWidget {
                 key: const Key('attach-files'),
                 icon: CupertinoIcons.doc,
                 label: 'Files',
-                hint: 'Documents from iCloud Drive or this iPhone',
+                hint: defaultTargetPlatform == TargetPlatform.iOS
+                    ? 'Documents from iCloud Drive or this iPhone'
+                    : 'Documents from this phone or the cloud',
                 media: false,
               ),
               item(
@@ -586,8 +588,9 @@ class _PhoneFavoritesRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final label = MediaQuery.textScalerOf(context).scale(12.5) * 1.4;
     return SizedBox(
-      height: 104,
+      height: 60 + 7 + label + 24,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),

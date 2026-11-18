@@ -50,6 +50,7 @@ class _PhoneChatHeader extends StatelessWidget {
                           ? 'Back to inbox, $unread unread'
                           : 'Back to inbox',
                       excludeSemantics: true,
+                      onTap: onBack,
                       child: Material(
                         type: MaterialType.transparency,
                         child: InkWell(
@@ -91,6 +92,7 @@ class _PhoneChatHeader extends StatelessWidget {
               button: true,
               label: 'Chat info for ${conversation.title}',
               excludeSemantics: true,
+              onTap: onInfo,
               child: GestureDetector(
                 key: const Key('chat-info-button'),
                 behavior: HitTestBehavior.opaque,
@@ -470,15 +472,43 @@ class _PhoneChatInfoPage extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(_dayLabel(item.message.timestamp)),
-                          trailing: IconButton(
-                            tooltip: 'Save ${item.attachment.fileName}',
-                            icon: const Icon(CupertinoIcons.arrow_down_to_line),
-                            onPressed: () => controller.saveAttachment(
+                          trailing: switch ((
+                            item.attachment.localPath,
+                            controller.attachmentLoadState(
                               route,
-                              item.message.id,
                               item.attachment.id,
                             ),
-                          ),
+                          )) {
+                            (_?, _) => IconButton(
+                              tooltip: 'Save ${item.attachment.fileName}',
+                              icon: const Icon(
+                                CupertinoIcons.arrow_down_to_line,
+                              ),
+                              onPressed: () => controller.saveAttachment(
+                                route,
+                                item.message.id,
+                                item.attachment.id,
+                              ),
+                            ),
+                            (null, AttachmentLoadState.loading) =>
+                              const SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            (null, _) when item.attachment.isDownloadable =>
+                              IconButton(
+                                tooltip: 'Download ${item.attachment.fileName}',
+                                icon: const Icon(CupertinoIcons.cloud_download),
+                                onPressed: () => controller.downloadAttachment(
+                                  route,
+                                  item.message.id,
+                                  item.attachment.id,
+                                ),
+                              ),
+                            _ => null,
+                          },
                         ),
                     ],
             ),

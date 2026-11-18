@@ -3154,6 +3154,73 @@ void main() {
     expect(picker.pickedType, FileType.any);
   });
 
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    test(
+      '${platform.name} picks leave no readable copy in temporary storage',
+      () async {
+        debugDefaultTargetPlatformOverride = platform;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        await seed(firstRoute);
+        final originalPicker = FilePickerPlatform.instance;
+        final picker = _SavePicker();
+        FilePickerPlatform.instance = picker;
+        addTearDown(() => FilePickerPlatform.instance = originalPicker);
+        final app = await start(engine: _FakeEngine());
+
+        File pickerCopy(String name) {
+          final folder = Directory.systemTemp.createTempSync('picker');
+          return File(p.join(folder.path, name))
+            ..writeAsBytesSync(base64Decode(_onePixelPng));
+        }
+
+        final photo = pickerCopy('IMG_0001.png');
+        picker.pickedPath = photo.path;
+        await app.stageAttachments(firstRoute, media: true);
+        final staged = app.draftFor(firstRoute)!.attachments.single;
+        expect(
+          File(staged.localPath!).readAsBytesSync(),
+          base64Decode(_onePixelPng),
+        );
+        expect(
+          photo.existsSync(),
+          isFalse,
+          reason: 'staged photo copy removed',
+        );
+        expect(
+          photo.parent.existsSync(),
+          isFalse,
+          reason: 'picker folder removed',
+        );
+
+        final screenshot = pickerCopy('shot.png');
+        picker.pickedPath = screenshot.path;
+        expect(await app.pickFeedbackImage(), base64Decode(_onePixelPng));
+        expect(
+          screenshot.existsSync(),
+          isFalse,
+          reason: 'screenshot copy removed',
+        );
+        expect(screenshot.parent.existsSync(), isFalse);
+      },
+    );
+  }
+
+  test('desktop picks keep the original file', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final originalPicker = FilePickerPlatform.instance;
+    final picker = _SavePicker();
+    FilePickerPlatform.instance = picker;
+    addTearDown(() => FilePickerPlatform.instance = originalPicker);
+    final app = await start(engine: _FakeEngine());
+    final original = File(
+      p.join(Directory.systemTemp.createTempSync('desktop').path, 'shot.png'),
+    )..writeAsBytesSync(base64Decode(_onePixelPng));
+    picker.pickedPath = original.path;
+    expect(await app.pickFeedbackImage(), isNotNull);
+    expect(original.existsSync(), isTrue);
+  });
+
   test('a background mailbox sync leaves controls available', () async {
     await seed(firstRoute, platform: 'instagram');
     final pages = <Completer<void>>[];
@@ -3710,6 +3777,7 @@ class _SavePicker extends FilePickerPlatform {
 
   Completer<PlatformFile?>? pickGate;
   bool pickStarted = false;
+  String? pickedPath;
   FileType? pickedType;
 
   @override
@@ -3728,6 +3796,7 @@ class _SavePicker extends FilePickerPlatform {
   }) async {
     pickStarted = true;
     pickedType = type;
+    if (pickedPath case final path?) return _PickedFile(path);
     return pickGate?.future;
   }
 
@@ -4037,4 +4106,35 @@ class _FakeEngine implements ConnectorEngine {
     await closeGate?.future;
     await _events.close();
   }
+}
+
+const _onePixelPng =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+final class _PickedFile extends PlatformFile {
+  _PickedFile(this._path);
+
+  final String _path;
+
+  @override
+  String get name => p.basename(_path);
+
+  @override
+  Uri get uri => Uri.file(_path);
+
+  @override
+  Never get xFile => throw UnimplementedError();
+
+  @override
+  int? lengthSync() => File(_path).lengthSync();
+
+  @override
+  Future<int?> length() => File(_path).length();
+
+  @override
+  Future<Uint8List> readAsBytes() => File(_path).readAsBytes();
+
+  @override
+  Stream<Uint8List> readAsByteStream() =>
+      File(_path).openRead().map(Uint8List.fromList);
 }

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show LongPressGestureRecognizer;
 import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -347,7 +348,14 @@ class _InboxHomeState extends State<InboxHome> {
   Widget _body(bool compact, ConversationRecord? selected) {
     switch (_section) {
       case _Section.settings:
-        return InboxSettingsPage(controller: controller, onConnect: _connect);
+        return InboxSettingsPage(
+          controller: controller,
+          onConnect: _connect,
+          onOpenConversation: (route) {
+            controller.selectConversation(route);
+            _selectSection(_Section.inbox);
+          },
+        );
       case _Section.contacts:
         return InboxContactsPage(
           controller: controller,
@@ -756,8 +764,10 @@ class _InboxHomeState extends State<InboxHome> {
                 hasScrollBody: false,
                 child: ColoredBox(
                   color: sheetColor,
-                  child: SizedBox(
-                    height: MediaQuery.paddingOf(context).bottom + 8,
+                  child: Builder(
+                    builder: (context) => SizedBox(
+                      height: MediaQuery.paddingOf(context).bottom + 8,
+                    ),
                   ),
                 ),
               ),
@@ -1004,8 +1014,8 @@ class _PhoneInboxRowState extends State<_PhoneInboxRow> {
               : 0,
         ),
         child: ClipRect(
-          child: SizedBox(
-            height: compact ? 56 : 68,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: compact ? 56 : 68),
             child: Stack(
               children: [
                 if (_reveal < 0)
@@ -1065,96 +1075,106 @@ class _PhoneInboxRowState extends State<_PhoneInboxRow> {
                           ? () => setState(() => _reveal = 0)
                           : widget.onOpen,
                       onLongPress: widget.onActions,
-                      child: Row(
-                        children: [
-                          const SizedBox(width: 16),
-                          PersonAvatar(
-                            name: item.title,
-                            bytes: item.avatarBytes,
-                            network: account?.platform,
-                            isGroup: item.isGroup,
-                            size: compact ? 40 : 48,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: compact ? 56 : 68,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              const SizedBox(width: 16),
+                              PersonAvatar(
+                                name: item.title,
+                                bytes: item.avatarBytes,
+                                network: account?.platform,
+                                isGroup: item.isGroup,
+                                size: compact ? 40 : 48,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      child: Text(
-                                        item.title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    if (muted)
-                                      Padding(
-                                        padding: const EdgeInsets.only(left: 4),
-                                        child: Icon(
-                                          Icons.notifications_off_outlined,
-                                          size: 13,
-                                          semanticLabel: 'Muted',
-                                          color: scheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      _relativeTime(item.latestActivity),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: scheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        preview,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: unread
-                                              ? FontWeight.w500
-                                              : FontWeight.w400,
-                                          color: hasDraft
-                                              ? scheme.error
-                                              : unread
-                                              ? scheme.onSurface
-                                              : scheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                    if (unread) ...[
-                                      const SizedBox(width: 6),
-                                      item.unreadCount > 0
-                                          ? _DesktopCount(item.unreadCount)
-                                          : Container(
-                                              width: 10,
-                                              height: 10,
-                                              decoration: BoxDecoration(
-                                                color: scheme.primary,
-                                                shape: BoxShape.circle,
-                                              ),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            item.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
                                             ),
-                                    ],
+                                          ),
+                                        ),
+                                        if (muted)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              left: 4,
+                                            ),
+                                            child: Icon(
+                                              Icons.notifications_off_outlined,
+                                              size: 13,
+                                              semanticLabel: 'Muted',
+                                              color: scheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          _relativeTime(item.latestActivity),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: scheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            preview,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: unread
+                                                  ? FontWeight.w500
+                                                  : FontWeight.w400,
+                                              color: hasDraft
+                                                  ? scheme.error
+                                                  : unread
+                                                  ? scheme.onSurface
+                                                  : scheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ),
+                                        if (unread) ...[
+                                          const SizedBox(width: 6),
+                                          item.unreadCount > 0
+                                              ? _DesktopCount(item.unreadCount)
+                                              : Container(
+                                                  width: 10,
+                                                  height: 10,
+                                                  decoration: BoxDecoration(
+                                                    color: scheme.primary,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                        ],
+                                      ],
+                                    ),
                                   ],
                                 ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(width: 16),
+                            ],
                           ),
-                          const SizedBox(width: 16),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -1755,6 +1775,10 @@ class _ReplyQuote extends StatelessWidget {
   }
 }
 
+// Shorter than the text selection long press, so holding a message opens its
+// actions while a double tap still selects a word.
+const _messageActionsHold = Duration(milliseconds: 400);
+
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
@@ -1976,9 +2000,7 @@ class _MessageBubble extends StatelessWidget {
                                         ),
                                   ),
                                 ),
-                            if (message.body.isNotEmpty && !desktop)
-                              Text(message.body)
-                            else if (message.body.isNotEmpty)
+                            if (message.body.isNotEmpty)
                               SelectableText(
                                 message.body,
                                 semanticsLabel: message.body,
@@ -2227,15 +2249,25 @@ class _MessageBubble extends StatelessWidget {
             const CustomSemanticsAction(label: 'Copy text'): () =>
                 Clipboard.setData(ClipboardData(text: message.body)),
         },
-        child: GestureDetector(
+        child: RawGestureDetector(
           key: Key('message-${message.id}'),
           behavior: HitTestBehavior.translucent,
-          onLongPress: () => _showPhoneActions(
-            context,
-            canReply: canReply,
-            canReact: canReact,
-            savable: savableAttachments,
-          ),
+          gestures: {
+            LongPressGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  LongPressGestureRecognizer
+                >(
+                  () =>
+                      LongPressGestureRecognizer(duration: _messageActionsHold),
+                  (recognizer) => recognizer.onLongPress = () =>
+                      _showPhoneActions(
+                        context,
+                        canReply: canReply,
+                        canReact: canReact,
+                        savable: savableAttachments,
+                      ),
+                ),
+          },
           child: bubble,
         ),
       );
@@ -2312,72 +2344,76 @@ class _MessageBubble extends StatelessWidget {
       builder: (sheetContext) {
         final scheme = Theme.of(sheetContext).colorScheme;
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (canReact)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      for (final emoji in quickReactions)
-                        Semantics(
-                          label: 'React with $emoji',
-                          selected: own.contains(emoji),
-                          button: true,
-                          excludeSemantics: true,
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: () =>
-                                Navigator.pop(sheetContext, 'emoji:$emoji'),
-                            child: Container(
-                              width: 46,
-                              height: 46,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: own.contains(emoji)
-                                    ? scheme.primary.withValues(alpha: .22)
-                                    : null,
-                              ),
-                              child: Text(
-                                emoji,
-                                style: const TextStyle(fontSize: 26),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (canReact)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      runSpacing: 4,
+                      children: [
+                        for (final emoji in quickReactions)
+                          Semantics(
+                            label: 'React with $emoji',
+                            selected: own.contains(emoji),
+                            button: true,
+                            excludeSemantics: true,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: () =>
+                                  Navigator.pop(sheetContext, 'emoji:$emoji'),
+                              child: Container(
+                                width: 46,
+                                height: 46,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: own.contains(emoji)
+                                      ? scheme.primary.withValues(alpha: .22)
+                                      : null,
+                                ),
+                                child: Text(
+                                  emoji,
+                                  style: const TextStyle(fontSize: 26),
+                                ),
                               ),
                             ),
                           ),
+                        IconButton.filledTonal(
+                          tooltip: 'More reactions',
+                          onPressed: () => Navigator.pop(sheetContext, 'react'),
+                          icon: const Icon(Icons.add),
                         ),
-                      IconButton.filledTonal(
-                        tooltip: 'More reactions',
-                        onPressed: () => Navigator.pop(sheetContext, 'react'),
-                        icon: const Icon(Icons.add),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              if (canReply)
-                ListTile(
-                  leading: const Icon(CupertinoIcons.reply),
-                  title: const Text('Reply'),
-                  onTap: () => Navigator.pop(sheetContext, 'reply'),
-                ),
-              if (message.body.isNotEmpty)
-                ListTile(
-                  leading: const Icon(CupertinoIcons.doc_on_doc),
-                  title: const Text('Copy'),
-                  onTap: () => Navigator.pop(sheetContext, 'copy'),
-                ),
-              for (final attachment in savable)
-                ListTile(
-                  enabled: attachment.localPath != null,
-                  leading: const Icon(CupertinoIcons.arrow_down_to_line),
-                  title: Text(_saveLabel(attachment).replaceAll('…', '')),
-                  onTap: () =>
-                      Navigator.pop(sheetContext, 'save:${attachment.id}'),
-                ),
-              const SizedBox(height: 8),
-            ],
+                if (canReply)
+                  ListTile(
+                    leading: const Icon(CupertinoIcons.reply),
+                    title: const Text('Reply'),
+                    onTap: () => Navigator.pop(sheetContext, 'reply'),
+                  ),
+                if (message.body.isNotEmpty)
+                  ListTile(
+                    leading: const Icon(CupertinoIcons.doc_on_doc),
+                    title: const Text('Copy'),
+                    onTap: () => Navigator.pop(sheetContext, 'copy'),
+                  ),
+                for (final attachment in savable)
+                  ListTile(
+                    enabled: attachment.localPath != null,
+                    leading: const Icon(CupertinoIcons.arrow_down_to_line),
+                    title: Text(_saveLabel(attachment).replaceAll('…', '')),
+                    onTap: () =>
+                        Navigator.pop(sheetContext, 'save:${attachment.id}'),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         );
       },
@@ -2654,7 +2690,8 @@ class _ComposerState extends State<_Composer> {
           Positioned.fromRect(
             rect: button,
             child: Material(
-              type: MaterialType.transparency,
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              shape: const CircleBorder(),
               child: IconButton(
                 tooltip: 'Close attach menu',
                 onPressed: () => Navigator.pop(dialogContext),
@@ -2828,7 +2865,7 @@ class _ComposerState extends State<_Composer> {
                         [
                           ?attachment.fileName,
                           if (attachment.byteCount case final bytes?)
-                            '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB',
+                            formatByteCount(bytes),
                         ].join(' · '),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,

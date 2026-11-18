@@ -1,7 +1,5 @@
 part of 'account_pages.dart';
 
-const _feedbackRepository = 'Tsha0/InboxPlus';
-
 class _PhoneSettingsPage extends StatelessWidget {
   const _PhoneSettingsPage({required this.page});
 
@@ -34,7 +32,7 @@ class _PhoneSettingsPage extends StatelessWidget {
         16,
         12,
         16,
-        MediaQuery.paddingOf(context).bottom + 96,
+        MediaQuery.paddingOf(context).bottom + 24,
       ),
       children: [
         Text(
@@ -176,6 +174,7 @@ class _PhoneSettingsPage extends StatelessWidget {
                 _PhoneConversationListPage(
                   controller: controller,
                   hidden: true,
+                  onOpen: page.onOpenConversation,
                 ),
               ),
             ),
@@ -189,6 +188,7 @@ class _PhoneSettingsPage extends StatelessWidget {
                 _PhoneConversationListPage(
                   controller: controller,
                   hidden: false,
+                  onOpen: page.onOpenConversation,
                 ),
               ),
             ),
@@ -208,6 +208,16 @@ class _PhoneSettingsPage extends StatelessWidget {
                   ? null
                   : (value) =>
                         controller.setPreference('playsInstagramReels', value),
+            ),
+            _PhoneSwitchRow(
+              icon: CupertinoIcons.keyboard,
+              title: 'Press Enter to send',
+              subtitle:
+                  'With a hardware keyboard. Off: Enter starts a new line.',
+              value: preferences.enterToSend,
+              onChanged: controller.isBusy
+                  ? null
+                  : (value) => controller.setPreference('enterToSend', value),
             ),
           ],
         ),
@@ -555,7 +565,13 @@ class _PhoneSubpage extends StatelessWidget {
           16,
           MediaQuery.paddingOf(context).bottom + 24,
         ),
-        children: builder(context),
+        children: [
+          if (controller.error case final error?) ...[
+            const SizedBox(height: 12),
+            _Notice(message: error, isError: true),
+          ],
+          ...builder(context),
+        ],
       ),
     ),
   );
@@ -609,16 +625,19 @@ class _PhoneNotificationsPage extends StatelessWidget {
             ),
           ],
         ),
-        _PhoneGroup(
-          children: [
-            _PhoneRow(
-              title: 'Open iOS Settings',
-              subtitle: 'Sounds, banners and permission',
-              chevron: true,
-              onTap: controller.openNotificationSettings,
-            ),
-          ],
-        ),
+        if (controller.notificationStatus.canOpenSettings)
+          _PhoneGroup(
+            children: [
+              _PhoneRow(
+                title: defaultTargetPlatform == TargetPlatform.iOS
+                    ? 'Open iOS Settings'
+                    : 'Open Android settings',
+                subtitle: 'Sounds, banners and permission',
+                chevron: true,
+                onTap: controller.openNotificationSettings,
+              ),
+            ],
+          ),
       ];
     },
   );
@@ -628,10 +647,12 @@ class _PhoneConversationListPage extends StatelessWidget {
   const _PhoneConversationListPage({
     required this.controller,
     required this.hidden,
+    required this.onOpen,
   });
 
   final InboxUiController controller;
   final bool hidden;
+  final ValueChanged<ConversationRoute> onOpen;
 
   @override
   Widget build(BuildContext context) => _PhoneSubpage(
@@ -660,6 +681,10 @@ class _PhoneConversationListPage extends StatelessWidget {
             for (final chat in chats)
               _PhoneRow(
                 title: chat.title,
+                onTap: () {
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                  onOpen(chat.route);
+                },
                 trailing: TextButton(
                   onPressed: controller.isBusy
                       ? null
@@ -773,6 +798,7 @@ class _PhoneAppearancePage extends StatelessWidget {
         selected: selected,
         button: true,
         excludeSemantics: true,
+        onTap: busy ? null : onTap,
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: busy ? null : onTap,
@@ -975,94 +1001,93 @@ const _accentChoices = [
 Color _legibleOnColor(Color color) =>
     color.computeLuminance() > .179 ? Colors.black : Colors.white;
 
-enum FeedbackKind {
-  problem(
-    'Problem',
-    CupertinoIcons.exclamationmark_triangle,
-    'What went wrong?',
-  ),
-  idea('Idea', CupertinoIcons.lightbulb, 'What would make Inbox+ better?'),
-  question(
-    'Question',
-    CupertinoIcons.question_circle,
-    'What do you want to know?',
-  );
-
-  const FeedbackKind(this.label, this.icon, this.prompt);
-  final String label;
-  final IconData icon;
-  final String prompt;
-}
-
 class FeedbackPage extends StatefulWidget {
-  const FeedbackPage({
-    super.key,
-    required this.controller,
-    this.openUrl,
-    this.pickImage,
-  });
+  const FeedbackPage({super.key, required this.controller});
 
   final InboxUiController controller;
-  final Future<bool> Function(Uri url)? openUrl;
-  final Future<String?> Function()? pickImage;
 
   @override
   State<FeedbackPage> createState() => _FeedbackPageState();
 }
 
 class _FeedbackPageState extends State<FeedbackPage> {
-  var _kind = FeedbackKind.idea;
-  final _text = TextEditingController();
-  bool _includeVersion = true;
-  String? _screenshot;
+  final _form = FeedbackForm();
+  bool _attaching = false;
+  bool _sending = false;
+  String? _error;
 
   @override
   void dispose() {
-    _text.dispose();
+    _form.dispose();
     super.dispose();
   }
 
-  Uri get _issueUrl {
-    final details = _text.text.trim();
-    final summary = details.split('\n').first;
-    return Uri.https('github.com', '/$_feedbackRepository/issues/new', {
-      'title':
-          '${_kind.label}: ${summary.length > 70 ? '${summary.substring(0, 70)}…' : summary}',
-      'body': [
-        details,
-        if (_includeVersion)
-          '\n---\nInbox+ $inboxPlusVersion ($inboxPlusBuild) on ${defaultTargetPlatform.name}',
-      ].join('\n'),
+  Future<void> _attachScreenshot() async {
+    setState(() {
+      _attaching = true;
+      _error = null;
     });
-  }
-
-  Future<void> _pickScreenshot() async {
-    final pick =
-        widget.pickImage ??
-        () async => (await FilePicker.pickFile(type: FileType.image))?.path;
-    final path = await pick();
-    if (path != null && mounted) setState(() => _screenshot = path);
+    try {
+      final bytes = await widget.controller.pickFeedbackImage();
+      final image = bytes == null ? null : await normalizeFeedbackImage(bytes);
+      if (mounted && image != null) setState(() => _form.image = image);
+    } on UnreadableImageException {
+      if (mounted) {
+        setState(
+          () => _error =
+              'Inbox+ can’t read this file as an image. Choose a PNG or JPEG.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _attaching = false);
+    }
   }
 
   Future<void> _send() async {
-    final open =
-        widget.openUrl ??
-        (url) => launchUrl(url, mode: LaunchMode.externalApplication);
-    final opened = await open(_issueUrl);
-    if (!mounted) return;
-    if (opened) {
+    final draft = _form.draft;
+    if (draft == null || _sending) return;
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      final receipt = await widget.controller.sendFeedback(draft);
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Couldn’t open the browser. Try again.')),
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            draft.kind.isPublic
+                ? 'Thanks. Your feedback is posted on GitHub.'
+                : 'Thanks. Your feedback was sent.',
+          ),
+          action: switch (receipt.issueUrl) {
+            final url? => SnackBarAction(
+              label: 'View',
+              onPressed: () =>
+                  launchUrl(url, mode: LaunchMode.externalApplication),
+            ),
+            null => null,
+          },
+        ),
       );
+    } on FeedbackFailure catch (failure) {
+      if (mounted) {
+        setState(() {
+          _sending = false;
+          _error = failure.message;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final canSend = _text.text.trim().isNotEmpty;
+    final kind = _form.kind;
+    final image = _form.image;
+    final editable = !_sending;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Send feedback'),
@@ -1077,57 +1102,54 @@ class _FeedbackPageState extends State<FeedbackPage> {
           MediaQuery.paddingOf(context).bottom + 24,
         ),
         children: [
-          SegmentedButton<FeedbackKind>(
-            segments: [
-              for (final kind in FeedbackKind.values)
-                ButtonSegment(
-                  value: kind,
-                  label: Text(kind.label),
-                  icon: Icon(kind.icon, size: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final option in FeedbackKind.values)
+                ChoiceChip(
+                  key: Key('feedback-kind-${option.wireName}'),
+                  label: Text(option.label),
+                  selected: kind == option,
+                  onSelected: editable
+                      ? (_) => setState(() => _form.kind = option)
+                      : null,
                 ),
             ],
-            selected: {_kind},
-            showSelectedIcon: false,
-            onSelectionChanged: (value) => setState(() => _kind = value.first),
           ),
-          const SizedBox(height: 20),
-          Text(
-            _kind.prompt,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           TextField(
             key: const Key('feedback-text'),
-            controller: _text,
+            controller: _form.text,
+            enabled: editable,
             minLines: 5,
             maxLines: 10,
+            maxLength: 5000,
             textCapitalization: TextCapitalization.sentences,
             onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              hintText: switch (_kind) {
-                FeedbackKind.problem =>
-                  'What did you expect, and what happened instead?',
-                FeedbackKind.idea =>
-                  'Describe the idea and when you would use it.',
-                FeedbackKind.question => 'Ask anything about Inbox+.',
-              },
+            decoration: const InputDecoration(
+              hintText: 'Tell us what went wrong, or share general feedback.',
+              counterText: '',
             ),
           ),
           _PhoneGroup(
             children: [
               _PhoneSwitchRow(
-                title: 'Include app version',
-                subtitle: '$inboxPlusVersion ($inboxPlusBuild)',
-                value: _includeVersion,
-                onChanged: (value) => setState(() => _includeVersion = value),
+                title: 'Attach diagnostics',
+                subtitle: 'Version, platform, connected networks, settings and counts. No messages or account names.',
+                value: _form.includeDiagnostics,
+                onChanged: editable
+                    ? (value) =>
+                          setState(() => _form.includeDiagnostics = value)
+                    : null,
               ),
-              if (_screenshot case final path?)
+              if (image != null)
                 _PhoneRow(
                   key: const Key('feedback-screenshot'),
                   leading: ClipRRect(
                     borderRadius: BorderRadius.circular(6),
-                    child: Image.file(
-                      File(path),
+                    child: Image.memory(
+                      image,
                       width: 40,
                       height: 40,
                       fit: BoxFit.cover,
@@ -1135,11 +1157,13 @@ class _FeedbackPageState extends State<FeedbackPage> {
                     ),
                   ),
                   title: 'Screenshot',
-                  subtitle: 'On GitHub, tap “Paste, drop, or click to add files” and choose it again.',
+                  subtitle: 'Sent with your feedback.',
                   trailing: IconButton(
                     tooltip: 'Remove screenshot',
                     icon: const Icon(CupertinoIcons.xmark_circle_fill),
-                    onPressed: () => setState(() => _screenshot = null),
+                    onPressed: editable
+                        ? () => setState(() => _form.image = null)
+                        : null,
                   ),
                 )
               else
@@ -1149,23 +1173,31 @@ class _FeedbackPageState extends State<FeedbackPage> {
                   title: 'Attach a screenshot',
                   subtitle: 'Choose a photo that shows the problem.',
                   chevron: true,
-                  onTap: _pickScreenshot,
+                  onTap: editable && !_attaching ? _attachScreenshot : null,
                 ),
             ],
           ),
+          if (_error case final error?) ...[
+            const SizedBox(height: 12),
+            Text(error, style: TextStyle(color: scheme.error)),
+          ],
           const SizedBox(height: 14),
-          Text(
-            'This opens a new public issue on GitHub in your browser. Don’t include private messages, names or contact details.',
-            style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
-          ),
+          Text(switch (kind) {
+            null => 'Bugs, requests and suggestions are posted publicly on GitHub. Praise is sent privately.',
+            FeedbackKind(isPublic: true) =>
+              'Posted publicly on GitHub. Don’t include private messages.',
+            _ => 'Sent privately to the developer.',
+          }, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
           const SizedBox(height: 16),
           FilledButton(
             key: const Key('feedback-send'),
-            onPressed: canSend ? _send : null,
+            onPressed: _form.draft != null && editable && !_attaching
+                ? _send
+                : null,
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(50),
             ),
-            child: const Text('Continue on GitHub'),
+            child: Text(_sending ? 'Sending…' : 'Send feedback'),
           ),
         ],
       ),
