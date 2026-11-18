@@ -2398,19 +2398,20 @@ class AppController extends InboxUiController {
     await _reloadStatistics();
   });
 
-  String diagnosticsJson() =>
-      const JsonEncoder.withIndent('  ').convert(_diagnostics());
+  String diagnosticsJson() => const JsonEncoder.withIndent('  ').convert(
+    _diagnostics([
+      for (final account in _accounts.values)
+        {'platform': account.platform, 'connected': account.isConnected},
+    ]),
+  );
 
-  Map<String, Object?> _diagnostics() => {
+  Map<String, Object?> _diagnostics(List<Map<String, Object?>> accounts) => {
     'application': 'Inbox+',
     'version': inboxPlusVersion,
     'build': inboxPlusBuild,
     'platform': Platform.operatingSystem,
     'generatedAt': _now().toUtc().toIso8601String(),
-    'accounts': [
-      for (final account in _accounts.values)
-        {'platform': account.platform, 'connected': account.isConnected},
-    ],
+    'accounts': accounts,
     'storage': {
       'messages': _storageSummary.messageCount,
       'attachments': _storageSummary.attachmentCount,
@@ -2454,8 +2455,25 @@ class AppController extends InboxUiController {
   });
 
   @override
-  Future<FeedbackReceipt> sendFeedback(FeedbackDraft draft) =>
-      _submitFeedback(draft, _diagnostics());
+  Future<FeedbackReceipt> sendFeedback(FeedbackDraft draft) {
+    final knownPlatforms = {'imessage', for (final network in _networks) network.id};
+    final counts = <(String, bool), int>{};
+    for (final account in _accounts.values) {
+      final platform = knownPlatforms.contains(account.platform)
+          ? account.platform
+          : 'other';
+      counts.update((platform, account.isConnected), (count) => count + 1,
+          ifAbsent: () => 1);
+    }
+    return _submitFeedback(
+      draft,
+      _diagnostics([
+        for (final MapEntry(key: (platform, connected), value: count)
+            in counts.entries)
+          {'platform': platform, 'connected': connected, 'count': count},
+      ]),
+    );
+  }
 
   @override
   Future<Uint8List?> pickFeedbackImage() async {

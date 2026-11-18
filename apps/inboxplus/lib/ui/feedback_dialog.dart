@@ -69,11 +69,16 @@ class FeedbackDialog extends StatefulWidget {
   State<FeedbackDialog> createState() => _FeedbackDialogState();
 }
 
-class _FeedbackDialogState extends State<FeedbackDialog> {
+class _FeedbackDialogState extends State<FeedbackDialog>
+    implements PopEntry<Object?> {
   _Phase _phase = const _Editing();
   bool _attaching = false;
   String? _imageError;
   final _sendFocus = FocusNode();
+  ModalRoute<Object?>? _route;
+
+  @override
+  final canPopNotifier = ValueNotifier(true);
 
   FeedbackForm get _form => widget.form;
   bool get _editable => _phase is _Editing || _phase is _Failed;
@@ -86,7 +91,25 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (_route == route) return;
+    _route?.unregisterPopEntry(this);
+    _route = route;
+    route?.registerPopEntry(this);
+  }
+
+  @override
+  void onPopInvoked(bool didPop) {}
+
+  @override
+  void onPopInvokedWithResult(bool didPop, Object? result) {}
+
+  @override
   void dispose() {
+    _route?.unregisterPopEntry(this);
+    canPopNotifier.dispose();
     _form.text.removeListener(_textChanged);
     _sendFocus.dispose();
     super.dispose();
@@ -97,19 +120,30 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
   Future<void> _send() async {
     final draft = _form.draft;
     if (draft == null || !_canSend) return;
+    canPopNotifier.value = false;
     setState(() => _phase = const _Sending());
     try {
       final receipt = await widget.controller.sendFeedback(draft);
+      if (!mounted) return;
       _form.clear();
-      if (mounted) setState(() => _phase = _Sent(draft.kind, receipt));
+      setState(() => _phase = _Sent(draft.kind, receipt));
     } on FeedbackFailure catch (failure) {
       if (!mounted) return;
-      setState(() => _phase = _Failed(failure.message));
+      setState(() {
+        _phase = _Failed(
+          failure == FeedbackFailure.tooLarge && draft.image != null
+              ? 'This feedback is too large to send. Shorten the details or remove the screenshot and try again.'
+              : failure.message,
+        );
+      });
       _sendFocus.requestFocus();
+    } finally {
+      if (mounted) canPopNotifier.value = true;
     }
   }
 
   Future<void> _attach(Future<Uint8List?> Function() source) async {
+    if (_attaching || !_editable) return;
     setState(() {
       _attaching = true;
       _imageError = null;
@@ -156,26 +190,23 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
     final scheme = Theme.of(context).colorScheme;
     final narrow = MediaQuery.sizeOf(context).width < 480;
     final padding = narrow ? 18.0 : 30.0;
-    return PopScope(
-      canPop: _phase is! _Sending,
-      child: Dialog(
-        backgroundColor: scheme.surface,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: scheme.outlineVariant),
-        ),
-        constraints: const BoxConstraints(maxWidth: 592),
-        insetPadding: EdgeInsets.all(narrow ? 12 : 24),
-        child: SingleChildScrollView(
-          child: switch (_phase) {
-            _Sent(:final kind, :final receipt) => Padding(
-              padding: EdgeInsets.all(padding),
-              child: _sent(context, kind, receipt),
-            ),
-            _ => _editor(scheme, padding),
-          },
-        ),
+    return Dialog(
+      backgroundColor: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      constraints: const BoxConstraints(maxWidth: 592),
+      insetPadding: EdgeInsets.all(narrow ? 12 : 24),
+      child: SingleChildScrollView(
+        child: switch (_phase) {
+          _Sent(:final kind, :final receipt) => Padding(
+            padding: EdgeInsets.all(padding),
+            child: _sent(context, kind, receipt),
+          ),
+          _ => _editor(scheme, padding),
+        },
       ),
     );
   }
@@ -335,7 +366,7 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
               style: _secondaryStyle(scheme, height: 40),
               onPressed: _phase is _Sending
                   ? null
-                  : () => Navigator.pop(context),
+                  : () => Navigator.maybePop(context),
               child: const Text('Close'),
             ),
             FilledButton(
@@ -475,23 +506,26 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LayoutBuilder(
-          builder: (context, constraints) => constraints.maxWidth < 440
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [description, const SizedBox(height: 10), actions],
-                )
-              : Row(
-                  children: [
-                    Expanded(child: description),
-                    const SizedBox(width: 12),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: constraints.maxWidth * .55,
-                      ),
-                      child: actions,
-                    ),
-                  ],
+          builder: (context, constraints) {
+            final narrow = constraints.maxWidth < 440;
+            return Flex(
+              direction: narrow ? Axis.vertical : Axis.horizontal,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: narrow
+                  ? CrossAxisAlignment.start
+                  : CrossAxisAlignment.center,
+              children: [
+                Flexible(flex: narrow ? 0 : 1, child: description),
+                const SizedBox(width: 12, height: 10),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth * (narrow ? 1 : .55),
+                  ),
+                  child: actions,
                 ),
+              ],
+            );
+          },
         ),
         if (image != null) ...[
           const SizedBox(height: 10),

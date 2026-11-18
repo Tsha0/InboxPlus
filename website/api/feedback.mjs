@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 const issueRepo = "Tsha0/InboxPlus";
-const maxBodyBytes = 4 * 1024 * 1024 + 64 * 1024;
 const maxTextLength = 5000;
 const maxAppFieldLength = 32;
 const maxDiagnosticsBytes = 16 * 1024;
+const maxBodyBytes = 4 * 1024 * 1024 + 64 * 1024 + maxDiagnosticsBytes + Buffer.byteLength(',"diagnostics":');
 const maxImageBytes = 3 * 1024 * 1024;
 const titleLength = 70;
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
