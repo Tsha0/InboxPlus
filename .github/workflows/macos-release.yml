@@ -117,7 +117,9 @@ jobs:
           fi
       - name: Build, sign and package the macOS release
         run: |
-          (cd apps/inboxplus && python3 ../../Scripts/retry-sqlite-download.py flutter build macos --release)
+          version="$(sed -n 's/^version: //p' apps/inboxplus/pubspec.yaml)"
+          (cd apps/inboxplus && python3 ../../Scripts/retry-sqlite-download.py flutter build macos --release \
+            --dart-define=INBOXPLUS_VERSION="${version%+*}" --dart-define=INBOXPLUS_BUILD="${version#*+}")
           python3 Scripts/package-macos-release.py --bundle "$GITHUB_WORKSPACE/apps/inboxplus/build/macos/Build/Products/Release/Inbox+.app" --previous-feed "$RUNNER_TEMP/previous-appcast.xml"
       - name: Attach immutable assets to a draft release
         env:

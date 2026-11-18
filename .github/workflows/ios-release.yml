@@ -108,7 +108,9 @@ jobs:
         working-directory: apps/inboxplus
         run: |
           flutter pub get --enforce-lockfile
-          python3 ../../Scripts/retry-sqlite-download.py flutter build ipa --release --no-codesign
+          version="$(sed -n 's/^version: //p' pubspec.yaml)"
+          python3 ../../Scripts/retry-sqlite-download.py flutter build ipa --release --no-codesign \
+            --dart-define=INBOXPLUS_VERSION="${version%+*}" --dart-define=INBOXPLUS_BUILD="${version#*+}"
       - name: Verify the unsigned archive
         run: python3 Scripts/verify-ios-app.py apps/inboxplus/build/ios/archive/Runner.xcarchive
       - name: Install the App Store Connect key
