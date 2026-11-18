@@ -142,7 +142,9 @@ def package(output, previous_feed, bundle, environment):
     if bundle is None:
         app_root = ROOT / "apps/inboxplus"
         subprocess.run(["flutter", "pub", "get", "--enforce-lockfile"], cwd=app_root, check=True)
-        subprocess.run(["flutter", "build", "macos", "--release"], cwd=app_root, check=True)
+        subprocess.run(["flutter", "build", "macos", "--release",
+                        f"--dart-define=INBOXPLUS_VERSION={version}",
+                        f"--dart-define=INBOXPLUS_BUILD={build}"], cwd=app_root, check=True)
         bundle = desktop.default_bundle("macos")
     desktop.verify_bundle("macos", bundle)
     output.mkdir(parents=True, exist_ok=True)
