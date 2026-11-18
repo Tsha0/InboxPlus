@@ -67,7 +67,7 @@ Document checks you could not run and why; do not present an untested path as ve
 | Embedded connectors | `go mod verify` and `go test ./...` inside `native/connectors`; `build.sh host` for the C ABI |
 | Native runners or packaging | Build the affected Flutter target on its native host; an unsigned build is not installation or signing verification |
 | macOS Messages adapter | `swift test --package-path native/imessage` |
-| UI behavior or layout | Relevant tests plus visual inspection of affected states; include screenshots or a recording in the issue description |
+| UI behavior or layout | Relevant tests plus visual inspection of affected states; include before-and-after screenshots in the PR description |
 | Packaging or updates | Native builds plus the packaging and artifact checks below |
 | Icons, brand marks or dependency inventory | Regenerate affected outputs using the commands below and inspect the diff |
 | Documentation only | Check links, paths and commands against the repository, and run `git diff --check` |
@@ -362,8 +362,11 @@ Connect and add it to TestFlight groups.
 
 Use a short, descriptive title. The PR description should explain the problem and resulting
 behavior, list checks and results, and identify untested paths or migration concerns when relevant.
-For visible UI changes, link the issue description containing screenshots or a recording, using
-fixtures or redacted content.
+For changes that affect UI, including the website, embed before-and-after screenshots of each
+affected state in a **Before / after** section of the PR description, side by side, captured at the
+same size and state, with a line saying what changed. Use a recording for motion or interaction.
+Host them on GitHub, use fixtures or redacted content, and add fresh pairs when review changes the
+UI.
 Review the diff for unrelated changes, debug output and sensitive data before submitting.
 
 Agents must not commit or push without an explicit request, bypass hooks, or overwrite unrelated
