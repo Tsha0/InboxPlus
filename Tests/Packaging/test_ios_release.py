@@ -60,15 +60,16 @@ class SimulatorSelectionTests(unittest.TestCase):
 
 
 class IOSArtifactVerificationTests(unittest.TestCase):
-    def test_real_dyld_info_two_column_format_preserves_connector_symbols(self):
-        exports = """Runner [arm64]:
+    EXPORTS = """Runner [arm64]:
     -exports:
         offset      symbol
         0x00BAA944  _inboxplus_free
         0x00BAA8F4  _inboxplus_poll_event
         0x00BAA894  _inboxplus_request
 """
-        self.assertEqual(self.problems(exports), [])
+
+    def test_real_dyld_info_two_column_format_preserves_connector_symbols(self):
+        self.assertEqual(self.problems(self.EXPORTS), [])
 
     def test_missing_symbol_is_still_rejected(self):
         problems = self.problems("        0x00BAA944  _inboxplus_free\n")
@@ -77,15 +78,28 @@ class IOSArtifactVerificationTests(unittest.TestCase):
         self.assertIn("_inboxplus_poll_event", problems[0])
         self.assertNotIn("_inboxplus_free", problems[0])
 
-    def problems(self, exports):
+    def test_sdk_older_than_minimum_or_missing_is_rejected(self):
+        for sdk in ("iphoneos26.5", "iphonesimulator27.2", None):
+            with self.subTest(sdk=sdk):
+                problems = self.problems(self.EXPORTS, sdk=sdk)
+                self.assertEqual(len(problems), 1)
+                self.assertIn("Xcode 27 or later", problems[0])
+
+    def test_minimum_sdk_and_newer_are_accepted(self):
+        for sdk in ("iphoneos27.0", "iphoneos27.2", "iphoneos28"):
+            with self.subTest(sdk=sdk):
+                self.assertEqual(self.problems(self.EXPORTS, sdk=sdk), [])
+
+    def problems(self, exports, sdk="iphoneos27.2"):
         with tempfile.TemporaryDirectory() as directory:
             app = Path(directory) / "Runner.app"
             app.mkdir()
             (app / "PrivacyInfo.xcprivacy").write_text("fixture")
             version, build = verification.app_version()
-            (app / "Info.plist").write_bytes(plistlib.dumps({
-                "CFBundleShortVersionString": version, "CFBundleVersion": build,
-            }))
+            info = {"CFBundleShortVersionString": version, "CFBundleVersion": build}
+            if sdk is not None:
+                info["DTSDKName"] = sdk
+            (app / "Info.plist").write_bytes(plistlib.dumps(info))
             with patch.object(verification.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, exports)):
                 return verification.problems(app, False)
 
