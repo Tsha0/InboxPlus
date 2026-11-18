@@ -1952,42 +1952,36 @@ void main() {
     }
   });
 
-  test(
-    'feedback attaches diagnostics only when asked and keeps the image',
-    () async {
-      await seed(firstRoute);
-      final submissions =
-          <({FeedbackDraft draft, Map<String, Object?>? diagnostics})>[];
-      final app = await start(
-        engine: _FakeEngine(),
-        submitFeedback: (draft, diagnostics) async {
-          submissions.add((draft: draft, diagnostics: diagnostics));
-          return FeedbackReceipt(
-            issueUrl: Uri.parse('https://github.com/Tsha0/InboxPlus/issues/9'),
-          );
-        },
-      );
-      final image = Uint8List.fromList([1, 2, 3]);
-      final receipt = await app.sendFeedback(
-        FeedbackDraft(kind: FeedbackKind.bug, text: 'Crash', image: image),
-      );
-      await app.sendFeedback(
-        const FeedbackDraft(
-          kind: FeedbackKind.praise,
-          text: 'Thanks',
-          includeDiagnostics: true,
-        ),
-      );
-      expect(
-        receipt.issueUrl,
-        Uri.parse('https://github.com/Tsha0/InboxPlus/issues/9'),
-      );
-      expect(submissions.first.diagnostics, isNull);
-      expect(submissions.first.draft.image, image);
-      expect(submissions.last.diagnostics, jsonDecode(app.diagnosticsJson()));
-      expect(submissions.last.draft.image, isNull);
-    },
-  );
+  test('feedback always attaches sanitized diagnostics and keeps the optional image', () async {
+    await seed(firstRoute);
+    final submissions =
+        <({FeedbackDraft draft, Map<String, Object?> diagnostics})>[];
+    final app = await start(
+      engine: _FakeEngine(),
+      submitFeedback: (draft, diagnostics) async {
+        submissions.add((draft: draft, diagnostics: diagnostics));
+        return FeedbackReceipt(
+          issueUrl: Uri.parse('https://github.com/Tsha0/InboxPlus/issues/9'),
+        );
+      },
+    );
+    final image = Uint8List.fromList([1, 2, 3]);
+    final receipt = await app.sendFeedback(
+      FeedbackDraft(kind: FeedbackKind.bug, text: 'Crash', image: image),
+    );
+    await app.sendFeedback(
+      const FeedbackDraft(kind: FeedbackKind.praise, text: 'Thanks'),
+    );
+    expect(
+      receipt.issueUrl,
+      Uri.parse('https://github.com/Tsha0/InboxPlus/issues/9'),
+    );
+    final diagnostics = jsonDecode(app.diagnosticsJson());
+    expect(submissions.first.diagnostics, diagnostics);
+    expect(submissions.first.draft.image, image);
+    expect(submissions.last.diagnostics, diagnostics);
+    expect(submissions.last.draft.image, isNull);
+  });
 
   test(
     'a feedback failure reaches the caller without an app-wide error',

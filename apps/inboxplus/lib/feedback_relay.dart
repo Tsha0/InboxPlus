@@ -6,7 +6,7 @@ import 'ui/inbox_ui_controller.dart';
 
 typedef FeedbackSubmitter = Future<FeedbackReceipt> Function(
   FeedbackDraft draft,
-  Map<String, Object?>? diagnostics,
+  Map<String, Object?> diagnostics,
 );
 
 class FeedbackRelay {
@@ -18,7 +18,7 @@ class FeedbackRelay {
 
   Future<FeedbackReceipt> submit(
     FeedbackDraft draft,
-    Map<String, Object?>? diagnostics,
+    Map<String, Object?> diagnostics,
   ) async {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15);
@@ -38,7 +38,7 @@ class FeedbackRelay {
   Future<FeedbackReceipt> _post(
     HttpClient client,
     FeedbackDraft draft,
-    Map<String, Object?>? diagnostics,
+    Map<String, Object?> diagnostics,
   ) async {
     final body = utf8.encode(
       jsonEncode({
@@ -49,7 +49,7 @@ class FeedbackRelay {
           'build': inboxPlusBuild,
           'platform': Platform.operatingSystem,
         },
-        'diagnostics': ?diagnostics,
+        'diagnostics': diagnostics,
         if (draft.image case final image?) 'image': base64Encode(image),
       }),
     );

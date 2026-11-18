@@ -3898,7 +3898,9 @@ void main() {
     const text = Key('feedback-text');
     const send = Key('feedback-send');
     const preview = Key('feedback-image-preview');
-    const bugHint = 'No screenshot attached';
+    const screenshotHint = 'Check for private content before sending.';
+    const diagnosticsNotice =
+        'Diagnostics are attached automatically. They don’t include messages or account names.';
 
     Future<void> openFeedback(WidgetTester tester) async {
       await tester.tap(find.byKey(const Key('desktop-rail-feedback')));
@@ -3911,10 +3913,6 @@ void main() {
     String feedbackText(WidgetTester tester) =>
         tester.widget<TextField>(find.byKey(text)).controller!.text;
 
-    bool diagnosticsChecked(WidgetTester tester) => tester
-        .widget<CheckboxListTile>(find.byKey(const Key('feedback-diagnostics')))
-        .value!;
-
     Future<void> waitFor(WidgetTester tester, Finder finder) async {
       for (var i = 0; i < 300 && finder.evaluate().isEmpty; i++) {
         await tester.runAsync(
@@ -3925,12 +3923,14 @@ void main() {
       expect(finder, findsOneWidget);
     }
 
-    testWidgets('sends the chosen kind, trimmed text and diagnostics choice', (
+    testWidgets('discloses diagnostics and sends the chosen kind and text', (
       tester,
     ) async {
       final controller = _FakeController();
       await _pumpApp(tester, controller);
       await openFeedback(tester);
+      expect(find.text(diagnosticsNotice), findsOneWidget);
+      expect(find.byType(CheckboxListTile), findsNothing);
       expect(canSend(tester), isFalse);
       await tester.enterText(find.byKey(text), 'Add folders');
       await tester.pump();
@@ -3942,20 +3942,74 @@ void main() {
       await tester.pump();
       expect(canSend(tester), isFalse);
       await tester.enterText(find.byKey(text), '  Add folders  ');
-      await tester.tap(find.byKey(const Key('feedback-diagnostics')));
       await tester.pump();
       await tester.tap(find.byKey(send));
       await tester.pumpAndSettle();
       final sent = controller.sentFeedback.single;
       expect(sent.kind, FeedbackKind.feature);
       expect(sent.text, 'Add folders');
-      expect(sent.includeDiagnostics, isTrue);
       expect(sent.image, isNull);
       expect(find.text('View on GitHub'), findsOneWidget);
       await tester.tap(find.byKey(const Key('feedback-done')));
       await tester.pumpAndSettle();
       expect(find.byKey(text), findsNothing);
       expect(tester.takeException(), isNull);
+    }, variant: macOS);
+
+    testWidgets(
+      'the form fits wide and narrow windows with reachable actions',
+      (tester) async {
+        final controller = _FakeController();
+        await _pumpApp(tester, controller);
+        await openFeedback(tester);
+        await tester.tap(find.byKey(const Key('feedback-kind-bug')));
+        await tester.enterText(find.byKey(text), 'Search freezes');
+        await tester.pump();
+
+        final close = find.byKey(const Key('feedback-close'));
+        final capture = find.byKey(const Key('feedback-capture'));
+        final screenshotNote = find.text(screenshotHint);
+        expect(
+          tester.getSize(find.byKey(send)).height,
+          greaterThanOrEqualTo(40),
+        );
+        expect(
+          tester.getSize(close).height,
+          tester.getSize(find.byKey(send)).height,
+        );
+        expect(
+          tester.getTopLeft(capture).dx,
+          greaterThan(tester.getTopRight(screenshotNote).dx),
+        );
+
+        tester.view.physicalSize = const Size(320, 480);
+        await tester.pumpAndSettle();
+        expect(
+          tester.getTopLeft(capture).dy,
+          greaterThan(tester.getBottomLeft(screenshotNote).dy),
+        );
+        await tester.ensureVisible(find.byKey(send));
+        await tester.pumpAndSettle();
+        expect(find.byKey(send).hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+      variant: macOS,
+    );
+
+    testWidgets('canceling the image picker leaves the form ready to send', (
+      tester,
+    ) async {
+      await _pumpApp(tester, _FakeController());
+      await openFeedback(tester);
+      await tester.tap(find.byKey(const Key('feedback-kind-bug')));
+      await tester.enterText(find.byKey(text), 'Search freezes');
+      await tester.tap(find.byKey(const Key('feedback-choose-image')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(preview), findsNothing);
+      expect(find.text(screenshotHint), findsOneWidget);
+      expect(feedbackText(tester), 'Search freezes');
+      expect(canSend(tester), isTrue);
     }, variant: macOS);
 
     testWidgets('the disclosure and selection follow the chosen kind', (
@@ -4031,7 +4085,6 @@ void main() {
       await openFeedback(tester);
       await tester.tap(find.byKey(const Key('feedback-kind-needsWork')));
       await tester.enterText(find.byKey(text), 'Sidebar is cramped');
-      await tester.tap(find.byKey(const Key('feedback-diagnostics')));
       await tester.tap(find.byKey(const Key('feedback-choose-image')));
       await waitFor(tester, find.byKey(preview));
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
@@ -4040,7 +4093,6 @@ void main() {
 
       await openFeedback(tester);
       expect(feedbackText(tester), 'Sidebar is cramped');
-      expect(diagnosticsChecked(tester), isTrue);
       expect(find.byKey(preview), findsOneWidget);
       expect(
         tester.getSemantics(find.bySemanticsLabel('Needs work')),
@@ -4058,7 +4110,6 @@ void main() {
 
       await openFeedback(tester);
       expect(feedbackText(tester), isEmpty);
-      expect(diagnosticsChecked(tester), isFalse);
       expect(find.byKey(preview), findsNothing);
       expect(
         tester.getSemantics(find.bySemanticsLabel('Needs work')),
@@ -4073,22 +4124,22 @@ void main() {
       final controller = _FakeController()..pickedFeedbackImage = screenshot;
       await _pumpApp(tester, controller);
       await openFeedback(tester);
-      expect(find.text(bugHint), findsNothing);
+      expect(find.text(screenshotHint), findsOneWidget);
       await tester.tap(find.byKey(const Key('feedback-kind-bug')));
       await tester.pump();
-      expect(find.text(bugHint), findsOneWidget);
+      expect(find.text(screenshotHint), findsOneWidget);
       await tester.tap(find.byKey(const Key('feedback-kind-feature')));
       await tester.pump();
-      expect(find.text(bugHint), findsNothing);
+      expect(find.text(screenshotHint), findsOneWidget);
       await tester.tap(find.byKey(const Key('feedback-kind-bug')));
       await tester.tap(find.byKey(const Key('feedback-choose-image')));
       await waitFor(tester, find.byKey(preview));
-      expect(find.text(bugHint), findsNothing);
+      expect(find.text(screenshotHint), findsNothing);
       final shown = tester.widget<Image>(find.byKey(preview)).image;
       await tester.tap(find.byKey(const Key('feedback-remove-image')));
       await tester.pump();
       expect(find.byKey(preview), findsNothing);
-      expect(find.text(bugHint), findsOneWidget);
+      expect(find.text(screenshotHint), findsOneWidget);
       await tester.tap(find.byKey(const Key('feedback-choose-image')));
       await waitFor(tester, find.byKey(preview));
       await tester.enterText(find.byKey(text), 'Crash on launch');

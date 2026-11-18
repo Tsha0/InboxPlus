@@ -2455,7 +2455,7 @@ class AppController extends InboxUiController {
 
   @override
   Future<FeedbackReceipt> sendFeedback(FeedbackDraft draft) =>
-      _submitFeedback(draft, draft.includeDiagnostics ? _diagnostics() : null);
+      _submitFeedback(draft, _diagnostics());
 
   @override
   Future<Uint8List?> pickFeedbackImage() async {
