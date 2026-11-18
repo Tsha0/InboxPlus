@@ -18,6 +18,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 PUBSPEC = ROOT / "apps/inboxplus/pubspec.yaml"
 CONNECTOR_SYMBOLS = ("_inboxplus_request", "_inboxplus_poll_event", "_inboxplus_free")
+MINIMUM_SDK = 27
 
 
 def app_version():
@@ -45,6 +46,13 @@ def problems(app, distribution):
     if not (app / "PrivacyInfo.xcprivacy").is_file():
         found.append("PrivacyInfo.xcprivacy is missing; App Store Connect rejects the upload")
     info = plistlib.loads((app / "Info.plist").read_bytes())
+    sdk = info.get("DTSDKName", "")
+    sdk_major = re.fullmatch(r"iphoneos(\d+)(\.\d+)*", sdk)
+    if not sdk_major or int(sdk_major.group(1)) < MINIMUM_SDK:
+        found.append(
+            f"the app was built with the {sdk or 'unknown'} SDK; App Store Connect requires "
+            f"iOS {MINIMUM_SDK} or later, so build with Xcode {MINIMUM_SDK} or later"
+        )
     built = (info.get("CFBundleShortVersionString"), info.get("CFBundleVersion"))
     expected = app_version()
     if built != expected:
@@ -89,7 +97,10 @@ def main():
         print(f"error: {problem}", file=sys.stderr)
     if found:
         sys.exit(1)
-    print(f"{args.build.name}: connectors exported, privacy manifest present, version matches")
+    print(
+        f"{args.build.name}: connectors exported, privacy manifest present, "
+        f"SDK supported, version matches"
+    )
 
 
 if __name__ == "__main__":
