@@ -1,7 +1,7 @@
 name: inboxplus
 description: Standalone, device-local universal messaging inbox.
 publish_to: none
-version: 0.9.1+116
+version: 0.9.2+117
 
 environment:
   sdk: '>=3.13.0 <4.0.0'
