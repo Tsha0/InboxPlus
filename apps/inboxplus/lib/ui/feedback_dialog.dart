@@ -75,10 +75,11 @@ class _FeedbackDialogState extends State<FeedbackDialog>
   bool _attaching = false;
   String? _imageError;
   final _sendFocus = FocusNode();
+  final _chooseImageFocus = FocusNode();
   ModalRoute<Object?>? _route;
 
   @override
-  final canPopNotifier = ValueNotifier(true);
+  final ValueNotifier<bool> canPopNotifier = ValueNotifier(true);
 
   FeedbackForm get _form => widget.form;
   bool get _editable => _phase is _Editing || _phase is _Failed;
@@ -112,10 +113,17 @@ class _FeedbackDialogState extends State<FeedbackDialog>
     canPopNotifier.dispose();
     _form.text.removeListener(_textChanged);
     _sendFocus.dispose();
+    _chooseImageFocus.dispose();
     super.dispose();
   }
 
   void _textChanged() => setState(() {});
+
+  void _restoreFocus(FocusNode node) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) node.requestFocus();
+    });
+  }
 
   Future<void> _send() async {
     final draft = _form.draft;
@@ -136,14 +144,18 @@ class _FeedbackDialogState extends State<FeedbackDialog>
               : failure.message,
         );
       });
-      _sendFocus.requestFocus();
+      _restoreFocus(_sendFocus);
     } finally {
       if (mounted) canPopNotifier.value = true;
     }
   }
 
-  Future<void> _attach(Future<Uint8List?> Function() source) async {
+  Future<void> _attach(
+    Future<Uint8List?> Function() source, {
+    FocusNode? focus,
+  }) async {
     if (_attaching || !_editable) return;
+    final restoreFocus = focus?.hasFocus == true;
     setState(() {
       _attaching = true;
       _imageError = null;
@@ -159,7 +171,10 @@ class _FeedbackDialogState extends State<FeedbackDialog>
         );
       }
     } finally {
-      if (mounted) setState(() => _attaching = false);
+      if (mounted) {
+        setState(() => _attaching = false);
+        if (restoreFocus && _form.image == null) _restoreFocus(focus!);
+      }
     }
   }
 
@@ -241,6 +256,8 @@ class _FeedbackDialogState extends State<FeedbackDialog>
               ),
               const SizedBox(height: 6),
               Text('Help us make Inbox+ better.', style: supporting),
+              const SizedBox(height: 6),
+              _postingNotice(supporting),
               const SizedBox(height: 22),
               const Text('Feedback type', style: _labelStyle),
               const SizedBox(height: 8),
@@ -299,8 +316,7 @@ class _FeedbackDialogState extends State<FeedbackDialog>
     );
   }
 
-  Widget _footer(ColorScheme scheme) {
-    final supporting = _supportingStyle(scheme);
+  Widget _postingNotice(TextStyle supporting) {
     final (visibility, warning) = switch (_form.kind) {
       null => (
         'Bugs, requests and suggestions are posted publicly on GitHub.',
@@ -312,6 +328,20 @@ class _FeedbackDialogState extends State<FeedbackDialog>
       ),
       _ => ('Sent privately to the developer.', ''),
     };
+    return Semantics(
+      liveRegion: true,
+      child: Text.rich(
+        TextSpan(
+          text: visibility,
+          style: _labelStyle.copyWith(fontSize: 12),
+          children: [TextSpan(text: warning, style: supporting)],
+        ),
+      ),
+    );
+  }
+
+  Widget _footer(ColorScheme scheme) {
+    final supporting = _supportingStyle(scheme);
     final failure = switch (_phase) {
       _Failed(:final message) => message,
       _ => null,
@@ -325,25 +355,9 @@ class _FeedbackDialogState extends State<FeedbackDialog>
             Icon(CupertinoIcons.info, size: 15, color: supporting.color),
             const SizedBox(width: 9),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Semantics(
-                    liveRegion: true,
-                    child: Text.rich(
-                      TextSpan(
-                        text: visibility,
-                        style: _labelStyle.copyWith(fontSize: 12),
-                        children: [TextSpan(text: warning, style: supporting)],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Diagnostics are attached automatically. They don’t include messages or account names.',
-                    style: supporting,
-                  ),
-                ],
+              child: Text(
+                'Diagnostics are attached automatically. They don’t include messages or account names.',
+                style: supporting,
               ),
             ),
           ],
@@ -400,38 +414,38 @@ class _FeedbackDialogState extends State<FeedbackDialog>
   Widget _kind(FeedbackKind kind) {
     final scheme = Theme.of(context).colorScheme;
     final selected = _form.kind == kind;
-    void choose() => setState(() => _form.kind = kind);
-    return Semantics(
-      label: kind.label,
-      button: true,
-      selected: selected,
-      inMutuallyExclusiveGroup: true,
-      enabled: _editable,
-      onTap: _editable ? choose : null,
-      excludeSemantics: true,
-      child: TextButton(
-        key: Key('feedback-kind-${kind.name}'),
-        onPressed: _editable ? choose : null,
-        style: TextButton.styleFrom(
-          backgroundColor: selected
-              ? scheme.primary.withValues(alpha: .12)
-              : Colors.transparent,
-          foregroundColor: scheme.onSurface,
-          disabledBackgroundColor: selected
-              ? scheme.primary.withValues(alpha: .08)
-              : Colors.transparent,
-          disabledForegroundColor: scheme.onSurfaceVariant,
-          visualDensity: VisualDensity.standard,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          minimumSize: const Size(0, 35),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: BorderSide(
-              color: selected ? scheme.primary : scheme.outlineVariant,
+    return MergeSemantics(
+      child: Semantics(
+        selected: selected,
+        inMutuallyExclusiveGroup: true,
+        child: TextButton(
+          key: Key('feedback-kind-${kind.name}'),
+          onPressed: _editable
+              ? () {
+                  if (_editable) setState(() => _form.kind = kind);
+                }
+              : null,
+          style: TextButton.styleFrom(
+            backgroundColor: selected
+                ? scheme.primary.withValues(alpha: .12)
+                : Colors.transparent,
+            foregroundColor: scheme.onSurface,
+            disabledBackgroundColor: selected
+                ? scheme.primary.withValues(alpha: .08)
+                : Colors.transparent,
+            disabledForegroundColor: scheme.onSurfaceVariant,
+            visualDensity: VisualDensity.standard,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            minimumSize: const Size(0, 35),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: BorderSide(
+                color: selected ? scheme.primary : scheme.outlineVariant,
+              ),
             ),
           ),
+          child: Text(kind.label, style: _labelStyle),
         ),
-        child: Text(kind.label, style: _labelStyle),
       ),
     );
   }
@@ -489,7 +503,10 @@ class _FeedbackDialogState extends State<FeedbackDialog>
           ),
           TextButton(
             key: const Key('feedback-choose-image'),
-            onPressed: busy ? null : () => _attach(_chooseImage),
+            focusNode: _chooseImageFocus,
+            onPressed: busy
+                ? null
+                : () => _attach(_chooseImage, focus: _chooseImageFocus),
             style: buttonStyle,
             child: const Text('Choose image…'),
           ),

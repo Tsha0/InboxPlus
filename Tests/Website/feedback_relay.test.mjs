@@ -217,6 +217,17 @@ test("text at the length limit and the largest image are accepted", async () => 
   assert.equal(response.status, 200);
 });
 
+test("diagnostics fit alongside long multibyte Details and a maximum-size screenshot", async () => {
+  const { response, calls } = await post(request({
+    text: `a${"\u0301".repeat(6)}`.repeat(5000),
+    image: png(3 * 1024 * 1024).toString("base64"),
+    diagnostics: { note: "x".repeat(2000) },
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.length, 2);
+});
+
 for (const character of ["😀", "𠀀", "e\u0301", "👨‍👩‍👧‍👦"]) {
   test(`text limit counts grapheme clusters for ${character}`, async () => {
     for (const text of ["x".repeat(4999) + character, character.repeat(5000)]) {

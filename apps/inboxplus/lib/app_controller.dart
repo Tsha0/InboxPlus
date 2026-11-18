@@ -2456,14 +2456,20 @@ class AppController extends InboxUiController {
 
   @override
   Future<FeedbackReceipt> sendFeedback(FeedbackDraft draft) {
-    final knownPlatforms = {'imessage', for (final network in _networks) network.id};
+    final knownPlatforms = {
+      'imessage',
+      for (final network in _networks) network.id,
+    };
     final counts = <(String, bool), int>{};
     for (final account in _accounts.values) {
       final platform = knownPlatforms.contains(account.platform)
           ? account.platform
           : 'other';
-      counts.update((platform, account.isConnected), (count) => count + 1,
-          ifAbsent: () => 1);
+      counts.update(
+        (platform, account.isConnected),
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
     }
     return _submitFeedback(
       draft,

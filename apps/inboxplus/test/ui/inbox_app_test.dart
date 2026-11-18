@@ -3913,6 +3913,22 @@ void main() {
     String feedbackText(WidgetTester tester) =>
         tester.widget<TextField>(find.byKey(text)).controller!.text;
 
+    Key? focusedButton() => FocusManager.instance.primaryFocus?.context
+        ?.findAncestorWidgetOfExactType<TextButton>()
+        ?.key;
+
+    Future<void> tabTo(WidgetTester tester, Key button) async {
+      for (
+        var attempts = 0;
+        attempts < 12 && focusedButton() != button;
+        attempts++
+      ) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pumpAndSettle();
+      }
+      expect(focusedButton(), button);
+    }
+
     Future<void> waitFor(WidgetTester tester, Finder finder) async {
       for (var i = 0; i < 300 && finder.evaluate().isEmpty; i++) {
         await tester.runAsync(
@@ -3968,6 +3984,7 @@ void main() {
 
         final close = find.byKey(const Key('feedback-close'));
         final capture = find.byKey(const Key('feedback-capture'));
+        const choose = Key('feedback-choose-image');
         final screenshotNote = find.text(screenshotHint);
         expect(
           tester.getSize(find.byKey(send)).height,
@@ -3982,8 +3999,10 @@ void main() {
           greaterThan(tester.getTopRight(screenshotNote).dx),
         );
 
+        await tabTo(tester, choose);
         tester.view.physicalSize = const Size(320, 480);
         await tester.pumpAndSettle();
+        expect(focusedButton(), choose);
         expect(
           tester.getTopLeft(capture).dy,
           greaterThan(tester.getBottomLeft(screenshotNote).dy),
@@ -3999,17 +4018,61 @@ void main() {
     testWidgets('canceling the image picker leaves the form ready to send', (
       tester,
     ) async {
-      await _pumpApp(tester, _FakeController());
+      const choose = Key('feedback-choose-image');
+      final picked = Completer<Uint8List?>();
+      final controller = _FakeController()
+        ..onPickFeedbackImage = () => picked.future;
+      await _pumpApp(tester, controller);
       await openFeedback(tester);
       await tester.tap(find.byKey(const Key('feedback-kind-bug')));
       await tester.enterText(find.byKey(text), 'Search freezes');
-      await tester.tap(find.byKey(const Key('feedback-choose-image')));
+      await tabTo(tester, choose);
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
+      await tester.pump();
+      picked.complete(null);
       await tester.pumpAndSettle();
 
+      expect(focusedButton(), choose);
       expect(find.byKey(preview), findsNothing);
       expect(find.text(screenshotHint), findsOneWidget);
       expect(feedbackText(tester), 'Search freezes');
       expect(canSend(tester), isTrue);
+    }, variant: macOS);
+
+    testWidgets('the posting warning stays above Details at 2x text size', (
+      tester,
+    ) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(900, 600);
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final form = FeedbackForm();
+      addTearDown(form.dispose);
+      await tester.pumpWidget(const MaterialApp(home: Scaffold()));
+      showDialog<void>(
+        context: tester.element(find.byType(Scaffold)),
+        builder: (_) => FeedbackDialog(
+          controller: _FakeController(),
+          form: form,
+          captureBoundary: GlobalKey(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('feedback-kind-feature')));
+      await tester.pumpAndSettle();
+      final notice = find.text(
+        'Posted publicly on GitHub. Don’t include private messages.',
+      );
+      final viewport = tester.getRect(find.byType(SingleChildScrollView));
+      expect(viewport.contains(tester.getCenter(notice)), isTrue);
+      expect(
+        tester.getBottomLeft(notice).dy,
+        lessThan(tester.getTopLeft(find.byKey(text)).dy),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
     }, variant: macOS);
 
     testWidgets('the disclosure and selection follow the chosen kind', (
@@ -4034,7 +4097,8 @@ void main() {
         tester.getSemantics(find.bySemanticsLabel('Needs work')),
         isSemantics(isSelected: true, isButton: true),
       );
-      await tester.tap(find.byKey(const Key('feedback-kind-praise')));
+      await tabTo(tester, const Key('feedback-kind-praise'));
+      await tester.sendKeyEvent(LogicalKeyboardKey.space);
       await tester.pump();
       expect(find.text('Sent privately to the developer.'), findsOneWidget);
       expect(
@@ -4043,37 +4107,79 @@ void main() {
       );
       expect(
         tester.getSemantics(find.bySemanticsLabel('Praise')),
-        isSemantics(isSelected: true),
+        isSemantics(isSelected: true, isFocused: true),
       );
       handle.dispose();
     }, variant: macOS);
 
-    testWidgets('a failed send keeps the form and Send retries', (
+    testWidgets('a failed send keeps the form and Enter retries', (
       tester,
     ) async {
       final controller = _FakeController();
-      var attempts = 0;
-      controller.onSendFeedback = (_) async {
-        if (attempts++ == 0) throw FeedbackFailure.unavailable;
-        return const FeedbackReceipt();
-      };
+      final pending = Completer<FeedbackReceipt>();
+      controller.onSendFeedback = (_) => pending.future;
       await _pumpApp(tester, controller);
       await openFeedback(tester);
       await tester.tap(find.byKey(const Key('feedback-kind-bug')));
       await tester.enterText(find.byKey(text), 'Search freezes');
       await tester.pump();
       await tester.tap(find.byKey(send));
+      await tester.pump();
+      pending.completeError(FeedbackFailure.unavailable);
       await tester.pumpAndSettle();
       expect(find.text(FeedbackFailure.unavailable.message), findsOneWidget);
       expect(feedbackText(tester), 'Search freezes');
       expect(canSend(tester), isTrue);
-      await tester.tap(find.byKey(send));
+      controller.onSendFeedback = (_) async => const FeedbackReceipt();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
       expect(controller.sentFeedback, hasLength(2));
       expect(controller.sentFeedback.last.text, 'Search freezes');
       expect(find.text('Thanks for your feedback'), findsOneWidget);
       expect(find.text('View on GitHub'), findsNothing);
       expect(tester.takeException(), isNull);
+    }, variant: macOS);
+
+    testWidgets(
+      'rapid attachment actions cannot start a second image request',
+      (tester) async {
+        var pickerCalls = 0;
+        final controller = _FakeController()
+          ..onPickFeedbackImage = () async {
+            pickerCalls++;
+            return null;
+          };
+        await _pumpApp(tester, controller);
+        await openFeedback(tester);
+        await tester.tap(find.byKey(const Key('feedback-capture')));
+        await tester.tap(find.byKey(const Key('feedback-choose-image')));
+        await waitFor(tester, find.byKey(preview));
+        expect(pickerCalls, 0);
+      },
+      variant: macOS,
+    );
+
+    testWidgets('a pending send immediately blocks Close and outside taps', (
+      tester,
+    ) async {
+      final pending = Completer<FeedbackReceipt>();
+      final controller = _FakeController()
+        ..onSendFeedback = (_) => pending.future;
+      await _pumpApp(tester, controller);
+      await openFeedback(tester);
+      await tester.tap(find.byKey(const Key('feedback-kind-bug')));
+      await tester.enterText(find.byKey(text), 'Search freezes');
+      await tester.pump();
+      await tester.tap(find.byKey(send));
+      await tester.tap(find.byKey(const Key('feedback-close')));
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byKey(text), findsOneWidget);
+      expect(controller.sentFeedback, hasLength(1));
+      pending.complete(const FeedbackReceipt());
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('feedback-done')), findsOneWidget);
     }, variant: macOS);
 
     testWidgets('closing keeps the draft until a send succeeds', (
@@ -4830,6 +4936,7 @@ class _FakeController extends InboxUiController {
 
   final sentFeedback = <FeedbackDraft>[];
   Future<FeedbackReceipt> Function(FeedbackDraft)? onSendFeedback;
+  Future<Uint8List?> Function()? onPickFeedbackImage;
   Uint8List? pickedFeedbackImage;
 
   @override
@@ -4844,7 +4951,10 @@ class _FakeController extends InboxUiController {
   }
 
   @override
-  Future<Uint8List?> pickFeedbackImage() async => pickedFeedbackImage;
+  Future<Uint8List?> pickFeedbackImage() async {
+    final pick = onPickFeedbackImage;
+    return pick == null ? pickedFeedbackImage : await pick();
+  }
 
   @override
   Future<void> requestQuit() async {}
