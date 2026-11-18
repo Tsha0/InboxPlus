@@ -448,6 +448,14 @@ class _PhoneChatInfoPage extends StatelessWidget {
                 ],
               ),
             heading('Files'),
+            if (controller.error case final error?)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(error, style: TextStyle(color: scheme.error)),
+                ),
+              ),
             _PhoneInfoCard(
               children: files.isEmpty
                   ? [

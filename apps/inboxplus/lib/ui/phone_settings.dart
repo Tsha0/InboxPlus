@@ -679,20 +679,30 @@ class _PhoneConversationListPage extends StatelessWidget {
                     : 'No muted conversations',
               ),
             for (final chat in chats)
-              _PhoneRow(
-                title: chat.title,
-                onTap: () {
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                  onOpen(chat.route);
-                },
-                trailing: TextButton(
-                  onPressed: controller.isBusy
-                      ? null
-                      : () => hidden
-                            ? controller.setHidden(chat.route, false)
-                            : controller.setMuted(chat.route, false),
-                  child: Text(hidden ? 'Restore' : 'Unmute'),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: _PhoneRow(
+                      title: chat.title,
+                      onTap: () {
+                        Navigator.of(context)
+                            .popUntil((route) => route.isFirst);
+                        onOpen(chat.route);
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: TextButton(
+                      onPressed: controller.isBusy
+                          ? null
+                          : () => hidden
+                                ? controller.setHidden(chat.route, false)
+                                : controller.setMuted(chat.route, false),
+                      child: Text(hidden ? 'Restore' : 'Unmute'),
+                    ),
+                  ),
+                ],
               ),
           ],
         ),
@@ -1031,7 +1041,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
       final bytes = await widget.controller.pickFeedbackImage();
       final image = bytes == null ? null : await normalizeFeedbackImage(bytes);
       if (mounted && image != null) setState(() => _form.image = image);
-    } on UnreadableImageException {
+    } on Exception {
       if (mounted) {
         setState(
           () => _error =
@@ -1088,118 +1098,122 @@ class _FeedbackPageState extends State<FeedbackPage> {
     final kind = _form.kind;
     final image = _form.image;
     final editable = !_sending;
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Send feedback'),
-        centerTitle: true,
-        scrolledUnderElevation: 0,
-      ),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          8,
-          16,
-          MediaQuery.paddingOf(context).bottom + 24,
+    return PopScope(
+      canPop: !_sending,
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: !_sending,
+          title: const Text('Send feedback'),
+          centerTitle: true,
+          scrolledUnderElevation: 0,
         ),
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final option in FeedbackKind.values)
-                ChoiceChip(
-                  key: Key('feedback-kind-${option.wireName}'),
-                  label: Text(option.label),
-                  selected: kind == option,
-                  onSelected: editable
-                      ? (_) => setState(() => _form.kind = option)
-                      : null,
-                ),
-            ],
+        body: ListView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            8,
+            16,
+            MediaQuery.paddingOf(context).bottom + 24,
           ),
-          const SizedBox(height: 16),
-          TextField(
-            key: const Key('feedback-text'),
-            controller: _form.text,
-            enabled: editable,
-            minLines: 5,
-            maxLines: 10,
-            maxLength: 5000,
-            textCapitalization: TextCapitalization.sentences,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              hintText: 'Tell us what went wrong, or share general feedback.',
-              counterText: '',
-            ),
-          ),
-          _PhoneGroup(
-            children: [
-              _PhoneSwitchRow(
-                title: 'Attach diagnostics',
-                subtitle: 'Version, platform, connected networks, settings and counts. No messages or account names.',
-                value: _form.includeDiagnostics,
-                onChanged: editable
-                    ? (value) =>
-                          setState(() => _form.includeDiagnostics = value)
-                    : null,
-              ),
-              if (image != null)
-                _PhoneRow(
-                  key: const Key('feedback-screenshot'),
-                  leading: ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: Image.memory(
-                      image,
-                      width: 40,
-                      height: 40,
-                      fit: BoxFit.cover,
-                      cacheWidth: 120,
-                    ),
-                  ),
-                  title: 'Screenshot',
-                  subtitle: 'Sent with your feedback.',
-                  trailing: IconButton(
-                    tooltip: 'Remove screenshot',
-                    icon: const Icon(CupertinoIcons.xmark_circle_fill),
-                    onPressed: editable
-                        ? () => setState(() => _form.image = null)
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final option in FeedbackKind.values)
+                  ChoiceChip(
+                    key: Key('feedback-kind-${option.wireName}'),
+                    label: Text(option.label),
+                    selected: kind == option,
+                    onSelected: editable
+                        ? (_) => setState(() => _form.kind = option)
                         : null,
                   ),
-                )
-              else
-                _PhoneRow(
-                  key: const Key('feedback-attach-screenshot'),
-                  icon: CupertinoIcons.photo,
-                  title: 'Attach a screenshot',
-                  subtitle: 'Choose a photo that shows the problem.',
-                  chevron: true,
-                  onTap: editable && !_attaching ? _attachScreenshot : null,
-                ),
-            ],
-          ),
-          if (_error case final error?) ...[
-            const SizedBox(height: 12),
-            Text(error, style: TextStyle(color: scheme.error)),
-          ],
-          const SizedBox(height: 14),
-          Text(switch (kind) {
-            null => 'Bugs, requests and suggestions are posted publicly on GitHub. Praise is sent privately.',
-            FeedbackKind(isPublic: true) =>
-              'Posted publicly on GitHub. Don’t include private messages.',
-            _ => 'Sent privately to the developer.',
-          }, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
-          const SizedBox(height: 16),
-          FilledButton(
-            key: const Key('feedback-send'),
-            onPressed: _form.draft != null && editable && !_attaching
-                ? _send
-                : null,
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(50),
+              ],
             ),
-            child: Text(_sending ? 'Sending…' : 'Send feedback'),
-          ),
-        ],
+            const SizedBox(height: 16),
+            TextField(
+              key: const Key('feedback-text'),
+              controller: _form.text,
+              enabled: editable,
+              minLines: 5,
+              maxLines: 10,
+              maxLength: 5000,
+              textCapitalization: TextCapitalization.sentences,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                hintText: 'Tell us what went wrong, or share general feedback.',
+                counterText: '',
+              ),
+            ),
+            _PhoneGroup(
+              children: [
+                _PhoneSwitchRow(
+                  title: 'Attach diagnostics',
+                  subtitle: 'Version, platform, connected networks, settings and counts. No messages or account names.',
+                  value: _form.includeDiagnostics,
+                  onChanged: editable
+                      ? (value) =>
+                            setState(() => _form.includeDiagnostics = value)
+                      : null,
+                ),
+                if (image != null)
+                  _PhoneRow(
+                    key: const Key('feedback-screenshot'),
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: Image.memory(
+                        image,
+                        width: 40,
+                        height: 40,
+                        fit: BoxFit.cover,
+                        cacheWidth: 120,
+                      ),
+                    ),
+                    title: 'Screenshot',
+                    subtitle: 'Sent with your feedback.',
+                    trailing: IconButton(
+                      tooltip: 'Remove screenshot',
+                      icon: const Icon(CupertinoIcons.xmark_circle_fill),
+                      onPressed: editable
+                          ? () => setState(() => _form.image = null)
+                          : null,
+                    ),
+                  )
+                else
+                  _PhoneRow(
+                    key: const Key('feedback-attach-screenshot'),
+                    icon: CupertinoIcons.photo,
+                    title: 'Attach a screenshot',
+                    subtitle: 'Choose a photo that shows the problem.',
+                    chevron: true,
+                    onTap: editable && !_attaching ? _attachScreenshot : null,
+                  ),
+              ],
+            ),
+            if (_error case final error?) ...[
+              const SizedBox(height: 12),
+              Text(error, style: TextStyle(color: scheme.error)),
+            ],
+            const SizedBox(height: 14),
+            Text(switch (kind) {
+              null => 'Bugs, requests and suggestions are posted publicly on GitHub. Praise is sent privately.',
+              FeedbackKind(isPublic: true) =>
+                'Posted publicly on GitHub. Don’t include private messages.',
+              _ => 'Sent privately to the developer.',
+            }, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 16),
+            FilledButton(
+              key: const Key('feedback-send'),
+              onPressed: _form.draft != null && editable && !_attaching
+                  ? _send
+                  : null,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(50),
+              ),
+              child: Text(_sending ? 'Sending…' : 'Send feedback'),
+            ),
+          ],
+        ),
       ),
     );
   }

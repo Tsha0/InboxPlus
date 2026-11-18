@@ -2882,6 +2882,32 @@ void main() {
       expect(picker.calls, 0);
     });
 
+    for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+      test(
+        '${platform.name} exports sanitized attachment bytes through the runner',
+        () async {
+          debugDefaultTargetPlatformOverride = platform;
+          final source = await receive(
+            name: '../../photo?.png',
+            mime: 'image/png',
+          );
+          final app = await start();
+          await app.saveAttachment(firstRoute, 'received-file', 'file');
+          expect(app.error, isNull);
+          final calls = native.calls.where(
+            (entry) => entry['method'] == 'exportPrivateFile',
+          );
+          expect(calls.single['arguments'], {
+            'name': 'photo_.png',
+            'mimeType': 'image/png',
+            'bytes': [0, 255, 42, 13, 10],
+          });
+          expect(await source.readAsBytes(), [0, 255, 42, 13, 10]);
+          expect(picker.calls, 0);
+        },
+      );
+    }
+
     test(
       'outside-profile paths and symlink escapes never open a save dialog',
       () async {
@@ -2976,6 +3002,35 @@ void main() {
 
     AttachmentRecord photo(AppController app) =>
         app.messagesFor(firstRoute).single.attachments.single;
+
+    test('explicit and inline downloads share one active request', () async {
+      final pending = Completer<Map<String, Object?>>();
+      final engine = _FakeEngine(onDownload: (_) => pending.future);
+      final app = await openPhoto(engine);
+      int requests() => engine.commands
+          .where((command) => command['op'] == 'download_attachment')
+          .length;
+      final first = app.downloadAttachment(
+        firstRoute,
+        'photo-message',
+        'photo',
+      );
+      await _eventually(() => requests() == 1);
+      final stateWhilePending = app.attachmentLoadState(firstRoute, 'photo');
+      final second = app.downloadAttachment(
+        firstRoute,
+        'photo-message',
+        'photo',
+      );
+      final inline = app.loadInlineImage(firstRoute, 'photo-message', 'photo');
+      pending.complete({
+        'bytes': base64Encode([255, 216, 255]),
+      });
+      await Future.wait([first, second, inline]);
+      expect((stateWhilePending, requests()), (AttachmentLoadState.loading, 1));
+      expect(app.attachmentLoadState(firstRoute, 'photo'), isNull);
+      expect(photo(app).localPath, isNotNull);
+    });
 
     test('loads a received photo into the private media store', () async {
       final engine = _FakeEngine(
@@ -3156,54 +3211,52 @@ void main() {
 
   for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
     test(
-      '${platform.name} picks leave no readable copy in temporary storage',
+      '${platform.name} picks supply bytes without a disposable picker path',
       () async {
         debugDefaultTargetPlatformOverride = platform;
-        addTearDown(() => debugDefaultTargetPlatformOverride = null);
         await seed(firstRoute);
-        final originalPicker = FilePickerPlatform.instance;
-        final picker = _SavePicker();
-        FilePickerPlatform.instance = picker;
-        addTearDown(() => FilePickerPlatform.instance = originalPicker);
         final app = await start(engine: _FakeEngine());
-
-        File pickerCopy(String name) {
-          final folder = Directory.systemTemp.createTempSync('picker');
-          return File(p.join(folder.path, name))
-            ..writeAsBytesSync(base64Decode(_onePixelPng));
-        }
-
-        final photo = pickerCopy('IMG_0001.png');
-        picker.pickedPath = photo.path;
+        final photo = base64Decode(_onePixelPng);
+        native.pickedFile = {'name': 'IMG_0001.png', 'bytes': photo};
         await app.stageAttachments(firstRoute, media: true);
         final staged = app.draftFor(firstRoute)!.attachments.single;
-        expect(
-          File(staged.localPath!).readAsBytesSync(),
-          base64Decode(_onePixelPng),
-        );
-        expect(
-          photo.existsSync(),
-          isFalse,
-          reason: 'staged photo copy removed',
-        );
-        expect(
-          photo.parent.existsSync(),
-          isFalse,
-          reason: 'picker folder removed',
-        );
+        expect(staged.fileName, 'IMG_0001.png');
+        final file = File(staged.localPath!);
+        expect(await file.readAsBytes(), photo);
+        if (!Platform.isWindows) {
+          expect((await file.stat()).mode & 0x1ff, 0x180);
+          expect((await file.parent.stat()).mode & 0x1ff, 0x1c0);
+        }
 
-        final screenshot = pickerCopy('shot.png');
-        picker.pickedPath = screenshot.path;
-        expect(await app.pickFeedbackImage(), base64Decode(_onePixelPng));
-        expect(
-          screenshot.existsSync(),
-          isFalse,
-          reason: 'screenshot copy removed',
+        native.pickedFile = {'name': 'shot.png', 'bytes': photo};
+        expect(await app.pickFeedbackImage(), photo);
+        final picks = native.calls.where(
+          (entry) => entry['method'] == 'pickPrivateFile',
         );
-        expect(screenshot.parent.existsSync(), isFalse);
+        expect(picks.map((entry) => (entry['arguments'] as Map)['type']), [
+          'media',
+          'image',
+        ]);
+        native.pickedFile = null;
+        expect(await app.pickFeedbackImage(), isNull);
       },
     );
   }
+
+  test(
+    'a rejected mobile pick preserves the current draft and size error',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await seed(firstRoute);
+      final app = await start(engine: _FakeEngine());
+      app.updateDraft(firstRoute, 'Keep this draft');
+      native.pickError = 'picked_file_too_large';
+      await app.stageAttachments(firstRoute);
+      expect(app.error, startsWith('Attachments must be '));
+      expect(app.draftFor(firstRoute)?.body, 'Keep this draft');
+      expect(app.draftFor(firstRoute)?.attachments, isEmpty);
+    },
+  );
 
   test('desktop picks keep the original file', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
@@ -3855,12 +3908,17 @@ class _NativeFixture {
   final calls = <Map<String, Object?>>[];
   Completer<Object?>? webLoginResponse;
   bool webLoginActive = false;
+  Map<String, Object?>? pickedFile;
+  String? pickError;
   Future<Object?> call(String method, Map<String, Object?> arguments) async {
     calls.add({
       'method': method,
       'arguments': Map<String, Object?>.of(arguments),
     });
     switch (method) {
+      case 'pickPrivateFile':
+        if (pickError case final code?) throw PlatformException(code: code);
+        return pickedFile;
       case 'loginBackgroundStatus':
         return {'expired': loginBackgroundExpired};
       case 'saveLoginQr':

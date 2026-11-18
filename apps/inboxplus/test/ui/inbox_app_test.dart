@@ -4668,6 +4668,74 @@ void main() {
     expect(find.text('Love it'), findsOneWidget);
   });
 
+  testWidgets('phone feedback shows screenshot read errors and allows retry', (
+    tester,
+  ) async {
+    var picks = 0;
+    final controller = _FakeController()
+      ..onPickFeedbackImage = () async {
+        if (picks++ == 0) {
+          throw const FileSystemException('Could not read', 'private-path');
+        }
+        return null;
+      };
+    await tester.pumpWidget(
+      MaterialApp(home: FeedbackPage(controller: controller)),
+    );
+    await tester.enterText(find.byKey(const Key('feedback-text')), 'Keep this');
+    final attach = find.text('Attach a screenshot');
+    await tester.tap(attach);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('can’t read this file'), findsOneWidget);
+    expect(find.textContaining('private-path'), findsNothing);
+    expect(find.text('Keep this'), findsOneWidget);
+    await tester.tap(attach);
+    await tester.pumpAndSettle();
+    expect(picks, 2);
+    expect(find.textContaining('can’t read this file'), findsNothing);
+  });
+
+  testWidgets('phone feedback stays open until an in-flight send completes', (
+    tester,
+  ) async {
+    final pending = Completer<FeedbackReceipt>();
+    final controller = _FakeController()
+      ..onSendFeedback = (_) => pending.future;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => FeedbackPage(controller: controller),
+                ),
+              ),
+              child: const Text('Open feedback'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open feedback'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('feedback-kind-praise')));
+    await tester.enterText(find.byKey(const Key('feedback-text')), 'Fixture');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('feedback-send')));
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Sending…'), findsOneWidget);
+    expect(find.byType(BackButton), findsNothing);
+    pending.complete(const FeedbackReceipt());
+    await tester.pumpAndSettle();
+    expect(find.text('Open feedback'), findsOneWidget);
+    expect(find.text('Thanks. Your feedback was sent.'), findsOneWidget);
+    expect(controller.sentFeedback, hasLength(1));
+  });
+
   group('phone review findings', () {
     final phones = TargetPlatformVariant({
       TargetPlatform.iOS,
@@ -4971,6 +5039,28 @@ void main() {
       expect(controller.selectedRoute, alice);
       expect(find.byKey(const Key('message-composer')), findsOneWidget);
       expect(controller.preferencesFor(alice).hiddenAt, isNotNull);
+    }, variant: phones);
+
+    testWidgets('disabled Restore does not activate its conversation row', (
+      tester,
+    ) async {
+      final controller = _FakeController()..busy = true;
+      await controller.setHidden(alice, true);
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-settings')));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Hidden conversations'), 200);
+      await tester.tap(find.text('Hidden conversations'));
+      await tester.pumpAndSettle();
+      final restore = find.widgetWithText(TextButton, 'Restore');
+      expect(tester.widget<TextButton>(restore).onPressed, isNull);
+      await tester.tap(restore);
+      await tester.pumpAndSettle();
+      expect(controller.selectedRoute, isNull);
+      expect(controller.preferencesFor(alice).hiddenAt, isNotNull);
+      await tester.tap(find.text('Alice'));
+      await tester.pumpAndSettle();
+      expect(controller.selectedRoute, alice);
     }, variant: phones);
 
     testWidgets('#274 same-network contact actions name each recipient', (
@@ -5545,8 +5635,10 @@ class _FakeController extends InboxUiController {
   @override
   bool get isLoading => false;
 
+  bool busy = false;
+
   @override
-  bool get isBusy => false;
+  bool get isBusy => busy;
 
   @override
   bool get isOffline => false;
@@ -5991,6 +6083,7 @@ class _FakeController extends InboxUiController {
   final sentFeedback = <FeedbackDraft>[];
   Future<FeedbackReceipt> Function(FeedbackDraft)? onSendFeedback;
   Uint8List? pickedFeedbackImage;
+  Future<Uint8List?> Function()? onPickFeedbackImage;
 
   @override
   Future<FeedbackReceipt> sendFeedback(FeedbackDraft draft) async {
@@ -6004,7 +6097,9 @@ class _FakeController extends InboxUiController {
   }
 
   @override
-  Future<Uint8List?> pickFeedbackImage() async => pickedFeedbackImage;
+  Future<Uint8List?> pickFeedbackImage() async => onPickFeedbackImage == null
+      ? pickedFeedbackImage
+      : onPickFeedbackImage!();
 
   @override
   Future<void> requestQuit() async {}

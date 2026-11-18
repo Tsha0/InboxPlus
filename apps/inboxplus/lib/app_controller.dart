@@ -55,6 +55,8 @@ class AppController extends InboxUiController {
   final _reacting = <(ConversationRoute, String)>{};
   final _inlineImageLoads =
       <(ConversationRoute, String), AttachmentLoadState>{};
+  final _attachmentDownloads =
+      <(ConversationRoute, String, String), Future<void>>{};
   final _drafts = <ConversationRoute, DraftRecord>{};
   final _conversationPreferences =
       <ConversationRoute, ConversationPreferencesRecord>{};
@@ -1122,8 +1124,7 @@ class AppController extends InboxUiController {
         });
       } else {
         final jpeg = image.length >= 2 && image[0] == 0xff && image[1] == 0xd8;
-        await _prepareFilePicker();
-        await FilePicker.saveFile(
+        await _saveFile(
           fileName: 'Inbox+ sign-in QR.${jpeg ? 'jpg' : 'png'}',
           dialogTitle: 'Save sign-in QR code',
           mimeType: jpeg ? 'image/jpeg' : 'image/png',
@@ -1408,27 +1409,11 @@ class AppController extends InboxUiController {
           'Send or remove the current attachment before adding another.',
         );
       }
-      await _prepareFilePicker();
-      final source = await FilePicker.pickFile(
+      final source = await _pickFileBytes(
         type: media ? FileType.media : FileType.any,
-        darwinOptions: const DarwinOptions(
-          assetRepresentationMode: DarwinAssetRepresentationMode.compatible,
-        ),
+        limit: _attachmentLimit(route),
       );
-      if (source?.path == null) return;
-      final file = File(source!.path!);
-      final Uint8List bytes;
-      try {
-        final limit = _attachmentLimit(route);
-        if (await file.length() > limit) {
-          throw AppStorageException(
-            'Attachments must be ${limit ~/ (1024 * 1024)} MiB or smaller.',
-          );
-        }
-        bytes = await file.readAsBytes();
-      } finally {
-        await _discardPickerCopy(file);
-      }
+      if (source == null) return;
       final id = _uuid.v4();
       final target = File(
         p.join(
@@ -1437,7 +1422,7 @@ class AppController extends InboxUiController {
           '$id${_safeExtension(source.name)}',
         ),
       );
-      await environment.writePrivate(target, bytes);
+      await environment.writePrivate(target, source.bytes);
       final mime = _mimeFor(source.name);
       final attachment = AttachmentRecord(
         id: id,
@@ -1845,7 +1830,12 @@ class AppController extends InboxUiController {
   AttachmentLoadState? attachmentLoadState(
     ConversationRoute route,
     String attachmentId,
-  ) => _inlineImageLoads[(route, attachmentId)];
+  ) =>
+      _attachmentDownloads.keys.any(
+        (key) => key.$1 == route && key.$3 == attachmentId,
+      )
+      ? AttachmentLoadState.loading
+      : _inlineImageLoads[(route, attachmentId)];
 
   @override
   Future<void> loadInlineImage(
@@ -1896,6 +1886,23 @@ class AppController extends InboxUiController {
   }
 
   Future<void> _downloadAttachment(
+    ConversationRoute route,
+    String messageId,
+    String attachmentId,
+  ) {
+    final key = (route, messageId, attachmentId);
+    if (_attachmentDownloads[key] case final pending?) return pending;
+    final download = _fetchAttachment(route, messageId, attachmentId)
+        .whenComplete(() {
+          _attachmentDownloads.remove(key);
+          _publish();
+        });
+    _attachmentDownloads[key] = download;
+    _publish();
+    return download;
+  }
+
+  Future<void> _fetchAttachment(
     ConversationRoute route,
     String messageId,
     String attachmentId,
@@ -1981,8 +1988,7 @@ class AppController extends InboxUiController {
     if (await source.length() > _maxAttachmentBytes) {
       throw const AppStorageException('The attachment exceeds the size limit.');
     }
-    await _prepareFilePicker();
-    await FilePicker.saveFile(
+    await _saveFile(
       fileName: _attachmentFileName(attachment!),
       bytes: await source.readAsBytes(),
       mimeType: attachment.mimeType ?? 'application/octet-stream',
@@ -2467,8 +2473,7 @@ class AppController extends InboxUiController {
 
   @override
   Future<void> exportDiagnostics() => _perform(() async {
-    await _prepareFilePicker();
-    await FilePicker.saveFile(
+    await _saveFile(
       fileName:
           'Inbox+ Diagnostics ${_now().toIso8601String().substring(0, 10)}.json',
       dialogTitle: 'Export Diagnostics',
@@ -2482,31 +2487,83 @@ class AppController extends InboxUiController {
       _submitFeedback(draft, draft.includeDiagnostics ? _diagnostics() : null);
 
   @override
-  Future<Uint8List?> pickFeedbackImage() async {
-    await _prepareFilePicker();
-    final source = await FilePicker.pickFile(
-      dialogTitle: 'Choose a Screenshot',
-      type: FileType.image,
+  Future<Uint8List?> pickFeedbackImage() async => (await _pickFileBytes(
+    dialogTitle: 'Choose a Screenshot',
+    type: FileType.image,
+    limit: 32 * 1024 * 1024,
+  ))?.bytes;
+
+  Future<({String name, Uint8List bytes})?> _pickFileBytes({
+    required FileType type,
+    required int limit,
+    String? dialogTitle,
+  }) async {
+    AppStorageException tooLarge() => AppStorageException(
+      'Attachments must be ${limit ~/ (1024 * 1024)} MiB or smaller.',
     );
-    final path = source?.path;
-    if (path == null) return null;
-    final file = File(path);
-    try {
-      return await file.readAsBytes();
-    } finally {
-      await _discardPickerCopy(file);
+    final Uint8List bytes;
+    final String name;
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android) {
+      final Object? result;
+      try {
+        result = await _nativeCall('pickPrivateFile', {
+          'type': type.name,
+          'limit': limit,
+        });
+      } on PlatformException catch (error) {
+        if (error.code == 'picked_file_too_large') throw tooLarge();
+        rethrow;
+      }
+      if (result == null) return null;
+      if (result case {
+        'name': final String fileName,
+        'bytes': final Uint8List data,
+      }) {
+        name = fileName;
+        bytes = data;
+      } else {
+        throw const AppStorageException('The selected file could not be read.');
+      }
+    } else {
+      await _prepareFilePicker();
+      final source = await FilePicker.pickFile(
+        type: type,
+        dialogTitle: dialogTitle,
+      );
+      final path = source?.path;
+      if (path == null) return null;
+      final file = File(path);
+      if (await file.length() > limit) throw tooLarge();
+      name = source!.name;
+      bytes = await file.readAsBytes();
     }
+    if (bytes.length > limit) throw tooLarge();
+    return (name: name, bytes: bytes);
   }
 
-  // The picker returns a temporary copy on iOS and Android, but the selected
-  // file itself on desktop.
-  Future<void> _discardPickerCopy(File file) async {
-    if (defaultTargetPlatform != TargetPlatform.iOS &&
-        defaultTargetPlatform != TargetPlatform.android) {
-      return;
+  Future<void> _saveFile({
+    required String fileName,
+    required String mimeType,
+    required String dialogTitle,
+    required Uint8List bytes,
+  }) async {
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.android) {
+      await _nativeCall('exportPrivateFile', {
+        'name': fileName,
+        'mimeType': mimeType,
+        'bytes': bytes,
+      });
+    } else {
+      await _prepareFilePicker();
+      await FilePicker.saveFile(
+        fileName: fileName,
+        mimeType: mimeType,
+        dialogTitle: dialogTitle,
+        bytes: bytes,
+      );
     }
-    await file.delete();
-    if (await file.parent.list().isEmpty) await file.parent.delete();
   }
 
   Future<void> _prepareFilePicker() async {
