@@ -14,7 +14,6 @@ permissions:
 
 env:
   GOTOOLCHAIN: local
-  GH_TOKEN: ${{ github.token }}
 
 jobs:
   launch:
@@ -23,6 +22,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Require the release commit on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       - name: Match the tag to the app version
         if: github.ref_type == 'tag'
         run: |

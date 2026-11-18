@@ -248,8 +248,9 @@ the generated SBOM and notices in the same change.
    after the `+`.
 2. Run `python3 Scripts/generate-sbom.py`.
 3. Push the matching tag. `v0.9.1` releases `0.9.1+115`.
-   [ios-release.yml](.github/workflows/ios-release.yml) runs the iOS launch test, then builds,
-   signs and uploads to TestFlight. It does not wait for the other platforms' CI.
+   [ios-release.yml](.github/workflows/ios-release.yml) checks that the commit is on `main`, runs
+   the iOS launch test, then builds, signs and uploads to TestFlight. It does not wait for the
+   other platforms' CI.
 4. After processing, answer the export-compliance questions in App Store Connect and add the build
    to the TestFlight groups.
 
