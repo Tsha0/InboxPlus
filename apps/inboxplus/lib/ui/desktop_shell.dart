@@ -139,10 +139,15 @@ ThemeData _desktopTheme(Brightness brightness, PreferencesRecord preferences) {
 }
 
 class _DesktopLogoButton extends StatefulWidget {
-  const _DesktopLogoButton({required this.color, required this.glowColor});
+  const _DesktopLogoButton({
+    required this.color,
+    required this.glowColor,
+    this.tapSize = 32,
+  });
 
   final Color color;
   final Color glowColor;
+  final double tapSize;
 
   @override
   State<_DesktopLogoButton> createState() => _DesktopLogoButtonState();
@@ -215,8 +220,8 @@ class _DesktopLogoButtonState extends State<_DesktopLogoButton>
         style: TextButton.styleFrom(
           backgroundColor: Colors.transparent,
           padding: EdgeInsets.zero,
-          minimumSize: const Size.square(32),
-          maximumSize: const Size.square(32),
+          minimumSize: Size.square(widget.tapSize),
+          maximumSize: Size.square(widget.tapSize),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
           overlayColor: Colors.transparent,
         ),

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show LongPressGestureRecognizer;
 import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSwitch;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,6 +26,8 @@ import 'reaction_picker.dart';
 
 part 'desktop_shell.dart';
 part 'desktop_preferences.dart';
+part 'phone_chat.dart';
+part 'phone_shell.dart';
 
 PopupMenuItem<T> _menuItem<T>(T value, String label) => PopupMenuItem<T>(
   value: value,
@@ -65,16 +68,35 @@ class InboxPlusApp extends StatelessWidget {
         'dark' => ThemeMode.dark,
         _ => ThemeMode.system,
       },
+      builder: isDesktopPlatform ? null : _scaleText,
       home: isDesktopPlatform
           ? _DesktopHome(controller: controller)
           : InboxHome(controller: controller),
     ),
   );
 
+  Widget _scaleText(BuildContext context, Widget? child) {
+    final factor = switch (controller.preferences.textSize) {
+      'small' => .9,
+      'large' => 1.15,
+      _ => 1.0,
+    };
+    if (factor == 1) return child!;
+    final media = MediaQuery.of(context);
+    return MediaQuery(
+      data: media.copyWith(
+        textScaler: _ScaledTextScaler(media.textScaler, factor),
+      ),
+      child: child!,
+    );
+  }
+
   ThemeData _theme(Brightness brightness) {
     final dark = brightness == Brightness.dark;
-    final accent = _DesktopPalette.forPreferences(controller.preferences)
-        ?.accent;
+    final override = controller.preferences.accentOverride;
+    final accent = override != null
+        ? Color(0xff000000 | override)
+        : _DesktopPalette.forPreferences(controller.preferences)?.accent;
     final scheme =
         ColorScheme.fromSeed(
           seedColor: dark ? Colors.white : const Color(0xff202124),
@@ -130,6 +152,28 @@ class InboxPlusApp extends StatelessWidget {
 
 enum _Section { inbox, contacts, settings }
 
+class _ScaledTextScaler extends TextScaler {
+  const _ScaledTextScaler(this.system, this.factor);
+
+  final TextScaler system;
+  final double factor;
+
+  @override
+  double scale(double fontSize) => system.scale(fontSize) * factor;
+
+  @override
+  double get textScaleFactor => scale(14) / 14;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ScaledTextScaler &&
+      other.system == system &&
+      other.factor == factor;
+
+  @override
+  int get hashCode => Object.hash(system, factor);
+}
+
 class InboxHome extends StatefulWidget {
   const InboxHome({super.key, required this.controller});
 
@@ -142,10 +186,9 @@ class InboxHome extends StatefulWidget {
 class _InboxHomeState extends State<InboxHome> {
   _Section _section = _Section.inbox;
   final _networks = <String>{};
-  bool _unreadOnly = false;
-  bool _unknownOnly = false;
-  bool _hidden = false;
-  double _logoTurns = 0;
+  _ShowFilter _show = _ShowFilter.all;
+  bool _searching = false;
+  final _filterButton = GlobalKey();
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
 
@@ -187,9 +230,18 @@ class _InboxHomeState extends State<InboxHome> {
 
   void _focusSearch() {
     _selectSection(_Section.inbox);
+    setState(() => _searching = true);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _searchFocus.requestFocus(),
     );
+  }
+
+  void _closeSearch() {
+    _searchFocus.unfocus();
+    setState(() {
+      _search.clear();
+      _searching = false;
+    });
   }
 
   ConversationRecord? get _selected {
@@ -205,8 +257,6 @@ class _InboxHomeState extends State<InboxHome> {
     final selected = _selected;
     final showsTabs =
         compact && !(selected != null && _section == _Section.inbox);
-    final floatingTabs =
-        showsTabs && defaultTargetPlatform == TargetPlatform.iOS;
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
@@ -234,7 +284,7 @@ class _InboxHomeState extends State<InboxHome> {
               compact && _section == _Section.inbox && selected == null
               ? _phoneHeaderColor(context, controller)
               : null,
-          extendBody: floatingTabs,
+          extendBody: showsTabs,
           body: SafeArea(
             bottom: !showsTabs,
             child: Column(
@@ -279,17 +329,16 @@ class _InboxHomeState extends State<InboxHome> {
           ),
           bottomNavigationBar: !showsTabs
               ? null
-              : floatingTabs
-              ? _GlassTabBar(
+              : _PhoneBottomBar(
                   section: _section,
                   onSelect: _selectSection,
                   unreadCount: _unreadTotal,
-                )
-              : _PhoneNavigationBar(
-                  controller: controller,
-                  section: _section,
-                  onSelect: _selectSection,
-                  unreadCount: _unreadTotal,
+                  settingsNeedAttention: controller.accounts.any(
+                    (account) => !account.isConnected,
+                  ),
+                  onFilter: _section == _Section.inbox ? _openFilterMenu : null,
+                  filterActive: _filterLabels.isNotEmpty,
+                  onCompose: _section == _Section.settings ? null : _compose,
                 ),
         ),
       ),
@@ -299,11 +348,17 @@ class _InboxHomeState extends State<InboxHome> {
   Widget _body(bool compact, ConversationRecord? selected) {
     switch (_section) {
       case _Section.settings:
-        return InboxSettingsPage(controller: controller, onConnect: _connect);
+        return InboxSettingsPage(
+          controller: controller,
+          onConnect: _connect,
+          onOpenConversation: (route) {
+            controller.selectConversation(route);
+            _selectSection(_Section.inbox);
+          },
+        );
       case _Section.contacts:
         return InboxContactsPage(
           controller: controller,
-          onConnect: _connect,
           onOpenConversation: () => _selectSection(_Section.inbox),
           onCompose: (identity) => _compose(identity: identity),
         );
@@ -352,7 +407,125 @@ class _InboxHomeState extends State<InboxHome> {
     }
   }
 
-  void _animateLogo() => setState(() => _logoTurns += 1);
+  bool _matchesShow(
+    ConversationRecord item,
+    ConversationPreferencesRecord preferences,
+  ) {
+    switch (_show) {
+      case _ShowFilter.all:
+        return true;
+      case _ShowFilter.unread:
+        return item.unreadCount > 0 || preferences.markedUnread;
+      case _ShowFilter.unanswered:
+        final last = controller.messagesFor(item.route).lastOrNull;
+        return !item.isGroup && last != null && !last.isOutgoing;
+      case _ShowFilter.drafts:
+        final draft = controller.draftFor(item.route);
+        return draft != null &&
+            (draft.body.isNotEmpty || draft.attachments.isNotEmpty);
+      case _ShowFilter.dms:
+        return !item.isGroup;
+      case _ShowFilter.groups:
+        return item.isGroup;
+    }
+  }
+
+  List<String> get _filterLabels => [
+    if (_show != _ShowFilter.all) _show.label,
+    for (final network in _networks) _networkName(controller, network),
+  ];
+
+  void _clearFilters() => setState(() {
+    _show = _ShowFilter.all;
+    _networks.clear();
+  });
+
+  List<String> _availableNetworks() {
+    const networkOrder = [
+      'whatsapp',
+      'instagram',
+      'messenger',
+      'telegram',
+      'imessage',
+    ];
+    return <String>{
+      for (final chat in controller.conversations)
+        if (controller.preferencesFor(chat.route).hiddenAt == null)
+          ?_accountFor(controller, chat.route)?.platform,
+      ..._networks,
+    }.where((platform) => platform != 'legacy').toList()..sort(
+      (a, b) => networkOrder.indexOf(a).compareTo(networkOrder.indexOf(b)),
+    );
+  }
+
+  Future<void> _openFilterMenu() async {
+    final media = MediaQuery.of(context);
+    final anchorBox =
+        _filterButton.currentContext?.findRenderObject() as RenderBox?;
+    final anchor = anchorBox == null
+        ? null
+        : anchorBox.localToGlobal(Offset.zero) & anchorBox.size;
+    await showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Close filters',
+      barrierColor: Colors.black.withValues(alpha: .35),
+      transitionDuration: const Duration(milliseconds: 160),
+      transitionBuilder: (context, animation, _, child) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          alignment: anchor == null ? Alignment.bottomLeft : Alignment.topRight,
+          scale: Tween(begin: .92, end: 1.0).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          ),
+          child: child,
+        ),
+      ),
+      pageBuilder: (dialogContext, _, _) => Stack(
+        children: [
+          Positioned(
+            left: anchor == null ? 16 : math.max(16, anchor.right - 276),
+            top: anchor == null ? null : anchor.bottom + 8,
+            bottom: anchor != null
+                ? null
+                : (media.viewPadding.bottom > 0
+                          ? media.viewPadding.bottom - 6
+                          : 14) +
+                      _phoneBarHeight +
+                      12,
+            width: 276,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: anchor == null
+                    ? media.size.height - media.viewPadding.top - 140
+                    : media.size.height - anchor.bottom - 32,
+              ),
+              child: SingleChildScrollView(
+                child: _PhoneFilterMenu(
+                  controller: controller,
+                  show: _show,
+                  networks: _availableNetworks(),
+                  selectedNetworks: _networks,
+                  onShow: (show) => setState(() => _show = show),
+                  onToggleNetwork: (network) => setState(() {
+                    if (!_networks.remove(network)) _networks.add(network);
+                  }),
+                  onFeedback: () {
+                    Navigator.pop(dialogContext);
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => FeedbackPage(controller: controller),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _inboxList() {
     final scheme = Theme.of(context).colorScheme;
@@ -370,23 +543,14 @@ class _InboxHomeState extends State<InboxHome> {
     final conversations =
         controller.conversations.where((item) {
           final preferences = controller.preferencesFor(item.route);
-          if ((preferences.hiddenAt != null) != _hidden) return false;
+          if (preferences.hiddenAt != null) return false;
           if (_networks.isNotEmpty &&
               !_networks.contains(
                 _accountFor(controller, item.route)?.platform,
               )) {
             return false;
           }
-          if ((item.isFromUnknownSender &&
-                  _personFor(controller, item) == null) !=
-              _unknownOnly) {
-            return false;
-          }
-          if (_unreadOnly &&
-              item.unreadCount == 0 &&
-              !preferences.markedUnread) {
-            return false;
-          }
+          if (!_matchesShow(item, preferences)) return false;
           return query.isEmpty ||
               item.title.toLowerCase().contains(query) ||
               controller
@@ -400,32 +564,16 @@ class _InboxHomeState extends State<InboxHome> {
               ? favorite
               : b.latestActivity.compareTo(a.latestActivity);
         });
-    const networkOrder = [
-      'whatsapp',
-      'instagram',
-      'messenger',
-      'telegram',
-      'imessage',
-    ];
-    final networks =
-        <String>{
-          for (final chat in controller.conversations)
-            if ((controller.preferencesFor(chat.route).hiddenAt != null) ==
-                _hidden)
-              ?_accountFor(controller, chat.route)?.platform,
-          ..._networks,
-        }.where((platform) => platform != 'legacy').toList()..sort(
-          (a, b) => networkOrder.indexOf(a).compareTo(networkOrder.indexOf(b)),
-        );
-    final hiddenCount = controller.conversations
-        .where((chat) => controller.preferencesFor(chat.route).hiddenAt != null)
-        .length;
-    final hasUnknownSenders = controller.conversations.any(
-      (chat) =>
-          chat.isFromUnknownSender && _personFor(controller, chat) == null,
-    );
+    final filterLabels = _filterLabels;
+    final favorites = query.isEmpty && filterLabels.isEmpty
+        ? conversations
+              .where((item) => controller.preferencesFor(item.route).isFavorite)
+              .toList()
+        : const <ConversationRecord>[];
+    if (favorites.isNotEmpty) {
+      conversations.removeWhere(favorites.contains);
+    }
     final unread = _unreadTotal;
-    final apple = defaultTargetPlatform == TargetPlatform.iOS;
     final headerColor = _phoneHeaderColor(context, controller);
     return ColoredBox(
       color: headerColor,
@@ -436,39 +584,56 @@ class _InboxHomeState extends State<InboxHome> {
             SliverPersistentHeader(
               pinned: true,
               delegate: _PhoneInboxHeader(
-                title: _hidden ? 'Hidden' : inboxPlusAppName,
+                title: inboxPlusAppName,
                 unread: unread,
                 ink: headerInk,
                 background: headerColor,
-                translucent: apple,
-                leading: Semantics(
-                  label: 'Inbox+ logo',
-                  button: true,
-                  onTap: _animateLogo,
-                  excludeSemantics: true,
-                  child: GestureDetector(
-                    onTap: _animateLogo,
-                    child: Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: AnimatedRotation(
-                        turns: _logoTurns,
-                        duration: const Duration(milliseconds: 700),
-                        curve: Curves.easeInOutBack,
-                        child: _DesktopLogo(
-                          color: palette?.logo ?? scheme.onSurface,
-                        ),
-                      ),
-                    ),
+                leading: Padding(
+                  padding: const EdgeInsets.only(left: 2),
+                  child: _DesktopLogoButton(
+                    color: palette?.logo ?? scheme.onSurface,
+                    glowColor: palette?.logo ?? scheme.onSurface,
+                    tapSize: 44,
                   ),
                 ),
-                trailing: IconButton(
-                  tooltip: 'New message',
-                  onPressed: _compose,
-                  color: headerInk,
-                  icon: Icon(
-                    apple ? CupertinoIcons.square_pencil : Icons.edit_square,
-                    size: 23,
-                  ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: 6,
+                  children: [
+                    if (MediaQuery.sizeOf(context).width >= 900)
+                      IconButton(
+                        key: _filterButton,
+                        tooltip: 'Filter',
+                        onPressed: _openFilterMenu,
+                        color: filterLabels.isEmpty
+                            ? headerInk
+                            : scheme.onPrimary,
+                        style: IconButton.styleFrom(
+                          backgroundColor: filterLabels.isEmpty
+                              ? headerInk.withValues(alpha: .08)
+                              : scheme.primary,
+                        ),
+                        icon: const Icon(
+                          CupertinoIcons.line_horizontal_3_decrease,
+                          size: 20,
+                        ),
+                      ),
+                    IconButton(
+                      key: const Key('inbox-search-button'),
+                      tooltip: _searching ? 'Close search' : 'Search',
+                      onPressed: _searching ? _closeSearch : _focusSearch,
+                      color: headerInk,
+                      style: IconButton.styleFrom(
+                        backgroundColor: headerInk.withValues(alpha: .08),
+                      ),
+                      icon: Icon(
+                        _searching
+                            ? CupertinoIcons.xmark
+                            : CupertinoIcons.search,
+                        size: 20,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -483,111 +648,65 @@ class _InboxHomeState extends State<InboxHome> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                      child: SizedBox(
-                        height: 36,
-                        child: TextField(
-                          key: const Key('inbox-search'),
-                          controller: _search,
-                          focusNode: _searchFocus,
-                          onChanged: (_) => setState(() {}),
-                          style: const TextStyle(fontSize: 16),
-                          decoration: InputDecoration(
-                            hintText: 'Search',
-                            isDense: true,
-                            filled: true,
-                            fillColor: scheme.onSurface.withValues(alpha: .06),
-                            contentPadding: const EdgeInsets.symmetric(
-                              vertical: 8,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide.none,
-                            ),
-                            prefixIcon: const Icon(Icons.search, size: 18),
-                            prefixIconConstraints: const BoxConstraints(
-                              minWidth: 34,
-                            ),
-                            suffixIcon: query.isEmpty
-                                ? null
-                                : IconButton(
-                                    tooltip: 'Clear search',
-                                    icon: const Icon(Icons.cancel, size: 16),
-                                    onPressed: () => setState(_search.clear),
-                                  ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                      child: Row(
-                        children: [
-                          _PhonePill(
-                            label: 'All',
-                            selected:
-                                !_unreadOnly &&
-                                !_unknownOnly &&
-                                _networks.isEmpty,
-                            onPressed: () => setState(() {
-                              _unreadOnly = false;
-                              _unknownOnly = false;
-                              _networks.clear();
-                            }),
-                          ),
-                          _PhonePill(
-                            label: 'Unread',
-                            selected: _unreadOnly,
-                            onPressed: () => setState(() {
-                              _unreadOnly = true;
-                              _unknownOnly = false;
-                            }),
-                          ),
-                          if (_unknownOnly || hasUnknownSenders)
-                            _PhonePill(
-                              label: 'Unknown senders',
-                              selected: _unknownOnly,
-                              onPressed: () => setState(() {
-                                _unknownOnly = true;
-                                _unreadOnly = false;
-                              }),
-                            ),
-                        ],
-                      ),
-                    ),
-                    if (networks.length > 1 || _networks.isNotEmpty)
-                      SizedBox(
-                        height: 36,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                          children: [
-                            for (final network in networks)
-                              _PhonePill(
-                                label: _networkName(controller, network),
-                                selected: _networks.contains(network),
-                                outlined: true,
-                                leading: NetworkBadge(
-                                  network: network,
-                                  size: 18,
-                                  labelled: false,
-                                ),
-                                onPressed: () => setState(() {
-                                  if (!_networks.remove(network)) {
-                                    _networks.add(network);
-                                  }
-                                }),
+                    if (_searching)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: SizedBox(
+                          height: 40,
+                          child: TextField(
+                            key: const Key('inbox-search'),
+                            controller: _search,
+                            focusNode: _searchFocus,
+                            onChanged: (_) => setState(() {}),
+                            style: const TextStyle(fontSize: 16),
+                            decoration: InputDecoration(
+                              hintText: 'Search',
+                              isDense: true,
+                              filled: true,
+                              fillColor: scheme.onSurface.withValues(
+                                alpha: .06,
                               ),
-                          ],
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 8,
+                              ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide.none,
+                              ),
+                              prefixIcon: const Icon(Icons.search, size: 18),
+                              prefixIconConstraints: const BoxConstraints(
+                                minWidth: 34,
+                              ),
+                              suffixIcon: query.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      tooltip: 'Clear search',
+                                      icon: const Icon(Icons.cancel, size: 16),
+                                      onPressed: () => setState(_search.clear),
+                                    ),
+                            ),
+                          ),
                         ),
+                      ),
+                    if (filterLabels.isNotEmpty)
+                      _PhoneActiveFilters(
+                        labels: filterLabels,
+                        onClear: _clearFilters,
+                      ),
+                    if (favorites.isNotEmpty)
+                      _PhoneFavoritesRow(
+                        controller: controller,
+                        favorites: favorites,
+                        onOpen: (item) =>
+                            controller.selectConversation(item.route),
+                        onActions: _conversationMenu,
                       ),
                     const SizedBox(height: 6),
                   ],
                 ),
               ),
             ),
-            if (conversations.isEmpty)
+            if (conversations.isEmpty && favorites.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: ColoredBox(
@@ -600,24 +719,22 @@ class _InboxHomeState extends State<InboxHome> {
                         ? 'No conversations found'
                         : controller.isLoading
                         ? 'Opening your inbox…'
-                        : _unreadOnly
+                        : _show == _ShowFilter.unread ||
+                              _show == _ShowFilter.unanswered
                         ? 'All caught up'
-                        : _hidden
-                        ? 'No hidden conversations'
+                        : _show != _ShowFilter.all
+                        ? 'No ${_show.label.toLowerCase()} conversations'
+                        : _networks.isNotEmpty
+                        ? 'No conversations here'
                         : 'Your inbox starts here',
                     message: query.isNotEmpty
                         ? 'Try another name or message.'
-                        : _hidden
-                        ? 'Conversations you hide will appear here.'
+                        : filterLabels.isNotEmpty
+                        ? 'Nothing matches ${filterLabels.join(' · ')}.'
                         : controller.accounts.isEmpty
                         ? 'Connect an account and your conversations will appear here.'
                         : 'New conversations will appear here.',
-                    action: _hidden
-                        ? TextButton(
-                            onPressed: () => setState(() => _hidden = false),
-                            child: const Text('Back to Inbox'),
-                          )
-                        : controller.accounts.isEmpty && query.isEmpty
+                    action: controller.accounts.isEmpty && query.isEmpty
                         ? TextButton.icon(
                             onPressed: _connect,
                             icon: const Icon(Icons.add),
@@ -629,23 +746,8 @@ class _InboxHomeState extends State<InboxHome> {
               )
             else ...[
               SliverList.builder(
-                itemCount:
-                    conversations.length + (_hidden || hiddenCount > 0 ? 1 : 0),
+                itemCount: conversations.length,
                 itemBuilder: (context, index) {
-                  if (index == conversations.length) {
-                    return ColoredBox(
-                      color: sheetColor,
-                      child: Center(
-                        child: TextButton(
-                          onPressed: () => setState(() => _hidden = !_hidden),
-                          child: Text(
-                            _hidden ? 'Back to Inbox' : '$hiddenCount hidden',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        ),
-                      ),
-                    );
-                  }
                   final item = conversations[index];
                   return _PhoneInboxRow(
                     key: ValueKey(item.route),
@@ -662,8 +764,10 @@ class _InboxHomeState extends State<InboxHome> {
                 hasScrollBody: false,
                 child: ColoredBox(
                   color: sheetColor,
-                  child: SizedBox(
-                    height: MediaQuery.paddingOf(context).bottom + 8,
+                  child: Builder(
+                    builder: (context) => SizedBox(
+                      height: MediaQuery.paddingOf(context).bottom + 8,
+                    ),
                   ),
                 ),
               ),
@@ -675,7 +779,7 @@ class _InboxHomeState extends State<InboxHome> {
   }
 
   Future<void> _conversationMenu(ConversationRecord item) async {
-    await _showConversationActions(context, controller, item);
+    await _showPhoneChatPeek(context, controller, item);
   }
 }
 
@@ -683,26 +787,12 @@ Color _phoneHeaderColor(BuildContext context, InboxUiController controller) =>
     _DesktopPalette.forPreferences(controller.preferences)?.background ??
     Theme.of(context).colorScheme.surfaceContainerLow;
 
-ContactRecord? _personFor(
-  InboxUiController controller,
-  ConversationRecord conversation,
-) => controller.contacts
-    .where(
-      (person) => person.identities.any(
-        (identity) =>
-            identity.accountId == conversation.route.accountId &&
-            identity.identityId == conversation.identityId,
-      ),
-    )
-    .firstOrNull;
-
 class _PhoneInboxHeader extends SliverPersistentHeaderDelegate {
   _PhoneInboxHeader({
     required this.title,
     required this.unread,
     required this.ink,
     required this.background,
-    required this.translucent,
     required this.leading,
     required this.trailing,
   });
@@ -714,7 +804,6 @@ class _PhoneInboxHeader extends SliverPersistentHeaderDelegate {
   final int unread;
   final Color ink;
   final Color background;
-  final bool translucent;
   final Widget leading;
   final Widget trailing;
 
@@ -826,7 +915,7 @@ class _PhoneInboxHeader extends SliverPersistentHeaderDelegate {
                     ? Border(bottom: BorderSide(color: scheme.outlineVariant))
                     : null,
               ),
-              child: translucent && collapse == 1
+              child: collapse == 1
                   ? ClipRect(
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
@@ -840,69 +929,6 @@ class _PhoneInboxHeader extends SliverPersistentHeaderDelegate {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _PhonePill extends StatelessWidget {
-  const _PhonePill({
-    required this.label,
-    required this.selected,
-    required this.onPressed,
-    this.outlined = false,
-    this.leading,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onPressed;
-  final bool outlined;
-  final Widget? leading;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
-      child: Semantics(
-        selected: selected,
-        child: TextButton(
-          onPressed: onPressed,
-          style: TextButton.styleFrom(
-            minimumSize: Size(0, outlined ? 28 : 30),
-            padding: EdgeInsets.fromLTRB(leading == null ? 12 : 5, 0, 12, 0),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            visualDensity: VisualDensity.compact,
-            foregroundColor: scheme.onSurface,
-            backgroundColor: selected
-                ? scheme.onSurface.withValues(alpha: .09)
-                : outlined
-                ? scheme.surface
-                : Colors.transparent,
-            shape: StadiumBorder(
-              side: outlined
-                  ? BorderSide(color: scheme.outlineVariant)
-                  : BorderSide.none,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (leading case final leading?) ...[
-                leading,
-                const SizedBox(width: 5),
-              ],
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: outlined ? 12 : 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -947,7 +973,6 @@ class _PhoneInboxRowState extends State<_PhoneInboxRow> {
     final account = _accountFor(controller, item.route);
     final preferences = controller.preferencesFor(item.route);
     final muted = preferences.isMutedAt(DateTime.now());
-    final favorite = preferences.isFavorite;
     final unread = item.unreadCount > 0 || preferences.markedUnread;
     final draft = controller.draftFor(item.route);
     final hasDraft =
@@ -961,28 +986,54 @@ class _PhoneInboxRowState extends State<_PhoneInboxRow> {
         : '${item.isGroup && !last.isOutgoing && last.senderName != null ? '${last.senderName}: ' : ''}${last.body.isEmpty ? 'Attachment' : last.body}';
     final muteLabel = muted ? 'Unmute' : 'Mute';
     final hideLabel = preferences.hiddenAt == null ? 'Hide' : 'Unhide';
+    final readLabel = unread ? 'Mark as read' : 'Mark as unread';
+    final compact = controller.preferences.inboxDensity == 'compact';
     void mute() => _run(() => controller.setMuted(item.route, !muted));
     void hide() => _run(
       () => controller.setHidden(item.route, preferences.hiddenAt == null),
     );
+    void toggleRead() => _run(() => controller.setUnread(item.route, !unread));
     return Semantics(
       customSemanticsActions: {
+        CustomSemanticsAction(label: readLabel): toggleRead,
         CustomSemanticsAction(label: muteLabel): mute,
         CustomSemanticsAction(label: hideLabel): hide,
       },
       child: GestureDetector(
         onHorizontalDragUpdate: (details) => setState(
-          () =>
-              _reveal = (_reveal - details.delta.dx).clamp(0, _actionWidth * 2),
+          () => _reveal = (_reveal - details.delta.dx).clamp(
+            -_actionWidth,
+            _actionWidth * 2,
+          ),
         ),
         onHorizontalDragEnd: (_) => setState(
-          () => _reveal = _reveal > _actionWidth ? _actionWidth * 2 : 0,
+          () => _reveal = _reveal < -_actionWidth / 2
+              ? -_actionWidth
+              : _reveal > _actionWidth
+              ? _actionWidth * 2
+              : 0,
         ),
         child: ClipRect(
-          child: SizedBox(
-            height: 64,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: compact ? 56 : 68),
             child: Stack(
               children: [
+                if (_reveal < 0)
+                  Positioned.fill(
+                    child: Row(
+                      children: [
+                        _SwipeAction(
+                          label: unread ? 'Read' : 'Unread',
+                          icon: unread
+                              ? CupertinoIcons.envelope_open
+                              : CupertinoIcons.envelope_badge,
+                          color: scheme.primary,
+                          foreground: scheme.onPrimary,
+                          onPressed: toggleRead,
+                        ),
+                      ],
+                    ),
+                  ),
                 if (_reveal > 0)
                   Positioned.fill(
                     child: Row(
@@ -1020,112 +1071,110 @@ class _PhoneInboxRowState extends State<_PhoneInboxRow> {
                       key: Key(
                         'conversation-${item.route.accountId}-${item.route.conversationId}',
                       ),
-                      onTap: _reveal > 0
+                      onTap: _reveal != 0
                           ? () => setState(() => _reveal = 0)
                           : widget.onOpen,
                       onLongPress: widget.onActions,
-                      child: Row(
-                        children: [
-                          const SizedBox(width: 16),
-                          PersonAvatar(
-                            name: item.title,
-                            bytes: item.avatarBytes,
-                            network: account?.platform,
-                            isGroup: item.isGroup,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          minHeight: compact ? 56 : 68,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              const SizedBox(width: 16),
+                              PersonAvatar(
+                                name: item.title,
+                                bytes: item.avatarBytes,
+                                network: account?.platform,
+                                isGroup: item.isGroup,
+                                size: compact ? 40 : 48,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      child: Text(
-                                        item.title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                    if (muted)
-                                      Padding(
-                                        padding: const EdgeInsets.only(left: 4),
-                                        child: Icon(
-                                          Icons.notifications_off_outlined,
-                                          size: 13,
-                                          semanticLabel: 'Muted',
-                                          color: scheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      _relativeTime(item.latestActivity),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: scheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 2),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        preview,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: unread
-                                              ? FontWeight.w500
-                                              : FontWeight.w400,
-                                          color: hasDraft
-                                              ? scheme.error
-                                              : unread
-                                              ? scheme.onSurface
-                                              : scheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                    if (unread) ...[
-                                      const SizedBox(width: 6),
-                                      item.unreadCount > 0
-                                          ? _DesktopCount(item.unreadCount)
-                                          : Container(
-                                              width: 10,
-                                              height: 10,
-                                              decoration: BoxDecoration(
-                                                color: scheme.primary,
-                                                shape: BoxShape.circle,
-                                              ),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            item.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
                                             ),
-                                    ],
+                                          ),
+                                        ),
+                                        if (muted)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              left: 4,
+                                            ),
+                                            child: Icon(
+                                              Icons.notifications_off_outlined,
+                                              size: 13,
+                                              semanticLabel: 'Muted',
+                                              color: scheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          _relativeTime(item.latestActivity),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: scheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            preview,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: unread
+                                                  ? FontWeight.w500
+                                                  : FontWeight.w400,
+                                              color: hasDraft
+                                                  ? scheme.error
+                                                  : unread
+                                                  ? scheme.onSurface
+                                                  : scheme.onSurfaceVariant,
+                                            ),
+                                          ),
+                                        ),
+                                        if (unread) ...[
+                                          const SizedBox(width: 6),
+                                          item.unreadCount > 0
+                                              ? _DesktopCount(item.unreadCount)
+                                              : Container(
+                                                  width: 10,
+                                                  height: 10,
+                                                  decoration: BoxDecoration(
+                                                    color: scheme.primary,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                        ],
+                                      ],
+                                    ),
                                   ],
                                 ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(width: 16),
+                            ],
                           ),
-                          IconButton(
-                            tooltip:
-                                '${favorite ? 'Unfavourite' : 'Favourite'} ${item.title}',
-                            onPressed: () =>
-                                controller.setFavorite(item.route, !favorite),
-                            icon: Icon(
-                              favorite ? Icons.star : Icons.star_border,
-                              size: 20,
-                              color: favorite
-                                  ? scheme.onSurface
-                                  : scheme.onSurfaceVariant,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                        ],
+                        ),
                       ),
                     ),
                   ),
@@ -1145,12 +1194,14 @@ class _SwipeAction extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.onPressed,
+    this.foreground = Colors.white,
   });
 
   final String label;
   final IconData icon;
   final Color color;
   final VoidCallback onPressed;
+  final Color foreground;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -1162,14 +1213,14 @@ class _SwipeAction extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 19, color: Colors.white),
+            Icon(icon, size: 19, color: foreground),
             const SizedBox(height: 3),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Colors.white,
+                color: foreground,
               ),
             ),
           ],
@@ -1177,228 +1228,6 @@ class _SwipeAction extends StatelessWidget {
       ),
     ),
   );
-}
-
-class _GlassTabBar extends StatelessWidget {
-  const _GlassTabBar({
-    required this.section,
-    required this.onSelect,
-    required this.unreadCount,
-  });
-
-  final _Section section;
-  final ValueChanged<_Section> onSelect;
-  final int unreadCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final ink = Theme.of(context).colorScheme.onSurface;
-    final inset = MediaQuery.viewPaddingOf(context).bottom;
-    const radius = BorderRadius.all(Radius.circular(31));
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, inset > 0 ? inset - 8 : 12),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: radius,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: dark ? .4 : .14),
-              blurRadius: 32,
-              offset: const Offset(0, 12),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: .06),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: radius,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: Container(
-              height: 62,
-              padding: const EdgeInsets.all(5),
-              decoration: BoxDecoration(
-                borderRadius: radius,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: dark ? .14 : .85),
-                ),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: dark
-                      ? [
-                          const Color(0xff2c2c2e).withValues(alpha: .82),
-                          const Color(0xff2c2c2e).withValues(alpha: .62),
-                        ]
-                      : [
-                          Colors.white.withValues(alpha: .82),
-                          Colors.white.withValues(alpha: .55),
-                        ],
-                ),
-              ),
-              child: Row(
-                children: [
-                  for (final (value, label, icon, selectedIcon) in [
-                    (
-                      _Section.inbox,
-                      'Inbox',
-                      CupertinoIcons.tray,
-                      CupertinoIcons.tray_fill,
-                    ),
-                    (
-                      _Section.contacts,
-                      'Contacts',
-                      CupertinoIcons.person_2,
-                      CupertinoIcons.person_2_fill,
-                    ),
-                    (
-                      _Section.settings,
-                      'Settings',
-                      CupertinoIcons.gear,
-                      CupertinoIcons.gear_solid,
-                    ),
-                  ])
-                    Expanded(
-                      child: Semantics(
-                        button: true,
-                        selected: section == value,
-                        label: label,
-                        excludeSemantics: true,
-                        onTap: () => onSelect(value),
-                        child: GestureDetector(
-                          key: Key('phone-tab-${value.name}'),
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () => onSelect(value),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            decoration: BoxDecoration(
-                              color: section == value
-                                  ? ink.withValues(alpha: dark ? .14 : .07)
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(26),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Badge(
-                                  isLabelVisible:
-                                      value == _Section.inbox &&
-                                      unreadCount > 0,
-                                  label: Text('$unreadCount'),
-                                  backgroundColor: Theme.of(context)
-                                      .colorScheme
-                                      .primary,
-                                  textColor: Theme.of(context)
-                                      .colorScheme
-                                      .onPrimary,
-                                  child: Icon(
-                                    section == value ? selectedIcon : icon,
-                                    size: 24,
-                                    color: section == value
-                                        ? ink
-                                        : ink.withValues(alpha: .72),
-                                  ),
-                                ),
-                                const SizedBox(height: 1),
-                                Text(
-                                  label,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: section == value
-                                        ? FontWeight.w600
-                                        : FontWeight.w500,
-                                    color: section == value
-                                        ? ink
-                                        : ink.withValues(alpha: .72),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PhoneNavigationBar extends StatelessWidget {
-  const _PhoneNavigationBar({
-    required this.controller,
-    required this.section,
-    required this.onSelect,
-    required this.unreadCount,
-  });
-
-  final InboxUiController controller;
-  final _Section section;
-  final ValueChanged<_Section> onSelect;
-  final int unreadCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final palette = _DesktopPalette.forPreferences(controller.preferences);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: scheme.outlineVariant)),
-      ),
-      child: NavigationBar(
-        height: 72,
-        selectedIndex: section.index,
-        onDestinationSelected: (value) => onSelect(_Section.values[value]),
-        backgroundColor: palette == null
-            ? scheme.surfaceContainerLow
-            : Color.alphaBlend(
-                palette.background.withValues(alpha: .11),
-                scheme.surface,
-              ),
-        indicatorColor: palette == null
-            ? scheme.onSurface.withValues(alpha: .09)
-            : palette.accent.withValues(alpha: .22),
-        surfaceTintColor: Colors.transparent,
-        destinations: [
-          NavigationDestination(
-            icon: Badge(
-              isLabelVisible: unreadCount > 0,
-              label: Text('$unreadCount'),
-              backgroundColor: scheme.primary,
-              textColor: scheme.onPrimary,
-              child: const Icon(Icons.inbox_outlined),
-            ),
-            selectedIcon: Badge(
-              isLabelVisible: unreadCount > 0,
-              label: Text('$unreadCount'),
-              backgroundColor: scheme.primary,
-              textColor: scheme.onPrimary,
-              child: const Icon(Icons.inbox),
-            ),
-            label: 'Inbox',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Contacts',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _NavigationRail extends StatelessWidget {
@@ -1534,6 +1363,7 @@ class _ConversationPaneState extends State<_ConversationPane> {
   String? _highlightedMessageId;
   String? _externalHighlightedMessageId;
   final _messageKeys = <String, GlobalKey>{};
+  int? _firstNewIndex;
 
   Future<void> _revealMessage(String id) async {
     if (!_scroll.hasClients) return;
@@ -1576,6 +1406,11 @@ class _ConversationPaneState extends State<_ConversationPane> {
     final controller = widget.controller;
     final item = widget.conversation;
     final messages = controller.messagesFor(item.route);
+    if (!widget.desktop && messages.isNotEmpty) {
+      _firstNewIndex ??= item.unreadCount > 0
+          ? messages.length - item.unreadCount
+          : -1;
+    }
     final latestSent = messages.lastIndexWhere(
       (message) =>
           message.isOutgoing &&
@@ -1592,9 +1427,6 @@ class _ConversationPaneState extends State<_ConversationPane> {
     final capability = controller.networks
         .where((network) => network.id == account?.platform)
         .firstOrNull;
-    final muted = controller
-        .preferencesFor(item.route)
-        .isMutedAt(DateTime.now());
     if (_messageCount != messages.length) {
       final wasNearBottom =
           !_scroll.hasClients ||
@@ -1617,174 +1449,143 @@ class _ConversationPaneState extends State<_ConversationPane> {
             onManagePerson: widget.onManagePerson,
           ),
         if (!widget.desktop)
-          Container(
-            constraints: const BoxConstraints(minHeight: 60),
-            padding: const EdgeInsets.fromLTRB(4, 6, 6, 6),
-            child: Row(
-              children: [
-                if (widget.onBack != null)
-                  IconButton(
-                    key: const Key('back-to-inbox'),
-                    tooltip: 'Back to inbox',
-                    onPressed: widget.onBack,
-                    icon: Icon(
-                      defaultTargetPlatform == TargetPlatform.iOS
-                          ? CupertinoIcons.back
-                          : Icons.arrow_back,
-                    ),
-                  )
-                else
-                  const SizedBox(width: 12),
-                PersonAvatar(
-                  name: item.title,
-                  bytes: item.avatarBytes,
-                  network: account?.platform,
-                  isGroup: item.isGroup,
-                  size: 32,
+          _PhoneChatHeader(
+            controller: controller,
+            conversation: item,
+            onBack: widget.onBack,
+            onInfo: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => _PhoneChatInfoPage(
+                  controller: controller,
+                  route: item.route,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        '${_networkName(controller, account?.platform)}${item.isGroup ? ' · Group conversation' : ''}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: muted ? 'Unmute conversation' : 'Mute conversation',
-                  onPressed: () => controller.setMuted(item.route, !muted),
-                  icon: Icon(
-                    muted
-                        ? Icons.notifications_off_outlined
-                        : Icons.notifications_none,
-                    size: 22,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Conversation actions',
-                  onPressed: () =>
-                      _showConversationActions(context, controller, item),
-                  icon: const Icon(Icons.more_horiz),
-                ),
-              ],
+              ),
             ),
+            onActions: () =>
+                _showPhoneChatPeek(context, controller, item, preview: false),
           ),
-        const Divider(height: 1),
+        if (widget.desktop) const Divider(height: 1),
         Expanded(
-          child: messages.isEmpty
-              ? widget.desktop
-                    ? Align(
-                        alignment: Alignment.topCenter,
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            'No recent messages',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                      )
-                    : const _EmptyState(
-                        icon: Icons.chat_bubble_outline,
-                        title: 'Start the conversation',
-                        message: 'Messages will appear here.',
-                      )
-              : ListView.builder(
-                  controller: _scroll,
-                  padding: widget.desktop
-                      ? const EdgeInsets.fromLTRB(27, 8, 27, 12)
-                      : const EdgeInsets.fromLTRB(24, 20, 24, 12),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final message = messages[index];
-                    final showDate =
-                        index == 0 ||
-                        !_sameDay(
-                          messages[index - 1].timestamp,
-                          message.timestamp,
-                        );
-                    final repliedTo = message.replyToMessageId == null
-                        ? null
-                        : controller.replyTargetFor(
-                            item.route,
-                            message.replyToMessageId!,
-                          );
-                    return Container(
-                      key: _messageKeys.putIfAbsent(message.id, GlobalKey.new),
-                      decoration: _highlightedMessageId == message.id
-                          ? BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary
-                                  .withValues(alpha: .08),
-                              borderRadius: BorderRadius.circular(8),
-                            )
-                          : null,
-                      child: Column(
-                        children: [
-                          if (widget.desktop && index == 0)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Text(
-                                'Showing recent messages',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
+          child: CustomPaint(
+            painter: widget.desktop
+                ? null
+                : _ChatWallpaper(
+                    controller.preferences.chatWallpaper,
+                    Theme.of(context).colorScheme.primary.withValues(
+                      alpha: controller.preferences.chatWallpaper == 'tint'
+                          ? .06
+                          : .14,
+                    ),
+                  ),
+            child: messages.isEmpty
+                ? widget.desktop
+                      ? Align(
+                          alignment: Alignment.topCenter,
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              'No recent messages',
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
-                          if (showDate)
-                            Padding(
-                              padding: EdgeInsets.symmetric(
-                                vertical: widget.desktop ? 4 : 14,
-                              ),
-                              child: Text(
-                                _dayLabel(message.timestamp),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: widget.desktop
-                                      ? FontWeight.normal
-                                      : FontWeight.w600,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurfaceVariant,
+                          ),
+                        )
+                      : const _EmptyState(
+                          icon: Icons.chat_bubble_outline,
+                          title: 'Start the conversation',
+                          message: 'Messages will appear here.',
+                        )
+                : ListView.builder(
+                    controller: _scroll,
+                    padding: widget.desktop
+                        ? const EdgeInsets.fromLTRB(27, 8, 27, 12)
+                        : const EdgeInsets.fromLTRB(24, 20, 24, 12),
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      final message = messages[index];
+                      final showDate =
+                          index == 0 ||
+                          !_sameDay(
+                            messages[index - 1].timestamp,
+                            message.timestamp,
+                          );
+                      final repliedTo = message.replyToMessageId == null
+                          ? null
+                          : controller.replyTargetFor(
+                              item.route,
+                              message.replyToMessageId!,
+                            );
+                      return Container(
+                        key: _messageKeys.putIfAbsent(
+                          message.id,
+                          GlobalKey.new,
+                        ),
+                        decoration: _highlightedMessageId == message.id
+                            ? BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary
+                                    .withValues(alpha: .08),
+                                borderRadius: BorderRadius.circular(8),
+                              )
+                            : null,
+                        child: Column(
+                          children: [
+                            if (widget.desktop && index == 0)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  'Showing recent messages',
+                                  style: Theme.of(context).textTheme.bodySmall,
                                 ),
                               ),
+                            if (showDate)
+                              Padding(
+                                padding: EdgeInsets.symmetric(
+                                  vertical: widget.desktop ? 4 : 14,
+                                ),
+                                child: Text(
+                                  _dayLabel(message.timestamp),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: widget.desktop
+                                        ? FontWeight.normal
+                                        : FontWeight.w600,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            if (index == _firstNewIndex && index > 0)
+                              const _NewMessagesDivider(),
+                            _MessageBubble(
+                              message: message,
+                              conversation: item,
+                              controller: controller,
+                              capability: capability,
+                              replyTarget: repliedTo,
+                              onRevealReply: _showReplyTarget,
+                              desktop: widget.desktop,
+                              showsTimestamp:
+                                  !widget.desktop ||
+                                  index + 1 == messages.length ||
+                                  !_sameMessageRun(
+                                    message,
+                                    messages[index + 1],
+                                  ),
+                              showsSent: index == latestSent,
+                              showsSender:
+                                  !widget.desktop ||
+                                  index == 0 ||
+                                  !_sameMessageRun(
+                                    messages[index - 1],
+                                    message,
+                                  ),
                             ),
-                          _MessageBubble(
-                            message: message,
-                            conversation: item,
-                            controller: controller,
-                            capability: capability,
-                            replyTarget: repliedTo,
-                            onRevealReply: _showReplyTarget,
-                            desktop: widget.desktop,
-                            showsTimestamp:
-                                !widget.desktop ||
-                                index + 1 == messages.length ||
-                                !_sameMessageRun(message, messages[index + 1]),
-                            showsSent: index == latestSent,
-                            showsSender:
-                                !widget.desktop ||
-                                index == 0 ||
-                                !_sameMessageRun(messages[index - 1], message),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
         ),
         if (widget.desktop) const Divider(height: 1),
         _Composer(
@@ -1796,6 +1597,42 @@ class _ConversationPaneState extends State<_ConversationPane> {
           desktop: widget.desktop,
         ),
       ],
+    );
+  }
+}
+
+class _NewMessagesDivider extends StatelessWidget {
+  const _NewMessagesDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.primary;
+    final line = Expanded(
+      child: Divider(height: 1, color: color.withValues(alpha: .6)),
+    );
+    return Semantics(
+      label: 'New messages',
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          children: [
+            line,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text(
+                'New',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
+              ),
+            ),
+            line,
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1938,6 +1775,10 @@ class _ReplyQuote extends StatelessWidget {
   }
 }
 
+// Shorter than the text selection long press, so holding a message opens its
+// actions while a double tap still selects a word.
+const _messageActionsHold = Duration(milliseconds: 400);
+
 class _MessageBubble extends StatelessWidget {
   const _MessageBubble({
     required this.message,
@@ -2060,7 +1901,15 @@ class _MessageBubble extends StatelessWidget {
                                 color: undelivered?.outline ?? scheme.primary,
                               )
                             : null,
-                        borderRadius: BorderRadius.circular(desktop ? 12 : 17),
+                        borderRadius: BorderRadius.circular(
+                          desktop
+                              ? 12
+                              : switch (controller.preferences.bubbleShape) {
+                                  'soft' => 11,
+                                  'square' => 5,
+                                  _ => 17,
+                                },
+                        ),
                       ),
                       child: DefaultTextStyle(
                         style: TextStyle(
@@ -2377,59 +2226,52 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
               if (desktop && canReact && !own) _reactButton(hovering),
-              if (!desktop && (message.body.isNotEmpty || canReply || canReact))
-                PopupMenuButton<String>(
-                  tooltip: 'Message actions',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 160),
-                  iconSize: 17,
-                  icon: Icon(Icons.more_horiz, color: scheme.onSurfaceVariant),
-                  onSelected: (action) {
-                    if (action == 'copy') {
-                      Clipboard.setData(ClipboardData(text: message.body));
-                    }
-                    if (action == 'reply') {
-                      controller.setReplyTo(message.route, message.id);
-                    }
-                    if (action == 'react') _chooseReaction(context);
-                  },
-                  itemBuilder: (_) => [
-                    if (canReply)
-                      const PopupMenuItem(
-                        value: 'reply',
-                        child: ListTile(
-                          leading: Icon(Icons.reply),
-                          title: Text('Reply'),
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                    if (canReact)
-                      const PopupMenuItem(
-                        value: 'react',
-                        child: ListTile(
-                          leading: Icon(Icons.add_reaction_outlined),
-                          title: Text('React'),
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                    if (message.body.isNotEmpty)
-                      const PopupMenuItem(
-                        value: 'copy',
-                        child: ListTile(
-                          leading: Icon(Icons.copy_outlined),
-                          title: Text('Copy text'),
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                      ),
-                  ],
-                ),
               if (!own) SizedBox(width: desktop ? 60 : 24),
             ],
           ),
         ),
       ),
     );
-    if (!desktop) return bubble;
+    if (!desktop) {
+      final canCopy = message.body.isNotEmpty;
+      if (!canReply && !canReact && !canCopy && savableAttachments.isEmpty) {
+        return bubble;
+      }
+      return Semantics(
+        customSemanticsActions: {
+          if (canReply)
+            const CustomSemanticsAction(label: 'Reply'): () =>
+                controller.setReplyTo(message.route, message.id),
+          if (canReact)
+            const CustomSemanticsAction(label: 'React'): () =>
+                _chooseReaction(context),
+          if (canCopy)
+            const CustomSemanticsAction(label: 'Copy text'): () =>
+                Clipboard.setData(ClipboardData(text: message.body)),
+        },
+        child: RawGestureDetector(
+          key: Key('message-${message.id}'),
+          behavior: HitTestBehavior.translucent,
+          gestures: {
+            LongPressGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  LongPressGestureRecognizer
+                >(
+                  () =>
+                      LongPressGestureRecognizer(duration: _messageActionsHold),
+                  (recognizer) => recognizer.onLongPress = () =>
+                      _showPhoneActions(
+                        context,
+                        canReply: canReply,
+                        canReact: canReact,
+                        savable: savableAttachments,
+                      ),
+                ),
+          },
+          child: bubble,
+        ),
+      );
+    }
     return Semantics(
       customSemanticsActions: {
         if (canReact)
@@ -2486,6 +2328,113 @@ class _MessageBubble extends StatelessWidget {
         child: bubble,
       ),
     );
+  }
+
+  Future<void> _showPhoneActions(
+    BuildContext context, {
+    required bool canReply,
+    required bool canReact,
+    required List<AttachmentRecord> savable,
+  }) async {
+    unawaited(HapticFeedback.mediumImpact());
+    final own = controller.ownReactionsFor(message.route, message.id);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final scheme = Theme.of(sheetContext).colorScheme;
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (canReact)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      runSpacing: 4,
+                      children: [
+                        for (final emoji in quickReactions)
+                          Semantics(
+                            label: 'React with $emoji',
+                            selected: own.contains(emoji),
+                            button: true,
+                            excludeSemantics: true,
+                            child: InkWell(
+                              customBorder: const CircleBorder(),
+                              onTap: () =>
+                                  Navigator.pop(sheetContext, 'emoji:$emoji'),
+                              child: Container(
+                                width: 46,
+                                height: 46,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: own.contains(emoji)
+                                      ? scheme.primary.withValues(alpha: .22)
+                                      : null,
+                                ),
+                                child: Text(
+                                  emoji,
+                                  style: const TextStyle(fontSize: 26),
+                                ),
+                              ),
+                            ),
+                          ),
+                        IconButton.filledTonal(
+                          tooltip: 'More reactions',
+                          onPressed: () => Navigator.pop(sheetContext, 'react'),
+                          icon: const Icon(Icons.add),
+                        ),
+                      ],
+                    ),
+                  ),
+                if (canReply)
+                  ListTile(
+                    leading: const Icon(CupertinoIcons.reply),
+                    title: const Text('Reply'),
+                    onTap: () => Navigator.pop(sheetContext, 'reply'),
+                  ),
+                if (message.body.isNotEmpty)
+                  ListTile(
+                    leading: const Icon(CupertinoIcons.doc_on_doc),
+                    title: const Text('Copy'),
+                    onTap: () => Navigator.pop(sheetContext, 'copy'),
+                  ),
+                for (final attachment in savable)
+                  ListTile(
+                    enabled: attachment.localPath != null,
+                    leading: const Icon(CupertinoIcons.arrow_down_to_line),
+                    title: Text(_saveLabel(attachment).replaceAll('…', '')),
+                    onTap: () =>
+                        Navigator.pop(sheetContext, 'save:${attachment.id}'),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (!context.mounted || action == null) return;
+    switch (action) {
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: message.body));
+      case 'reply':
+        controller.setReplyTo(message.route, message.id);
+      case 'react':
+        await _chooseReaction(context);
+      case final String value when value.startsWith('emoji:'):
+        await controller.react(message.route, message.id, value.substring(6));
+      case final String value when value.startsWith('save:'):
+        await controller.saveAttachment(
+          message.route,
+          message.id,
+          value.substring(5),
+        );
+    }
   }
 
   String _saveLabel(AttachmentRecord attachment) =>
@@ -2668,6 +2617,7 @@ class _ComposerState extends State<_Composer> {
   late final TextEditingController _text;
   String? _replyTargetId;
   final _focus = FocusNode();
+  final _attachButton = GlobalKey();
 
   ConversationRoute get route => widget.conversation.route;
   String? get _sendingUnavailableReason =>
@@ -2705,6 +2655,56 @@ class _ComposerState extends State<_Composer> {
     _text.dispose();
     _focus.dispose();
     super.dispose();
+  }
+
+  Future<void> _openAttachMenu() async {
+    final box = _attachButton.currentContext!.findRenderObject()! as RenderBox;
+    final button = box.localToGlobal(Offset.zero) & box.size;
+    final screen = MediaQuery.sizeOf(context);
+    final media = await showGeneralDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Close attach menu',
+      barrierColor: Colors.black.withValues(alpha: .35),
+      transitionDuration: const Duration(milliseconds: 160),
+      transitionBuilder: (context, animation, _, child) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          alignment: Alignment.bottomLeft,
+          scale: Tween(begin: .92, end: 1.0).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          ),
+          child: child,
+        ),
+      ),
+      pageBuilder: (dialogContext, _, _) => Stack(
+        children: [
+          Positioned(
+            left: math.max(12, button.left - 4),
+            bottom: screen.height - button.top + 10,
+            width: 272,
+            child: _PhoneAttachMenu(
+              onPick: (media) => Navigator.pop(dialogContext, media),
+            ),
+          ),
+          Positioned.fromRect(
+            rect: button,
+            child: Material(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              shape: const CircleBorder(),
+              child: IconButton(
+                tooltip: 'Close attach menu',
+                onPressed: () => Navigator.pop(dialogContext),
+                icon: const Icon(Icons.close, size: 23),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (media != null && mounted) {
+      await widget.controller.stageAttachments(route, media: media);
+    }
   }
 
   Future<void> _send() async {
@@ -2813,7 +2813,72 @@ class _ComposerState extends State<_Composer> {
                 ],
               ),
             ),
-          if (draft?.attachments.isNotEmpty ?? false)
+          if (!widget.desktop &&
+              (draft?.attachments.every(
+                    (attachment) =>
+                        attachment.kind == 'image' &&
+                        attachment.localPath != null,
+                  ) ??
+                  false) &&
+              draft!.attachments.isNotEmpty)
+            for (final attachment in draft.attachments)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(6, 0, 6, 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        ClipRRect(
+                          key: const Key('draft-photo-preview'),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Image.file(
+                            File(attachment.localPath!),
+                            width: 112,
+                            height: 112,
+                            fit: BoxFit.cover,
+                            cacheWidth: 336,
+                            semanticLabel: attachment.fileName ?? 'Photo',
+                          ),
+                        ),
+                        Positioned(
+                          top: -12,
+                          right: -12,
+                          child: IconButton(
+                            tooltip: 'Remove ${attachment.fileName ?? 'photo'}',
+                            onPressed: () => controller.removeDraftAttachment(
+                              route,
+                              attachment.id,
+                            ),
+                            icon: const Icon(
+                              CupertinoIcons.xmark_circle_fill,
+                              size: 26,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        [
+                          ?attachment.fileName,
+                          if (attachment.byteCount case final bytes?)
+                            formatByteCount(bytes),
+                        ].join(' · '),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+          else if (draft?.attachments.isNotEmpty ?? false)
             SizedBox(
               height: 66,
               child: ListView.separated(
@@ -2859,10 +2924,13 @@ class _ComposerState extends State<_Composer> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 1),
                     child: IconButton(
-                      tooltip: 'Attach files',
+                      key: _attachButton,
+                      tooltip: widget.desktop ? 'Attach files' : 'Attach',
                       onPressed: controller.isBusy
                           ? null
-                          : () => controller.stageAttachments(route),
+                          : widget.desktop
+                          ? () => controller.stageAttachments(route)
+                          : _openAttachMenu,
                       icon: widget.desktop
                           ? Transform.rotate(
                               angle: .785398,
@@ -2875,7 +2943,7 @@ class _ComposerState extends State<_Composer> {
                           : const Icon(
                               Icons.add,
                               size: 23,
-                              semanticLabel: 'Attach files',
+                              semanticLabel: 'Attach',
                             ),
                     ),
                   ),
@@ -2930,7 +2998,9 @@ class _ComposerState extends State<_Composer> {
                             ? const TextStyle(fontSize: 13)
                             : null,
                         decoration: InputDecoration(
-                          hintText: 'Message',
+                          hintText: !widget.desktop && widget.capability != null
+                              ? 'Reply on ${widget.capability!.name}'
+                              : 'Message',
                           filled: widget.desktop,
                           border: widget.desktop
                               ? OutlineInputBorder(
@@ -3760,89 +3830,32 @@ Future<void> _showConversationActions(
         chat.unreadCount > 0 ||
         controller.preferencesFor(chat.route).markedUnread,
   );
-  final action = isDesktopPlatform
-      ? await showMenu<_ConversationAction>(
-          context: context,
-          position: RelativeRect.fromLTRB(
-            position?.dx ?? 0,
-            position?.dy ?? 0,
-            position?.dx ?? 0,
-            position?.dy ?? 0,
-          ),
-          items: [
-            _menuItem(
-              _ConversationAction.unread,
-              unread ? 'Mark as Read' : 'Mark as Unread',
-            ),
-            _menuItem(_ConversationAction.mute, muted ? 'Unmute' : 'Mute'),
-            _menuItem(
-              _ConversationAction.hide,
-              preferences.hiddenAt == null ? 'Hide' : 'Show in Inbox',
-            ),
-            _menuItem(
-              _ConversationAction.favorite,
-              favorite ? 'Remove from Favourites' : 'Add to Favourites',
-            ),
-          ],
-        )
-      : await showModalBottomSheet<_ConversationAction>(
-          context: context,
-          showDragHandle: true,
-          builder: (context) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-                  child: Text(
-                    conversation.title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                ListTile(
-                  leading: Icon(favorite ? Icons.star : Icons.star_border),
-                  title: Text(
-                    favorite ? 'Remove from favorites' : 'Add to favorites',
-                  ),
-                  onTap: () =>
-                      Navigator.pop(context, _ConversationAction.favorite),
-                ),
-                ListTile(
-                  leading: Icon(
-                    muted
-                        ? Icons.notifications_outlined
-                        : Icons.notifications_off_outlined,
-                  ),
-                  title: Text(
-                    muted ? 'Unmute conversation' : 'Mute conversation',
-                  ),
-                  onTap: () => Navigator.pop(context, _ConversationAction.mute),
-                ),
-                ListTile(
-                  leading: Icon(
-                    preferences.hiddenAt == null
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                  ),
-                  title: Text(
-                    preferences.hiddenAt == null
-                        ? 'Hide conversation'
-                        : 'Unhide conversation',
-                  ),
-                  subtitle: preferences.hiddenAt == null
-                      ? const Text('Find it later in Hidden or Settings.')
-                      : null,
-                  onTap: () => Navigator.pop(context, _ConversationAction.hide),
-                ),
-                const SizedBox(height: 8),
-              ],
-            ),
-          ),
-        );
+  final action = await showMenu<_ConversationAction>(
+    context: context,
+    position: RelativeRect.fromLTRB(
+      position?.dx ?? 0,
+      position?.dy ?? 0,
+      position?.dx ?? 0,
+      position?.dy ?? 0,
+    ),
+    items: [
+      _menuItem(
+        _ConversationAction.unread,
+        unread ? 'Mark as Read' : 'Mark as Unread',
+      ),
+      _menuItem(_ConversationAction.mute, muted ? 'Unmute' : 'Mute'),
+      _menuItem(
+        _ConversationAction.hide,
+        preferences.hiddenAt == null ? 'Hide' : 'Show in Inbox',
+      ),
+      _menuItem(
+        _ConversationAction.favorite,
+        favorite ? 'Remove from Favourites' : 'Add to Favourites',
+      ),
+    ],
+  );
   DateTime? mutedUntil;
-  if (action == _ConversationAction.mute && !muted && isDesktopPlatform) {
+  if (action == _ConversationAction.mute && !muted) {
     if (!context.mounted) return;
     final hours = await showMenu<int>(
       context: context,

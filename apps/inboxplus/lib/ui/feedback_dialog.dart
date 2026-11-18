@@ -37,6 +37,15 @@ class FeedbackForm {
   void dispose() => text.dispose();
 }
 
+Future<Uint8List?> chooseFeedbackImage(InboxUiController controller) async {
+  final bytes = await controller.pickFeedbackImage();
+  return bytes == null ? null : normalizeFeedbackImage(bytes);
+}
+
+String feedbackImageError(Exception error) => error is FeedbackImageFailure
+    ? error.message
+    : 'Inbox+ can’t read this file as an image. Choose a PNG or JPEG.';
+
 sealed class _Phase {
   const _Phase();
 }
@@ -124,22 +133,14 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
     try {
       final image = await source();
       if (mounted && image != null) setState(() => _form.image = image);
-    } on Exception {
-      if (mounted) {
-        setState(
-          () => _imageError =
-              'Inbox+ can’t read this file as an image. Choose a PNG or JPEG.',
-        );
-      }
+    } on Exception catch (error) {
+      if (mounted) setState(() => _imageError = feedbackImageError(error));
     } finally {
       if (mounted) setState(() => _attaching = false);
     }
   }
 
-  Future<Uint8List?> _chooseImage() async {
-    final bytes = await widget.controller.pickFeedbackImage();
-    return bytes == null ? null : normalizeFeedbackImage(bytes);
-  }
+  Future<Uint8List?> _chooseImage() => chooseFeedbackImage(widget.controller);
 
   Future<Uint8List?> _captureWindow() async {
     final ratio = MediaQuery.devicePixelRatioOf(context);

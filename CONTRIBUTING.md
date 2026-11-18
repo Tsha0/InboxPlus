@@ -49,7 +49,7 @@ before you submit. Say which checks you could not run and why.
 
 | Change | Check |
 | --- | --- |
-| Flutter app or UI | `flutter analyze` and `flutter test` in `apps/inboxplus`. Look at each affected state on desktop and mobile, including loading, empty, error and cancellation. Put screenshots or a recording in the issue description |
+| Flutter app or UI | `flutter analyze` and `flutter test` in `apps/inboxplus`. Look at each affected state on desktop and mobile, including loading, empty, error and cancellation. Put before-and-after screenshots in the PR description |
 | Encrypted storage | `dart analyze` and `dart test` in `packages/inboxplus_storage` |
 | Embedded connectors | `go mod verify` and `go test ./...` in `native/connectors`, then `build.sh host` |
 | macOS Messages adapter | `swift test --package-path native/imessage` |
@@ -227,8 +227,11 @@ python3 Scripts/generate-third-party-notices.py
   solo repository does not require an approval.
 - Use a focused branch such as `codex/my-change` and a short, descriptive title.
 - Before merging, reply to every review comment and resolve each thread.
-- Fill in the [pull request template](.github/pull_request_template.md). For a visible UI change,
-  link the issue that holds the screenshots or recording.
+- Fill in the [pull request template](.github/pull_request_template.md). For a change that affects
+  UI, including the website, embed before-and-after screenshots of each affected state in a
+  **Before / after** section, side by side, at the same size and state, with a line saying what
+  changed. Use a recording for motion or interaction. Host them on GitHub, use fixtures or redacted
+  content, and add fresh pairs when review changes the UI.
 - Before you submit, read the diff for unrelated changes, debug output and sensitive data.
 - To include the Android build, dispatch **CI** manually with `android_build` enabled.
 
