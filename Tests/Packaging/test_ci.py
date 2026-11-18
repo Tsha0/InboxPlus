@@ -41,6 +41,7 @@ class CIRoutingTests(unittest.TestCase):
 
     def test_native_inputs_are_platform_scoped(self):
         for path, target in (
+            ("website/assets/fonts/bricolage-grotesque-latin.woff2", "macos"),
             ("native/imessage/Sources/main.swift", "macos"),
             ("native/updates/Package.resolved", "macos"),
             ("apps/inboxplus/windows/CMakeLists.txt", "windows"),

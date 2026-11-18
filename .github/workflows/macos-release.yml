@@ -56,6 +56,8 @@ jobs:
       - name: Prepare verified updater artifact
         run: python3 Scripts/verify-media-artifacts.py --platform sparkle --cache-dir "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
       - name: Verify packaging and updater
+        env:
+          INBOXPLUS_TEST_DMG: '1'
         run: |
           python3 -m unittest discover -s Tests/Packaging -v
           swift test --package-path native/updates --force-resolved-versions
@@ -115,7 +117,9 @@ jobs:
           fi
       - name: Build, sign and package the macOS release
         run: |
-          (cd apps/inboxplus && python3 ../../Scripts/retry-sqlite-download.py flutter build macos --release)
+          version="$(sed -n 's/^version: //p' apps/inboxplus/pubspec.yaml)"
+          (cd apps/inboxplus && python3 ../../Scripts/retry-sqlite-download.py flutter build macos --release \
+            --dart-define=INBOXPLUS_VERSION="${version%+*}" --dart-define=INBOXPLUS_BUILD="${version#*+}")
           python3 Scripts/package-macos-release.py --bundle "$GITHUB_WORKSPACE/apps/inboxplus/build/macos/Build/Products/Release/Inbox+.app" --previous-feed "$RUNNER_TEMP/previous-appcast.xml"
       - name: Attach immutable assets to a draft release
         env:
@@ -125,7 +129,7 @@ jobs:
             test "$(gh release view "$INBOXPLUS_RELEASE_TAG" --json isDraft --jq .isDraft)" = true
           else
             gh release create "$INBOXPLUS_RELEASE_TAG" --verify-tag --draft --title "Inbox+ ${INBOXPLUS_RELEASE_TAG#v}" \
-              --notes 'macOS release. Review the signed artifacts and upgrade verification before publishing.'
+              --notes 'macOS release. Review the signed artifacts before publishing.'
           fi
           gh release upload "$INBOXPLUS_RELEASE_TAG" build/macos-release/*
       - name: Remove signing credentials

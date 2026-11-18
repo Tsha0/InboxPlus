@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:inboxplus/app_controller.dart';
 import 'package:inboxplus/connectors/connector_engine.dart';
+import 'package:inboxplus/feedback_relay.dart';
 import 'package:inboxplus/platform/app_environment.dart';
 import 'package:inboxplus/ui/inbox_ui_controller.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
@@ -52,6 +53,7 @@ void main() {
     _FakeEngine? engine,
     String profileName = 'default',
     DateTime Function()? now,
+    FeedbackSubmitter? submitFeedback,
     bool waitForStartup = true,
   }) async {
     final value = AppController(
@@ -63,6 +65,7 @@ void main() {
       ),
       engine: engine,
       nativeCall: native.call,
+      submitFeedback: submitFeedback,
       now: now ?? () => instant,
     );
     controller = value;
@@ -217,6 +220,103 @@ void main() {
       expect((await store.loadConversations()).single.avatarBytes, isNull);
     },
   );
+
+  test(
+    'iMessage shows the photo saved in Contacts without a connector engine',
+    () async {
+      native.imessageAvailable = true;
+      native.contactPhoto = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
+      );
+      native.imessageSnapshot = {
+        'conversations': [
+          {
+            'id': 'local-chat',
+            'title': 'Local fixture',
+            'timestamp': instant.millisecondsSinceEpoch,
+            'avatar_source': 'contact:abc',
+          },
+        ],
+        'messages': [],
+      };
+      final app = await start();
+      await app.beginLogin('imessage');
+      await _eventually(
+        () => app.conversations.single.avatarBytes?.isNotEmpty == true,
+      );
+      expect(
+        native.calls
+            .where((call) => call['method'] == 'imessageContactPhoto')
+            .map((call) => (call['arguments'] as Map)['avatar_source']),
+        ['contact:abc'],
+      );
+      expect(
+        (await store.loadConversations()).single.avatarBytes,
+        app.conversations.single.avatarBytes,
+      );
+      expect(app.error, isNull);
+    },
+  );
+
+  test('iMessage asks for Full Disk Access and guides each retry until it connects', () async {
+    native.imessageAvailable = true;
+    native.imessageSnapshotError = 'imessage_full_disk_access';
+    final app = await start();
+
+    await app.beginLogin('imessage');
+    expect(app.login?.step, LoginStep.failed);
+    expect(
+      app.login?.imessageProblem,
+      IMessageSetupProblem.fullDiskAccessNeeded,
+    );
+    expect(app.login?.instructions, isEmpty);
+    expect(app.login?.error, isNull);
+    expect(app.error, isNull);
+    expect(app.accounts, isEmpty);
+
+    await app.openFullDiskAccessSettings();
+    expect(
+      native.calls.map((call) => call['method']),
+      contains('openFullDiskAccessSettings'),
+    );
+    expect(app.login?.imessageProblem, IMessageSetupProblem.finishInSettings);
+
+    await app.beginLogin('imessage');
+    expect(app.login?.imessageProblem, IMessageSetupProblem.stillBlocked);
+
+    native.imessageSnapshotError = null;
+    await app.beginLogin('imessage');
+    expect(app.login?.step, LoginStep.complete);
+    expect(app.login?.imessageProblem, isNull);
+    expect(app.accounts.single.platform, 'imessage');
+  });
+
+  test('iMessage tells a missing or unreadable Messages history apart from permission', () async {
+    native.imessageAvailable = true;
+    final app = await start();
+    for (final (code, problem) in [
+      ('imessage_not_set_up', IMessageSetupProblem.messagesNotSetUp),
+      ('imessage_unreadable', IMessageSetupProblem.unreadable),
+    ]) {
+      native.imessageSnapshotError = code;
+      await app.beginLogin('imessage');
+      expect(app.login?.imessageProblem, problem, reason: code);
+      expect(app.error, isNull, reason: code);
+    }
+
+    await app.openMessages();
+    expect(
+      native.calls.map((call) => call['method']),
+      contains('openMessages'),
+    );
+
+    native.imessageSnapshotError = 'imessage_failed';
+    await app.beginLogin('imessage');
+    expect(app.login?.step, LoginStep.failed);
+    expect(app.login?.imessageProblem, isNull);
+    expect(app.login?.error, isNot(contains('PRIVATE')));
+    expect(app.accounts, isEmpty);
+  });
 
   test('WhatsApp mobile linking validates and normalizes phone inputs without losing the form', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
@@ -1146,24 +1246,113 @@ void main() {
   );
 
   test(
-    'a missing reply target preserves the draft without sending plain text',
+    'a missing reply target restores the message and attachment for editing',
     () async {
       await seed(firstRoute);
       final engine = _FakeEngine();
       final app = await start(engine: engine);
-      app.setReplyTo(firstRoute, 'missing');
-      app.updateDraft(firstRoute, 'Keep this reply');
+      const attachment = AttachmentRecord(id: 'photo', kind: 'image');
+      await store.saveDraft(
+        firstRoute,
+        'Keep this reply',
+        replyToMessageId: 'missing',
+        attachments: [attachment],
+      );
       await app.sendDraft(firstRoute);
       expect(engine.sends, isEmpty);
+      expect(await store.loadPendingSends(), isEmpty);
       expect(app.draftFor(firstRoute)?.body, 'Keep this reply');
-      expect(app.draftFor(firstRoute)?.replyToMessageId, 'missing');
+      expect(app.draftFor(firstRoute)?.attachments.single.id, 'photo');
+      expect(app.draftFor(firstRoute)?.replyToMessageId, isNull);
+      expect(app.error, contains('reply target'));
+      app.removeDraftAttachment(firstRoute, 'photo');
+      await app.sendDraft(firstRoute);
+      expect(engine.sends.single['body'], 'Keep this reply');
+    },
+  );
+
+  test(
+    'reply recovery preserves a newer draft until the composer is empty',
+    () async {
+      await seed(firstRoute);
+      await store.saveDraft(
+        firstRoute,
+        'Original reply',
+        replyToMessageId: 'missing',
+      );
+      await store.enqueueDraft(firstRoute, sendId: 'missing-reply');
+      await store.saveDraft(firstRoute, 'Newer draft');
+      final engine = _FakeEngine();
+      final app = await start(engine: engine);
+      await app.whenIdle();
+      expect(engine.sends, isEmpty);
+      expect(app.draftFor(firstRoute)?.body, 'Newer draft');
       expect(
         (await store.loadPendingSends()).single.status,
         PendingSendStatus.failed,
       );
-      expect(app.error, contains('reply target'));
+      app.updateDraft(firstRoute, '');
+      await app.retryMessage(firstRoute, 'missing-reply');
+      expect(app.draftFor(firstRoute)?.body, 'Original reply');
+      expect(app.draftFor(firstRoute)?.replyToMessageId, isNull);
+      expect(await store.loadPendingSends(), isEmpty);
     },
   );
+
+  for (final problem in [
+    'missing path',
+    'outside profile',
+    'deleted file',
+    'oversized',
+  ]) {
+    test(
+      'attachment validation marks $problem as failed and allows retry',
+      () async {
+        await seed(firstRoute);
+        final engine = _FakeEngine();
+        final app = await start(engine: engine);
+        final file = File('${directory.path}/staging/photo.jpg');
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes([1]);
+        if (problem == 'deleted file') await file.delete();
+        if (problem == 'oversized') {
+          final handle = await file.open(mode: FileMode.write);
+          await handle.truncate(32 * 1024 * 1024 + 1);
+          await handle.close();
+        }
+        await store.saveDraft(
+          firstRoute,
+          'Attachment',
+          attachments: [
+            AttachmentRecord(
+              id: 'photo',
+              kind: 'image',
+              localPath: problem == 'missing path'
+                  ? null
+                  : problem == 'outside profile'
+                  ? directory.parent.path
+                  : file.path,
+            ),
+          ],
+        );
+        await app.sendDraft(firstRoute);
+        expect(engine.sends, isEmpty);
+        final failed = (await store.loadPendingSends()).single;
+        expect(failed.status, PendingSendStatus.failed);
+        expect(
+          app.messagesFor(firstRoute).single.deliveryState,
+          DeliveryState.failed,
+        );
+        expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
+        if (problem == 'deleted file' || problem == 'oversized') {
+          await file.writeAsBytes([1, 2]);
+          await app.retryMessage(firstRoute, failed.id);
+          expect(engine.sends.single['body'], 'Attachment');
+          expect(await store.loadPendingSends(), isEmpty);
+        }
+      },
+    );
+  }
 
   for (final previewFails in [false, true]) {
     test(
@@ -1794,6 +1983,61 @@ void main() {
   });
 
   test(
+    'feedback attaches diagnostics only when asked and keeps the image',
+    () async {
+      await seed(firstRoute);
+      final submissions =
+          <({FeedbackDraft draft, Map<String, Object?>? diagnostics})>[];
+      final app = await start(
+        engine: _FakeEngine(),
+        submitFeedback: (draft, diagnostics) async {
+          submissions.add((draft: draft, diagnostics: diagnostics));
+          return FeedbackReceipt(
+            issueUrl: Uri.parse('https://github.com/Tsha0/InboxPlus/issues/9'),
+          );
+        },
+      );
+      final image = Uint8List.fromList([1, 2, 3]);
+      final receipt = await app.sendFeedback(
+        FeedbackDraft(kind: FeedbackKind.bug, text: 'Crash', image: image),
+      );
+      await app.sendFeedback(
+        const FeedbackDraft(
+          kind: FeedbackKind.praise,
+          text: 'Thanks',
+          includeDiagnostics: true,
+        ),
+      );
+      expect(
+        receipt.issueUrl,
+        Uri.parse('https://github.com/Tsha0/InboxPlus/issues/9'),
+      );
+      expect(submissions.first.diagnostics, isNull);
+      expect(submissions.first.draft.image, image);
+      expect(submissions.last.diagnostics, jsonDecode(app.diagnosticsJson()));
+      expect(submissions.last.draft.image, isNull);
+    },
+  );
+
+  test(
+    'a feedback failure reaches the caller without an app-wide error',
+    () async {
+      final app = await start(
+        engine: _FakeEngine(),
+        submitFeedback: (_, _) async => throw FeedbackFailure.offline,
+      );
+      await expectLater(
+        app.sendFeedback(
+          const FeedbackDraft(kind: FeedbackKind.feature, text: 'Folders'),
+        ),
+        throwsA(FeedbackFailure.offline),
+      );
+      expect(app.error, isNull);
+      expect(app.isBusy, isFalse);
+    },
+  );
+
+  test(
     'retention applies on the next launch and rejects older backfill',
     () async {
       await seed(firstRoute);
@@ -2101,7 +2345,7 @@ void main() {
     expect(app.conversations.single.unreadCount, 0);
   });
 
-  test('iMessage uses the selected profile and never clears a draft for pending native delivery', () async {
+  test('iMessage uses the selected profile and keeps pending native delivery unconfirmed', () async {
     native.imessageAvailable = true;
     native.imessageSnapshot = {
       'conversations': [
@@ -2144,16 +2388,53 @@ void main() {
       ),
       isTrue,
     );
-    expect(app.draftFor(route)?.body, 'Pending Apple message');
-    expect(
-      (await store.loadPendingSends()).single.status,
-      PendingSendStatus.unknown,
-    );
+    expect(app.draftFor(route)?.body ?? '', isEmpty);
+    final pending = (await store.loadPendingSends()).single;
+    expect(pending.body, 'Pending Apple message');
+    expect(pending.status, PendingSendStatus.unknown);
     expect(
       app.messagesFor(route).single.deliveryState,
       isNot(DeliveryState.acknowledged),
     );
   });
+
+  test(
+    'Send clears the draft once queued, before delivery is confirmed',
+    () async {
+      await seed(firstRoute);
+      final response = Completer<Map<String, Object?>>();
+      final started = Completer<void>();
+      final engine = _FakeEngine(
+        onSend: (_) {
+          started.complete();
+          return response.future;
+        },
+      );
+      final app = await start(engine: engine);
+      app.updateDraft(firstRoute, 'Clear me on Send');
+      final send = app.sendDraft(firstRoute);
+      await started.future;
+
+      expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
+      expect((await store.loadDraft(firstRoute))?.body ?? '', isEmpty);
+      expect(app.messagesFor(firstRoute).single.body, 'Clear me on Send');
+      expect(
+        app.messagesFor(firstRoute).single.deliveryState,
+        DeliveryState.pending,
+      );
+
+      response.complete({
+        'id': 'remote-ack',
+        'timestamp': instant.millisecondsSinceEpoch,
+      });
+      await send;
+      expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
+      expect(
+        app.messagesFor(firstRoute).single.deliveryState,
+        DeliveryState.acknowledged,
+      );
+    },
+  );
 
   test('editing a draft during delivery preserves the newer revision after acknowledgement', () async {
     await seed(firstRoute);
@@ -2207,8 +2488,8 @@ void main() {
       expect(app.isOffline, isTrue);
       expect(engine.sends, isEmpty);
       expect(await store.loadPendingSends(), hasLength(1));
-      expect(app.messagesFor(firstRoute), hasLength(1));
-      expect(app.draftFor(firstRoute)?.body, 'Queued once');
+      expect(app.messagesFor(firstRoute).single.body, 'Queued once');
+      expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
 
       await closeController();
       store = await LocalStore.open(file: database, key: key);
@@ -2216,8 +2497,8 @@ void main() {
       final reopened = await start(
         engine: _FakeEngine(connectState: 'disconnected'),
       );
-      expect(reopened.draftFor(firstRoute)?.body, 'Queued once');
-      expect(reopened.messagesFor(firstRoute), hasLength(1));
+      expect(reopened.draftFor(firstRoute)?.body ?? '', isEmpty);
+      expect(reopened.messagesFor(firstRoute).single.body, 'Queued once');
       expect(
         (await store.loadPendingSends()).single.status,
         PendingSendStatus.queued,
@@ -2225,7 +2506,7 @@ void main() {
     },
   );
 
-  test('uncertain delivery keeps the draft and never resends automatically or through Retry', () async {
+  test('uncertain delivery keeps the message and never resends automatically or through Retry', () async {
     await seed(firstRoute);
     const secret = 'private-token-that-must-not-escape';
     final engine = _FakeEngine(
@@ -2242,7 +2523,8 @@ void main() {
     expect(app.error, contains('Delivery could not be confirmed'));
     expect(app.error, isNot(contains(secret)));
     expect(app.error, isNot(contains('Private fixture body')));
-    expect(app.draftFor(firstRoute)?.body, 'Private fixture body');
+    expect(pending.body, 'Private fixture body');
+    expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
     expect(
       app.messagesFor(firstRoute).single.deliveryState,
       DeliveryState.failed,
@@ -2274,7 +2556,8 @@ void main() {
       PendingSendStatus.unknown,
     );
     expect(engine.sends, isEmpty);
-    expect(app.draftFor(firstRoute)?.body, 'Interrupted delivery');
+    expect(app.messagesFor(firstRoute).single.body, 'Interrupted delivery');
+    expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
   });
 
   test('confirming an uncertain message was not sent retains its command and waits for explicit Retry', () async {
@@ -2299,7 +2582,8 @@ void main() {
       (await store.loadPendingSends()).single.status,
       PendingSendStatus.failed,
     );
-    expect(app.draftFor(firstRoute)?.body, 'Checked draft');
+    expect(app.messagesFor(firstRoute).single.body, 'Checked draft');
+    expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
     expect(app.isDeliveryUnconfirmed(firstRoute, 'checked-send'), isFalse);
 
     await app.refresh();
@@ -2484,7 +2768,7 @@ void main() {
       PendingSendStatus.failed,
     );
     expect(
-      (await store.loadDraft(firstRoute))?.body,
+      app.messagesFor(firstRoute).single.body,
       'Previously queued message',
     );
     expect(app.sendingUnavailableReason(firstRoute), isNotNull);
@@ -3352,11 +3636,10 @@ void main() {
 
     app.updateDraft(firstRoute, 'Edited offline');
     await app.sendDraft(firstRoute);
-    expect((await store.loadDraft(firstRoute))?.body, 'Edited offline');
-    expect(
-      (await store.loadPendingSends()).single.status,
-      PendingSendStatus.queued,
-    );
+    expect((await store.loadDraft(firstRoute))?.body ?? '', isEmpty);
+    final queued = (await store.loadPendingSends()).single;
+    expect(queued.body, 'Edited offline');
+    expect(queued.status, PendingSendStatus.queued);
   });
 
   test(
@@ -3489,7 +3772,9 @@ class _NativeFixture {
   bool failRecipientContacts = false;
   Map<String, Object?> imessageStartResult = {};
   Map<String, Object?> imessageSnapshot = {'conversations': [], 'messages': []};
+  String? imessageSnapshotError;
   Map<String, Object?> imessageSendResult = {};
+  Uint8List contactPhoto = Uint8List(0);
   final notifications = <Map<String, Object?>>[];
   Object? notificationRoute;
   bool failNotificationRoute = false;
@@ -3528,6 +3813,12 @@ class _NativeFixture {
         launchAtLogin = arguments['enabled'] as bool;
         return {'status': launchAtLogin ? 'on' : 'off'};
       case 'imessageSnapshot':
+        if (imessageSnapshotError case final code?) {
+          throw PlatformException(
+            code: code,
+            message: 'PRIVATE_DATABASE_DETAIL',
+          );
+        }
         return imessageSnapshot;
       case 'imessageRecipientContacts':
         if (failRecipientContacts) {
@@ -3541,6 +3832,8 @@ class _NativeFixture {
         return imessageStartResult;
       case 'imessageSend':
         return imessageSendResult;
+      case 'imessageContactPhoto':
+        return contactPhoto;
       case 'webLogin':
         webLoginActive = true;
         return webLoginResponse?.future;

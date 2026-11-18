@@ -210,6 +210,19 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
         case "openLoginItemsSettings":
             SMAppService.openSystemSettingsLoginItems()
             result(nil)
+        case "openFullDiskAccessSettings":
+            guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"),
+                  NSWorkspace.shared.open(url) else {
+                return result(Self.failure("settings_unavailable"))
+            }
+            result(nil)
+        case "openMessages":
+            guard let messages = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.MobileSMS") else {
+                return result(Self.failure("messages_unavailable"))
+            }
+            NSWorkspace.shared.openApplication(at: messages, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+                DispatchQueue.main.async { result(error == nil ? nil : Self.failure("messages_unavailable")) }
+            }
         case "setUnreadBadge":
             let count = max(0, arguments["count"] as? Int ?? 0)
             NSApp.dockTile.badgeLabel = count > 0 ? String(count) : nil
@@ -237,6 +250,16 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
                     }])
                 case .accessUnavailable: result(["status": "access_unavailable"])
                 case .failed: result(["status": "failed"])
+                }
+            }
+        case "imessageContactPhoto":
+            guard let source = arguments["avatar_source"] as? String,
+                  let id = IMessageContactBook.photoID(fromAvatarSource: source) else { return result(Self.failure("invalid_request")) }
+            Task { @MainActor in
+                do {
+                    result(FlutterStandardTypedData(bytes: try await SystemContactSource().thumbnailImageData(forContactID: id)))
+                } catch {
+                    result(Self.failure("contact_photo_unavailable"))
                 }
             }
         case "imessageSnapshot", "imessageSend", "imessageStartConversation", "imessageMarkRead", "imessageDisconnect":
@@ -584,8 +607,8 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
                 default:
                     result(FlutterMethodNotImplemented)
                 }
-            } catch is IMessageStoreError {
-                result(Self.failure("imessage_access_required"))
+            } catch let error as IMessageStoreError {
+                result(Self.failure(error.code))
             } catch {
                 result(Self.failure("imessage_failed"))
             }
@@ -630,6 +653,7 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             "identity_id": conversation.identityID, "timestamp": Int64(conversation.latestActivity.timeIntervalSince1970 * 1000),
             "unread_count": conversation.unreadCount, "is_group": conversation.isGroup,
             "is_from_unknown_sender": conversation.isFromUnknownSender,
+            "avatar_source": conversation.avatarSource ?? "",
         ]
     }
 

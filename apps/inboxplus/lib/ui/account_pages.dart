@@ -148,16 +148,8 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog>
                             onPressed: () => Navigator.pop(context),
                             child: const Text('Done'),
                           ),
-                        if (login.step == LoginStep.failed) ...[
-                          FilledButton(
-                            onPressed: login.busy
-                                ? null
-                                : () => widget.controller.beginLogin(
-                                    login.networkId,
-                                  ),
-                            child: const Text('Try again'),
-                          ),
-                        ],
+                        if (login.step == LoginStep.failed)
+                          ..._failedActions(login),
                       ],
                     ),
                   ),
@@ -168,6 +160,41 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog>
         );
       },
     );
+  }
+
+  List<Widget> _failedActions(LoginState login) {
+    final retry = login.busy
+        ? null
+        : () => widget.controller.beginLogin(login.networkId);
+    final openSettings = widget.controller.openFullDiskAccessSettings;
+    return switch (login.imessageProblem) {
+      IMessageSetupProblem.fullDiskAccessNeeded ||
+      IMessageSetupProblem.stillBlocked => [
+        FilledButton.tonal(onPressed: retry, child: const Text('Try again')),
+        FilledButton.icon(
+          onPressed: openSettings,
+          iconAlignment: IconAlignment.end,
+          icon: const Icon(Icons.open_in_new, size: 16),
+          label: const Text('Open System Settings'),
+        ),
+      ],
+      IMessageSetupProblem.finishInSettings => [
+        FilledButton.tonal(
+          onPressed: openSettings,
+          child: const Text('Open System Settings'),
+        ),
+        FilledButton(onPressed: retry, child: const Text('Try again')),
+      ],
+      IMessageSetupProblem.messagesNotSetUp => [
+        FilledButton.tonal(
+          onPressed: widget.controller.openMessages,
+          child: const Text('Open Messages'),
+        ),
+        FilledButton(onPressed: retry, child: const Text('Try again')),
+      ],
+      IMessageSetupProblem.unreadable ||
+      null => [FilledButton(onPressed: retry, child: const Text('Try again'))],
+    };
   }
 
   Widget _desktopPicker(BuildContext context) {
@@ -428,13 +455,17 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog>
           const SizedBox(height: 24),
         ],
         switch (login.step) {
-          LoginStep.preparing => const Padding(
-            padding: EdgeInsets.all(36),
+          LoginStep.preparing => Padding(
+            padding: const EdgeInsets.all(36),
             child: Column(
               children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 20),
-                Text('Preparing secure sign-in…'),
+                const CircularProgressIndicator(),
+                const SizedBox(height: 20),
+                Text(
+                  login.networkId == 'imessage'
+                      ? 'Reading Messages on this Mac…'
+                      : 'Preparing secure sign-in…',
+                ),
               ],
             ),
           ),
@@ -533,16 +564,22 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog>
               ],
             ),
           ),
-          LoginStep.failed => const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Column(
-              children: [
-                Icon(Icons.error_outline, size: 48),
-                SizedBox(height: 16),
-                Text('Could not connect this account'),
-              ],
+          LoginStep.failed => switch (login.imessageProblem) {
+            final problem? => _IMessageSetupGuide(
+              problem: problem,
+              onOpenSettings: widget.controller.openFullDiskAccessSettings,
             ),
-          ),
+            null => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Column(
+                children: [
+                  Icon(Icons.error_outline, size: 48),
+                  SizedBox(height: 16),
+                  Text('Could not connect this account'),
+                ],
+              ),
+            ),
+          },
         },
         if (login.busy && login.step != LoginStep.preparing) ...[
           const SizedBox(height: 16),
@@ -951,6 +988,360 @@ class _ThemeGrid extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _IMessageSetupGuide extends StatelessWidget {
+  const _IMessageSetupGuide({
+    required this.problem,
+    required this.onOpenSettings,
+  });
+
+  final IMessageSetupProblem problem;
+  final VoidCallback onOpenSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final muted = TextStyle(color: colors.onSurfaceVariant);
+    final (icon, title, body) = switch (problem) {
+      IMessageSetupProblem.fullDiskAccessNeeded ||
+      IMessageSetupProblem.stillBlocked => (
+        Icons.verified_user_outlined,
+        'Allow Inbox+ to read your messages',
+        'Inbox+ shows your iMessage and SMS conversations by reading the Messages history on this Mac. macOS protects that history with Full Disk Access.',
+      ),
+      IMessageSetupProblem.finishInSettings => (
+        Icons.verified_user_outlined,
+        'Finish in System Settings',
+        'Turn on Inbox+ in Full Disk Access. When macOS asks, choose Quit & Reopen, then add iMessage again.',
+      ),
+      IMessageSetupProblem.messagesNotSetUp => (
+        Icons.chat_bubble_outline,
+        'Messages isn\'t set up on this Mac',
+        'Inbox+ could not find a Messages history. Open Messages, sign in with your Apple Account and wait for your conversations to appear. Then try again.',
+      ),
+      IMessageSetupProblem.unreadable => (
+        Icons.storage_outlined,
+        'Inbox+ couldn\'t read your Messages history',
+        'Messages may be updating its history. Wait a moment and try again.',
+      ),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Center(
+          child: Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, size: 30),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(body, textAlign: TextAlign.center, style: muted),
+        if (problem.needsFullDiskAccess) ...[
+          if (problem != IMessageSetupProblem.finishInSettings) ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.laptop_mac_outlined,
+                  size: 15,
+                  color: colors.onSurfaceVariant,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Messages are read on this Mac. Nothing is uploaded.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 20),
+          const _FullDiskAccessPreview(),
+          if (problem == IMessageSetupProblem.fullDiskAccessNeeded) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 16,
+              runSpacing: 4,
+              children: [
+                for (final (number, step) in const [
+                  ('1', 'Open Settings'),
+                  ('2', 'Turn on Inbox+'),
+                  ('3', 'Choose Quit & Reopen'),
+                ])
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '$number  ',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        TextSpan(text: step, style: muted),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 6),
+          Center(
+            child: TextButton.icon(
+              onPressed: onOpenSettings,
+              icon: const Icon(Icons.open_in_new, size: 15),
+              label: const Text(
+                'System Settings › Privacy & Security › Full Disk Access',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+          Text(
+            'Not in the list? Click + below the list, then choose Inbox+ from Applications.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+        ],
+        if (problem == IMessageSetupProblem.stillBlocked) ...[
+          const SizedBox(height: 16),
+          const _Notice(
+            message: 'Inbox+ still can\'t read Messages. If you just turned on access, quit and reopen Inbox+, then try again.',
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FullDiskAccessPreview extends StatelessWidget {
+  const _FullDiskAccessPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final small = theme.textTheme.bodySmall!;
+    Widget placeholderRow({required bool on}) => Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Row(
+        children: [
+          _appSquare(colors.surfaceContainerHighest),
+          const SizedBox(width: 9),
+          Container(
+            width: 70,
+            height: 8,
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const Spacer(),
+          _Switch(on: on),
+        ],
+      ),
+    );
+    return Semantics(
+      label: 'Illustration of System Settings showing Inbox+ in the Full Disk Access list with its switch turned off',
+      image: true,
+      child: ExcludeSemantics(
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: colors.surfaceContainer,
+            border: Border.all(color: colors.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  width: 128,
+                  color: colors.surfaceContainerHigh,
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final item in const [
+                        'General',
+                        'Appearance',
+                        'Notifications',
+                        'Privacy & Security',
+                        'Desktop & Dock',
+                      ])
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: item == 'Privacy & Security'
+                              ? BoxDecoration(
+                                  color: colors.primary,
+                                  borderRadius: BorderRadius.circular(6),
+                                )
+                              : null,
+                          child: Text(
+                            item,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: small.copyWith(
+                              color: item == 'Privacy & Security'
+                                  ? colors.onPrimary
+                                  : colors.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: 'Privacy & Security › ',
+                                style: TextStyle(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                              const TextSpan(
+                                text: 'Full Disk Access',
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                          style: small,
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          clipBehavior: Clip.antiAlias,
+                          decoration: BoxDecoration(
+                            color: colors.surface,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            children: [
+                              placeholderRow(on: false),
+                              Container(
+                                color: colors.primary.withValues(alpha: .08),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                child: Row(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(5),
+                                      child: Image.asset(
+                                        'assets/inboxplus-logo.png',
+                                        width: 20,
+                                        height: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 9),
+                                    Text(
+                                      'Inbox+',
+                                      style: small.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    const _Switch(on: false, highlighted: true),
+                                  ],
+                                ),
+                              ),
+                              placeholderRow(on: true),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '+   −',
+                          style: small.copyWith(color: colors.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static Widget _appSquare(Color color) => Container(
+    width: 20,
+    height: 20,
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(5),
+    ),
+  );
+}
+
+class _Switch extends StatelessWidget {
+  const _Switch({required this.on, this.highlighted = false});
+
+  final bool on;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: 30,
+      height: 18,
+      padding: const EdgeInsets.all(2),
+      alignment: on ? Alignment.centerRight : Alignment.centerLeft,
+      decoration: BoxDecoration(
+        color: on ? const Color(0xff34c759) : colors.outlineVariant,
+        borderRadius: BorderRadius.circular(9),
+        boxShadow: highlighted
+            ? [
+                BoxShadow(
+                  color: colors.primary.withValues(alpha: .3),
+                  spreadRadius: 3,
+                ),
+              ]
+            : null,
+      ),
+      child: Container(
+        width: 14,
+        height: 14,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+      ),
     );
   }
 }

@@ -15,6 +15,7 @@ import 'package:uuid/uuid.dart';
 import 'connectors/connector_engine.dart';
 import 'connectors/native_connector_engine.dart';
 import 'contact_suggestions.dart';
+import 'feedback_relay.dart';
 import 'platform/app_environment.dart';
 import 'platform/profile_migration.dart';
 import 'ui/inbox_ui_controller.dart';
@@ -30,14 +31,17 @@ class AppController extends InboxUiController {
     required this.environment,
     this.engine,
     NativeCall? nativeCall,
+    FeedbackSubmitter? submitFeedback,
     DateTime Function()? now,
   }) : _nativeCall = nativeCall ?? _invokeNative,
+       _submitFeedback = submitFeedback ?? FeedbackRelay().submit,
        _now = now ?? DateTime.now;
 
   final LocalStore store;
   final AppEnvironment environment;
   final ConnectorEngine? engine;
   final NativeCall _nativeCall;
+  final FeedbackSubmitter _submitFeedback;
   final DateTime Function() _now;
   late DateTime _messageCutoff;
   final _uuid = const Uuid();
@@ -805,6 +809,8 @@ class AppController extends InboxUiController {
     if (capability?.available != true) {
       throw const ConnectorException('platform_unavailable');
     }
+    final retryingFullDiskAccess =
+        _login?.imessageProblem?.needsFullDiskAccess == true;
     final generation = ++_loginGeneration;
     await _cancelCurrentLogin();
     if (accountId != null) await _accountWorkSettled(accountId);
@@ -817,12 +823,19 @@ class AppController extends InboxUiController {
         useQr ??
         (defaultTargetPlatform != TargetPlatform.iOS &&
             defaultTargetPlatform != TargetPlatform.android);
-    _login = LoginState(
-      networkId: networkId,
-      step: LoginStep.preparing,
-      instructions: 'Preparing secure account storage…',
-      busy: true,
-    );
+    _login = networkId == 'imessage'
+        ? const LoginState(
+            networkId: 'imessage',
+            step: LoginStep.preparing,
+            title: 'Connect iMessage',
+            busy: true,
+          )
+        : LoginState(
+            networkId: networkId,
+            step: LoginStep.preparing,
+            instructions: 'Preparing secure account storage…',
+            busy: true,
+          );
     _publish();
     final account = AccountRecord(
       id: id,
@@ -831,7 +844,29 @@ class AppController extends InboxUiController {
     );
     try {
       if (networkId == 'imessage') {
-        final snapshot = await _imessage('imessageSnapshot');
+        final Object? snapshot;
+        try {
+          snapshot = await _imessage('imessageSnapshot');
+        } on PlatformException catch (error) {
+          final problem = switch (error.code) {
+            'imessage_full_disk_access' =>
+              retryingFullDiskAccess
+                  ? IMessageSetupProblem.stillBlocked
+                  : IMessageSetupProblem.fullDiskAccessNeeded,
+            'imessage_not_set_up' => IMessageSetupProblem.messagesNotSetUp,
+            'imessage_unreadable' => IMessageSetupProblem.unreadable,
+            _ => null,
+          };
+          if (problem == null) rethrow;
+          if (generation != _loginGeneration) return;
+          _login = LoginState(
+            networkId: 'imessage',
+            step: LoginStep.failed,
+            title: 'Connect iMessage',
+            imessageProblem: problem,
+          );
+          return;
+        }
         if (generation != _loginGeneration) return;
         await store.saveAccount(account);
         _accounts[id] = account;
@@ -1486,6 +1521,14 @@ class AppController extends InboxUiController {
       }
       final send = await store.enqueueDraft(route, sendId: _uuid.v4());
       _pending = await store.loadPendingSends();
+      final cleared = await store.loadDraft(route);
+      if (_drafts[route]?.revision == send.draftRevision) {
+        if (cleared == null) {
+          _drafts.remove(route);
+        } else {
+          _drafts[route] = cleared;
+        }
+      }
       await _updateCloseGuard();
       _publish();
       if (_accounts[route.accountId]?.isConnected == true) {
@@ -1518,31 +1561,61 @@ class AppController extends InboxUiController {
                 (network) =>
                     network.id == account?.platform && network.canReply,
               ))) {
-        await store.savePendingSendStatus(send.id, PendingSendStatus.failed);
+        var restored = false;
+        final previous = _draftWrites[send.route] ?? Future.value();
+        final recovery = previous.then((_) async {
+          final current = _drafts[send.route];
+          if (current != null &&
+              (current.body.isNotEmpty ||
+                  current.attachments.isNotEmpty ||
+                  current.replyToMessageId != null)) {
+            return;
+          }
+          final saved = await store.restorePendingReply(send.id);
+          if (saved == null) return;
+          restored = true;
+          if (identical(_drafts[send.route], current)) {
+            _drafts[send.route] = saved;
+          }
+        });
+        _draftWrites[send.route] = recovery;
+        await recovery;
+        if (!restored) {
+          await store.savePendingSendStatus(send.id, PendingSendStatus.failed);
+        }
         _pending = await store.loadPendingSends();
-        throw const AppStorageException(
-          'The reply target is unavailable. Your draft has been kept.',
+        await _updateCloseGuard();
+        throw AppStorageException(
+          restored
+              ? 'The reply target is unavailable. Your message is back in the composer without the reply.'
+              : 'The reply target is unavailable. Send or clear your current draft, then Retry to move this message back into the composer.',
         );
       }
       if (send.attachments.isNotEmpty) {
-        final attachment = send.attachments.single;
-        final path = attachment.localPath;
-        if (path == null || !p.isWithin(environment.directory.path, path)) {
-          throw const AppStorageException(
-            'The staged attachment is unavailable. Your draft has been kept.',
-          );
+        try {
+          final attachment = send.attachments.single;
+          final path = attachment.localPath;
+          if (path == null || !p.isWithin(environment.directory.path, path)) {
+            throw const AppStorageException(
+              'The staged attachment is unavailable, so the message was not sent.',
+            );
+          }
+          final file = File(path);
+          if (await file.length() > _attachmentLimit(send.route)) {
+            throw const AppStorageException(
+              'The attachment exceeds the size limit.',
+            );
+          }
+          attachmentCommand = {
+            'bytes': base64Encode(await file.readAsBytes()),
+            'name': attachment.fileName ?? 'Attachment',
+            'mime_type': attachment.mimeType ?? 'application/octet-stream',
+          };
+        } catch (_) {
+          await store.savePendingSendStatus(send.id, PendingSendStatus.failed);
+          _pending = await store.loadPendingSends();
+          rethrow;
         }
-        final file = File(path);
-        if (await file.length() > _attachmentLimit(send.route)) {
-          throw const AppStorageException(
-            'The attachment exceeds the size limit.',
-          );
-        }
-        attachmentCommand = {
-          'bytes': base64Encode(await file.readAsBytes()),
-          'name': attachment.fileName ?? 'Attachment',
-          'mime_type': attachment.mimeType ?? 'application/octet-stream',
-        };
       }
       await store.savePendingSendStatus(send.id, PendingSendStatus.sending);
       _pending = await store.loadPendingSends();
@@ -1581,7 +1654,7 @@ class AppController extends InboxUiController {
         await store.savePendingSendStatus(send.id, PendingSendStatus.unknown);
         _pending = await store.loadPendingSends();
         throw const AppStorageException(
-          'Delivery could not be confirmed. Check the conversation in the original app before sending again. Your draft has been kept.',
+          'Delivery could not be confirmed. Check the conversation in the original app before sending again.',
         );
       }
       final message = MessageRecord(
@@ -2234,6 +2307,23 @@ class AppController extends InboxUiController {
   });
 
   @override
+  Future<void> openFullDiskAccessSettings() => _perform(() async {
+    await _nativeCall('openFullDiskAccessSettings', {});
+    if (_login?.imessageProblem?.needsFullDiskAccess == true) {
+      _login = const LoginState(
+        networkId: 'imessage',
+        step: LoginStep.failed,
+        title: 'Connect iMessage',
+        imessageProblem: IMessageSetupProblem.finishInSettings,
+      );
+    }
+  });
+
+  @override
+  Future<void> openMessages() =>
+      _perform(() => _nativeCall('openMessages', {}));
+
+  @override
   Future<void> setPreference(String key, Object value) => _perform(() async {
     final values = _preferences.toJson();
     switch (key) {
@@ -2326,7 +2416,10 @@ class AppController extends InboxUiController {
     await _reloadStatistics();
   });
 
-  String diagnosticsJson() => const JsonEncoder.withIndent('  ').convert({
+  String diagnosticsJson() =>
+      const JsonEncoder.withIndent('  ').convert(_diagnostics());
+
+  Map<String, Object?> _diagnostics() => {
     'application': 'Inbox+',
     'version': inboxPlusVersion,
     'build': inboxPlusBuild,
@@ -2364,7 +2457,7 @@ class AppController extends InboxUiController {
       'messageRetentionDays': _preferences.messageRetentionDays,
       'iMessageHistory': _preferences.iMessageHistory,
     },
-  });
+  };
 
   @override
   Future<void> exportDiagnostics() => _perform(() async {
@@ -2377,6 +2470,21 @@ class AppController extends InboxUiController {
       bytes: Uint8List.fromList(utf8.encode(diagnosticsJson())),
     );
   });
+
+  @override
+  Future<FeedbackReceipt> sendFeedback(FeedbackDraft draft) =>
+      _submitFeedback(draft, draft.includeDiagnostics ? _diagnostics() : null);
+
+  @override
+  Future<Uint8List?> pickFeedbackImage() async {
+    await _prepareFilePicker();
+    final source = await FilePicker.pickFile(
+      dialogTitle: 'Choose a Screenshot',
+      type: FileType.image,
+    );
+    final path = source?.path;
+    return path == null ? null : File(path).readAsBytes();
+  }
 
   Future<void> _prepareFilePicker() async {
     // The macOS runner is unsandboxed; this configures the plugin's sandbox-only preflight.
@@ -2672,16 +2780,22 @@ class AppController extends InboxUiController {
     }
     Uint8List bytes;
     try {
-      final result = await engine!.request({
-        'op': 'download_attachment',
-        'account_id': route.accountId,
-        'id': source,
-      });
-      final encoded = result['bytes'] as String?;
-      if (encoded == null || encoded.length > 3 * 1024 * 1024) {
-        throw const FormatException();
+      if (_accounts[route.accountId]?.platform == 'imessage') {
+        bytes = await _imessage('imessageContactPhoto', {
+          'avatar_source': source,
+        }) as Uint8List;
+      } else {
+        final result = await engine!.request({
+          'op': 'download_attachment',
+          'account_id': route.accountId,
+          'id': source,
+        });
+        final encoded = result['bytes'] as String?;
+        if (encoded == null || encoded.length > 3 * 1024 * 1024) {
+          throw const FormatException();
+        }
+        bytes = base64Decode(encoded);
       }
-      bytes = base64Decode(encoded);
       if (bytes.length > 2 * 1024 * 1024) throw const FormatException();
       if (bytes.isNotEmpty) {
         final codec = await ui.instantiateImageCodec(
@@ -3141,6 +3255,17 @@ class AppController extends InboxUiController {
     }
     if (error is PlatformException && error.code == 'cancelled') {
       return 'Sign-in was cancelled.';
+    }
+    if (error is PlatformException) {
+      final message = switch (error.code) {
+        'imessage_full_disk_access' => 'Inbox+ can no longer read Messages. Turn on Inbox+ in System Settings › Privacy & Security › Full Disk Access, then reopen Inbox+.',
+        'imessage_not_set_up' => 'Messages isn\'t set up on this Mac. Open Messages and sign in, then try again.',
+        'imessage_unreadable' => 'Inbox+ couldn\'t read your Messages history. Wait a moment and try again.',
+        'settings_unavailable' => 'System Settings could not be opened.',
+        'messages_unavailable' => 'Messages could not be opened.',
+        _ => null,
+      };
+      if (message != null) return message;
     }
     if (error is PlatformException && error.code == 'photos_denied') {
       return 'Allow Inbox+ to add photos in iOS Settings, or use Share QR code to display the code on another screen.';

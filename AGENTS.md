@@ -2,55 +2,50 @@
 
 ## Development workflow
 
-- Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing code. It owns the shared code-style,
-  verification, generated-file and pull-request workflow for humans and agents.
-- Inspect the relevant implementation and nearby tests before editing. Use the
-  [module overview](README.md#how-it-fits-together) to find the owning target; search source and tests
-  rather than `.build` or packaged output.
-- Keep changes focused on the requested behavior. Reuse established patterns and avoid unrelated
-  refactoring, speculative abstractions or compatibility shims.
-- For a bug fix, reproduce the failure and add a focused regression test when practical. Test feature
-  behavior through existing connector and platform fakes instead of requiring a live account.
-- Use the [verification guide](CONTRIBUTING.md#verification) for the affected change. Report what
-  changed, which checks ran and their results, and any remaining uncertainty. Fixture tests do not
-  establish that a live network works.
-- Do not commit or push unless requested, and never bypass hooks. Preserve unrelated user changes.
-- Before merging a pull request, reply to every review comment, either describing the fix or
-  explaining why nothing changed, and resolve each thread.
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before you change code. It owns scope, code style,
+  verification, generated files and the pull-request workflow for humans and agents.
+- Read the implementation and nearby tests before you edit. Find the owning target in the
+  [repository layout](README.md#repository-layout). Search source and tests, not `.build` or
+  packaged output.
+- For a bug fix, reproduce the failure and add a focused regression test when practical. Test
+  through the existing connector and platform fakes, never a live account.
+- Run the checks in the [verification guide](CONTRIBUTING.md#verification). Report what changed,
+  which checks ran with their results, and what is still uncertain.
+- Do not commit or push unless asked, and never bypass hooks. Preserve unrelated user changes.
+- Before merging, reply to every review comment and resolve each thread.
 
 ## UI findings
 
-Whenever UI exploration reveals an actionable bug, usability or accessibility problem, or worthwhile
-feature gap, follow [Reporting UI findings](CONTRIBUTING.md#reporting-ui-findings). Verify the
-observation, search existing issues and related PRs, and open an issue in `Tsha0/InboxPlus` for each
-distinct new finding without requesting separate approval. After filing, notify the user with a
-one-sentence summary and the issue link; do not repeat the issue description or evidence in chat. Separate
-observations from hypotheses and proposals, use sanitized evidence, and keep the original task's
-scope. Filing an issue does not authorize implementing unrelated changes or taking destructive or
-externally visible actions to reproduce a finding. Report security-sensitive findings privately to
-the user; if filing fails, briefly report the failure and any required user action.
+When UI exploration reveals an actionable bug, a usability or accessibility problem, or a
+worthwhile feature gap, follow [Reporting UI findings](CONTRIBUTING.md#reporting-ui-findings).
 
-Store all issue information in the GitHub issue description, including reproduction steps,
-environment, observations, investigation, acceptance criteria and sanitized evidence. Prefer
-screenshots and visual aids, with brief text explaining what they show. Embed GitHub-hosted
-screenshots and recordings, or inline diagrams, directly in the issue description. Never create local
-files or directories for issue screenshots, recordings, reports, notes or drafts, inside or outside
-the repository.
+- Verify the finding, search existing issues and PRs, and open an issue in `Tsha0/InboxPlus` for
+  each new finding. Do not ask for approval first.
+- Tell the user in one sentence with the issue link. Do not repeat the issue in chat.
+- Keep all evidence in the issue description. Never create local files or directories for it.
+- Report a security-sensitive finding privately to the user.
+- An issue does not authorize an unrelated fix, or a destructive or externally visible action to
+  reproduce the finding.
 
 ## Maintaining these instructions
 
-Record concrete, recurring pitfalls that are not obvious from nearby code. Keep shared style and
-commands in `CONTRIBUTING.md`; add directory-specific instructions only when a component needs them.
-Update existing guidance when its contract changes rather than accumulating contradictory rules.
-The P1 severity below applies only to the Code Review Rules, not ordinary style preferences.
+- Record concrete, recurring pitfalls that nearby code does not make obvious.
+- Shared style and commands live in `CONTRIBUTING.md`. Add directory-specific instructions only
+  when a component needs them.
+- When a contract changes, update the existing guidance. Do not add a rule that contradicts it.
 
 ## Code Review Rules
 
-Treat a violation of any rule below as P1.
+Treat a violation of any rule below as P1. That severity applies only to these rules, not to
+ordinary style preferences.
 
 - Flutter views use `InboxUiController`; the app controller owns state and persistence. Network clients
-  stay in `native/connectors` behind the account-scoped C ABI. The local macOS Messages adapter stays
-  in `native/imessage`; native platform services belong in the Flutter runners.
+  stay in `native/connectors` behind the account-scoped C ABI. Feedback form text, kind, diagnostics
+  choice, staged screenshot and send phase are an explicit exception to controller-owned state:
+  they stay in widget memory for the current app session. The one network exception is the feedback relay
+  client in `apps/inboxplus/lib/feedback_relay.dart`, which holds no account and posts only feedback
+  the user sends; every messaging network client still follows this rule. The local macOS Messages
+  adapter stays in `native/imessage`; native platform services belong in the Flutter runners.
 - Nothing unverified is executed. Dependencies and toolchains stay pinned to exact versions with
   committed integrity locks. Native binary downloads are SHA-256 verified before extraction or use.
 - Secrets stay private: configs, registrations and cached media are `0600` inside `0700` directories, and
@@ -59,6 +54,9 @@ Treat a violation of any rule below as P1.
 - Web sign-ins use a non-persistent web view and capture only the credentials the connector declared.
   **Open in app** follows only `https` links on a domain the named platform owns.
 - Installing an update or quitting never discards an unsent draft, staged attachment or pending send.
+  Feedback is an explicit exception: its unsent text, staged screenshot and in-flight submission are
+  temporary and may be lost when quitting or installing an update; they are not persisted or counted
+  by the shutdown guard. Messaging drafts, attachments and sends retain the full guarantee.
   Shutdown never force-kills a database writer or stops a process started outside the app.
 - `com.inboxplus.app`, profile paths and Keychain identifiers stay unchanged between releases. A change to
   a storage or connector-state contract needs a profile migration, and a failed migration never silently

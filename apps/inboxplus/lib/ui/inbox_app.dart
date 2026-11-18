@@ -15,6 +15,7 @@ import '../contact_suggestions.dart';
 import 'account_pages.dart';
 import 'confirmation.dart';
 import 'contacts_page.dart';
+import 'feedback_dialog.dart';
 import 'inbox_ui_controller.dart';
 import 'media_preview.dart';
 import 'new_conversation_dialog.dart';
@@ -1390,6 +1391,11 @@ class _ConversationPaneState extends State<_ConversationPane> {
           ? messages.length - item.unreadCount
           : -1;
     }
+    final latestSent = messages.lastIndexWhere(
+      (message) =>
+          message.isOutgoing &&
+          message.deliveryState == DeliveryState.acknowledged,
+    );
     if (_externalHighlightedMessageId != widget.highlightedMessageId) {
       _externalHighlightedMessageId = widget.highlightedMessageId;
       _highlightedMessageId = widget.highlightedMessageId;
@@ -1545,6 +1551,7 @@ class _ConversationPaneState extends State<_ConversationPane> {
                                     message,
                                     messages[index + 1],
                                   ),
+                              showsSent: index == latestSent,
                               showsSender:
                                   !widget.desktop ||
                                   index == 0 ||
@@ -1758,6 +1765,7 @@ class _MessageBubble extends StatelessWidget {
     this.replyTarget,
     required this.onRevealReply,
     this.showsTimestamp = true,
+    this.showsSent = false,
     this.showsSender = true,
   });
 
@@ -1769,6 +1777,7 @@ class _MessageBubble extends StatelessWidget {
   final MessageRecord? replyTarget;
   final Future<void> Function(String) onRevealReply;
   final bool showsTimestamp;
+  final bool showsSent;
   final bool showsSender;
 
   @override
@@ -1787,6 +1796,35 @@ class _MessageBubble extends StatelessWidget {
       message.route,
       message.id,
     );
+    final unconfirmedColor = Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xfff2b84b)
+        : const Color(0xff8a5a00);
+    final undelivered =
+        !own || message.deliveryState == DeliveryState.acknowledged
+        ? null
+        : message.deliveryState == DeliveryState.pending
+        ? (
+            label: 'Sending…',
+            icon: Icons.schedule,
+            color: scheme.onSurfaceVariant,
+            outline: scheme.primary.withValues(alpha: .5),
+          )
+        : deliveryUnconfirmed
+        ? (
+            label: 'Delivery unconfirmed',
+            icon: Icons.error_outline,
+            color: unconfirmedColor,
+            outline: unconfirmedColor,
+          )
+        : (
+            label: 'Not sent',
+            icon: Icons.error_outline,
+            color: scheme.error,
+            outline: scheme.error,
+          );
+    final foreground = own && undelivered == null
+        ? scheme.onPrimary
+        : scheme.onSurface;
     final savableAttachments = message.attachments
         .where(
           (attachment) =>
@@ -1829,7 +1867,16 @@ class _MessageBubble extends StatelessWidget {
                         vertical: desktop ? 8 : 10,
                       ),
                       decoration: BoxDecoration(
-                        color: own ? scheme.primary : scheme.surfaceContainer,
+                        color: !own
+                            ? scheme.surfaceContainer
+                            : undelivered == null
+                            ? scheme.primary
+                            : null,
+                        border: own
+                            ? Border.all(
+                                color: undelivered?.outline ?? scheme.primary,
+                              )
+                            : null,
                         borderRadius: BorderRadius.circular(
                           desktop
                               ? 12
@@ -1851,7 +1898,7 @@ class _MessageBubble extends StatelessWidget {
                               : null,
                           letterSpacing: desktop ? 0 : null,
                           height: desktop ? 1.2 : 1.45,
-                          color: own ? scheme.onPrimary : scheme.onSurface,
+                          color: foreground,
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1862,9 +1909,7 @@ class _MessageBubble extends StatelessWidget {
                                 key: ValueKey('reply-quote-${message.id}'),
                                 target: replyTarget,
                                 conversation: conversation,
-                                foreground: own
-                                    ? scheme.onPrimary
-                                    : scheme.onSurface,
+                                foreground: foreground,
                                 onTap: replyTarget == null
                                     ? null
                                     : () => onRevealReply(
@@ -1888,9 +1933,7 @@ class _MessageBubble extends StatelessWidget {
                                         ? message.attachments[index - 1]
                                         : null,
                                     caption: message.body,
-                                    foreground: own
-                                        ? scheme.onPrimary
-                                        : scheme.onSurface,
+                                    foreground: foreground,
                                     onDownload: () =>
                                         controller.downloadAttachment(
                                           message.route,
@@ -2075,8 +2118,7 @@ class _MessageBubble extends StatelessWidget {
                               ),
                         ],
                       ),
-                    if (showsTimestamp ||
-                        message.deliveryState != DeliveryState.acknowledged)
+                    if (showsTimestamp || showsSent || undelivered != null)
                       Padding(
                         padding: EdgeInsets.fromLTRB(
                           desktop ? 0 : 6,
@@ -2088,37 +2130,48 @@ class _MessageBubble extends StatelessWidget {
                           spacing: 5,
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
-                            Text(
-                              desktop
-                                  ? MaterialLocalizations.of(context)
-                                        .formatTimeOfDay(
-                                          TimeOfDay.fromDateTime(
-                                            message.timestamp.toLocal(),
-                                          ),
-                                        )
-                                  : _time(message.timestamp),
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                            if (own &&
-                                (!desktop ||
-                                    message.deliveryState !=
-                                        DeliveryState.acknowledged)) ...[
+                            if (undelivered != null) ...[
                               Icon(
-                                switch (message.deliveryState) {
-                                  DeliveryState.pending => Icons.schedule,
-                                  DeliveryState.acknowledged => Icons.done,
-                                  DeliveryState.failed => Icons.error_outline,
-                                },
+                                undelivered.icon,
                                 size: 12,
-                                color:
-                                    message.deliveryState ==
-                                        DeliveryState.failed
-                                    ? scheme.error
-                                    : scheme.onSurfaceVariant,
+                                color: undelivered.color,
                               ),
+                              Text(
+                                undelivered.label,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: undelivered.color,
+                                ),
+                              ),
+                            ] else ...[
+                              Text(
+                                desktop
+                                    ? MaterialLocalizations.of(context)
+                                          .formatTimeOfDay(
+                                            TimeOfDay.fromDateTime(
+                                              message.timestamp.toLocal(),
+                                            ),
+                                          )
+                                    : _time(message.timestamp),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                              if (showsSent) ...[
+                                Icon(
+                                  Icons.done,
+                                  size: 12,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                                Text(
+                                  'Sent',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ],
                             if (message.deliveryState == DeliveryState.failed)
                               TextButton(
@@ -3358,6 +3411,33 @@ class _LoadOnFirstBuildState extends State<_LoadOnFirstBuild> {
   Widget build(BuildContext context) => widget.child;
 }
 
+class _PlayButton extends StatelessWidget {
+  const _PlayButton({required this.loading});
+
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .55),
+        shape: BoxShape.circle,
+      ),
+      child: loading
+          ? const Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.play_arrow_rounded, size: 36, color: Colors.white),
+    ),
+  );
+}
+
 class _InlineVideo extends StatefulWidget {
   const _InlineVideo({
     required this.attachment,
@@ -3424,29 +3504,7 @@ class _InlineVideoState extends State<_InlineVideo> {
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) => placeholder,
                   ),
-                Center(
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: .55),
-                      shape: BoxShape.circle,
-                    ),
-                    child: _loading
-                        ? const Padding(
-                            padding: EdgeInsets.all(16),
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.play_arrow_rounded,
-                            size: 36,
-                            color: Colors.white,
-                          ),
-                  ),
-                ),
+                _PlayButton(loading: _loading),
               ],
             ),
           ),
@@ -3591,30 +3649,7 @@ class _SharedPostCardState extends State<_SharedPostCard> {
                             ),
                           ),
                         ),
-                      if (widget.playable)
-                        Center(
-                          child: Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: .55),
-                              shape: BoxShape.circle,
-                            ),
-                            child: _loading
-                                ? const Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.play_arrow_rounded,
-                                    size: 36,
-                                    color: Colors.white,
-                                  ),
-                          ),
-                        ),
+                      if (widget.playable) _PlayButton(loading: _loading),
                     ],
                   ),
                 ),

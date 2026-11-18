@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show PlatformException, rootBundle;
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path/path.dart' as p;
@@ -13,6 +13,7 @@ import 'app_controller.dart';
 import 'connectors/connector_engine.dart';
 import 'platform/app_environment.dart';
 import 'ui/inbox_app.dart';
+import 'ui/inbox_ui_controller.dart';
 
 Future<void> main() async {
   if (kReleaseMode) {
@@ -216,6 +217,8 @@ Future<void> main() async {
         case 'setLaunchAtLogin':
           return {'status': arguments['enabled'] == true ? 'on' : 'off'};
         case 'imessageSnapshot':
+          const failure = String.fromEnvironment('INBOXPLUS_PREVIEW_IMESSAGE');
+          if (failure.isNotEmpty) throw PlatformException(code: failure);
           return {'conversations': appleChats, 'messages': []};
         case 'imessageRecipientContacts':
           return {'status': 'available', 'recipients': fixture['recipients']};
@@ -233,6 +236,18 @@ Future<void> main() async {
         default:
           return null;
       }
+    },
+    submitFeedback: (draft, diagnostics) async {
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      if (const String.fromEnvironment('INBOXPLUS_PREVIEW_FEEDBACK') ==
+          'fail') {
+        throw FeedbackFailure.unavailable;
+      }
+      return FeedbackReceipt(
+        issueUrl: draft.kind.isPublic
+            ? Uri.parse('https://github.com/Tsha0/InboxPlus/issues/1')
+            : null,
+      );
     },
   );
   await controller.initialize();

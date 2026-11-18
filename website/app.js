@@ -505,6 +505,13 @@ window.addEventListener("resize", measureJourney, { passive: true });
 new ResizeObserver(measureJourney).observe(document.querySelector("main"));
 document.fonts.ready.then(measureJourney);
 
+// Safari applies page zoom on top of viewport units in font-size, so the hero and footer wordmarks use this instead.
+function measureViewport() {
+  document.documentElement.style.setProperty("--vw", `${document.documentElement.clientWidth / 100}px`);
+}
+measureViewport();
+window.addEventListener("resize", measureViewport, { passive: true });
+
 const particleLayer = document.querySelector(".joy-particles");
 function scatterStars(x, y, count = 16) {
   if (reducedMotion.matches || particleLayer.children.length > 50) return;
@@ -612,7 +619,7 @@ document.addEventListener("keydown", (event) => {
 fetch("https://api.github.com/repos/Tsha0/InboxPlus/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
   .then((response) => (response.ok ? response.json() : null))
   .then((release) => {
-    const asset = release?.assets.find((item) => /^InboxPlus-.+\.zip$/.test(item.name));
+    const asset = release?.assets.find((item) => /^InboxPlus-.+\.dmg$/.test(item.name));
     if (!asset) return;
     for (const link of document.querySelectorAll("[data-mac-download]")) link.href = asset.browser_download_url;
   })

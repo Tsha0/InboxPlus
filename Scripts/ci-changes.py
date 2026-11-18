@@ -14,6 +14,10 @@ def affected(paths):
     targets = set()
     code = False
     for path in paths:
+        if path == "website/assets/fonts/bricolage-grotesque-latin.woff2":
+            code = True
+            targets.add("macos")
+            continue
         if path.startswith("website/") or path.endswith(".md"):
             continue
         code = True

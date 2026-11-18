@@ -40,7 +40,8 @@ public actor IMessageGateway {
                                       accountID: accountID, displayName: existing.map(displayName(for:)) ?? address)
         return StartedConversation(identity: identity, conversation: RemoteConversation(
             id: guid, accountID: accountID, identityID: identity.id,
-            title: identity.displayName, latestActivity: .now, unreadCount: 0
+            title: identity.displayName, latestActivity: .now, unreadCount: 0,
+            avatarSource: contactBook.avatarSource(forHandle: address)
         ))
     }
 
@@ -216,11 +217,6 @@ public actor IMessageGateway {
         pollTask = nil
     }
 
-    /// Reads again from where `pausePolling()` stopped, so nothing that arrived meanwhile is missed.
-    public func resumePolling() {
-        startPolling()
-    }
-
     func pollOnce() async {
         guard let watermark = try? store.maxMessageRowID(),
               let rows = try? store.messages(afterRowID: lastSeenRowID) else { return }
@@ -299,7 +295,9 @@ public actor IMessageGateway {
             latestActivity: date,
             unreadCount: unreadCount,
             isGroup: chat.isGroup,
-            isFromUnknownSender: isFromUnknownSender(chat)
+            isFromUnknownSender: isFromUnknownSender(chat),
+            // A group's identifier is an internal id whose digits could pass for a saved number.
+            avatarSource: chat.isGroup ? nil : contactBook.avatarSource(forHandle: chat.identifier)
         )
     }
 

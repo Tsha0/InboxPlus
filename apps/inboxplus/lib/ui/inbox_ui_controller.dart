@@ -5,6 +5,20 @@ import '../contact_suggestions.dart';
 
 enum LoginStep { preparing, qr, pairingCode, fields, complete, failed }
 
+/// Why connecting iMessage stopped, and so which guidance the sheet shows.
+enum IMessageSetupProblem {
+  fullDiskAccessNeeded,
+  finishInSettings,
+  stillBlocked,
+  messagesNotSetUp,
+  unreadable;
+
+  bool get needsFullDiskAccess =>
+      this == fullDiskAccessNeeded ||
+      this == finishInSettings ||
+      this == stillBlocked;
+}
+
 enum LocalRecipientStatus { available, accessUnavailable, failed }
 
 enum AccountNetworkProblem { connecting, reconnecting, signedOut, failed }
@@ -161,6 +175,7 @@ class LoginState {
     this.fields = const [],
     this.error,
     this.busy = false,
+    this.imessageProblem,
   });
 
   final String networkId;
@@ -174,6 +189,7 @@ class LoginState {
   final List<LoginField> fields;
   final String? error;
   final bool busy;
+  final IMessageSetupProblem? imessageProblem;
 }
 
 @immutable
@@ -329,6 +345,62 @@ class PreferencesRecord {
   };
 }
 
+enum FeedbackKind {
+  bug('bug', 'Bug', expectsScreenshot: true),
+  feature('feature', 'Feature request'),
+  needsWork('needsWork', 'Needs work'),
+  praise('praise', 'Praise', isPublic: false);
+
+  const FeedbackKind(
+    this.wireName,
+    this.label, {
+    this.isPublic = true,
+    this.expectsScreenshot = false,
+  });
+
+  final String wireName;
+  final String label;
+  final bool isPublic;
+  final bool expectsScreenshot;
+}
+
+@immutable
+class FeedbackDraft {
+  const FeedbackDraft({
+    required this.kind,
+    required this.text,
+    this.includeDiagnostics = false,
+    this.image,
+  });
+
+  final FeedbackKind kind;
+  final String text;
+  final bool includeDiagnostics;
+  final Uint8List? image;
+}
+
+@immutable
+class FeedbackReceipt {
+  const FeedbackReceipt({this.issueUrl});
+
+  final Uri? issueUrl;
+}
+
+enum FeedbackFailure implements Exception {
+  offline(
+    'Inbox+ couldn’t reach the feedback service. Check your connection and try again.',
+  ),
+  unavailable('Feedback can’t be sent right now. Try again in a few minutes.'),
+  tooLarge(
+    'This feedback is too large to send. Remove the screenshot and try again.',
+  ),
+  rejected('The feedback service didn’t accept this report.');
+
+  const FeedbackFailure(this.message);
+
+  final String message;
+}
+
 abstract class InboxUiController extends ChangeNotifier {
   bool get isLoading;
   bool get isBusy;
@@ -429,8 +501,12 @@ abstract class InboxUiController extends ChangeNotifier {
   Future<void> refreshNotificationStatus();
   Future<void> requestNotificationPermission();
   Future<void> openNotificationSettings();
+  Future<void> openFullDiskAccessSettings();
+  Future<void> openMessages();
   Future<void> setPreference(String key, Object value);
   Future<void> clearMediaCache();
   Future<void> exportDiagnostics();
+  Future<FeedbackReceipt> sendFeedback(FeedbackDraft draft);
+  Future<Uint8List?> pickFeedbackImage();
   Future<void> requestQuit();
 }
