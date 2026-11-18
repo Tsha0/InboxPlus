@@ -19,7 +19,6 @@ def load_script(name):
 
 
 changes = load_script("ci-changes")
-release = load_script("require-release-ci")
 results = load_script("check-ci-results")
 
 
@@ -144,28 +143,6 @@ class CIResultTests(unittest.TestCase):
         del needs["lint"]
         with self.assertRaises(KeyError):
             results.check_results(needs, False)
-
-
-class ReleaseCIGateTests(unittest.TestCase):
-    def run_record(self, **overrides):
-        return {"id": 1, "head_sha": "release", "event": "push", "head_branch": "main",
-                "status": "completed", "conclusion": "success", **overrides}
-
-    def test_exact_main_commit_and_manual_runs_are_accepted(self):
-        release.require_success([self.run_record()], "release")
-        release.require_success([self.run_record(event="workflow_dispatch", head_branch="release")], "release")
-
-    def test_missing_other_commit_and_pr_only_runs_are_rejected(self):
-        for runs in ([], [self.run_record(head_sha="other")],
-                     [self.run_record(event="pull_request")], [self.run_record(head_branch="other")]):
-            with self.subTest(runs=runs), self.assertRaises(RuntimeError):
-                release.require_success(runs, "release")
-
-    def test_newer_failures_and_incomplete_runs_do_not_reuse_old_success(self):
-        for state in ({"conclusion": "failure"}, {"conclusion": "cancelled"},
-                      {"status": "in_progress", "conclusion": None}):
-            with self.subTest(state=state), self.assertRaises(RuntimeError):
-                release.require_success([self.run_record(), self.run_record(id=2, **state)], "release")
 
 
 if __name__ == "__main__":

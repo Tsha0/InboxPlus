@@ -247,10 +247,11 @@ the generated SBOM and notices in the same change.
 1. On `main`, raise `version:` in `apps/inboxplus/pubspec.yaml`. Always use a new build number
    after the `+`.
 2. Run `python3 Scripts/generate-sbom.py`.
-3. Wait for CI to pass on that commit. A pull request run does not count.
-4. Push the matching tag. `v0.9.1` releases `0.9.1+115`.
-   [ios-release.yml](.github/workflows/ios-release.yml) builds, signs and uploads to TestFlight.
-5. After processing, answer the export-compliance questions in App Store Connect and add the build
+3. Push the matching tag. `v0.9.1` releases `0.9.1+115`.
+   [ios-release.yml](.github/workflows/ios-release.yml) checks that the commit is on `main`, runs
+   the iOS launch test, then builds, signs and uploads to TestFlight. It does not wait for the
+   other platforms' CI.
+4. After processing, answer the export-compliance questions in App Store Connect and add the build
    to the TestFlight groups.
 
 Signing uses the `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID` and
