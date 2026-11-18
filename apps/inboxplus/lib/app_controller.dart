@@ -1352,7 +1352,10 @@ class AppController extends InboxUiController {
   }
 
   @override
-  Future<void> stageAttachments(ConversationRoute route) => _perform(() async {
+  Future<void> stageAttachments(
+    ConversationRoute route, {
+    bool media = false,
+  }) => _perform(() async {
     if (_deletingAccounts.contains(route.accountId) ||
         !_conversations.containsKey(route) ||
         !_stagingAttachments.add(route)) {
@@ -1371,7 +1374,12 @@ class AppController extends InboxUiController {
         );
       }
       await _prepareFilePicker();
-      final source = await FilePicker.pickFile();
+      final source = await FilePicker.pickFile(
+        type: media ? FileType.media : FileType.any,
+        darwinOptions: const DarwinOptions(
+          assetRepresentationMode: DarwinAssetRepresentationMode.compatible,
+        ),
+      );
       if (source?.path == null) return;
       final file = File(source!.path!);
       final limit = _attachmentLimit(route);
@@ -2272,10 +2280,20 @@ class AppController extends InboxUiController {
           return;
         }
         values['themePreset'] = 'custom';
+      case 'bubbleShape':
+        if (!PreferencesRecord.bubbleShapes.contains(value)) return;
+      case 'textSize':
+        if (!PreferencesRecord.textSizes.contains(value)) return;
+      case 'inboxDensity':
+        if (!PreferencesRecord.inboxDensities.contains(value)) return;
+      case 'chatWallpaper':
+        if (!PreferencesRecord.chatWallpapers.contains(value)) return;
+      case 'accentOverride':
+        if (value != 'theme' && !PreferencesRecord.isColor(value)) return;
       default:
         return;
     }
-    values[key] = value;
+    values[key] = value == 'theme' ? null : value;
     final preferences = PreferencesRecord.fromJson(values);
     await environment.secrets.write(
       environment.secretName('preferences'),

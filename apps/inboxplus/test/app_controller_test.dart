@@ -898,6 +898,36 @@ void main() {
     },
   );
 
+  test('phone appearance choices survive reopening the profile', () async {
+    final app = await start(engine: _FakeEngine());
+    await app.setPreference('themePreset', 'nightSwim');
+    await app.setPreference('accentOverride', 0xc2185b);
+    await app.setPreference('bubbleShape', 'soft');
+    await app.setPreference('textSize', 'large');
+    await app.setPreference('inboxDensity', 'compact');
+    await app.setPreference('chatWallpaper', 'dots');
+    await closeController();
+    store = await LocalStore.open(file: database, key: key);
+    storeClosed = false;
+    final reopened = await start(engine: _FakeEngine());
+
+    expect(reopened.preferences.themePreset, 'nightSwim');
+    expect(reopened.preferences.accentOverride, 0xc2185b);
+    expect(reopened.preferences.bubbleShape, 'soft');
+    expect(reopened.preferences.textSize, 'large');
+    expect(reopened.preferences.inboxDensity, 'compact');
+    expect(reopened.preferences.chatWallpaper, 'dots');
+    await reopened.setPreference('accentOverride', 0x1000000);
+    await reopened.setPreference('bubbleShape', 'blob');
+    await reopened.setPreference('chatWallpaper', 'plaid');
+    expect(reopened.preferences.chatWallpaper, 'dots');
+    expect(reopened.preferences.accentOverride, 0xc2185b);
+    expect(reopened.preferences.bubbleShape, 'soft');
+    await reopened.setPreference('accentOverride', 'theme');
+    expect(reopened.preferences.accentOverride, isNull);
+    expect(reopened.preferences.themePreset, 'nightSwim');
+  });
+
   test(
     'reaction counts toggle once, remain scoped and survive reopening',
     () async {
@@ -2816,6 +2846,7 @@ void main() {
       await _eventually(() => engine.commands.any((c) => c['op'] == 'logout'));
       final staging = app.stageAttachments(firstRoute);
       await _eventually(() => picker.pickStarted);
+      expect(picker.pickedType, FileType.any);
       logout.complete();
       await removal;
       expect(app.accounts.single.id, 'first');
@@ -2825,6 +2856,19 @@ void main() {
       expect(await store.loadAccounts(), hasLength(1));
     },
   );
+
+  test('photo attachments open the media picker', () async {
+    await seed(firstRoute);
+    final originalPicker = FilePickerPlatform.instance;
+    final picker = _SavePicker();
+    FilePickerPlatform.instance = picker;
+    addTearDown(() => FilePickerPlatform.instance = originalPicker);
+    final app = await start(engine: _FakeEngine());
+    await app.stageAttachments(firstRoute, media: true);
+    expect(picker.pickedType, FileType.media);
+    await app.stageAttachments(firstRoute);
+    expect(picker.pickedType, FileType.any);
+  });
 
   test('a background mailbox sync leaves controls available', () async {
     await seed(firstRoute, platform: 'instagram');
@@ -3383,6 +3427,7 @@ class _SavePicker extends FilePickerPlatform {
 
   Completer<PlatformFile?>? pickGate;
   bool pickStarted = false;
+  FileType? pickedType;
 
   @override
   Future<PlatformFile?> pickFile({
@@ -3399,6 +3444,7 @@ class _SavePicker extends FilePickerPlatform {
     WebOptions webOptions = const WebOptions(),
   }) async {
     pickStarted = true;
+    pickedType = type;
     return pickGate?.future;
   }
 

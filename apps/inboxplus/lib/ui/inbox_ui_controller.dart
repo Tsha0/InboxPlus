@@ -232,7 +232,17 @@ class PreferencesRecord {
     this.playsInstagramReels = true,
     this.showsUnreadBadge = true,
     this.disconnectedAccountIds = const [],
+    this.bubbleShape = 'round',
+    this.textSize = 'default',
+    this.inboxDensity = 'comfortable',
+    this.accentOverride,
+    this.chatWallpaper = 'none',
   });
+
+  static const bubbleShapes = {'round', 'soft', 'square'};
+  static const textSizes = {'small', 'default', 'large'};
+  static const inboxDensities = {'comfortable', 'compact'};
+  static const chatWallpapers = {'none', 'tint', 'dots', 'grid'};
 
   final String appearance;
   final bool notificationsEnabled;
@@ -246,6 +256,11 @@ class PreferencesRecord {
   final bool playsInstagramReels;
   final bool showsUnreadBadge;
   final List<String> disconnectedAccountIds;
+  final String bubbleShape;
+  final String textSize;
+  final String inboxDensity;
+  final String chatWallpaper;
+  final int? accentOverride;
 
   InboxThemePalette? get palette => themePreset == 'classic'
       ? null
@@ -259,27 +274,39 @@ class PreferencesRecord {
         )
       : InboxThemePalette.presets.where((p) => p.id == themePreset).firstOrNull;
 
-  factory PreferencesRecord.fromJson(Map<String, Object?> value) =>
-      PreferencesRecord(
-        appearance: value['appearance'] as String? ?? 'system',
-        notificationsEnabled: value['notificationsEnabled'] as bool? ?? true,
-        notificationPreviews: value['notificationPreviews'] as bool? ?? true,
-        notificationSound: value['notificationSound'] as bool? ?? true,
-        enterToSend: value['enterToSend'] as bool? ?? true,
-        themePreset: value['themePreset'] as String? ?? 'classic',
-        messageRetentionDays: value['messageRetentionDays'] as int? ?? 7,
-        iMessageHistory: value['iMessageHistory'] as String? ?? 'year',
-        playsInstagramReels: value['playsInstagramReels'] as bool? ?? true,
-        showsUnreadBadge: value['showsUnreadBadge'] as bool? ?? true,
-        disconnectedAccountIds: List<String>.unmodifiable(
-          (value['disconnectedAccountIds'] as List? ?? []).cast<String>(),
-        ),
-        customColors: value['customColors'] == null
-            ? const [0xe8e8ed, 0x000000, 0x000000]
-            : List<int>.unmodifiable(
-                (value['customColors'] as List).cast<int>(),
-              ),
-      );
+  factory PreferencesRecord.fromJson(
+    Map<String, Object?> value,
+  ) => PreferencesRecord(
+    appearance: value['appearance'] as String? ?? 'system',
+    notificationsEnabled: value['notificationsEnabled'] as bool? ?? true,
+    notificationPreviews: value['notificationPreviews'] as bool? ?? true,
+    notificationSound: value['notificationSound'] as bool? ?? true,
+    enterToSend: value['enterToSend'] as bool? ?? true,
+    themePreset: value['themePreset'] as String? ?? 'classic',
+    messageRetentionDays: value['messageRetentionDays'] as int? ?? 7,
+    iMessageHistory: value['iMessageHistory'] as String? ?? 'year',
+    playsInstagramReels: value['playsInstagramReels'] as bool? ?? true,
+    showsUnreadBadge: value['showsUnreadBadge'] as bool? ?? true,
+    disconnectedAccountIds: List<String>.unmodifiable(
+      (value['disconnectedAccountIds'] as List? ?? []).cast<String>(),
+    ),
+    customColors: value['customColors'] == null
+        ? const [0xe8e8ed, 0x000000, 0x000000]
+        : List<int>.unmodifiable((value['customColors'] as List).cast<int>()),
+    bubbleShape: _oneOf(value['bubbleShape'], bubbleShapes, 'round'),
+    textSize: _oneOf(value['textSize'], textSizes, 'default'),
+    inboxDensity: _oneOf(value['inboxDensity'], inboxDensities, 'comfortable'),
+    chatWallpaper: _oneOf(value['chatWallpaper'], chatWallpapers, 'none'),
+    accentOverride: isColor(value['accentOverride'])
+        ? value['accentOverride'] as int
+        : null,
+  );
+
+  static bool isColor(Object? value) =>
+      value is int && value >= 0 && value <= 0xffffff;
+
+  static String _oneOf(Object? value, Set<String> allowed, String fallback) =>
+      value is String && allowed.contains(value) ? value : fallback;
 
   Map<String, Object?> toJson() => {
     'appearance': appearance,
@@ -294,6 +321,11 @@ class PreferencesRecord {
     'playsInstagramReels': playsInstagramReels,
     'showsUnreadBadge': showsUnreadBadge,
     'disconnectedAccountIds': disconnectedAccountIds,
+    'bubbleShape': bubbleShape,
+    'textSize': textSize,
+    'inboxDensity': inboxDensity,
+    'accentOverride': accentOverride,
+    'chatWallpaper': chatWallpaper,
   };
 }
 
@@ -340,7 +372,7 @@ abstract class InboxUiController extends ChangeNotifier {
   Future<void> startConversation(String accountId, String recipient);
   Future<LocalRecipientSnapshot> recipientContacts(String accountId);
   void updateDraft(ConversationRoute route, String text);
-  Future<void> stageAttachments(ConversationRoute route);
+  Future<void> stageAttachments(ConversationRoute route, {bool media = false});
   void removeDraftAttachment(ConversationRoute route, String attachmentId);
   void setReplyTo(ConversationRoute route, String? messageId);
   Future<void> sendDraft(ConversationRoute route);

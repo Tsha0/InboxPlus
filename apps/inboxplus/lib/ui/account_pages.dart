@@ -1,16 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'confirmation.dart';
 import 'inbox_ui_controller.dart';
 import 'network_badge.dart';
+
+part 'phone_settings.dart';
 
 class ConnectAccountsDialog extends StatefulWidget {
   const ConnectAccountsDialog({super.key, required this.controller});
@@ -813,294 +819,10 @@ class InboxSettingsPage extends StatelessWidget {
   final VoidCallback onConnect;
 
   @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) => Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              Text(
-                'Settings',
-                style: Theme.of(context).textTheme.headlineMedium,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Make Inbox+ feel like home.',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 28),
-              _SettingsGroup(
-                title: 'Connected accounts',
-                trailing: TextButton.icon(
-                  onPressed: controller.isBusy ? null : onConnect,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add account'),
-                ),
-                children: [
-                  if (controller.accounts.isEmpty)
-                    const ListTile(
-                      leading: Icon(Icons.person_add_alt_1_outlined),
-                      title: Text('No accounts yet'),
-                      subtitle: Text(
-                        'Add a network to bring your conversations here.',
-                      ),
-                    ),
-                  for (final account in controller.accounts)
-                    ListTile(
-                      leading: NetworkBadge(
-                        network: account.platform,
-                        size: 42,
-                        labelled: false,
-                      ),
-                      title: Text(account.displayName),
-                      subtitle: Text(
-                        '${_networkName(account.platform)} · ${account.isConnected ? 'Connected' : 'Disconnected'}',
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (!account.isConnected)
-                            IconButton(
-                              tooltip: 'Reconnect ${account.displayName}',
-                              onPressed: controller.isBusy
-                                  ? null
-                                  : () => _reconnect(context, account.id),
-                              icon: const Icon(Icons.refresh),
-                            ),
-                          IconButton(
-                            tooltip: 'Remove ${account.displayName}',
-                            onPressed: controller.isBusy
-                                ? null
-                                : () async {
-                                    if (await confirmAccountRemoval(
-                                      context,
-                                      _networkName(account.platform),
-                                    )) {
-                                      await controller.removeAccount(
-                                        account.id,
-                                      );
-                                    }
-                                  },
-                            icon: const Icon(Icons.remove_circle_outline),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _SettingsGroup(
-                title: 'Appearance',
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-                    child: Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'Color mode',
-                            style: TextStyle(fontSize: 16),
-                          ),
-                        ),
-                        _ColorModePicker(controller: controller),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1, indent: 16, endIndent: 16),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
-                    child: _ThemeGrid(controller: controller),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _SettingsGroup(
-                title: 'Messages',
-                children: [
-                  SwitchListTile(
-                    secondary: const Icon(Icons.notifications_none),
-                    title: const Text('Show notifications'),
-                    subtitle: const Text(
-                      'While Inbox+ is running, with device permission. '
-                      'Background notifications on phones are not available yet.',
-                    ),
-                    value: controller.preferences.notificationsEnabled,
-                    onChanged: controller.isBusy
-                        ? null
-                        : (value) => controller.setPreference(
-                            'notificationsEnabled',
-                            value,
-                          ),
-                  ),
-                  const Divider(height: 1, indent: 16, endIndent: 16),
-                  SwitchListTile(
-                    secondary: const Icon(Icons.keyboard_return),
-                    title: const Text('Press Enter to send'),
-                    subtitle: const Text(
-                      'Shift+Enter always starts a new line.',
-                    ),
-                    value: controller.preferences.enterToSend,
-                    onChanged: controller.isBusy
-                        ? null
-                        : (value) =>
-                              controller.setPreference('enterToSend', value),
-                  ),
-                  const Divider(height: 1, indent: 16, endIndent: 16),
-                  SwitchListTile(
-                    secondary: const Icon(Icons.movie_outlined),
-                    title: const Text('Play Instagram Reels in Inbox+'),
-                    subtitle: const Text(
-                      'When off, Reels appear as labeled thumbnails that open in Instagram.',
-                    ),
-                    value: controller.preferences.playsInstagramReels,
-                    onChanged: controller.isBusy
-                        ? null
-                        : (value) => controller.setPreference(
-                            'playsInstagramReels',
-                            value,
-                          ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _SettingsGroup(
-                title: 'Muted conversations',
-                children: [
-                  if (!controller.conversations.any(
-                    (conversation) => controller
-                        .preferencesFor(conversation.route)
-                        .isMutedAt(DateTime.now()),
-                  ))
-                    const ListTile(
-                      leading: Icon(Icons.notifications_none),
-                      title: Text('No muted conversations'),
-                    ),
-                  for (final conversation in controller.conversations)
-                    if (controller
-                        .preferencesFor(conversation.route)
-                        .isMutedAt(DateTime.now()))
-                      ListTile(
-                        leading: const Icon(Icons.notifications_off_outlined),
-                        title: Text(conversation.title),
-                        trailing: TextButton(
-                          onPressed: controller.isBusy
-                              ? null
-                              : () => controller.setMuted(
-                                  conversation.route,
-                                  false,
-                                ),
-                          child: const Text('Unmute'),
-                        ),
-                      ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _SettingsGroup(
-                title: 'Hidden conversations',
-                children: [
-                  if (!controller.conversations.any(
-                    (conversation) =>
-                        controller
-                            .preferencesFor(conversation.route)
-                            .hiddenAt !=
-                        null,
-                  ))
-                    const ListTile(
-                      leading: Icon(Icons.visibility_outlined),
-                      title: Text('No hidden conversations'),
-                    ),
-                  for (final conversation in controller.conversations)
-                    if (controller
-                            .preferencesFor(conversation.route)
-                            .hiddenAt !=
-                        null)
-                      ListTile(
-                        leading: const Icon(Icons.visibility_off_outlined),
-                        title: Text(conversation.title),
-                        trailing: TextButton(
-                          onPressed: controller.isBusy
-                              ? null
-                              : () => controller.setHidden(
-                                  conversation.route,
-                                  false,
-                                ),
-                          child: const Text('Restore'),
-                        ),
-                      ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              _SettingsGroup(
-                title: 'Storage on this device',
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.photo_library_outlined),
-                    title: const Text('Downloaded media'),
-                    subtitle: Text(
-                      '${controller.storageSummary.attachmentCount} attachments',
-                    ),
-                    trailing: Text(
-                      formatByteCount(controller.storageSummary.mediaBytes),
-                    ),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.forum_outlined),
-                    title: const Text('Saved messages'),
-                    trailing: Text('${controller.storageSummary.messageCount}'),
-                  ),
-                  const Divider(height: 1, indent: 16, endIndent: 16),
-                  ListTile(
-                    title: const Text('Clear downloaded media'),
-                    subtitle: const Text(
-                      'Messages, drafts and unsent attachments are kept.',
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    enabled:
-                        !controller.isBusy &&
-                        controller.storageSummary.mediaBytes > 0,
-                    onTap:
-                        !controller.isBusy &&
-                            controller.storageSummary.mediaBytes > 0
-                        ? () => _confirmClearCache(context)
-                        : null,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              if (controller.error case final error?) ...[
-                _Notice(message: error, isError: true),
-                const SizedBox(height: 24),
-              ],
-              ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('Open source licenses'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => showLicensePage(
-                  context: context,
-                  applicationName: 'Inbox+',
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Inbox+  ·  All your conversations, one inbox.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (context, _) => _PhoneSettingsPage(page: this),
+  );
 
   String _networkName(String id) {
     for (final network in controller.networks) {
@@ -1122,81 +844,6 @@ class InboxSettingsPage extends StatelessWidget {
     if (await confirmClearMediaCache(context)) {
       await controller.clearMediaCache();
     }
-  }
-}
-
-class _ColorModePicker extends StatelessWidget {
-  const _ColorModePicker({required this.controller});
-
-  final InboxUiController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: scheme.onSurface.withValues(alpha: .07),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final (value, label) in [
-            ('system', 'System'),
-            ('light', 'Light'),
-            ('dark', 'Dark'),
-          ])
-            Semantics(
-              selected: controller.preferences.appearance == value,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: controller.preferences.appearance == value
-                      ? [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: .12),
-                            blurRadius: 3,
-                            offset: const Offset(0, 1),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: TextButton(
-                  onPressed: controller.isBusy
-                      ? null
-                      : () => controller.setPreference('appearance', value),
-                  style: TextButton.styleFrom(
-                    minimumSize: const Size(0, 30),
-                    padding: const EdgeInsets.symmetric(horizontal: 13),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                    foregroundColor: scheme.onSurface,
-                    backgroundColor: controller.preferences.appearance == value
-                        ? (dark
-                              ? scheme.onSurface.withValues(alpha: .16)
-                              : Colors.white)
-                        : Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: controller.preferences.appearance == value
-                          ? FontWeight.w600
-                          : FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
   }
 }
 
@@ -1304,44 +951,6 @@ class _ThemeGrid extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-class _SettingsGroup extends StatelessWidget {
-  const _SettingsGroup({
-    required this.title,
-    required this.children,
-    this.trailing,
-  });
-
-  final String title;
-  final List<Widget> children;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-            ?trailing,
-          ],
-        ),
-        const SizedBox(height: 8),
-        Card.outlined(
-          margin: EdgeInsets.zero,
-          clipBehavior: Clip.antiAlias,
-          child: Column(children: children),
-        ),
-      ],
     );
   }
 }
