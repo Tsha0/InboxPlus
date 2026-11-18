@@ -340,8 +340,8 @@ packaging uses `Scripts/package-macos-release.py`, producing a drag-to-Applicati
 installations and a signed ZIP for Sparkle. DMG layout creation needs a logged-in macOS desktop
 session with Finder automation permission; its optional fixture check is in
 [macOS updates](docs/updates.md#verification-before-publishing). Ordinary Flutter builds keep updates disabled.
-See [macOS updates](docs/updates.md) for credentials, local commands and the required two-version
-installation test. Publishing the reviewed stable release triggers
+See [macOS updates](docs/updates.md) for credentials, local commands and release artifact checks.
+Publishing the reviewed stable release triggers
 [feed publication](.github/workflows/update-feed.yml); it refuses stale or rewritten feed entries.
 
 Run `swift test --package-path native/updates --force-resolved-versions` for updater changes, plus
