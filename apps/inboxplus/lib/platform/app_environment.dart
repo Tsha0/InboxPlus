@@ -30,7 +30,9 @@ class PlatformSecretStore implements SecretStore {
   );
   final FlutterSecureStorage _current;
   // Self-signed releases kept secrets in the file-based keychain, which asks
-  // again after every signature change. Entitled builds move each one on read.
+  // again after every signature change. Entitled builds copy each one on read
+  // and keep the old copy: in an entitled process, deleting it without the
+  // data protection flag also deletes the new copy.
   final FlutterSecureStorage? _legacy;
 
   @override
@@ -46,7 +48,6 @@ class PlatformSecretStore implements SecretStore {
         'A saved credential could not be moved. Your data has been kept.',
       );
     }
-    await legacy.delete(key: key);
     return moved;
   }
 
