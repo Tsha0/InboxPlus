@@ -3378,6 +3378,33 @@ class _LoadOnFirstBuildState extends State<_LoadOnFirstBuild> {
   Widget build(BuildContext context) => widget.child;
 }
 
+class _PlayButton extends StatelessWidget {
+  const _PlayButton({required this.loading});
+
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: .55),
+        shape: BoxShape.circle,
+      ),
+      child: loading
+          ? const Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.play_arrow_rounded, size: 36, color: Colors.white),
+    ),
+  );
+}
+
 class _InlineVideo extends StatefulWidget {
   const _InlineVideo({
     required this.attachment,
@@ -3444,29 +3471,7 @@ class _InlineVideoState extends State<_InlineVideo> {
                     fit: BoxFit.cover,
                     errorBuilder: (_, _, _) => placeholder,
                   ),
-                Center(
-                  child: Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: .55),
-                      shape: BoxShape.circle,
-                    ),
-                    child: _loading
-                        ? const Padding(
-                            padding: EdgeInsets.all(16),
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.play_arrow_rounded,
-                            size: 36,
-                            color: Colors.white,
-                          ),
-                  ),
-                ),
+                _PlayButton(loading: _loading),
               ],
             ),
           ),
@@ -3611,30 +3616,7 @@ class _SharedPostCardState extends State<_SharedPostCard> {
                             ),
                           ),
                         ),
-                      if (widget.playable)
-                        Center(
-                          child: Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: .55),
-                              shape: BoxShape.circle,
-                            ),
-                            child: _loading
-                                ? const Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.play_arrow_rounded,
-                                    size: 36,
-                                    color: Colors.white,
-                                  ),
-                          ),
-                        ),
+                      if (widget.playable) _PlayButton(loading: _loading),
                     ],
                   ),
                 ),
