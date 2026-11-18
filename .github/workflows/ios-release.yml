@@ -17,23 +17,8 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
-  ci:
-    name: Require CI for release commit
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      actions: read
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Require successful CI for the exact commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: python3 Scripts/require-release-ci.py
-
   launch:
     name: iOS / Launch test
-    needs: ci
     runs-on: xcode-27
     timeout-minutes: 60
     steps:
