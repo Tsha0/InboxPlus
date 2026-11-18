@@ -494,7 +494,7 @@ jobs:
       needs.generated-files.result == 'success' &&
       needs.packaging-linux.result == 'success' &&
       needs.changes.outputs.ios == 'true' }}
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262

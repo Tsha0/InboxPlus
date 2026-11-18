@@ -34,7 +34,7 @@ jobs:
   launch:
     name: iOS / Launch test
     needs: ci
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -80,7 +80,7 @@ jobs:
   testflight:
     name: iOS / TestFlight
     needs: launch
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     env:
       ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
