@@ -127,7 +127,7 @@ jobs:
             test "$(gh release view "$INBOXPLUS_RELEASE_TAG" --json isDraft --jq .isDraft)" = true
           else
             gh release create "$INBOXPLUS_RELEASE_TAG" --verify-tag --draft --title "Inbox+ ${INBOXPLUS_RELEASE_TAG#v}" \
-              --notes 'macOS release. Review the signed artifacts and upgrade verification before publishing.'
+              --notes 'macOS release. Review the signed artifacts before publishing.'
           fi
           gh release upload "$INBOXPLUS_RELEASE_TAG" build/macos-release/*
       - name: Remove signing credentials
