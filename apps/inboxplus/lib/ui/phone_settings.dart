@@ -1038,16 +1038,10 @@ class _FeedbackPageState extends State<FeedbackPage> {
       _error = null;
     });
     try {
-      final bytes = await widget.controller.pickFeedbackImage();
-      final image = bytes == null ? null : await normalizeFeedbackImage(bytes);
+      final image = await chooseFeedbackImage(widget.controller);
       if (mounted && image != null) setState(() => _form.image = image);
-    } on Exception {
-      if (mounted) {
-        setState(
-          () => _error =
-              'Inbox+ can’t read this file as an image. Choose a PNG or JPEG.',
-        );
-      }
+    } on Exception catch (error) {
+      if (mounted) setState(() => _error = feedbackImageError(error));
     } finally {
       if (mounted) setState(() => _attaching = false);
     }

@@ -386,6 +386,15 @@ class FeedbackReceipt {
   final Uri? issueUrl;
 }
 
+class FeedbackImageFailure implements Exception {
+  const FeedbackImageFailure(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 enum FeedbackFailure implements Exception {
   offline(
     'Inbox+ couldn’t reach the feedback service. Check your connection and try again.',

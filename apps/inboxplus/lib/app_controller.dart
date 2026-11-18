@@ -2487,11 +2487,17 @@ class AppController extends InboxUiController {
       _submitFeedback(draft, draft.includeDiagnostics ? _diagnostics() : null);
 
   @override
-  Future<Uint8List?> pickFeedbackImage() async => (await _pickFileBytes(
-    dialogTitle: 'Choose a Screenshot',
-    type: FileType.image,
-    limit: 32 * 1024 * 1024,
-  ))?.bytes;
+  Future<Uint8List?> pickFeedbackImage() async {
+    try {
+      return (await _pickFileBytes(
+        dialogTitle: 'Choose a Screenshot',
+        type: FileType.image,
+        limit: 32 * 1024 * 1024,
+      ))?.bytes;
+    } on AppStorageException catch (error) {
+      throw FeedbackImageFailure(error.message);
+    }
+  }
 
   Future<({String name, Uint8List bytes})?> _pickFileBytes({
     required FileType type,
@@ -2512,8 +2518,15 @@ class AppController extends InboxUiController {
           'limit': limit,
         });
       } on PlatformException catch (error) {
-        if (error.code == 'picked_file_too_large') throw tooLarge();
-        rethrow;
+        throw switch (error.code) {
+          'picked_file_too_large' => tooLarge(),
+          'file_picker_busy' => const AppStorageException(
+            'Another file is still being chosen. Try again.',
+          ),
+          _ => const AppStorageException(
+            'The selected file could not be read.',
+          ),
+        };
       }
       if (result == null) return null;
       if (result case {

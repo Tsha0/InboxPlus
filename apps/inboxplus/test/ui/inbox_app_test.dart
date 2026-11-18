@@ -4650,6 +4650,22 @@ void main() {
     },
   );
 
+  testWidgets('phone feedback explains why a screenshot pick failed', (
+    tester,
+  ) async {
+    const tooLarge = 'Attachments must be 32 MiB or smaller.';
+    final controller = _FakeController()
+      ..onPickFeedbackImage = () async =>
+          throw const FeedbackImageFailure(tooLarge);
+    await tester.pumpWidget(
+      MaterialApp(home: FeedbackPage(controller: controller)),
+    );
+    await tester.tap(find.text('Attach a screenshot'));
+    await tester.pumpAndSettle();
+    expect(find.text(tooLarge), findsOneWidget);
+    expect(find.textContaining('PNG or JPEG'), findsNothing);
+  });
+
   testWidgets('phone feedback keeps the report when sending fails', (
     tester,
   ) async {
@@ -5296,6 +5312,19 @@ void main() {
       expect(find.text('Thanks for your feedback'), findsOneWidget);
       expect(find.text('View on GitHub'), findsNothing);
       expect(tester.takeException(), isNull);
+    }, variant: macOS);
+
+    testWidgets('explains why a screenshot pick failed', (tester) async {
+      const busy = 'Another file is still being chosen. Try again.';
+      final controller = _FakeController()
+        ..onPickFeedbackImage = () async =>
+            throw const FeedbackImageFailure(busy);
+      await _pumpApp(tester, controller);
+      await openFeedback(tester);
+      await tester.tap(find.byKey(const Key('feedback-choose-image')));
+      await tester.pumpAndSettle();
+      expect(find.text(busy), findsOneWidget);
+      expect(find.textContaining('PNG or JPEG'), findsNothing);
     }, variant: macOS);
 
     testWidgets('closing keeps the draft until a send succeeds', (

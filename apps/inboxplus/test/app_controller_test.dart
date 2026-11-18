@@ -3258,6 +3258,29 @@ void main() {
     },
   );
 
+  for (final (code, message) in [
+    ('file_picker_busy', 'Another file is still being chosen. Try again.'),
+    ('picked_file_unreadable', 'The selected file could not be read.'),
+    ('file_picker_unavailable', 'The selected file could not be read.'),
+  ]) {
+    test('a $code screenshot pick reports a readable error', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final app = await start(engine: _FakeEngine());
+      native.pickError = code;
+      await expectLater(
+        app.pickFeedbackImage(),
+        throwsA(
+          isA<FeedbackImageFailure>().having(
+            (error) => error.message,
+            'message',
+            message,
+          ),
+        ),
+      );
+    });
+  }
+
   test('desktop picks keep the original file', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
