@@ -4330,6 +4330,142 @@ void main() {
     }),
   );
 
+  testWidgets(
+    'tablet inbox opens filters from the header',
+    (tester) async {
+      final controller = _FakeController();
+      await _pumpApp(tester, controller, size: const Size(1200, 900));
+      final button = tester.getRect(find.byTooltip('Filter'));
+      await tester.tap(find.byTooltip('Filter'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byKey(const Key('filter-unread'))).top,
+        greaterThan(button.bottom),
+      );
+      await tester.tap(find.byKey(const Key('filter-unread')));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(1150, 850));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Clear filters'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone text size reaches pages opened from the inbox',
+    (tester) async {
+      final controller = _FakeController()
+        ..currentPreferences = const PreferencesRecord(textSize: 'large');
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chat-info-button')));
+      await tester.pumpAndSettle();
+      expect(
+        MediaQuery.textScalerOf(
+          tester.element(find.byTooltip('Close chat info')),
+        ).scale(10),
+        closeTo(11.5, .001),
+      );
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets('phone text size keeps the system nonlinear scaling', (
+    tester,
+  ) async {
+    final controller = _FakeController()
+      ..currentPreferences = const PreferencesRecord(textSize: 'large');
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: _NonlinearScaler()),
+        child: InboxPlusApp(controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final scaler = MediaQuery.textScalerOf(
+      tester.element(find.byKey(const Key('conversation-first-alice'))),
+    );
+    expect(scaler.scale(10), closeTo(10 * 2 * 1.15, .001));
+    expect(scaler.scale(34), closeTo(34 * 1.3 * 1.15, .001));
+  }, variant: TargetPlatformVariant({TargetPlatform.android}));
+
+  testWidgets(
+    'phone contacts sort case-insensitively under one heading',
+    (tester) async {
+      final controller = _FakeController(
+        contacts: [
+          ContactRecord(
+            id: 'alice',
+            displayName: 'Alice',
+            identities: const [IdentityLink('first', 'alice')],
+          ),
+          ContactRecord(
+            id: 'zed',
+            displayName: 'Zed',
+            identities: const [IdentityLink('first', 'zed')],
+          ),
+          ContactRecord(
+            id: 'adam',
+            displayName: 'adam',
+            identities: const [IdentityLink('first', 'adam')],
+          ),
+          ContactRecord(
+            id: 'number',
+            displayName: '42 Club',
+            identities: const [IdentityLink('first', 'club')],
+          ),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-contacts')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('contacts-letter-A')), findsOneWidget);
+      double top(String id) => tester.getTopLeft(find.byKey(Key(id))).dy;
+      expect(top('contact-adam'), lessThan(top('contact-alice')));
+      expect(top('contact-alice'), lessThan(top('contact-zed')));
+      expect(top('contact-zed'), lessThan(top('contact-number')));
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'an inbox of only favourites shows no empty state',
+    (tester) async {
+      final controller = _FakeController();
+      await controller.setFavorite(
+        const ConversationRoute('first', 'alice'),
+        true,
+      );
+      await controller.setFavorite(
+        const ConversationRoute('second', 'bob'),
+        true,
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      expect(find.byKey(const Key('favorite-first-alice')), findsOneWidget);
+      expect(find.text('Your inbox starts here'), findsNothing);
+      expect(find.text('New conversations will appear here.'), findsNothing);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
   testWidgets('feedback opens a prefilled GitHub issue', (tester) async {
     Uri? opened;
     await tester.pumpWidget(
@@ -5036,4 +5172,14 @@ class _FakeController extends InboxUiController {
   Future<void> exportDiagnostics() async {}
   @override
   Future<void> requestQuit() async {}
+}
+
+class _NonlinearScaler extends TextScaler {
+  const _NonlinearScaler();
+
+  @override
+  double scale(double fontSize) => fontSize * (fontSize < 20 ? 2 : 1.3);
+
+  @override
+  double get textScaleFactor => 2;
 }

@@ -66,11 +66,28 @@ class InboxPlusApp extends StatelessWidget {
         'dark' => ThemeMode.dark,
         _ => ThemeMode.system,
       },
+      builder: isDesktopPlatform ? null : _scaleText,
       home: isDesktopPlatform
           ? _DesktopHome(controller: controller)
           : InboxHome(controller: controller),
     ),
   );
+
+  Widget _scaleText(BuildContext context, Widget? child) {
+    final factor = switch (controller.preferences.textSize) {
+      'small' => .9,
+      'large' => 1.15,
+      _ => 1.0,
+    };
+    if (factor == 1) return child!;
+    final media = MediaQuery.of(context);
+    return MediaQuery(
+      data: media.copyWith(
+        textScaler: _ScaledTextScaler(media.textScaler, factor),
+      ),
+      child: child!,
+    );
+  }
 
   ThemeData _theme(Brightness brightness) {
     final dark = brightness == Brightness.dark;
@@ -133,6 +150,28 @@ class InboxPlusApp extends StatelessWidget {
 
 enum _Section { inbox, contacts, settings }
 
+class _ScaledTextScaler extends TextScaler {
+  const _ScaledTextScaler(this.system, this.factor);
+
+  final TextScaler system;
+  final double factor;
+
+  @override
+  double scale(double fontSize) => system.scale(fontSize) * factor;
+
+  @override
+  double get textScaleFactor => scale(14) / 14;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ScaledTextScaler &&
+      other.system == system &&
+      other.factor == factor;
+
+  @override
+  int get hashCode => Object.hash(system, factor);
+}
+
 class InboxHome extends StatefulWidget {
   const InboxHome({super.key, required this.controller});
 
@@ -147,6 +186,7 @@ class _InboxHomeState extends State<InboxHome> {
   final _networks = <String>{};
   _ShowFilter _show = _ShowFilter.all;
   bool _searching = false;
+  final _filterButton = GlobalKey();
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
 
@@ -215,30 +255,6 @@ class _InboxHomeState extends State<InboxHome> {
     final selected = _selected;
     final showsTabs =
         compact && !(selected != null && _section == _Section.inbox);
-    final textFactor = switch (controller.preferences.textSize) {
-      'small' => .9,
-      'large' => 1.15,
-      _ => 1.0,
-    };
-    final media = MediaQuery.of(context);
-    return MediaQuery(
-      data: textFactor == 1
-          ? media
-          : media.copyWith(
-              textScaler: TextScaler.linear(
-                media.textScaler.scale(1) * textFactor,
-              ),
-            ),
-      child: _buildHome(context, compact, selected, showsTabs),
-    );
-  }
-
-  Widget _buildHome(
-    BuildContext context,
-    bool compact,
-    ConversationRecord? selected,
-    bool showsTabs,
-  ) {
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyF, meta: true):
@@ -435,6 +451,11 @@ class _InboxHomeState extends State<InboxHome> {
 
   Future<void> _openFilterMenu() async {
     final media = MediaQuery.of(context);
+    final anchorBox =
+        _filterButton.currentContext?.findRenderObject() as RenderBox?;
+    final anchor = anchorBox == null
+        ? null
+        : anchorBox.localToGlobal(Offset.zero) & anchorBox.size;
     await showGeneralDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -444,7 +465,7 @@ class _InboxHomeState extends State<InboxHome> {
       transitionBuilder: (context, animation, _, child) => FadeTransition(
         opacity: animation,
         child: ScaleTransition(
-          alignment: Alignment.bottomLeft,
+          alignment: anchor == null ? Alignment.bottomLeft : Alignment.topRight,
           scale: Tween(begin: .92, end: 1.0).animate(
             CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
           ),
@@ -454,17 +475,21 @@ class _InboxHomeState extends State<InboxHome> {
       pageBuilder: (dialogContext, _, _) => Stack(
         children: [
           Positioned(
-            left: 16,
-            bottom:
-                (media.viewPadding.bottom > 0
-                    ? media.viewPadding.bottom - 6
-                    : 14) +
-                _phoneBarHeight +
-                12,
+            left: anchor == null ? 16 : math.max(16, anchor.right - 276),
+            top: anchor == null ? null : anchor.bottom + 8,
+            bottom: anchor != null
+                ? null
+                : (media.viewPadding.bottom > 0
+                          ? media.viewPadding.bottom - 6
+                          : 14) +
+                      _phoneBarHeight +
+                      12,
             width: 276,
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                maxHeight: media.size.height - media.viewPadding.top - 140,
+                maxHeight: anchor == null
+                    ? media.size.height - media.viewPadding.top - 140
+                    : media.size.height - anchor.bottom - 32,
               ),
               child: SingleChildScrollView(
                 child: _PhoneFilterMenu(
@@ -562,18 +587,44 @@ class _InboxHomeState extends State<InboxHome> {
                     tapSize: 44,
                   ),
                 ),
-                trailing: IconButton(
-                  key: const Key('inbox-search-button'),
-                  tooltip: _searching ? 'Close search' : 'Search',
-                  onPressed: _searching ? _closeSearch : _focusSearch,
-                  color: headerInk,
-                  style: IconButton.styleFrom(
-                    backgroundColor: headerInk.withValues(alpha: .08),
-                  ),
-                  icon: Icon(
-                    _searching ? CupertinoIcons.xmark : CupertinoIcons.search,
-                    size: 20,
-                  ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: 6,
+                  children: [
+                    if (MediaQuery.sizeOf(context).width >= 900)
+                      IconButton(
+                        key: _filterButton,
+                        tooltip: 'Filter',
+                        onPressed: _openFilterMenu,
+                        color: filterLabels.isEmpty
+                            ? headerInk
+                            : scheme.onPrimary,
+                        style: IconButton.styleFrom(
+                          backgroundColor: filterLabels.isEmpty
+                              ? headerInk.withValues(alpha: .08)
+                              : scheme.primary,
+                        ),
+                        icon: const Icon(
+                          CupertinoIcons.line_horizontal_3_decrease,
+                          size: 20,
+                        ),
+                      ),
+                    IconButton(
+                      key: const Key('inbox-search-button'),
+                      tooltip: _searching ? 'Close search' : 'Search',
+                      onPressed: _searching ? _closeSearch : _focusSearch,
+                      color: headerInk,
+                      style: IconButton.styleFrom(
+                        backgroundColor: headerInk.withValues(alpha: .08),
+                      ),
+                      icon: Icon(
+                        _searching
+                            ? CupertinoIcons.xmark
+                            : CupertinoIcons.search,
+                        size: 20,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -646,7 +697,7 @@ class _InboxHomeState extends State<InboxHome> {
                 ),
               ),
             ),
-            if (conversations.isEmpty)
+            if (conversations.isEmpty && favorites.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: ColoredBox(

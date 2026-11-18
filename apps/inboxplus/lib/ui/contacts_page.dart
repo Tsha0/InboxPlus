@@ -67,11 +67,6 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
     ),
   );
 
-  String? _platformFor(IdentityLink identity) => widget.controller.accounts
-      .where((account) => account.id == identity.accountId)
-      .firstOrNull
-      ?.platform;
-
   @override
   Widget build(BuildContext context) {
     final query = _search.text.trim().toLowerCase();
@@ -87,7 +82,7 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
                   ),
             )
             .toList()
-          ..sort((a, b) => a.displayName.compareTo(b.displayName));
+          ..sort(_compareContacts);
     return _buildList(context, contacts, query);
   }
 
@@ -97,17 +92,10 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
     String query,
   ) {
     final scheme = Theme.of(context).colorScheme;
-    String letter(ContactRecord contact) {
-      final first = contact.displayName.trim().characters.firstOrNull;
-      return first == null || !RegExp(r'[A-Za-z]').hasMatch(first)
-          ? '#'
-          : first.toUpperCase();
-    }
-
     final rows = <Widget>[];
     String? current;
     for (final contact in contacts) {
-      final heading = letter(contact);
+      final heading = _contactLetter(contact);
       if (heading != current) {
         current = heading;
         rows.add(
@@ -126,7 +114,7 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
         );
       }
       final platforms = contact.identities
-          .map(_platformFor)
+          .map((identity) => _platformOf(widget.controller, identity.accountId))
           .whereType<String>()
           .toSet()
           .toList();
@@ -177,7 +165,14 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
                           const SizedBox(width: 5),
                           Expanded(
                             child: Text(
-                              platforms.map(_networkName).join(' · '),
+                              platforms
+                                  .map(
+                                    (platform) => _networkLabel(
+                                      widget.controller,
+                                      platform,
+                                    ),
+                                  )
+                                  .join(' · '),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -276,13 +271,6 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
       ],
     );
   }
-
-  String _networkName(String platform) =>
-      widget.controller.networks
-          .where((network) => network.id == platform)
-          .firstOrNull
-          ?.name ??
-      platform;
 }
 
 class _ContactEditor extends StatefulWidget {
@@ -496,15 +484,18 @@ class _ContactEditorState extends State<_ContactEditor> {
                 for (final identity in saved)
                   ActionChip(
                     avatar: NetworkBadge(
-                      network: widget.controller.accounts
-                          .where((account) => account.id == identity.accountId)
-                          .firstOrNull
-                          ?.platform,
+                      network: _platformOf(
+                        widget.controller,
+                        identity.accountId,
+                      ),
                       size: 20,
                       labelled: false,
                     ),
                     label: Text(
-                      'Message on ${_networkName(identity.accountId)}',
+                      'Message on ${switch (_platformOf(widget.controller, identity.accountId)) {
+                        final platform? => _networkLabel(widget.controller, platform),
+                        null => 'Disconnected account',
+                      }}',
                     ),
                     onPressed: () => widget.onMessage!(identity),
                   ),
@@ -529,19 +520,6 @@ class _ContactEditorState extends State<_ContactEditor> {
         ],
       ),
     );
-  }
-
-  String _networkName(String accountId) {
-    final platform = widget.controller.accounts
-        .where((account) => account.id == accountId)
-        .firstOrNull
-        ?.platform;
-    if (platform == null) return 'Disconnected account';
-    return widget.controller.networks
-            .where((network) => network.id == platform)
-            .firstOrNull
-            ?.name ??
-        platform;
   }
 
   Widget _form(BuildContext context) => Form(
@@ -669,4 +647,38 @@ class _EditableIdentity {
 
   String accountId;
   final TextEditingController value;
+}
+
+String? _platformOf(InboxUiController controller, String accountId) =>
+    controller.accounts
+        .where((account) => account.id == accountId)
+        .firstOrNull
+        ?.platform;
+
+String _networkLabel(InboxUiController controller, String platform) =>
+    controller.networks
+        .where((network) => network.id == platform)
+        .firstOrNull
+        ?.name ??
+    platform;
+
+String _contactLetter(ContactRecord contact) {
+  final first = contact.displayName.trim().characters.firstOrNull;
+  return first == null || !RegExp(r'[A-Za-z]').hasMatch(first)
+      ? '#'
+      : first.toUpperCase();
+}
+
+int _compareContacts(ContactRecord a, ContactRecord b) {
+  final letterA = _contactLetter(a);
+  final letterB = _contactLetter(b);
+  if (letterA != letterB) {
+    if (letterA == '#') return 1;
+    if (letterB == '#') return -1;
+    return letterA.compareTo(letterB);
+  }
+  final byName = a.displayName.trim().toLowerCase().compareTo(
+    b.displayName.trim().toLowerCase(),
+  );
+  return byName != 0 ? byName : a.id.compareTo(b.id);
 }
