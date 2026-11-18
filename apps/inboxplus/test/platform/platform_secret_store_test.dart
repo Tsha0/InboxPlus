@@ -33,13 +33,17 @@ void main() {
           if (!dataProtection && deniedFileItems.contains(key)) {
             throw PlatformException(code: 'Unexpected security result code');
           }
+          // macOS also applies a read or delete without the data protection
+          // flag to the data protection keychain.
           switch (call.method) {
             case 'read':
-              return keychain[key];
+              return keychain[key] ??
+                  (dataProtection ? null : dataProtectionKeychain[key]);
             case 'write':
               keychain[key] = arguments['value'] as String;
             case 'delete':
               keychain.remove(key);
+              if (!dataProtection) dataProtectionKeychain.remove(key);
           }
           return null;
         });
@@ -67,18 +71,21 @@ void main() {
     }
   });
 
-  test('entitled builds move a file keychain secret on first read', () async {
-    fileKeychain['database'] = 'saved-key';
-    const secrets = PlatformSecretStore.dataProtection();
+  test(
+    'entitled builds keep a moved file keychain secret for the next launch',
+    () async {
+      fileKeychain['database'] = 'saved-key';
+      const secrets = PlatformSecretStore.dataProtection();
 
-    expect(await secrets.read('database'), 'saved-key');
-    expect(fileKeychain, isEmpty);
-    expect(dataProtectionKeychain, {'database': 'saved-key'});
-    expect(await secrets.read('database'), 'saved-key');
-    for (final call in calls) {
-      expect((call.arguments as Map)['options']['groupId'], isNull);
-    }
-  });
+      expect(await secrets.read('database'), 'saved-key');
+      expect(dataProtectionKeychain, {'database': 'saved-key'});
+      deniedFileItems.add('database');
+      expect(await secrets.read('database'), 'saved-key');
+      for (final call in calls) {
+        expect((call.arguments as Map)['options']['groupId'], isNull);
+      }
+    },
+  );
 
   test('a denied file keychain read fails and keeps the secret for the next launch', () async {
     fileKeychain['database'] = 'saved-key';
