@@ -4159,7 +4159,7 @@ void main() {
       variant: macOS,
     );
 
-    testWidgets('a pending send immediately blocks Close and outside taps', (
+    testWidgets('a pending send immediately blocks every dismissal action', (
       tester,
     ) async {
       final pending = Completer<FeedbackReceipt>();
@@ -4173,6 +4173,7 @@ void main() {
       await tester.tap(find.byKey(send));
       await tester.tap(find.byKey(const Key('feedback-close')));
       await tester.tapAt(const Offset(5, 5));
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
       expect(find.byKey(text), findsOneWidget);
@@ -4208,6 +4209,11 @@ void main() {
       await tester.pumpAndSettle();
 
       await openFeedback(tester);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(find.byKey(text), findsNothing);
+
+      await openFeedback(tester);
       await tester.tap(find.byKey(send));
       await tester.pumpAndSettle();
       expect(controller.sentFeedback.single.image, isNotNull);
@@ -4222,6 +4228,32 @@ void main() {
         isSemantics(isSelected: false),
       );
       handle.dispose();
+    }, variant: macOS);
+
+    testWidgets('keyboard focus stays with the screenshot actions', (
+      tester,
+    ) async {
+      const capture = Key('feedback-capture');
+      const choose = Key('feedback-choose-image');
+      const remove = Key('feedback-remove-image');
+      await _pumpApp(
+        tester,
+        _FakeController()..pickedFeedbackImage = screenshot,
+      );
+      await openFeedback(tester);
+
+      for (final action in [capture, choose]) {
+        await tabTo(tester, action);
+        await tester.sendKeyEvent(LogicalKeyboardKey.space);
+        await waitFor(tester, find.byKey(preview));
+        await tester.pumpAndSettle();
+        expect(focusedButton(), remove);
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.space);
+        await tester.pumpAndSettle();
+        expect(find.byKey(preview), findsNothing);
+        expect(focusedButton(), capture);
+      }
     }, variant: macOS);
 
     testWidgets('a chosen screenshot previews, is sent and can be removed', (

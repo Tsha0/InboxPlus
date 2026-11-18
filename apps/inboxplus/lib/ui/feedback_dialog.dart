@@ -69,17 +69,14 @@ class FeedbackDialog extends StatefulWidget {
   State<FeedbackDialog> createState() => _FeedbackDialogState();
 }
 
-class _FeedbackDialogState extends State<FeedbackDialog>
-    implements PopEntry<Object?> {
+class _FeedbackDialogState extends State<FeedbackDialog> {
   _Phase _phase = const _Editing();
   bool _attaching = false;
   String? _imageError;
   final _sendFocus = FocusNode();
+  final _captureFocus = FocusNode();
   final _chooseImageFocus = FocusNode();
-  ModalRoute<Object?>? _route;
-
-  @override
-  final ValueNotifier<bool> canPopNotifier = ValueNotifier(true);
+  final _removeImageFocus = FocusNode();
 
   FeedbackForm get _form => widget.form;
   bool get _editable => _phase is _Editing || _phase is _Failed;
@@ -92,28 +89,12 @@ class _FeedbackDialogState extends State<FeedbackDialog>
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final route = ModalRoute.of(context);
-    if (_route == route) return;
-    _route?.unregisterPopEntry(this);
-    _route = route;
-    route?.registerPopEntry(this);
-  }
-
-  @override
-  void onPopInvoked(bool didPop) {}
-
-  @override
-  void onPopInvokedWithResult(bool didPop, Object? result) {}
-
-  @override
   void dispose() {
-    _route?.unregisterPopEntry(this);
-    canPopNotifier.dispose();
     _form.text.removeListener(_textChanged);
     _sendFocus.dispose();
+    _captureFocus.dispose();
     _chooseImageFocus.dispose();
+    _removeImageFocus.dispose();
     super.dispose();
   }
 
@@ -128,7 +109,6 @@ class _FeedbackDialogState extends State<FeedbackDialog>
   Future<void> _send() async {
     final draft = _form.draft;
     if (draft == null || !_canSend) return;
-    canPopNotifier.value = false;
     setState(() => _phase = const _Sending());
     try {
       final receipt = await widget.controller.sendFeedback(draft);
@@ -145,17 +125,15 @@ class _FeedbackDialogState extends State<FeedbackDialog>
         );
       });
       _restoreFocus(_sendFocus);
-    } finally {
-      if (mounted) canPopNotifier.value = true;
     }
   }
 
   Future<void> _attach(
-    Future<Uint8List?> Function() source, {
-    FocusNode? focus,
-  }) async {
+    Future<Uint8List?> Function() source,
+    FocusNode focus,
+  ) async {
     if (_attaching || !_editable) return;
-    final restoreFocus = focus?.hasFocus == true;
+    final restoreFocus = focus.hasFocus;
     setState(() {
       _attaching = true;
       _imageError = null;
@@ -173,9 +151,18 @@ class _FeedbackDialogState extends State<FeedbackDialog>
     } finally {
       if (mounted) {
         setState(() => _attaching = false);
-        if (restoreFocus && _form.image == null) _restoreFocus(focus!);
+        if (restoreFocus) {
+          _restoreFocus(_form.image == null ? focus : _removeImageFocus);
+        }
       }
     }
+  }
+
+  void _removeImage() {
+    if (!_editable) return;
+    final restoreFocus = _removeImageFocus.hasFocus;
+    setState(() => _form.image = null);
+    if (restoreFocus) _restoreFocus(_captureFocus);
   }
 
   Future<Uint8List?> _chooseImage() async {
@@ -205,23 +192,29 @@ class _FeedbackDialogState extends State<FeedbackDialog>
     final scheme = Theme.of(context).colorScheme;
     final narrow = MediaQuery.sizeOf(context).width < 480;
     final padding = narrow ? 18.0 : 30.0;
-    return Dialog(
-      backgroundColor: scheme.surface,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: scheme.outlineVariant),
-      ),
-      constraints: const BoxConstraints(maxWidth: 592),
-      insetPadding: EdgeInsets.all(narrow ? 12 : 24),
-      child: SingleChildScrollView(
-        child: switch (_phase) {
-          _Sent(:final kind, :final receipt) => Padding(
-            padding: EdgeInsets.all(padding),
-            child: _sent(context, kind, receipt),
-          ),
-          _ => _editor(scheme, padding),
-        },
+    return PopScope<void>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _phase is! _Sending) Navigator.pop(context);
+      },
+      child: Dialog(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: scheme.outlineVariant),
+        ),
+        constraints: const BoxConstraints(maxWidth: 592),
+        insetPadding: EdgeInsets.all(narrow ? 12 : 24),
+        child: SingleChildScrollView(
+          child: switch (_phase) {
+            _Sent(:final kind, :final receipt) => Padding(
+              padding: EdgeInsets.all(padding),
+              child: _sent(context, kind, receipt),
+            ),
+            _ => _editor(scheme, padding),
+          },
+        ),
       ),
     );
   }
@@ -497,7 +490,10 @@ class _FeedbackDialogState extends State<FeedbackDialog>
         if (image == null) ...[
           TextButton(
             key: const Key('feedback-capture'),
-            onPressed: busy ? null : () => _attach(_captureWindow),
+            focusNode: _captureFocus,
+            onPressed: busy
+                ? null
+                : () => _attach(_captureWindow, _captureFocus),
             style: buttonStyle,
             child: const Text('Capture window'),
           ),
@@ -506,14 +502,15 @@ class _FeedbackDialogState extends State<FeedbackDialog>
             focusNode: _chooseImageFocus,
             onPressed: busy
                 ? null
-                : () => _attach(_chooseImage, focus: _chooseImageFocus),
+                : () => _attach(_chooseImage, _chooseImageFocus),
             style: buttonStyle,
             child: const Text('Choose image…'),
           ),
         ] else
           TextButton(
             key: const Key('feedback-remove-image'),
-            onPressed: busy ? null : () => setState(() => _form.image = null),
+            focusNode: _removeImageFocus,
+            onPressed: busy ? null : _removeImage,
             style: buttonStyle,
             child: const Text('Remove screenshot'),
           ),
