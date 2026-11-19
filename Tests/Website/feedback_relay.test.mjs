@@ -13,8 +13,6 @@ const env = {
 };
 
 const issueUrl = "https://github.com/Tsha0/InboxPlus/issues/42";
-const screenshotUrl =
-  "https://github.com/Tsha0/InboxPlus-feedback-media/blob/main/2026/11/shot.png";
 const upstreamSecret = "upstream-body-with-internal-detail";
 const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -52,7 +50,7 @@ function fakeFetch(failures = {}) {
       return { ok: false, status: failures[destination], json: async () => ({ message: upstreamSecret }) };
     }
     const payload = {
-      media: { content: { html_url: screenshotUrl } },
+      media: { content: {} },
       issue: { html_url: issueUrl },
       email: { id: "email-id" },
     }[destination];
@@ -147,6 +145,8 @@ test("a screenshot is committed to the media repo before the issue links it", as
   assert.equal(upload.body.content, image.toString("base64"));
   assert.ok(upload.body.message);
   assert.ok(issue.url.endsWith("/repos/Tsha0/InboxPlus/issues"));
+  const path = upload.url.split("/contents/")[1];
+  const screenshotUrl = `https://github.com/${env.FEEDBACK_MEDIA_REPO}/blob/HEAD/${path}`;
   assert.ok(issue.body.body.includes(`Screenshot (visible to maintainers only): ${screenshotUrl}`));
 });
 
@@ -226,6 +226,49 @@ test("diagnostics fit alongside long multibyte Details and a maximum-size screen
 
   assert.equal(response.status, 200);
   assert.equal(calls.length, 2);
+});
+
+test("5000 family emoji fit alongside diagnostics and a maximum-size screenshot", async () => {
+  const text = "👨‍👩‍👧‍👦".repeat(5000);
+  const { response, calls } = await post(request({
+    text,
+    image: png(3 * 1024 * 1024).toString("base64"),
+    diagnostics: { note: "x".repeat(2000) },
+  }));
+
+  assert.deepEqual(response, { status: 200, body: { issueUrl } });
+  assert.equal(calls.length, 2);
+  assert.ok(calls[1].body.body.includes(text));
+});
+
+test("public feedback that would exceed the issue body limit is rejected before upload", async () => {
+  const text = `a${"\u0301".repeat(12)}`.repeat(5000);
+  const diagnostics = { note: "x".repeat(2000) };
+  for (const image of [undefined, png().toString("base64")]) {
+    const { response, calls } = await post(request({ text, diagnostics, image }));
+    assert.deepEqual(response, { status: 413, body: { error: "too_large" } });
+    assert.equal(calls.length, 0);
+  }
+
+  const { response, calls } = await post(request({ kind: "praise", text, diagnostics }));
+  assert.deepEqual(response, { status: 200, body: {} });
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].body.text.includes(text));
+});
+
+test("the issue body limit includes formatting and the screenshot link", async () => {
+  const text = `\`\`\`@dev ${`a${"\u0301".repeat(12)}`.repeat(4992)}`;
+  const sample = await post(request({ text, diagnostics: { note: "" } }));
+  const remaining = 65_536 - [...sample.calls[0].body.body].length;
+  const atLimit = request({ text, diagnostics: { note: "x".repeat(remaining) } });
+
+  const accepted = await post(atLimit);
+  assert.equal(accepted.response.status, 200);
+  assert.equal([...accepted.calls[0].body.body].length, 65_536);
+
+  const rejected = await post({ ...atLimit, image: png().toString("base64") });
+  assert.deepEqual(rejected.response, { status: 413, body: { error: "too_large" } });
+  assert.equal(rejected.calls.length, 0);
 });
 
 for (const character of ["😀", "𠀀", "e\u0301", "👨‍👩‍👧‍👦"]) {

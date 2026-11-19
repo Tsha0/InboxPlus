@@ -41,6 +41,10 @@ The macOS app submits feedback to `POST https://inboxplus.chat/api/feedback`.
 Keep the relay disabled until its credentials and firewall rate limit are configured.
 The Mac download links to the latest release’s `InboxPlus-*.dmg` installer.
 
+The relay accepts request bodies up to 4,500,000 bytes, within Vercel’s 4.5 MB limit.
+Public reports whose formatted issue bodies exceed 65,536 characters return HTTP 413 before
+any screenshot is uploaded. Private praise is not subject to the GitHub issue limit.
+
 ### Environment variables
 
 | Name | Value |
