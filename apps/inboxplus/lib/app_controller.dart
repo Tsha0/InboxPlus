@@ -25,6 +25,9 @@ typedef NativeCall = Future<Object?> Function(
   Map<String, Object?> arguments,
 );
 
+const _telegramQrInstructions =
+    'On your phone, open Telegram → Settings → Devices → Link Desktop Device, then scan this code.';
+
 class AppController extends InboxUiController {
   AppController({
     required this.store,
@@ -289,7 +292,7 @@ class AppController extends InboxUiController {
               ? 'Private web sign-in is unavailable on this device.'
               : null,
           description: entry.key == 'telegram'
-              ? 'Sign in with your phone number and Telegram app credentials.'
+              ? 'Scan a QR code or use your phone number. Needs Telegram app credentials.'
               : entry.key == 'messenger'
               ? 'Connect Facebook chats. Encrypted chats are currently unavailable.'
               : entry.key == 'wechat'
@@ -716,13 +719,61 @@ class AppController extends InboxUiController {
   }
 
   @override
-  Future<void> beginLogin(String networkId, {bool? useQr}) => _beginLogin(
-    networkId,
-    useQr: useQr ?? (_login?.networkId == networkId ? _loginQrSelected : null),
-    accountId: _login?.networkId == networkId ? _loginAccount : null,
-    editCredentials:
-        _login?.networkId == networkId && _login?.step == LoginStep.failed,
-  );
+  Future<void> beginLogin(String networkId, {bool? useQr}) {
+    final id = _loginAccount;
+    // Restarting would discard the API credentials of an account still being added.
+    if (networkId == 'telegram' &&
+        useQr != null &&
+        id != null &&
+        _login?.networkId == 'telegram') {
+      return _chooseTelegramLoginMethod(id, useQr);
+    }
+    return _beginLogin(
+      networkId,
+      useQr:
+          useQr ?? (_login?.networkId == networkId ? _loginQrSelected : null),
+      accountId: _login?.networkId == networkId ? _loginAccount : null,
+      editCredentials:
+          _login?.networkId == networkId && _login?.step == LoginStep.failed,
+    );
+  }
+
+  Future<void> _chooseTelegramLoginMethod(String id, bool useQr) =>
+      _perform(() async {
+        final generation = _loginGeneration;
+        _loginQrSelected = useQr;
+        if (useQr) {
+          _login = const LoginState(
+            networkId: 'telegram',
+            step: LoginStep.qr,
+            title: 'Connect Telegram',
+            instructions: _telegramQrInstructions,
+          );
+          _publish();
+        }
+        final Map<String, Object?> result;
+        try {
+          // connect also restarts a connection that dropped during sign-in.
+          result = await engine!.request({
+            'op': 'connect',
+            'account_id': id,
+            ...await _telegramCredentials(id),
+            'login_method': useQr ? 'qr' : 'phone',
+          });
+        } catch (_) {
+          if (generation != _loginGeneration ||
+              _login?.step == LoginStep.complete) {
+            return;
+          }
+          rethrow;
+        }
+        if (generation != _loginGeneration ||
+            _login?.step == LoginStep.complete) {
+          return;
+        }
+        if (result['state'] == 'connected') await _setConnection(id, true);
+        _updateLoginState(id, result['state'] as String? ?? '', result);
+      }, loginOperation: true);
 
   @override
   Future<void> reconnectAccount(String accountId) async {
@@ -901,6 +952,7 @@ class AppController extends InboxUiController {
               'op': 'connect',
               'account_id': id,
               ...credentials,
+              'login_method': _loginQrSelected ? 'qr' : 'phone',
             });
             if (generation != _loginGeneration) return;
             _updateLoginState(id, result['state'] as String? ?? '', result);
@@ -1035,7 +1087,11 @@ class AppController extends InboxUiController {
         environment.secretName('telegram.$id'),
         jsonEncode(credentials),
       );
-      command = {'op': 'connect', ...credentials};
+      command = {
+        'op': 'connect',
+        ...credentials,
+        'login_method': _loginQrSelected ? 'qr' : 'phone',
+      };
     } else if (fields.containsKey('phone')) {
       var phone = fields['phone']!.trim();
       if (current.networkId == 'whatsapp') {
@@ -1290,6 +1346,24 @@ class AppController extends InboxUiController {
           step: LoginStep.fields,
           title: 'Approve LinkedIn sign-in',
           instructions: 'Approve this sign-in in your LinkedIn app, then select Continue.',
+        );
+      case 'qr':
+        final current = _login;
+        _login = LoginState(
+          networkId: network,
+          step: LoginStep.qr,
+          title: 'Connect Telegram',
+          instructions: _telegramQrInstructions,
+          qrData: current?.step == LoginStep.qr ? current!.qrData : null,
+        );
+      case 'disconnected'
+          when network == 'telegram' && _login?.step == LoginStep.qr:
+        _login = const LoginState(
+          networkId: 'telegram',
+          step: LoginStep.qr,
+          title: 'Connect Telegram',
+          instructions: _telegramQrInstructions,
+          error: 'Telegram disconnected. Get a new QR code to try again.',
         );
       case 'password':
         _login = LoginState(
@@ -2671,10 +2745,16 @@ class AppController extends InboxUiController {
           _login = LoginState(
             networkId: network,
             step: LoginStep.qr,
-            title: network == 'wechat' ? 'Connect WeChat' : 'Link WhatsApp',
-            instructions: network == 'wechat'
-                ? 'Save the code, then open WeChat → + → Scan → Album and select it. Confirm sign-in, then return here. If WeChat rejects image-based login, share the code to another screen and scan it there. Requires WeChat web access.'
-                : 'Scan this code using WhatsApp → Linked devices → Link a device.',
+            title: switch (network) {
+              'wechat' => 'Connect WeChat',
+              'telegram' => 'Connect Telegram',
+              _ => 'Link WhatsApp',
+            },
+            instructions: switch (network) {
+              'wechat' => 'Save the code, then open WeChat → + → Scan → Album and select it. Confirm sign-in, then return here. If WeChat rejects image-based login, share the code to another screen and scan it there. Requires WeChat web access.',
+              'telegram' => _telegramQrInstructions,
+              _ => 'Scan this code using WhatsApp → Linked devices → Link a device.',
+            },
             qrData: event['code'] as String?,
             qrImage: event['image'] as String?,
             expiresAt: expiresAt,
@@ -2734,7 +2814,9 @@ class AppController extends InboxUiController {
           partial: event['reactions_partial'] == true,
         );
       case 'error':
-        _error = 'An account needs attention. Your saved conversations and drafts have been kept.';
+        _error = event['code'] == 'telegram_qr_login_failed'
+            ? 'Telegram did not finish the QR sign-in. Enter your phone number, or try the QR code again.'
+            : 'An account needs attention. Your saved conversations and drafts have been kept.';
     }
     _scheduleStatistics();
     _publish();
@@ -3327,7 +3409,8 @@ class AppController extends InboxUiController {
           networkId: old.networkId,
           step: expired
               ? LoginStep.failed
-              : old.networkId == 'whatsapp' && old.step == LoginStep.qr
+              : {'whatsapp', 'telegram'}.contains(old.networkId) &&
+                    old.step == LoginStep.qr
               ? LoginStep.qr
               : old.fields.isEmpty
               ? LoginStep.failed
