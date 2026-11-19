@@ -619,6 +619,128 @@ void main() {
   );
 
   testWidgets(
+    'phone suggestions can be searched by identity ID',
+    (tester) async {
+      final controller = _FakeController(
+        conversations: [
+          for (final account in ['first', 'second'])
+            ConversationRecord(
+              route: ConversationRoute(account, 'chat'),
+              title: 'José Chen',
+              identityId: 'jose-account-123',
+              latestActivity: DateTime(2026, 11, 5),
+            ),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-contacts')));
+      await tester.pumpAndSettle();
+      expect(find.text('SUGGESTED LINKS'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '  JOSE-ACCOUNT-123  ');
+      await tester.pumpAndSettle();
+      expect(find.text('SUGGESTED LINKS'), findsOneWidget);
+      expect(find.text('Link'), findsOneWidget);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  for (final width in [320.0, 390.0]) {
+    for (final scale in [1.0, 2.0, 3.0]) {
+      testWidgets(
+        'phone suggestions fit accessible layout $width $scale',
+        (tester) async {
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          final controller = _FakeController(
+            conversations: [
+              for (final account in ['first', 'second'])
+                ConversationRecord(
+                  route: ConversationRoute(account, 'chat'),
+                  title: 'José Chen',
+                  identityId: 'same',
+                  latestActivity: DateTime(2026, 11, 5),
+                ),
+            ],
+          );
+          await _pumpApp(tester, controller, size: Size(width, 844));
+          await tester.tap(find.byKey(const Key('phone-tab-contacts')));
+          await tester.pumpAndSettle();
+          expect(find.text('Link'), findsOneWidget);
+          await tester.ensureVisible(find.text('Link'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Link'));
+          await tester.pumpAndSettle();
+          expect(controller.contacts.single.displayName, 'José Chen');
+          expect(tester.takeException(), isNull);
+        },
+        variant: TargetPlatformVariant({
+          TargetPlatform.iOS,
+          TargetPlatform.android,
+        }),
+      );
+    }
+  }
+
+  testWidgets(
+    'phone suggestions link only after acceptance and retain failures',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      final controller = _FakeController(
+        conversations: [
+          for (final account in ['first', 'second'])
+            ConversationRecord(
+              route: ConversationRoute(account, 'chat'),
+              title: 'José Chen',
+              identityId: 'same',
+              latestActivity: DateTime(2026, 11, 5),
+            ),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-contacts')));
+      await tester.pumpAndSettle();
+      expect(find.text('SUGGESTED LINKS'), findsOneWidget);
+      expect(find.text('WhatsApp · Telegram'), findsOneWidget);
+      expect(controller.contacts, isEmpty);
+      final action = find.bySemanticsLabel('Link José Chen across networks');
+      expect(
+        tester.getSemantics(action),
+        isSemantics(isButton: true, hasTapAction: true),
+      );
+
+      await tester.enterText(find.byType(TextField), 'nobody');
+      await tester.pumpAndSettle();
+      expect(find.text('SUGGESTED LINKS'), findsNothing);
+      await tester.enterText(find.byType(TextField), 'jos');
+      await tester.pumpAndSettle();
+      expect(find.text('SUGGESTED LINKS'), findsOneWidget);
+
+      controller.contactSaveError = 'Could not save this grouping.';
+      await tester.tap(find.text('Link'));
+      await tester.pumpAndSettle();
+      expect(find.text(controller.contactSaveError!), findsOneWidget);
+      expect(controller.contacts, isEmpty);
+      expect(find.text('Link'), findsOneWidget);
+      controller.contactSaveError = null;
+      await tester.tap(find.text('Link'));
+      await tester.pumpAndSettle();
+      expect(find.text('SUGGESTED LINKS'), findsNothing);
+      expect(controller.contacts.single.displayName, 'José Chen');
+      expect(find.byKey(const Key('contact-accepted-person')), findsOneWidget);
+      expect(controller.sentDrafts, isEmpty);
+      expect(tester.takeException(), isNull);
+      semantics.dispose();
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
     'desktop Contacts orders by names instead of internal ids',
     (tester) async {
       final controller = _FakeController(

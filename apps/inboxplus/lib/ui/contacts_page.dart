@@ -1,7 +1,10 @@
+import 'dart:typed_data';
+
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:inboxplus_storage/inboxplus_storage.dart';
 
+import '../contact_suggestions.dart';
 import 'confirmation.dart';
 import 'inbox_ui_controller.dart';
 import 'network_badge.dart';
@@ -83,16 +86,197 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
             )
             .toList()
           ..sort(_compareContacts);
-    return _buildList(context, contacts, query);
+    final suggestions = widget.controller.contactSuggestions
+        .where(
+          (suggestion) =>
+              query.isEmpty ||
+              suggestion.displayName.toLowerCase().contains(query) ||
+              suggestion.identities.any(
+                (identity) => identity.identityId.toLowerCase().contains(query),
+              ),
+        )
+        .toList();
+    return _buildList(context, contacts, suggestions, query);
   }
+
+  Uint8List? _photoFor(List<IdentityLink> identities) => personPhoto(
+    identities.expand(
+      (identity) => widget.controller.conversations.where(
+        (conversation) =>
+            conversation.route.accountId == identity.accountId &&
+            conversation.identityId == identity.identityId,
+      ),
+    ),
+  );
+
+  Widget _suggestions(List<ContactSuggestion> suggestions) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+            child: Semantics(
+              container: true,
+              header: true,
+              child: Text(
+                'SUGGESTED LINKS',
+                style: TextStyle(
+                  fontSize: 12,
+                  letterSpacing: .6,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Material(
+              color: dark
+                  ? scheme.surfaceContainer
+                  : scheme.surfaceContainerLowest,
+              child: Column(
+                children: [
+                  for (final (index, suggestion) in suggestions.indexed) ...[
+                    if (index > 0)
+                      Divider(
+                        height: 1,
+                        indent: 74,
+                        color: scheme.outlineVariant.withValues(alpha: .5),
+                      ),
+                    Padding(
+                      key: Key('contact-suggestion-${suggestion.id}'),
+                      padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final stacked =
+                              constraints.maxWidth < 300 ||
+                              MediaQuery.textScalerOf(context).scale(16) > 24;
+                          final action = _suggestionAction(suggestion);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                children: [
+                                  PersonAvatar(
+                                    name: suggestion.displayName,
+                                    bytes: _photoFor(suggestion.identities),
+                                    size: 46,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          suggestion.displayName,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        _networks(suggestion.platforms),
+                                      ],
+                                    ),
+                                  ),
+                                  if (!stacked) ...[
+                                    const SizedBox(width: 8),
+                                    action,
+                                  ],
+                                ],
+                              ),
+                              if (stacked)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: action,
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+            child: Text(
+              'These conversations share a name on different networks. Link them to keep one person together.',
+              style: TextStyle(fontSize: 12.5, color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _suggestionAction(ContactSuggestion suggestion) {
+    final busy = widget.controller.isBusy;
+    return Semantics(
+      container: true,
+      button: true,
+      enabled: !busy,
+      excludeSemantics: true,
+      onTap: busy
+          ? null
+          : () => widget.controller.acceptContactSuggestion(suggestion),
+      label: 'Link ${suggestion.displayName} across networks',
+      child: FilledButton.tonal(
+        onPressed: busy
+            ? null
+            : () => widget.controller.acceptContactSuggestion(suggestion),
+        child: const Text('Link'),
+      ),
+    );
+  }
+
+  Widget _networks(List<String> platforms) => Row(
+    children: [
+      for (final platform in platforms)
+        Padding(
+          padding: const EdgeInsets.only(right: 3),
+          child: NetworkBadge(network: platform, size: 16, labelled: false),
+        ),
+      const SizedBox(width: 5),
+      Expanded(
+        child: Text(
+          platforms
+              .map((platform) => _networkLabel(widget.controller, platform))
+              .join(' · '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 13.5,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    ],
+  );
 
   Widget _buildList(
     BuildContext context,
     List<ContactRecord> contacts,
+    List<ContactSuggestion> suggestions,
     String query,
   ) {
     final scheme = Theme.of(context).colorScheme;
-    final rows = <Widget>[];
+    final rows = <Widget>[
+      if (suggestions.isNotEmpty) _suggestions(suggestions),
+    ];
     String? current;
     for (final contact in contacts) {
       final heading = _contactLetter(contact);
@@ -118,15 +302,7 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
           .whereType<String>()
           .toSet()
           .toList();
-      final photo = personPhoto(
-        contact.identities.expand(
-          (identity) => widget.controller.conversations.where(
-            (conversation) =>
-                conversation.route.accountId == identity.accountId &&
-                conversation.identityId == identity.identityId,
-          ),
-        ),
-      );
+      final photo = _photoFor(contact.identities);
       rows.add(
         InkWell(
           key: Key('contact-${contact.id}'),
@@ -151,38 +327,7 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
                         ),
                       ),
                       const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          for (final platform in platforms)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 3),
-                              child: NetworkBadge(
-                                network: platform,
-                                size: 16,
-                                labelled: false,
-                              ),
-                            ),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: Text(
-                              platforms
-                                  .map(
-                                    (platform) => _networkLabel(
-                                      widget.controller,
-                                      platform,
-                                    ),
-                                  )
-                                  .join(' · '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13.5,
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                      _networks(platforms),
                     ],
                   ),
                 ),
@@ -250,7 +395,7 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
           ),
         ),
         Expanded(
-          child: contacts.isEmpty
+          child: rows.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
