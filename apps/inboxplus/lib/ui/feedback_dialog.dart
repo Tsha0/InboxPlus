@@ -9,6 +9,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'feedback_image.dart';
 import 'inbox_ui_controller.dart';
 
+const feedbackDiagnosticsNotice =
+    'Diagnostics are attached automatically. They don’t include messages or account names.';
+
 class FeedbackForm {
   FeedbackKind? kind;
   final text = TextEditingController();
@@ -29,6 +32,15 @@ class FeedbackForm {
 
   void dispose() => text.dispose();
 }
+
+Future<Uint8List?> chooseFeedbackImage(InboxUiController controller) async {
+  final bytes = await controller.pickFeedbackImage();
+  return bytes == null ? null : normalizeFeedbackImage(bytes);
+}
+
+String feedbackImageError(Exception error) => error is FeedbackImageFailure
+    ? error.message
+    : 'Inbox+ can’t read this file as an image. Choose a PNG or JPEG.';
 
 sealed class _Phase {
   const _Phase();
@@ -141,13 +153,8 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
     try {
       final image = await source();
       if (mounted && image != null) setState(() => _form.image = image);
-    } on Exception {
-      if (mounted) {
-        setState(
-          () => _imageError =
-              'Inbox+ can’t read this file as an image. Choose a PNG or JPEG.',
-        );
-      }
+    } on Exception catch (error) {
+      if (mounted) setState(() => _imageError = feedbackImageError(error));
     } finally {
       if (mounted) {
         setState(() => _attaching = false);
@@ -165,10 +172,7 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
     if (restoreFocus) _restoreFocus(_captureFocus);
   }
 
-  Future<Uint8List?> _chooseImage() async {
-    final bytes = await widget.controller.pickFeedbackImage();
-    return bytes == null ? null : normalizeFeedbackImage(bytes);
-  }
+  Future<Uint8List?> _chooseImage() => chooseFeedbackImage(widget.controller);
 
   Future<Uint8List?> _captureWindow() async {
     final ratio = MediaQuery.devicePixelRatioOf(context);
@@ -347,12 +351,7 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
           children: [
             Icon(CupertinoIcons.info, size: 15, color: supporting.color),
             const SizedBox(width: 9),
-            Expanded(
-              child: Text(
-                'Diagnostics are attached automatically. They don’t include messages or account names.',
-                style: supporting,
-              ),
-            ),
+            Expanded(child: Text(feedbackDiagnosticsNotice, style: supporting)),
           ],
         ),
         if (failure != null) ...[

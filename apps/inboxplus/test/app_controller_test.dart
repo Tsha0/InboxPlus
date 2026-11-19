@@ -999,6 +999,36 @@ void main() {
     },
   );
 
+  test('phone appearance choices survive reopening the profile', () async {
+    final app = await start(engine: _FakeEngine());
+    await app.setPreference('themePreset', 'nightSwim');
+    await app.setPreference('accentOverride', 0xc2185b);
+    await app.setPreference('bubbleShape', 'soft');
+    await app.setPreference('textSize', 'large');
+    await app.setPreference('inboxDensity', 'compact');
+    await app.setPreference('chatWallpaper', 'dots');
+    await closeController();
+    store = await LocalStore.open(file: database, key: key);
+    storeClosed = false;
+    final reopened = await start(engine: _FakeEngine());
+
+    expect(reopened.preferences.themePreset, 'nightSwim');
+    expect(reopened.preferences.accentOverride, 0xc2185b);
+    expect(reopened.preferences.bubbleShape, 'soft');
+    expect(reopened.preferences.textSize, 'large');
+    expect(reopened.preferences.inboxDensity, 'compact');
+    expect(reopened.preferences.chatWallpaper, 'dots');
+    await reopened.setPreference('accentOverride', 0x1000000);
+    await reopened.setPreference('bubbleShape', 'blob');
+    await reopened.setPreference('chatWallpaper', 'plaid');
+    expect(reopened.preferences.chatWallpaper, 'dots');
+    expect(reopened.preferences.accentOverride, 0xc2185b);
+    expect(reopened.preferences.bubbleShape, 'soft');
+    await reopened.setPreference('accentOverride', 'theme');
+    expect(reopened.preferences.accentOverride, isNull);
+    expect(reopened.preferences.themePreset, 'nightSwim');
+  });
+
   test(
     'reaction counts toggle once, remain scoped and survive reopening',
     () async {
@@ -2865,6 +2895,32 @@ void main() {
       expect(picker.calls, 0);
     });
 
+    for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+      test(
+        '${platform.name} exports sanitized attachment bytes through the runner',
+        () async {
+          debugDefaultTargetPlatformOverride = platform;
+          final source = await receive(
+            name: '../../photo?.png',
+            mime: 'image/png',
+          );
+          final app = await start();
+          await app.saveAttachment(firstRoute, 'received-file', 'file');
+          expect(app.error, isNull);
+          final calls = native.calls.where(
+            (entry) => entry['method'] == 'exportPrivateFile',
+          );
+          expect(calls.single['arguments'], {
+            'name': 'photo_.png',
+            'mimeType': 'image/png',
+            'bytes': [0, 255, 42, 13, 10],
+          });
+          expect(await source.readAsBytes(), [0, 255, 42, 13, 10]);
+          expect(picker.calls, 0);
+        },
+      );
+    }
+
     test(
       'outside-profile paths and symlink escapes never open a save dialog',
       () async {
@@ -2959,6 +3015,35 @@ void main() {
 
     AttachmentRecord photo(AppController app) =>
         app.messagesFor(firstRoute).single.attachments.single;
+
+    test('explicit and inline downloads share one active request', () async {
+      final pending = Completer<Map<String, Object?>>();
+      final engine = _FakeEngine(onDownload: (_) => pending.future);
+      final app = await openPhoto(engine);
+      int requests() => engine.commands
+          .where((command) => command['op'] == 'download_attachment')
+          .length;
+      final first = app.downloadAttachment(
+        firstRoute,
+        'photo-message',
+        'photo',
+      );
+      await _eventually(() => requests() == 1);
+      final stateWhilePending = app.attachmentLoadState(firstRoute, 'photo');
+      final second = app.downloadAttachment(
+        firstRoute,
+        'photo-message',
+        'photo',
+      );
+      final inline = app.loadInlineImage(firstRoute, 'photo-message', 'photo');
+      pending.complete({
+        'bytes': base64Encode([255, 216, 255]),
+      });
+      await Future.wait([first, second, inline]);
+      expect((stateWhilePending, requests()), (AttachmentLoadState.loading, 1));
+      expect(app.attachmentLoadState(firstRoute, 'photo'), isNull);
+      expect(photo(app).localPath, isNotNull);
+    });
 
     test('loads a received photo into the private media store', () async {
       final engine = _FakeEngine(
@@ -3113,6 +3198,7 @@ void main() {
       await _eventually(() => engine.commands.any((c) => c['op'] == 'logout'));
       final staging = app.stageAttachments(firstRoute);
       await _eventually(() => picker.pickStarted);
+      expect(picker.pickedType, FileType.any);
       logout.complete();
       await removal;
       expect(app.accounts.single.id, 'first');
@@ -3122,6 +3208,107 @@ void main() {
       expect(await store.loadAccounts(), hasLength(1));
     },
   );
+
+  test('photo attachments open the media picker', () async {
+    await seed(firstRoute);
+    final originalPicker = FilePickerPlatform.instance;
+    final picker = _SavePicker();
+    FilePickerPlatform.instance = picker;
+    addTearDown(() => FilePickerPlatform.instance = originalPicker);
+    final app = await start(engine: _FakeEngine());
+    await app.stageAttachments(firstRoute, media: true);
+    expect(picker.pickedType, FileType.media);
+    await app.stageAttachments(firstRoute);
+    expect(picker.pickedType, FileType.any);
+  });
+
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    test(
+      '${platform.name} picks supply bytes without a disposable picker path',
+      () async {
+        debugDefaultTargetPlatformOverride = platform;
+        await seed(firstRoute);
+        final app = await start(engine: _FakeEngine());
+        final photo = base64Decode(_onePixelPng);
+        native.pickedFile = {'name': 'IMG_0001.png', 'bytes': photo};
+        await app.stageAttachments(firstRoute, media: true);
+        final staged = app.draftFor(firstRoute)!.attachments.single;
+        expect(staged.fileName, 'IMG_0001.png');
+        final file = File(staged.localPath!);
+        expect(await file.readAsBytes(), photo);
+        if (!Platform.isWindows) {
+          expect((await file.stat()).mode & 0x1ff, 0x180);
+          expect((await file.parent.stat()).mode & 0x1ff, 0x1c0);
+        }
+
+        native.pickedFile = {'name': 'shot.png', 'bytes': photo};
+        expect(await app.pickFeedbackImage(), photo);
+        final picks = native.calls.where(
+          (entry) => entry['method'] == 'pickPrivateFile',
+        );
+        expect(picks.map((entry) => (entry['arguments'] as Map)['type']), [
+          'media',
+          'image',
+        ]);
+        native.pickedFile = null;
+        expect(await app.pickFeedbackImage(), isNull);
+      },
+    );
+  }
+
+  test(
+    'a rejected mobile pick preserves the current draft and size error',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await seed(firstRoute);
+      final app = await start(engine: _FakeEngine());
+      app.updateDraft(firstRoute, 'Keep this draft');
+      native.pickError = 'picked_file_too_large';
+      await app.stageAttachments(firstRoute);
+      expect(app.error, startsWith('Attachments must be '));
+      expect(app.draftFor(firstRoute)?.body, 'Keep this draft');
+      expect(app.draftFor(firstRoute)?.attachments, isEmpty);
+    },
+  );
+
+  for (final (code, message) in [
+    ('file_picker_busy', 'Another file is still being chosen. Try again.'),
+    ('picked_file_unreadable', 'The selected file could not be read.'),
+    ('file_picker_unavailable', 'The selected file could not be read.'),
+  ]) {
+    test('a $code screenshot pick reports a readable error', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final app = await start(engine: _FakeEngine());
+      native.pickError = code;
+      await expectLater(
+        app.pickFeedbackImage(),
+        throwsA(
+          isA<FeedbackImageFailure>().having(
+            (error) => error.message,
+            'message',
+            message,
+          ),
+        ),
+      );
+    });
+  }
+
+  test('desktop picks keep the original file', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final originalPicker = FilePickerPlatform.instance;
+    final picker = _SavePicker();
+    FilePickerPlatform.instance = picker;
+    addTearDown(() => FilePickerPlatform.instance = originalPicker);
+    final app = await start(engine: _FakeEngine());
+    final original = File(
+      p.join(Directory.systemTemp.createTempSync('desktop').path, 'shot.png'),
+    )..writeAsBytesSync(base64Decode(_onePixelPng));
+    picker.pickedPath = original.path;
+    expect(await app.pickFeedbackImage(), isNotNull);
+    expect(original.existsSync(), isTrue);
+  });
 
   test('a background mailbox sync leaves controls available', () async {
     await seed(firstRoute, platform: 'instagram');
@@ -3679,6 +3866,8 @@ class _SavePicker extends FilePickerPlatform {
 
   Completer<PlatformFile?>? pickGate;
   bool pickStarted = false;
+  String? pickedPath;
+  FileType? pickedType;
 
   @override
   Future<PlatformFile?> pickFile({
@@ -3695,6 +3884,8 @@ class _SavePicker extends FilePickerPlatform {
     WebOptions webOptions = const WebOptions(),
   }) async {
     pickStarted = true;
+    pickedType = type;
+    if (pickedPath case final path?) return _PickedFile(path);
     return pickGate?.future;
   }
 
@@ -3753,12 +3944,17 @@ class _NativeFixture {
   final calls = <Map<String, Object?>>[];
   Completer<Object?>? webLoginResponse;
   bool webLoginActive = false;
+  Map<String, Object?>? pickedFile;
+  String? pickError;
   Future<Object?> call(String method, Map<String, Object?> arguments) async {
     calls.add({
       'method': method,
       'arguments': Map<String, Object?>.of(arguments),
     });
     switch (method) {
+      case 'pickPrivateFile':
+        if (pickError case final code?) throw PlatformException(code: code);
+        return pickedFile;
       case 'loginBackgroundStatus':
         return {'expired': loginBackgroundExpired};
       case 'saveLoginQr':
@@ -4004,4 +4200,35 @@ class _FakeEngine implements ConnectorEngine {
     await closeGate?.future;
     await _events.close();
   }
+}
+
+const _onePixelPng =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+final class _PickedFile extends PlatformFile {
+  _PickedFile(this._path);
+
+  final String _path;
+
+  @override
+  String get name => p.basename(_path);
+
+  @override
+  Uri get uri => Uri.file(_path);
+
+  @override
+  Never get xFile => throw UnimplementedError();
+
+  @override
+  int? lengthSync() => File(_path).lengthSync();
+
+  @override
+  Future<int?> length() => File(_path).length();
+
+  @override
+  Future<Uint8List> readAsBytes() => File(_path).readAsBytes();
+
+  @override
+  Stream<Uint8List> readAsByteStream() =>
+      File(_path).openRead().map(Uint8List.fromList);
 }

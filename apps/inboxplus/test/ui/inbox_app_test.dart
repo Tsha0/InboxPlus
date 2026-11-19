@@ -1,4 +1,5 @@
 import 'dart:async' show Completer;
+import 'dart:io';
 import 'dart:convert';
 import 'dart:ui' show SemanticsAction;
 import 'dart:ui' as ui;
@@ -12,7 +13,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inboxplus/contact_suggestions.dart';
 import 'package:inboxplus/ui/account_pages.dart'
-    show ConnectAccountsDialog, formatByteCount, loginQrImageBytes;
+    show
+        ConnectAccountsDialog,
+        FeedbackPage,
+        formatByteCount,
+        loginQrImageBytes;
 import 'package:inboxplus/ui/inbox_app.dart';
 import 'package:inboxplus/ui/feedback_dialog.dart';
 import 'package:inboxplus/ui/person_avatar.dart';
@@ -28,39 +33,50 @@ void main() {
     displayName: 'iMessage',
     isConnected: true,
   );
-  testWidgets('iOS shows the same photo in the conversation list and header', (
-    tester,
-  ) async {
-    final bytes = base64Decode(
-      'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAADrElEQVR4nO2brXIUQRRGbyiegAfgIdA4FCYSigITTRUGNEWhwVCFjoGiiIyJwqFxCCwPwDMgLoQluzs7m+m+55ud76j8zPbe+U7f7uzM5Ojix/cwHDfoApaOBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcDcpAvYm/MXT4cPOH7zvqaSJhzN4n7AztC3oS9DWsC1c19H1oSogIbRryKoQXET7pR+15GvjVYHlAWk0wpCHVA5PXVaQUVAfSIiDiQEUFkoOOAFsCngDmAB+PnjNZACFNJPwEr4JWjhYAJ0pn9C1eMOgGEEqE3/BKnKHQBjATCAAM31J6mvzR0AM797whHx6tmjrb9696mykunMScBA7uvHzMXEPASMiX7jS/Q1zGAPuEb6TV5bg3QHNIlPvBV0O6Dt5JVtBVEBPfLSdAAI2PlEQr+kdo5c/7SEXAf0nqdqfSAnYGkwArZ1es303PYuyNNaQh1QuTjoLESYAJ2HAxOqHpUOqJ+SIk1ACtBpArASuAMUHLA1SDyefufn140/f/j6Q0R8fvlkyuDDg3y7fXfK4NNR2QPWyeBWv6AG6YqugIWgK+By0ZiyBDUZpCv8HrBtAyiD3QZ0O2AhWACMBcBYAIwFwFgAjAXAWACMBcDwAkZ+ED07vTg7vRg/7MjjfTV06cxGwIOT+xExsgnysHyJOLMRcKhICBi5EI9sgvHTH98AQuFydDL+ovSlgPWIB361EQv4x153BYabYPzSbwH/se+dmXUNe+26CumH+H/IDDOLP3J2IrEJJ5VTUmT6h5SAqMpFJ/1QE7BA5AT0np5S0z8EBUTPjNTSD00B0ScpwfRDVkC0zksz/RD/HJCpTXx0Tjb6RLcDLpmSoHj6Id4Bb0/PV7/9eO/W+Nc+/vIrIiL+jPD85LhZWU0Ruha0ypXorzBg4m/umxHUICdgOPomSGkQElAQ/SoiGlQ24eL0kXfcCN8BeBBsK8AdgKeP10AKUEg/ASvBBOikn1D1MALU0k+QqgABmukn9bVVC1BOPymusFSAfvpJZZ11AuaSflJWrcon4cVSJGBe0z+pqblCwBzTTwoq9xIE013AfKd/0rt+dwBMXwFzn/5J17PoKOAw0k/6nYuXIBgLgOkl4JDWn6TTGbkDYLoIOLzpn/Q4L3cAjAXAtBdwqOtP0vzs3AEwFgBjATCNBRz2BpC0PUd3AIwFwFgAjAXAtBSwhB04aXim7gAYC4CxABgLgLEAGAuA+Q0U5zslErVXCgAAAABJRU5ErkJggg==',
-    );
-    final controller = _FakeController(
-      conversations: [
-        ConversationRecord(
-          route: const ConversationRoute('first', 'alice'),
-          title: 'Alice',
-          latestActivity: DateTime(2026),
-          avatarBytes: bytes,
+  testWidgets(
+    'phone shows the same photo in the conversation list and header',
+    (tester) async {
+      final bytes = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAADrElEQVR4nO2brXIUQRRGbyiegAfgIdA4FCYSigITTRUGNEWhwVCFjoGiiIyJwqFxCCwPwDMgLoQluzs7m+m+55ud76j8zPbe+U7f7uzM5Ojix/cwHDfoApaOBcBYAIwFwFgAjAXAWACMBcBYAIwFwFgAjAXAWACMBcDcpAvYm/MXT4cPOH7zvqaSJhzN4n7AztC3oS9DWsC1c19H1oSogIbRryKoQXET7pR+15GvjVYHlAWk0wpCHVA5PXVaQUVAfSIiDiQEUFkoOOAFsCngDmAB+PnjNZACFNJPwEr4JWjhYAJ0pn9C1eMOgGEEqE3/BKnKHQBjATCAAM31J6mvzR0AM797whHx6tmjrb9696mykunMScBA7uvHzMXEPASMiX7jS/Q1zGAPuEb6TV5bg3QHNIlPvBV0O6Dt5JVtBVEBPfLSdAAI2PlEQr+kdo5c/7SEXAf0nqdqfSAnYGkwArZ1es303PYuyNNaQh1QuTjoLESYAJ2HAxOqHpUOqJ+SIk1ACtBpArASuAMUHLA1SDyefufn140/f/j6Q0R8fvlkyuDDg3y7fXfK4NNR2QPWyeBWv6AG6YqugIWgK+By0ZiyBDUZpCv8HrBtAyiD3QZ0O2AhWACMBcBYAIwFwFgAjAXAWACMBcDwAkZ+ED07vTg7vRg/7MjjfTV06cxGwIOT+xExsgnysHyJOLMRcKhICBi5EI9sgvHTH98AQuFydDL+ovSlgPWIB361EQv4x153BYabYPzSbwH/se+dmXUNe+26CumH+H/IDDOLP3J2IrEJJ5VTUmT6h5SAqMpFJ/1QE7BA5AT0np5S0z8EBUTPjNTSD00B0ScpwfRDVkC0zksz/RD/HJCpTXx0Tjb6RLcDLpmSoHj6Id4Bb0/PV7/9eO/W+Nc+/vIrIiL+jPD85LhZWU0Ruha0ypXorzBg4m/umxHUICdgOPomSGkQElAQ/SoiGlQ24eL0kXfcCN8BeBBsK8AdgKeP10AKUEg/ASvBBOikn1D1MALU0k+QqgABmukn9bVVC1BOPymusFSAfvpJZZ11AuaSflJWrcon4cVSJGBe0z+pqblCwBzTTwoq9xIE013AfKd/0rt+dwBMXwFzn/5J17PoKOAw0k/6nYuXIBgLgOkl4JDWn6TTGbkDYLoIOLzpn/Q4L3cAjAXAtBdwqOtP0vzs3AEwFgBjATCNBRz2BpC0PUd3AIwFwFgAjAXAtBSwhB04aXim7gAYC4CxABgLgLEAGAuA+Q0U5zslErVXCgAAAABJRU5ErkJggg==',
+      );
+      final controller = _FakeController(
+        conversations: [
+          ConversationRecord(
+            route: const ConversationRoute('first', 'alice'),
+            title: 'Alice',
+            latestActivity: DateTime(2026),
+            avatarBytes: bytes,
+          ),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.runAsync(
+        () => precacheImage(
+          MemoryImage(bytes),
+          tester.element(find.byType(PersonAvatar)),
         ),
-      ],
-    );
-    await _pumpApp(tester, controller, size: const Size(390, 844));
-    await tester.runAsync(
-      () => precacheImage(
-        MemoryImage(bytes),
-        tester.element(find.byType(PersonAvatar)),
-      ),
-    );
-    await tester.pump();
-    expect(tester.widget<PersonAvatar>(find.byType(PersonAvatar)).bytes, bytes);
-    await tester.tap(find.byKey(const Key('conversation-first-alice')));
-    await tester.pumpAndSettle();
-    expect(tester.widget<PersonAvatar>(find.byType(PersonAvatar)).bytes, bytes);
-    expect(tester.takeException(), isNull);
-  }, variant: TargetPlatformVariant({TargetPlatform.iOS}));
+      );
+      await tester.pump();
+      expect(
+        tester.widget<PersonAvatar>(find.byType(PersonAvatar)).bytes,
+        bytes,
+      );
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<PersonAvatar>(find.byType(PersonAvatar)).bytes,
+        bytes,
+      );
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
 
   testWidgets(
-    'iOS contacts choose photos only from their linked account and identity',
+    'phone contacts choose photos only from their linked account and identity',
     (tester) async {
       final bytes = base64Decode(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
@@ -96,7 +112,6 @@ void main() {
               listenable: controller,
               builder: (_, _) => InboxContactsPage(
                 controller: controller,
-                onConnect: () {},
                 onOpenConversation: () {},
                 onCompose: (_) {},
               ),
@@ -121,7 +136,10 @@ void main() {
         bytes,
       );
     },
-    variant: TargetPlatformVariant({TargetPlatform.iOS}),
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
   );
 
   testWidgets(
@@ -290,13 +308,13 @@ void main() {
 
     expect(controller.selectedRoute, const ConversationRoute('first', 'alice'));
     expect(find.byKey(const Key('message-composer')), findsOneWidget);
-    expect(find.byKey(const Key('inbox-search')), findsNothing);
+    expect(find.byKey(const Key('inbox-search-button')), findsNothing);
 
     await tester.tap(find.byKey(const Key('back-to-inbox')));
     await tester.pumpAndSettle();
 
     expect(controller.selectedRoute, isNull);
-    expect(find.byKey(const Key('inbox-search')), findsOneWidget);
+    expect(find.byKey(const Key('inbox-search-button')), findsOneWidget);
     expect(find.byKey(const Key('message-composer')), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -1182,6 +1200,8 @@ void main() {
     final controller = _FakeController();
     await _pumpApp(tester, controller);
 
+    await tester.tap(find.byKey(const Key('inbox-search-button')));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('inbox-search')), 'Alice');
     await tester.pump();
     expect(find.byKey(const Key('conversation-first-alice')), findsOneWidget);
@@ -1189,7 +1209,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
-    expect(find.text('Connected accounts'), findsOneWidget);
+    expect(find.text('Add account'), findsOneWidget);
     await tester.tap(find.byTooltip('Inbox'));
     await tester.pumpAndSettle();
 
@@ -1280,47 +1300,52 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('conversation actions mute and hide without deleting history', (
-    tester,
-  ) async {
-    const route = ConversationRoute('first', 'alice');
-    final controller = _FakeController();
-    await _pumpApp(tester, controller, size: const Size(390, 844));
-    await tester.tap(find.byKey(const Key('conversation-first-alice')));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'conversation actions mute and hide without deleting history',
+    (tester) async {
+      const route = ConversationRoute('first', 'alice');
+      final controller = _FakeController();
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Conversation actions'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Mute conversation'));
-    await tester.pumpAndSettle();
-    expect(controller.preferencesFor(route).isMuted, isTrue);
+      await tester.tap(find.byTooltip('Conversation actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('peek-mute')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Until I turn it back on'));
+      await tester.pumpAndSettle();
+      expect(controller.preferencesFor(route).isMuted, isTrue);
+      expect(controller.preferencesFor(route).mutedUntil, isNull);
 
-    await tester.tap(find.byTooltip('Conversation actions'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Hide conversation'));
-    await tester.pumpAndSettle();
-    expect(controller.preferencesFor(route).hiddenAt, isNotNull);
-    expect(controller.conversations.any((item) => item.route == route), isTrue);
-    await tester.tap(find.byKey(const Key('back-to-inbox')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('conversation-first-alice')), findsNothing);
-    await tester.tap(find.text('1 hidden'));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('conversation-first-alice')), findsOneWidget);
-    expect(find.byKey(const Key('conversation-second-bob')), findsNothing);
-    await tester.tap(find.byKey(const Key('conversation-first-alice')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Conversation actions'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Unhide conversation'));
-    await tester.pumpAndSettle();
-    expect(controller.preferencesFor(route).hiddenAt, isNull);
-    await tester.tap(find.byKey(const Key('back-to-inbox')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Back to Inbox'));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('conversation-first-alice')), findsOneWidget);
-  });
+      await tester.tap(find.byTooltip('Conversation actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('peek-hide')));
+      await tester.pumpAndSettle();
+      expect(controller.preferencesFor(route).hiddenAt, isNotNull);
+      expect(
+        controller.conversations.any((item) => item.route == route),
+        isTrue,
+      );
+      await tester.tap(find.byKey(const Key('back-to-inbox')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('conversation-first-alice')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('phone-tab-settings')));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Hidden conversations'), 200);
+      await tester.tap(find.text('Hidden conversations'));
+      await tester.pumpAndSettle();
+      expect(find.text('Alice'), findsOneWidget);
+      await tester.tap(find.text('Restore'));
+      await tester.pumpAndSettle();
+      expect(controller.preferencesFor(route).hiddenAt, isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
 
   testWidgets('editing a contact preserves a disconnected account identity', (
     tester,
@@ -1337,14 +1362,14 @@ void main() {
       ],
     );
     await _pumpApp(tester, controller, size: const Size(390, 844));
-    await tester.tap(find.text('Contacts'));
+    await tester.tap(find.byKey(const Key('phone-tab-contacts')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Edit Alice'));
+    await tester.tap(find.byKey(const Key('contact-alice')));
     await tester.pumpAndSettle();
 
     expect(find.text('Disconnected account'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('Save contact'));
+    await tester.tap(find.byKey(const Key('contact-save')));
     await tester.pumpAndSettle();
 
     expect(
@@ -1372,7 +1397,7 @@ void main() {
       find.widgetWithText(TextFormField, 'Contact ID or username'),
       'alice123',
     );
-    await tester.tap(find.text('Save contact'));
+    await tester.tap(find.byKey(const Key('contact-save')));
     await tester.pumpAndSettle();
 
     expect(find.text('Add contact'), findsOneWidget);
@@ -1405,9 +1430,9 @@ void main() {
       ],
     );
     await _pumpApp(tester, controller, size: const Size(390, 844));
-    await tester.tap(find.text('Settings'));
+    await tester.tap(find.byKey(const Key('phone-tab-settings')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Reconnect Telegram'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Reconnect'));
     await tester.pumpAndSettle();
 
     expect(controller.reconnectedAccounts, ['existing-telegram']);
@@ -2992,9 +3017,9 @@ void main() {
       await _pumpApp(tester, controller, size: const Size(390, 844));
       await tester.tap(find.byKey(const Key('conversation-first-alice')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Message actions'));
+      await tester.longPress(find.text('Phone reaction'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('React'));
+      await tester.tap(find.byTooltip('More reactions'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('More emoji'));
       await tester.pump();
@@ -3890,6 +3915,1281 @@ void main() {
     }),
   );
 
+  testWidgets(
+    'phone filter menu shows unanswered chats and opens feedback',
+    (tester) async {
+      const alice = ConversationRoute('first', 'alice');
+      const bob = ConversationRoute('second', 'bob');
+      final controller = _FakeController(
+        messages: {
+          alice: [
+            MessageRecord(
+              id: 'a1',
+              route: alice,
+              body: 'Are you around?',
+              timestamp: DateTime(2026, 11, 4),
+              isOutgoing: false,
+            ),
+          ],
+          bob: [
+            MessageRecord(
+              id: 'b1',
+              route: bob,
+              body: 'Talk soon',
+              timestamp: DateTime(2026, 11, 4),
+              isOutgoing: true,
+            ),
+          ],
+        },
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      expect(find.byKey(const Key('inbox-search')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('inbox-filter')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('filter-unanswered')));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(370, 80));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('conversation-first-alice')), findsOneWidget);
+      expect(find.byKey(const Key('conversation-second-bob')), findsNothing);
+      expect(find.text('Unanswered'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Clear filters'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('conversation-second-bob')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('inbox-filter')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('filter-send-feedback')));
+      await tester.pumpAndSettle();
+      expect(
+        find.widgetWithText(FilledButton, 'Send feedback'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone logo spins only its mark and keeps the tile upright',
+    (tester) async {
+      await _pumpApp(tester, _FakeController(), size: const Size(390, 844));
+      final logo = find.bySemanticsLabel('Inbox+ logo');
+      final artwork = find.descendant(of: logo, matching: find.byType(Image));
+      final tile = find.descendant(of: logo, matching: find.byType(ClipRRect));
+      final mark = find.ancestor(
+        of: artwork,
+        matching: find.byKey(const Key('desktop-logo-mark')),
+      );
+      expect(mark, findsOneWidget);
+      expect(tester.getSize(logo).width, greaterThanOrEqualTo(44));
+      await tester.tap(logo);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(
+        tester.widget<Transform>(mark).transform.entry(0, 1).abs(),
+        greaterThan(.01),
+      );
+      for (final transform in tester.widgetList<Transform>(
+        find.ancestor(of: tile, matching: find.byType(Transform)),
+      )) {
+        expect(transform.transform.entry(0, 1), 0);
+        expect(transform.transform.entry(1, 0), 0);
+      }
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone shows unknown senders in the inbox',
+    (tester) async {
+      final controller = _FakeController(
+        conversations: [
+          _conversation('first', 'alice', 'Alice'),
+          ConversationRecord(
+            route: const ConversationRoute('first', 'stranger'),
+            title: 'Stranger',
+            latestActivity: DateTime(2026, 11, 4, 11),
+            isFromUnknownSender: true,
+          ),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      expect(
+        find.byKey(const Key('conversation-first-stranger')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('inbox-filter')));
+      await tester.pumpAndSettle();
+      expect(find.text('Unknown senders'), findsNothing);
+      expect(find.text('Hidden'), findsNothing);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone appearance picks full themes from the Theme row',
+    (tester) async {
+      final controller = _FakeController();
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-settings')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Appearance'));
+      await tester.pumpAndSettle();
+      expect(find.text('Theme colour'), findsNothing);
+      expect(find.text('All themes'), findsNothing);
+      await tester.scrollUntilVisible(find.text('Theme'), 200);
+      await tester.tap(find.text('Theme'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('Night Swim theme'));
+      await tester.pumpAndSettle();
+      expect(
+        controller.preferenceChanges.last,
+        isA<MapEntry<String, Object>>()
+            .having((entry) => entry.key, 'key', 'themePreset')
+            .having((entry) => entry.value, 'value', 'nightSwim'),
+      );
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone settings offers one feedback entry',
+    (tester) async {
+      await _pumpApp(tester, _FakeController(), size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-settings')));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Send feedback'), 200);
+      expect(find.text('Send feedback'), findsOneWidget);
+      expect(find.text('Report a problem'), findsNothing);
+      await tester.scrollUntilVisible(find.text('Open source licenses'), 200);
+      expect(find.text('Export diagnostics'), findsNothing);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone search opens from the header button',
+    (tester) async {
+      final controller = _FakeController();
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('inbox-search-button')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const Key('inbox-search')), 'Bob');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('conversation-first-alice')), findsNothing);
+      expect(find.byKey(const Key('conversation-second-bob')), findsOneWidget);
+      await tester.tap(find.byTooltip('Close search'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('inbox-search')), findsNothing);
+      expect(find.byKey(const Key('conversation-first-alice')), findsOneWidget);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone swipe right marks a conversation unread',
+    (tester) async {
+      final controller = _FakeController();
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.drag(
+        find.byKey(const Key('conversation-first-alice')),
+        const Offset(90, 0),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Unread'));
+      await tester.pumpAndSettle();
+      expect(
+        controller.unreadChanges.single.key,
+        controller.conversations.first.route,
+      );
+      expect(controller.unreadChanges.single.value, isTrue);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone favourites appear as a pinned row above the list',
+    (tester) async {
+      final controller = _FakeController();
+      await controller.setFavorite(controller.conversations.first.route, true);
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      expect(find.byKey(const Key('favorite-first-alice')), findsOneWidget);
+      expect(find.byKey(const Key('conversation-first-alice')), findsNothing);
+      await tester.tap(find.byKey(const Key('favorite-first-alice')));
+      await tester.pumpAndSettle();
+      expect(controller.selectedRoute, controller.conversations.first.route);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone long press on a message offers reply and reactions',
+    (tester) async {
+      const route = ConversationRoute('first', 'alice');
+      final controller = _FakeController(
+        canReply: true,
+        canReact: true,
+        messages: {
+          route: [
+            MessageRecord(
+              id: 'm1',
+              route: route,
+              body: 'Lunch at noon?',
+              timestamp: DateTime(2026, 11, 4),
+              isOutgoing: false,
+            ),
+          ],
+        },
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('Lunch at noon?'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reply'));
+      await tester.pumpAndSettle();
+      expect(controller.draftFor(route)?.replyToMessageId, 'm1');
+
+      await tester.longPress(find.text('Lunch at noon?').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('React with 👍'));
+      await tester.pumpAndSettle();
+      expect(controller.reactionCalls.single.emoji, '👍');
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone attach menu picks photos or files',
+    (tester) async {
+      final controller = _FakeController();
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Attach'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getCenter(find.byKey(const Key('attach-files'))).dy,
+        lessThan(tester.getCenter(find.byKey(const Key('attach-photos'))).dy),
+      );
+      final ios = defaultTargetPlatform == TargetPlatform.iOS;
+      expect(
+        find.text(
+          ios
+              ? 'Documents from iCloud Drive or this iPhone'
+              : 'Documents from this phone or the cloud',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining(ios ? 'the cloud' : 'iPhone'), findsNothing);
+      await tester.tap(find.byKey(const Key('attach-photos')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Attach'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('attach-files')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Attach'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Close attach menu'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('attach-photos')), findsNothing);
+      expect(controller.stagedAttachments, [true, false]);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone chat header counts other unread chats and opens chat info',
+    (tester) async {
+      final alice = const ConversationRoute('first', 'alice');
+      final controller = _FakeController(
+        conversations: [
+          _conversation('first', 'alice', 'Alice'),
+          ConversationRecord(
+            route: const ConversationRoute('second', 'bob'),
+            title: 'Bob',
+            latestActivity: DateTime(2026, 11, 4, 12),
+            unreadCount: 3,
+          ),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('Back to inbox, 1 unread'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('chat-info-button')));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Close chat info'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('chat-info-favorite')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chat-info-mute')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('For 8 hours'));
+      await tester.pumpAndSettle();
+      expect(controller.preferencesFor(alice).mutedUntil, isNotNull);
+      await tester.tap(find.byKey(const Key('chat-info-unread')));
+      await tester.pumpAndSettle();
+      expect(controller.unreadChanges.single.key, alice);
+      expect(controller.unreadChanges.single.value, isTrue);
+      await tester.tap(find.byTooltip('Close chat info'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('chat-info-button')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone long press peeks a chat and runs its actions',
+    (tester) async {
+      final alice = const ConversationRoute('first', 'alice');
+      final controller = _FakeController(
+        messages: {
+          alice: [
+            MessageRecord(
+              id: 'm1',
+              route: alice,
+              body: 'Lunch at noon?',
+              timestamp: DateTime(2026, 11, 4, 11),
+              isOutgoing: false,
+            ),
+          ],
+        },
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.longPress(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(find.text('Lunch at noon?'), findsWidgets);
+      expect(
+        DefaultTextStyle.of(tester.element(find.text('Lunch at noon?').last))
+            .style
+            .decoration,
+        isNot(TextDecoration.underline),
+      );
+      await tester.tap(find.byKey(const Key('peek-favorite')));
+      await tester.pumpAndSettle();
+      expect(controller.preferencesFor(alice).isFavorite, isTrue);
+      expect(find.byKey(const Key('peek-favorite')), findsNothing);
+      await tester.longPress(find.byKey(const Key('conversation-second-bob')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('peek-hide')));
+      await tester.pumpAndSettle();
+      expect(
+        controller
+            .preferencesFor(const ConversationRoute('second', 'bob'))
+            .hiddenAt,
+        isNotNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone chat actions open without a chat preview',
+    (tester) async {
+      final alice = const ConversationRoute('first', 'alice');
+      final controller = _FakeController(
+        messages: {
+          alice: [
+            MessageRecord(
+              id: 'm1',
+              route: alice,
+              body: 'Lunch at noon?',
+              timestamp: DateTime(2026, 11, 4, 11),
+              isOutgoing: false,
+            ),
+          ],
+        },
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Conversation actions'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('peek-unread')), findsOneWidget);
+      expect(find.text('Lunch at noon?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('peek-unread')));
+      await tester.pumpAndSettle();
+      expect(controller.unreadChanges.single.value, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone composer previews a staged photo',
+    (tester) async {
+      final route = const ConversationRoute('first', 'alice');
+      final photo =
+          File('${Directory.systemTemp.createTempSync('draft').path}/IMG_1.png')
+            ..writeAsBytesSync(
+              base64Decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+              ),
+            );
+      final controller = _FakeController();
+      controller._drafts[route] = DraftRecord(
+        route: route,
+        body: '',
+        revision: 1,
+        attachments: [
+          AttachmentRecord(
+            id: 'staged',
+            kind: 'image',
+            fileName: 'IMG_1.png',
+            localPath: photo.path,
+          ),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('draft-photo-preview')), findsOneWidget);
+      expect(find.byTooltip('Remove IMG_1.png'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone contacts group by letter and edit on a full page',
+    (tester) async {
+      final controller = _FakeController(
+        contacts: [
+          ContactRecord(
+            id: 'ana',
+            displayName: 'Ana Lopez',
+            identities: [IdentityLink('first', 'ana')],
+          ),
+          ContactRecord(
+            id: 'maya',
+            displayName: 'Maya Chen',
+            identities: [IdentityLink('first', 'maya')],
+          ),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-contacts')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('contacts-letter-A')), findsOneWidget);
+      expect(find.byKey(const Key('contacts-letter-M')), findsOneWidget);
+      expect(find.byTooltip('Message Maya Chen'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('contact-maya')));
+      await tester.pumpAndSettle();
+      expect(find.text('Remove contact'), findsOneWidget);
+      expect(find.text('Message on WhatsApp'), findsOneWidget);
+      expect(find.widgetWithText(TextFormField, 'Maya Chen'), findsNothing);
+      expect(
+        tester.testTextInput.isVisible,
+        isFalse,
+        reason: 'Opening a contact must not raise the keyboard.',
+      );
+      await tester.tap(find.byTooltip('Edit name'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Maya Chen'),
+        'Maya C.',
+      );
+      await tester.tap(find.byKey(const Key('contact-save')));
+      await tester.pumpAndSettle();
+      expect(controller.savedContacts.single.displayName, 'Maya C.');
+      expect(find.text('Remove contact'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'tablet inbox opens filters from the header',
+    (tester) async {
+      final controller = _FakeController();
+      await _pumpApp(tester, controller, size: const Size(1200, 900));
+      final button = tester.getRect(find.byTooltip('Filter'));
+      await tester.tap(find.byTooltip('Filter'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byKey(const Key('filter-unread'))).top,
+        greaterThan(button.bottom),
+      );
+      await tester.tap(find.byKey(const Key('filter-unread')));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(1150, 850));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Clear filters'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone text size reaches pages opened from the inbox',
+    (tester) async {
+      final controller = _FakeController()
+        ..currentPreferences = const PreferencesRecord(textSize: 'large');
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chat-info-button')));
+      await tester.pumpAndSettle();
+      expect(
+        MediaQuery.textScalerOf(
+          tester.element(find.byTooltip('Close chat info')),
+        ).scale(10),
+        closeTo(11.5, .001),
+      );
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets('phone text size keeps the system nonlinear scaling', (
+    tester,
+  ) async {
+    final controller = _FakeController()
+      ..currentPreferences = const PreferencesRecord(textSize: 'large');
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: _NonlinearScaler()),
+        child: InboxPlusApp(controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final scaler = MediaQuery.textScalerOf(
+      tester.element(find.byKey(const Key('conversation-first-alice'))),
+    );
+    expect(scaler.scale(10), closeTo(10 * 2 * 1.15, .001));
+    expect(scaler.scale(34), closeTo(34 * 1.3 * 1.15, .001));
+  }, variant: TargetPlatformVariant({TargetPlatform.android}));
+
+  testWidgets(
+    'phone contacts sort case-insensitively under one heading',
+    (tester) async {
+      final controller = _FakeController(
+        contacts: [
+          ContactRecord(
+            id: 'alice',
+            displayName: 'Alice',
+            identities: const [IdentityLink('first', 'alice')],
+          ),
+          ContactRecord(
+            id: 'zed',
+            displayName: 'Zed',
+            identities: const [IdentityLink('first', 'zed')],
+          ),
+          ContactRecord(
+            id: 'adam',
+            displayName: 'adam',
+            identities: const [IdentityLink('first', 'adam')],
+          ),
+          ContactRecord(
+            id: 'number',
+            displayName: '42 Club',
+            identities: const [IdentityLink('first', 'club')],
+          ),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-contacts')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('contacts-letter-A')), findsOneWidget);
+      double top(String id) => tester.getTopLeft(find.byKey(Key(id))).dy;
+      expect(top('contact-adam'), lessThan(top('contact-alice')));
+      expect(top('contact-alice'), lessThan(top('contact-zed')));
+      expect(top('contact-zed'), lessThan(top('contact-number')));
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'an inbox of only favourites shows no empty state',
+    (tester) async {
+      final controller = _FakeController();
+      await controller.setFavorite(
+        const ConversationRoute('first', 'alice'),
+        true,
+      );
+      await controller.setFavorite(
+        const ConversationRoute('second', 'bob'),
+        true,
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      expect(find.byKey(const Key('favorite-first-alice')), findsOneWidget);
+      expect(find.text('Your inbox starts here'), findsNothing);
+      expect(find.text('New conversations will appear here.'), findsNothing);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
+  testWidgets(
+    'phone feedback sends a screenshot through the feedback service',
+    (tester) async {
+      final controller = _FakeController()
+        ..pickedFeedbackImage = base64Decode(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+        );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => FeedbackPage(controller: controller),
+                  ),
+                ),
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      final send = find.byKey(const Key('feedback-send'));
+      expect(tester.widget<FilledButton>(send).onPressed, isNull);
+      await tester.tap(find.byKey(const Key('feedback-kind-bug')));
+      await tester.pump();
+      final notice = find.text(
+        'Posted publicly on GitHub. Don’t include private messages.',
+      );
+      final details = find.byKey(const Key('feedback-text'));
+      expect(
+        tester.getTopLeft(notice).dy,
+        lessThan(tester.getTopLeft(details).dy),
+      );
+      expect(find.text(feedbackDiagnosticsNotice), findsOneWidget);
+      expect(find.byType(Switch), findsNothing);
+      await tester.enterText(details, '  Search loses my query  ');
+      await tester.pump();
+      await tester.tap(find.text('Attach a screenshot'));
+      for (
+        var i = 0;
+        i < 300 &&
+            find.byKey(const Key('feedback-screenshot')).evaluate().isEmpty;
+        i++
+      ) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump();
+      }
+      expect(find.byKey(const Key('feedback-screenshot')), findsOneWidget);
+      await tester.tap(send);
+      await tester.pumpAndSettle();
+      final sent = controller.sentFeedback.single;
+      expect(sent.kind, FeedbackKind.bug);
+      expect(sent.text, 'Search loses my query');
+      expect(sent.image, isNotNull);
+      expect(find.byKey(const Key('feedback-text')), findsNothing);
+      expect(
+        find.text('Thanks. Your feedback is posted on GitHub.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('phone feedback explains why a screenshot pick failed', (
+    tester,
+  ) async {
+    const tooLarge = 'Attachments must be 32 MiB or smaller.';
+    final controller = _FakeController()
+      ..onPickFeedbackImage = () async =>
+          throw const FeedbackImageFailure(tooLarge);
+    await tester.pumpWidget(
+      MaterialApp(home: FeedbackPage(controller: controller)),
+    );
+    await tester.tap(find.text('Attach a screenshot'));
+    await tester.pumpAndSettle();
+    expect(find.text(tooLarge), findsOneWidget);
+    expect(find.textContaining('PNG or JPEG'), findsNothing);
+  });
+
+  testWidgets('phone feedback keeps the report when sending fails', (
+    tester,
+  ) async {
+    final controller = _FakeController()
+      ..onSendFeedback = (_) async => throw FeedbackFailure.offline;
+    await tester.pumpWidget(
+      MaterialApp(home: FeedbackPage(controller: controller)),
+    );
+    await tester.tap(find.byKey(const Key('feedback-kind-praise')));
+    await tester.enterText(find.byKey(const Key('feedback-text')), 'Love it');
+    await tester.pump();
+    expect(find.text('Sent privately to the developer.'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('feedback-send')));
+    await tester.pumpAndSettle();
+    expect(find.text(FeedbackFailure.offline.message), findsOneWidget);
+    expect(find.text('Love it'), findsOneWidget);
+  });
+
+  testWidgets('phone feedback shows screenshot read errors and allows retry', (
+    tester,
+  ) async {
+    var picks = 0;
+    final controller = _FakeController()
+      ..onPickFeedbackImage = () async {
+        if (picks++ == 0) {
+          throw const FileSystemException('Could not read', 'private-path');
+        }
+        return null;
+      };
+    await tester.pumpWidget(
+      MaterialApp(home: FeedbackPage(controller: controller)),
+    );
+    await tester.enterText(find.byKey(const Key('feedback-text')), 'Keep this');
+    final attach = find.text('Attach a screenshot');
+    await tester.tap(attach);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('can’t read this file'), findsOneWidget);
+    expect(find.textContaining('private-path'), findsNothing);
+    expect(find.text('Keep this'), findsOneWidget);
+    await tester.tap(attach);
+    await tester.pumpAndSettle();
+    expect(picks, 2);
+    expect(find.textContaining('can’t read this file'), findsNothing);
+  });
+
+  testWidgets('phone feedback stays open until an in-flight send completes', (
+    tester,
+  ) async {
+    final pending = Completer<FeedbackReceipt>();
+    final controller = _FakeController()
+      ..onSendFeedback = (_) => pending.future;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => FeedbackPage(controller: controller),
+                ),
+              ),
+              child: const Text('Open feedback'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open feedback'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('feedback-kind-praise')));
+    await tester.enterText(find.byKey(const Key('feedback-text')), 'Fixture');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('feedback-send')));
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Sending…'), findsOneWidget);
+    expect(find.byType(BackButton), findsNothing);
+    pending.complete(const FeedbackReceipt());
+    await tester.pumpAndSettle();
+    expect(find.text('Open feedback'), findsOneWidget);
+    expect(find.text('Thanks. Your feedback was sent.'), findsOneWidget);
+    expect(controller.sentFeedback, hasLength(1));
+  });
+
+  group('phone review findings', () {
+    final phones = TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    });
+    const alice = ConversationRoute('first', 'alice');
+
+    void semanticTap(WidgetTester tester, String label) =>
+        tester.semantics.tap(find.semantics.byLabel(label));
+
+    testWidgets('#265 screen readers activate the chat header', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final controller = _FakeController();
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      semanticTap(tester, 'Chat info for Alice');
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Close chat info'), findsOneWidget);
+      await tester.tap(find.byTooltip('Close chat info'));
+      await tester.pumpAndSettle();
+      semanticTap(tester, 'Back to inbox');
+      await tester.pumpAndSettle();
+      expect(controller.selectedRoute, isNull);
+      semantics.dispose();
+    }, variant: phones);
+
+    testWidgets('#265 screen readers select an accent colour', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final controller = _FakeController();
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-settings')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Appearance'));
+      await tester.pumpAndSettle();
+      semanticTap(tester, 'Teal accent');
+      await tester.pumpAndSettle();
+      expect(
+        controller.preferenceChanges.last,
+        isA<MapEntry<String, Object>>()
+            .having((entry) => entry.key, 'key', 'accentOverride')
+            .having((entry) => entry.value, 'value', 0x00838f),
+      );
+      semantics.dispose();
+    }, variant: phones);
+
+    testWidgets('#266 system notification settings only where supported', (
+      tester,
+    ) async {
+      final controller = _FakeController()
+        ..notificationStatus = const SystemNotificationStatus(
+          authorization: NotificationAuthorization.allowed,
+        );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-settings')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Notifications'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Settings', findRichText: true), findsNothing);
+      controller.notificationStatus = const SystemNotificationStatus(
+        authorization: NotificationAuthorization.allowed,
+        canOpenSettings: true,
+      );
+      controller.notifyListeners();
+      await tester.pumpAndSettle();
+      final label = defaultTargetPlatform == TargetPlatform.iOS
+          ? 'Open iOS Settings'
+          : 'Open Android settings';
+      await tester.tap(find.text(label));
+      expect(controller.notificationSettingsRequests, 1);
+    }, variant: phones);
+
+    testWidgets('#267 Storage shows a failed cache clear in place', (
+      tester,
+    ) async {
+      final controller = _FakeController()
+        ..storage = const StorageSummary(mediaBytes: 2048, attachmentCount: 1)
+        ..clearCacheError = 'Some downloaded media could not be removed.';
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-settings')));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Storage'), 200);
+      await tester.tap(find.text('Storage'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Clear downloaded media'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Clear Cache'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Some downloaded media could not be removed.'),
+        findsOneWidget,
+      );
+    }, variant: phones);
+
+    testWidgets('#268 phone Settings controls hardware Enter to send', (
+      tester,
+    ) async {
+      final controller = _FakeController();
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-settings')));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Press Enter to send'), 200);
+      await tester.drag(find.byType(ListView).first, const Offset(0, -300));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Press Enter to send'));
+      await tester.pumpAndSettle();
+      expect(
+        controller.preferenceChanges.last,
+        isA<MapEntry<String, Object>>()
+            .having((entry) => entry.key, 'key', 'enterToSend')
+            .having((entry) => entry.value, 'value', false),
+      );
+    }, variant: phones);
+
+    testWidgets('#269 double-tap selects a word and long-press keeps actions', (
+      tester,
+    ) async {
+      final controller = _FakeController(
+        canReply: true,
+        messages: {
+          alice: [
+            MessageRecord(
+              id: 'm1',
+              route: alice,
+              body: 'Lunch tomorrow at noon',
+              timestamp: DateTime(2026, 11, 4, 11),
+              isOutgoing: false,
+            ),
+          ],
+        },
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      final word =
+          tester.getTopLeft(find.text('Lunch tomorrow at noon')) +
+          const Offset(12, 10);
+      await tester.tapAt(word);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tapAt(word);
+      await tester.pumpAndSettle();
+      final selection = tester
+          .state<EditableTextState>(
+            find.descendant(
+              of: find.byType(SelectableText),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .textEditingValue
+          .selection;
+      expect(selection.isCollapsed, isFalse);
+      await tester.tapAt(const Offset(200, 400));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('Lunch tomorrow at noon'));
+      await tester.pumpAndSettle();
+      expect(find.text('Reply'), findsOneWidget);
+    }, variant: phones);
+
+    testWidgets('#270 narrow phones keep More reactions reachable', (
+      tester,
+    ) async {
+      final controller = _FakeController(
+        canReact: true,
+        messages: {
+          alice: [
+            MessageRecord(
+              id: 'm1',
+              route: alice,
+              body: 'Hello',
+              timestamp: DateTime(2026, 11, 4, 11),
+              isOutgoing: false,
+            ),
+          ],
+        },
+      );
+      await _pumpApp(tester, controller, size: const Size(320, 700));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('Hello'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('More reactions'));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('More emoji'), findsOneWidget);
+    }, variant: phones);
+
+    testWidgets('#270 every attachment action stays reachable', (tester) async {
+      final controller = _FakeController(
+        messages: {
+          alice: [
+            MessageRecord(
+              id: 'm1',
+              route: alice,
+              body: 'Files',
+              timestamp: DateTime(2026, 11, 4, 11),
+              isOutgoing: false,
+              attachments: [
+                for (var i = 1; i <= 8; i++)
+                  AttachmentRecord(
+                    id: 'file$i',
+                    kind: 'file',
+                    fileName: 'file$i.pdf',
+                    localPath: '/tmp/file$i.pdf',
+                  ),
+              ],
+            ),
+          ],
+        },
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      await tester.longPress(find.text('Files'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final last = find.text('Save file8.pdf');
+      await tester.scrollUntilVisible(
+        last,
+        100,
+        scrollable: find
+            .descendant(
+              of: find.byType(BottomSheet),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+      await tester.tap(last);
+      await tester.pumpAndSettle();
+      expect(controller.savedAttachments.single.attachmentId, 'file8');
+    }, variant: phones);
+
+    testWidgets('#271 Chat info downloads remote files before saving', (
+      tester,
+    ) async {
+      final controller = _FakeController(
+        messages: {
+          alice: [
+            MessageRecord(
+              id: 'm1',
+              route: alice,
+              body: '',
+              timestamp: DateTime(2026, 11, 4, 11),
+              isOutgoing: false,
+              attachments: const [
+                AttachmentRecord(
+                  id: 'remote',
+                  kind: 'file',
+                  fileName: 'Menu.pdf',
+                ),
+              ],
+            ),
+          ],
+        },
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('conversation-first-alice')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('chat-info-button')));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Save Menu.pdf'), findsNothing);
+      await tester.tap(find.byTooltip('Download Menu.pdf'));
+      await tester.pumpAndSettle();
+      expect(controller.downloadedAttachments.single.attachmentId, 'remote');
+      expect(controller.savedAttachments, isEmpty);
+    }, variant: phones);
+
+    testWidgets('#272 the last inbox row opens above the floating tabs', (
+      tester,
+    ) async {
+      final controller = _FakeController(
+        conversations: [
+          for (var i = 0; i < 14; i++)
+            ConversationRecord(
+              route: ConversationRoute('first', 'c$i'),
+              title: 'Chat $i',
+              latestActivity: DateTime(2026, 11, 4, 12, 0, 60 - i),
+            ),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -3000));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('conversation-first-c13')));
+      await tester.pumpAndSettle();
+      expect(controller.selectedRoute, const ConversationRoute('first', 'c13'));
+    }, variant: phones);
+
+    testWidgets('#273 a hidden chat opens without being restored', (
+      tester,
+    ) async {
+      final controller = _FakeController();
+      await controller.setHidden(alice, true);
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-settings')));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Hidden conversations'), 200);
+      await tester.tap(find.text('Hidden conversations'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Alice'));
+      await tester.pumpAndSettle();
+      expect(controller.selectedRoute, alice);
+      expect(find.byKey(const Key('message-composer')), findsOneWidget);
+      expect(controller.preferencesFor(alice).hiddenAt, isNotNull);
+    }, variant: phones);
+
+    testWidgets('disabled Restore does not activate its conversation row', (
+      tester,
+    ) async {
+      final controller = _FakeController()..busy = true;
+      await controller.setHidden(alice, true);
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-settings')));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('Hidden conversations'), 200);
+      await tester.tap(find.text('Hidden conversations'));
+      await tester.pumpAndSettle();
+      final restore = find.widgetWithText(TextButton, 'Restore');
+      expect(tester.widget<TextButton>(restore).onPressed, isNull);
+      await tester.tap(restore);
+      await tester.pumpAndSettle();
+      expect(controller.selectedRoute, isNull);
+      expect(controller.preferencesFor(alice).hiddenAt, isNotNull);
+      await tester.tap(find.text('Alice'));
+      await tester.pumpAndSettle();
+      expect(controller.selectedRoute, alice);
+    }, variant: phones);
+
+    testWidgets('#274 same-network contact actions name each recipient', (
+      tester,
+    ) async {
+      final controller = _FakeController(
+        contacts: [
+          ContactRecord(
+            id: 'sam',
+            displayName: 'Sam',
+            identities: const [
+              IdentityLink('first', 'sam-work'),
+              IdentityLink('first', 'sam-home'),
+            ],
+          ),
+        ],
+      );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      await tester.tap(find.byKey(const Key('phone-tab-contacts')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('contact-sam')));
+      await tester.pumpAndSettle();
+      expect(find.text('Message on WhatsApp'), findsNothing);
+      expect(find.textContaining('sam-work'), findsWidgets);
+      expect(find.textContaining('sam-home'), findsWidgets);
+    }, variant: phones);
+
+    testWidgets('#275 favourite tiles fit 200% text with Large', (
+      tester,
+    ) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final controller = _FakeController()
+        ..currentPreferences = const PreferencesRecord(textSize: 'large');
+      await controller.setFavorite(alice, true);
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('favorite-first-alice')), findsOneWidget);
+    }, variant: phones);
+  });
+
+  test('appearance preferences fall back on unknown values', () {
+    final saved = PreferencesRecord.fromJson({
+      'bubbleShape': 'square',
+      'textSize': 'huge',
+      'inboxDensity': 'compact',
+    });
+    expect(saved.bubbleShape, 'square');
+    expect(saved.textSize, 'default');
+    expect(saved.inboxDensity, 'compact');
+    expect(PreferencesRecord.fromJson(saved.toJson()).bubbleShape, 'square');
+    expect(const PreferencesRecord().bubbleShape, 'round');
+    expect(saved.accentOverride, isNull);
+    expect(saved.chatWallpaper, 'none');
+    expect(
+      PreferencesRecord.fromJson({'chatWallpaper': 'dots'}).chatWallpaper,
+      'dots',
+    );
+    expect(
+      PreferencesRecord.fromJson({'chatWallpaper': 'plaid'}).chatWallpaper,
+      'none',
+    );
+    expect(
+      PreferencesRecord.fromJson({'accentOverride': 0xc2185b}).accentOverride,
+      0xc2185b,
+    );
+    expect(
+      PreferencesRecord.fromJson({'accentOverride': -1}).accentOverride,
+      isNull,
+    );
+  });
+
+  testWidgets(
+    'phone accent colour overrides only the theme accent',
+    (tester) async {
+      final controller = _FakeController()
+        ..currentPreferences = const PreferencesRecord(
+          themePreset: 'nightSwim',
+          accentOverride: 0xc2185b,
+        );
+      await _pumpApp(tester, controller, size: const Size(390, 844));
+      final theme = Theme.of(tester.element(find.byType(InboxHome)));
+      expect(theme.colorScheme.primary, const Color(0xffc2185b));
+      expect(theme.colorScheme.onPrimary, Colors.white);
+
+      await tester.tap(find.byKey(const Key('phone-tab-settings')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Appearance'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('Teal accent'));
+      await tester.tap(find.bySemanticsLabel('Theme accent'));
+      await tester.pump();
+      expect(controller.preferenceChanges.map((change) => change.value), [
+        0x00838f,
+        'theme',
+      ]);
+      expect(find.text('Night Swim'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
+
   group('desktop feedback', () {
     final macOS = TargetPlatformVariant({TargetPlatform.macOS});
     final screenshot = base64Decode(
@@ -4181,6 +5481,19 @@ void main() {
       pending.complete(const FeedbackReceipt());
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('feedback-done')), findsOneWidget);
+    }, variant: macOS);
+
+    testWidgets('explains why a screenshot pick failed', (tester) async {
+      const busy = 'Another file is still being chosen. Try again.';
+      final controller = _FakeController()
+        ..onPickFeedbackImage = () async =>
+            throw const FeedbackImageFailure(busy);
+      await _pumpApp(tester, controller);
+      await openFeedback(tester);
+      await tester.tap(find.byKey(const Key('feedback-choose-image')));
+      await tester.pumpAndSettle();
+      expect(find.text(busy), findsOneWidget);
+      expect(find.textContaining('PNG or JPEG'), findsNothing);
     }, variant: macOS);
 
     testWidgets('closing keeps the draft until a send succeeds', (
@@ -4548,8 +5861,10 @@ class _FakeController extends InboxUiController {
   @override
   bool get isLoading => false;
 
+  bool busy = false;
+
   @override
-  bool get isBusy => false;
+  bool get isBusy => busy;
 
   @override
   bool get isOffline => false;
@@ -4598,7 +5913,9 @@ class _FakeController extends InboxUiController {
   LoginState? login;
 
   @override
-  StorageSummary get storageSummary => const StorageSummary();
+  StorageSummary get storageSummary => storage;
+  StorageSummary storage = const StorageSummary();
+  String? clearCacheError;
 
   @override
   PreferencesRecord get preferences => currentPreferences;
@@ -4716,7 +6033,12 @@ class _FakeController extends InboxUiController {
   Future<void> refresh() async {}
 
   @override
-  Future<void> stageAttachments(ConversationRoute route) async {}
+  Future<void> stageAttachments(
+    ConversationRoute route, {
+    bool media = false,
+  }) async {
+    stagedAttachments.add(media);
+  }
 
   @override
   void removeDraftAttachment(ConversationRoute route, String attachmentId) {}
@@ -4841,7 +6163,16 @@ class _FakeController extends InboxUiController {
   }
 
   @override
-  Future<void> setFavorite(ConversationRoute route, bool favorite) async {}
+  Future<void> setFavorite(ConversationRoute route, bool favorite) async {
+    final old = preferencesFor(route);
+    _conversationPreferences[route] = ConversationPreferencesRecord(
+      route: route,
+      isFavorite: favorite,
+      isMuted: old.isMuted,
+      hiddenAt: old.hiddenAt,
+    );
+    notifyListeners();
+  }
 
   @override
   Future<void> setMuted(
@@ -4901,8 +6232,13 @@ class _FakeController extends InboxUiController {
     linkedIdentities.add((identity: identity, person: person));
   }
 
+  final unreadChanges = <MapEntry<ConversationRoute, bool>>[];
+  final stagedAttachments = <bool>[];
+
   @override
-  Future<void> setUnread(ConversationRoute route, bool unread) async {}
+  Future<void> setUnread(ConversationRoute route, bool unread) async {
+    unreadChanges.add(MapEntry(route, unread));
+  }
 
   @override
   Future<void> removeContact(String id) async {}
@@ -4962,7 +6298,11 @@ class _FakeController extends InboxUiController {
   }
 
   @override
-  Future<void> clearMediaCache() async {}
+  Future<void> clearMediaCache() async {
+    error = clearCacheError;
+    notifyListeners();
+  }
+
   @override
   Future<void> exportDiagnostics() async {}
 
@@ -4990,4 +6330,14 @@ class _FakeController extends InboxUiController {
 
   @override
   Future<void> requestQuit() async {}
+}
+
+class _NonlinearScaler extends TextScaler {
+  const _NonlinearScaler();
+
+  @override
+  double scale(double fontSize) => fontSize * (fontSize < 20 ? 2 : 1.3);
+
+  @override
+  double get textScaleFactor => 2;
 }

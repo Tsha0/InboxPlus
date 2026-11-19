@@ -12,6 +12,7 @@ import InboxPlusUpdates
 import Flutter
 import UIKit
 import Photos
+import PhotosUI
 import UniformTypeIdentifiers
 #endif
 
@@ -33,6 +34,7 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
     #else
     private var documentController: UIDocumentInteractionController?
     private var documentPresenter: UIViewController?
+    private let filePicker = InboxPlusFilePicker()
     private var loginActive = false
     private var loginBackgroundTask: UIBackgroundTaskIdentifier = .invalid
     private var loginBackgroundExpired = false
@@ -183,6 +185,13 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             else { shareLoginQr(image, result: result) }
         case "openFile":
             openFile(arguments, result: result)
+        case "pickPrivateFile", "exportPrivateFile":
+            guard let presenter = Self.presenter() else { return result(Self.failure("file_picker_unavailable")) }
+            if call.method == "pickPrivateFile" {
+                filePicker.pick(arguments, from: presenter, result: result)
+            } else {
+                filePicker.export(arguments, from: presenter, result: result)
+            }
         #endif
         #if os(macOS)
         case "hasKeychainAccessGroups":
@@ -693,6 +702,165 @@ extension InboxPlusAppleServices: UIDocumentInteractionControllerDelegate {
                 documentPresenter = nil
             }
         }
+    }
+}
+
+@MainActor
+private final class InboxPlusFilePicker: NSObject, PHPickerViewControllerDelegate,
+    UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
+    private var result: FlutterResult?
+    private var activePicker: UIViewController?
+    private var limit = 0
+    private var exportDirectory: URL?
+
+    func pick(_ arguments: [String: Any], from presenter: UIViewController, result: @escaping FlutterResult) {
+        guard self.result == nil else { return result(Self.error("file_picker_busy")) }
+        guard let type = arguments["type"] as? String,
+              let limit = arguments["limit"] as? Int, limit > 0, limit < Int.max else {
+            return result(Self.error("invalid_request"))
+        }
+        let picker: UIViewController
+        switch type {
+        case "any":
+            let documents = UIDocumentPickerViewController(forOpeningContentTypes: [.item], asCopy: false)
+            documents.delegate = self
+            picker = documents
+        case "image", "media":
+            var configuration = PHPickerConfiguration()
+            configuration.filter = type == "image" ? .images : .any(of: [.images, .videos])
+            configuration.preferredAssetRepresentationMode = .compatible
+            let photos = PHPickerViewController(configuration: configuration)
+            photos.delegate = self
+            picker = photos
+        default:
+            return result(Self.error("invalid_request"))
+        }
+        self.limit = limit
+        self.result = result
+        present(picker, from: presenter)
+    }
+
+    func export(_ arguments: [String: Any], from presenter: UIViewController, result: @escaping FlutterResult) {
+        guard self.result == nil else { return result(Self.error("file_picker_busy")) }
+        guard let name = arguments["name"] as? String, !name.isEmpty, name != ".", name != "..",
+              !name.contains("/"), !name.contains("\\"), !name.contains("\0"),
+              let bytes = arguments["bytes"] as? FlutterStandardTypedData else {
+            return result(Self.error("invalid_request"))
+        }
+        self.result = result
+        let data = bytes.data
+        DispatchQueue.global(qos: .userInitiated).async {
+            let export = Result { try Self.prepareExport(name: name, bytes: data) }
+            DispatchQueue.main.async {
+                switch export {
+                case .success(let output):
+                    self.exportDirectory = output.directory
+                    let picker = UIDocumentPickerViewController(forExporting: [output.file], asCopy: true)
+                    picker.delegate = self
+                    self.present(picker, from: presenter)
+                case .failure:
+                    self.finish(Self.error("file_export_failed"))
+                }
+            }
+        }
+    }
+
+    private nonisolated static func prepareExport(name: String, bytes: Data) throws -> (directory: URL, file: URL) {
+        let files = FileManager.default
+        let directory = files.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let file = directory.appendingPathComponent(name, isDirectory: false)
+        do {
+            try files.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+            guard files.createFile(atPath: file.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            let handle = try FileHandle(forWritingTo: file)
+            defer { try? handle.close() }
+            try handle.write(contentsOf: bytes)
+            return (directory, file)
+        } catch {
+            try? files.removeItem(at: directory)
+            throw error
+        }
+    }
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        guard activePicker === picker else { return }
+        activePicker = nil
+        picker.dismiss(animated: true)
+        guard let provider = results.first?.itemProvider else { return finish(nil) }
+        guard let type = provider.registeredTypeIdentifiers.compactMap({ UTType($0) }).first(where: {
+            $0.conforms(to: .image) || $0.conforms(to: .movie)
+        }) else { return finish(Self.error("picked_file_unreadable")) }
+        let limit = self.limit
+        provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { [weak self] url, _ in
+            let value = url.map { Self.read($0, limit: limit) } ?? Self.error("picked_file_unreadable")
+            DispatchQueue.main.async { self?.finish(value) }
+        }
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        guard activePicker === controller else { return }
+        activePicker = nil
+        if exportDirectory != nil { return finish(nil) }
+        guard let url = urls.first else { return finish(nil) }
+        let limit = self.limit
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            var fileError: NSError?
+            var value: Any = Self.error("picked_file_unreadable")
+            NSFileCoordinator().coordinate(readingItemAt: url, options: .withoutChanges, error: &fileError) {
+                value = Self.read($0, limit: limit)
+            }
+            let response = fileError == nil ? value : Self.error("picked_file_unreadable")
+            DispatchQueue.main.async { self?.finish(response) }
+        }
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        if activePicker === controller { finish(nil) }
+    }
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        if activePicker === presentationController.presentedViewController { finish(nil) }
+    }
+
+    private func present(_ picker: UIViewController, from presenter: UIViewController) {
+        activePicker = picker
+        picker.presentationController?.delegate = self
+        presenter.present(picker, animated: true)
+    }
+
+    private func finish(_ value: Any?) {
+        if let directory = exportDirectory { try? FileManager.default.removeItem(at: directory) }
+        exportDirectory = nil
+        activePicker = nil
+        let reply = result
+        result = nil
+        reply?(value)
+    }
+
+    private nonisolated static func read(_ url: URL, limit: Int) -> Any {
+        do {
+            let metadata = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard metadata.isRegularFile == true else { return error("picked_file_unreadable") }
+            if let size = metadata.fileSize, size > limit { return error("picked_file_too_large") }
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            var bytes = Data()
+            while let chunk = try handle.read(upToCount: min(64 * 1024, limit - bytes.count + 1)), !chunk.isEmpty {
+                if chunk.count > limit - bytes.count { return error("picked_file_too_large") }
+                bytes.append(chunk)
+            }
+            return ["name": url.lastPathComponent, "bytes": FlutterStandardTypedData(bytes: bytes)] as [String: Any]
+        } catch {
+            return Self.error("picked_file_unreadable")
+        }
+    }
+
+    private nonisolated static func error(_ code: String) -> FlutterError {
+        FlutterError(code: code, message: nil, details: nil)
     }
 }
 #endif

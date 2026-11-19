@@ -7,10 +7,12 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.ClipData
+import android.content.ContentResolver
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
+import android.provider.OpenableColumns
 import android.system.Os
 import android.system.OsConstants
 import android.webkit.MimeTypeMap
@@ -18,10 +20,22 @@ import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 class MainActivity : FlutterActivity() {
     private var notificationPermissionResult: MethodChannel.Result? = null
+    private var fileRequest: FileRequest? = null
+
+    private sealed interface FileRequest {
+        val result: MethodChannel.Result
+        data class Pick(val limit: Int, override val result: MethodChannel.Result) : FileRequest
+        data class Export(val bytes: ByteArray, override val result: MethodChannel.Result) : FileRequest
+    }
+
+    private companion object {
+        const val PRIVATE_FILE_REQUEST = 6014
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -57,6 +71,17 @@ class MainActivity : FlutterActivity() {
                             result.error("path_protection_failed", null, null)
                         }
                     }
+                    "pickPrivateFile" -> pickPrivateFile(
+                        call.argument<String>("type"),
+                        call.argument<Number>("limit")?.toInt(),
+                        result,
+                    )
+                    "exportPrivateFile" -> exportPrivateFile(
+                        call.argument<String>("name"),
+                        call.argument<String>("mimeType"),
+                        call.argument<ByteArray>("bytes"),
+                        result,
+                    )
                     "requestNotificationPermission" -> requestNotificationPermission(result)
                     "notify" -> {
                         result.success(showNotification(
@@ -68,6 +93,95 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun pickPrivateFile(type: String?, limit: Int?, result: MethodChannel.Result) {
+        if (type !in setOf("any", "image", "media") || limit == null || limit <= 0) {
+            return result.error("invalid_request", null, null)
+        }
+        val intent = Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE)
+        intent.type = if (type == "image") "image/*" else "*/*"
+        if (type == "media") intent.putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("image/*", "video/*"))
+        startFileRequest(intent, FileRequest.Pick(limit, result))
+    }
+
+    private fun exportPrivateFile(name: String?, mimeType: String?, bytes: ByteArray?, result: MethodChannel.Result) {
+        if (name.isNullOrEmpty() || name == "." || name == ".." || name.any { it == '/' || it == '\\' || it == '\u0000' } ||
+            mimeType.isNullOrEmpty() || bytes == null) {
+            return result.error("invalid_request", null, null)
+        }
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+            .setType(mimeType).putExtra(Intent.EXTRA_TITLE, name)
+        startFileRequest(intent, FileRequest.Export(bytes, result))
+    }
+
+    private fun startFileRequest(intent: Intent, request: FileRequest) {
+        if (fileRequest != null) return request.result.error("file_picker_busy", null, null)
+        try {
+            fileRequest = request
+            startActivityForResult(intent, PRIVATE_FILE_REQUEST)
+        } catch (_: ActivityNotFoundException) {
+            fileRequest = null
+            request.result.error("file_picker_unavailable", null, null)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode != PRIVATE_FILE_REQUEST) {
+            super.onActivityResult(requestCode, resultCode, data)
+            return
+        }
+        val request = fileRequest ?: return
+        if (resultCode != RESULT_OK) {
+            settleFileRequest(request) { it.success(null) }
+            return
+        }
+        val uri = data?.data
+        val error = if (request is FileRequest.Export) "file_export_failed" else "picked_file_unreadable"
+        if (uri?.scheme != ContentResolver.SCHEME_CONTENT) {
+            settleFileRequest(request) { it.error(error, null, null) }
+            return
+        }
+        Thread {
+            try {
+                if (request is FileRequest.Export) {
+                    val output = contentResolver.openOutputStream(uri) ?: throw java.io.IOException()
+                    output.use { it.write(request.bytes) }
+                    settleFileRequest(request) { it.success(null) }
+                    return@Thread
+                }
+                check(request is FileRequest.Pick)
+                val name = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+                    if (it.moveToFirst()) it.getString(0) else null
+                } ?: "Attachment"
+                val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                    val output = ByteArrayOutputStream()
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (count > request.limit - output.size()) {
+                            settleFileRequest(request) { it.error("picked_file_too_large", null, null) }
+                            return@Thread
+                        }
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                } ?: throw java.io.IOException()
+                settleFileRequest(request) { it.success(mapOf("name" to name, "bytes" to bytes)) }
+            } catch (_: Exception) {
+                settleFileRequest(request) { it.error(error, null, null) }
+            }
+        }.start()
+    }
+
+    private fun settleFileRequest(request: FileRequest, complete: (MethodChannel.Result) -> Unit) {
+        runOnUiThread {
+            if (fileRequest === request) {
+                fileRequest = null
+                complete(request.result)
+            }
+        }
     }
 
     private fun openFile(path: String, mimeType: String?): Boolean {
@@ -174,6 +288,8 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        fileRequest?.result?.success(null)
+        fileRequest = null
         notificationPermissionResult?.error("permission_request_cancelled", null, null)
         notificationPermissionResult = null
         super.onDestroy()
