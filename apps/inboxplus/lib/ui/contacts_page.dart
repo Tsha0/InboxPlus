@@ -99,15 +99,18 @@ class _InboxContactsPageState extends State<InboxContactsPage> {
     return _buildList(context, contacts, suggestions, query);
   }
 
-  Uint8List? _photoFor(List<IdentityLink> identities) => personPhoto(
-    identities.expand(
-      (identity) => widget.controller.conversations.where(
-        (conversation) =>
-            conversation.route.accountId == identity.accountId &&
-            conversation.identityId == identity.identityId,
+  Uint8List? _photoFor(List<IdentityLink> identities) {
+    final chats = widget.controller.conversations;
+    return personPhoto(
+      identities.expand(
+        (identity) => chats.where(
+          (conversation) =>
+              conversation.route.accountId == identity.accountId &&
+              conversation.identityId == identity.identityId,
+        ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _suggestions(List<ContactSuggestion> suggestions) {
     final scheme = Theme.of(context).colorScheme;
