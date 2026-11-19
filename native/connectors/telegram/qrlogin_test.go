@@ -70,6 +70,20 @@ func TestQRScanOfTwoStepAccountAsksForPassword(t *testing.T) {
 	}
 }
 
+func TestQRRefreshAfterTwoStepScanAsksForPassword(t *testing.T) {
+	b, _ := qrBackend(t, func(call int32) (bin.Encoder, error) {
+		if call == 1 {
+			return qrToken(0), nil
+		}
+		return nil, tgerr.New(401, "SESSION_PASSWORD_NEEDED")
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := b.QRLogin(ctx, func(string) {}); !errors.Is(err, errPasswordNeeded) {
+		t.Fatalf("refresh after a two-step scan returned %v", err)
+	}
+}
+
 func TestQRRetryAfterAcceptedScanCompletesSignIn(t *testing.T) {
 	b, _ := qrBackend(t, func(call int32) (bin.Encoder, error) {
 		switch call {

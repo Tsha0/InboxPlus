@@ -145,6 +145,18 @@ func (b *gotdBackend) Password(ctx context.Context, password string) error {
 // QRLogin shows fresh tokens until one is scanned. Telegram reports an accepted scan with
 // updateLoginToken, or on the next export as success or a move to the account's data center.
 func (b *gotdBackend) QRLogin(ctx context.Context, show func(string)) error {
+	result, err := b.awaitQRScan(ctx, show)
+	// Once a two-step account accepts the scan, export and import both answer with this error.
+	if tgerr.Is(err, "SESSION_PASSWORD_NEEDED") {
+		return errPasswordNeeded
+	}
+	if err != nil {
+		return err
+	}
+	return b.acceptAuthorization(result)
+}
+
+func (b *gotdBackend) awaitQRScan(ctx context.Context, show func(string)) (*tg.AuthAuthorization, error) {
 	select {
 	case <-b.loginToken:
 	default:
@@ -154,7 +166,7 @@ func (b *gotdBackend) QRLogin(ctx context.Context, show func(string)) error {
 		token, err := qr.Export(ctx)
 		var migrate *qrlogin.MigrationNeededError
 		if err != nil && !errors.As(err, &migrate) {
-			return err
+			return nil, err
 		}
 		if err == nil && !token.Empty() {
 			show(token.URL())
@@ -163,21 +175,14 @@ func (b *gotdBackend) QRLogin(ctx context.Context, show func(string)) error {
 			select {
 			case <-ctx.Done():
 				timer.Stop()
-				return ctx.Err()
+				return nil, ctx.Err()
 			case <-timer.C:
 				continue
 			case <-b.loginToken:
 				timer.Stop()
 			}
 		}
-		result, err := qr.Import(ctx)
-		if tgerr.Is(err, "SESSION_PASSWORD_NEEDED") {
-			return errPasswordNeeded
-		}
-		if err != nil {
-			return err
-		}
-		return b.acceptAuthorization(result)
+		return qr.Import(ctx)
 	}
 }
 
