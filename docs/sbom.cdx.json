@@ -6051,7 +6051,7 @@
       ],
       "name": "Inbox+",
       "type": "application",
-      "version": "0.9.4+119"
+      "version": "0.9.5+120"
     },
     "properties": [
       {
@@ -6060,7 +6060,7 @@
       }
     ]
   },
-  "serialNumber": "urn:uuid:7d02e30e-ba20-4fd1-b67e-23546e14cff8",
+  "serialNumber": "urn:uuid:d9af286c-cd61-40d2-bfac-29d1b88f4143",
   "specVersion": "1.5",
   "version": 1
 }
