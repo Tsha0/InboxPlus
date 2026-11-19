@@ -9,28 +9,24 @@ import 'package:url_launcher/url_launcher.dart';
 import 'feedback_image.dart';
 import 'inbox_ui_controller.dart';
 
+const feedbackDiagnosticsNotice =
+    'Diagnostics are attached automatically. They don’t include messages or account names.';
+
 class FeedbackForm {
   FeedbackKind? kind;
   final text = TextEditingController();
-  bool includeDiagnostics = false;
   Uint8List? image;
 
   FeedbackDraft? get draft {
     final kind = this.kind;
     final body = text.text.trim();
     if (kind == null || body.isEmpty) return null;
-    return FeedbackDraft(
-      kind: kind,
-      text: body,
-      includeDiagnostics: includeDiagnostics,
-      image: image,
-    );
+    return FeedbackDraft(kind: kind, text: body, image: image);
   }
 
   void clear() {
     kind = null;
     text.clear();
-    includeDiagnostics = false;
     image = null;
   }
 
@@ -90,6 +86,9 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
   bool _attaching = false;
   String? _imageError;
   final _sendFocus = FocusNode();
+  final _captureFocus = FocusNode();
+  final _chooseImageFocus = FocusNode();
+  final _removeImageFocus = FocusNode();
 
   FeedbackForm get _form => widget.form;
   bool get _editable => _phase is _Editing || _phase is _Failed;
@@ -105,10 +104,19 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
   void dispose() {
     _form.text.removeListener(_textChanged);
     _sendFocus.dispose();
+    _captureFocus.dispose();
+    _chooseImageFocus.dispose();
+    _removeImageFocus.dispose();
     super.dispose();
   }
 
   void _textChanged() => setState(() {});
+
+  void _restoreFocus(FocusNode node) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) node.requestFocus();
+    });
+  }
 
   Future<void> _send() async {
     final draft = _form.draft;
@@ -116,16 +124,28 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
     setState(() => _phase = const _Sending());
     try {
       final receipt = await widget.controller.sendFeedback(draft);
+      if (!mounted) return;
       _form.clear();
-      if (mounted) setState(() => _phase = _Sent(draft.kind, receipt));
+      setState(() => _phase = _Sent(draft.kind, receipt));
     } on FeedbackFailure catch (failure) {
       if (!mounted) return;
-      setState(() => _phase = _Failed(failure.message));
-      _sendFocus.requestFocus();
+      setState(() {
+        _phase = _Failed(
+          failure == FeedbackFailure.tooLarge && draft.image != null
+              ? 'This feedback is too large to send. Shorten the details or remove the screenshot and try again.'
+              : failure.message,
+        );
+      });
+      _restoreFocus(_sendFocus);
     }
   }
 
-  Future<void> _attach(Future<Uint8List?> Function() source) async {
+  Future<void> _attach(
+    Future<Uint8List?> Function() source,
+    FocusNode focus,
+  ) async {
+    if (_attaching || !_editable) return;
+    final restoreFocus = focus.hasFocus;
     setState(() {
       _attaching = true;
       _imageError = null;
@@ -136,8 +156,20 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
     } on Exception catch (error) {
       if (mounted) setState(() => _imageError = feedbackImageError(error));
     } finally {
-      if (mounted) setState(() => _attaching = false);
+      if (mounted) {
+        setState(() => _attaching = false);
+        if (restoreFocus) {
+          _restoreFocus(_form.image == null ? focus : _removeImageFocus);
+        }
+      }
     }
+  }
+
+  void _removeImage() {
+    if (!_editable) return;
+    final restoreFocus = _removeImageFocus.hasFocus;
+    setState(() => _form.image = null);
+    if (restoreFocus) _restoreFocus(_captureFocus);
   }
 
   Future<Uint8List?> _chooseImage() => chooseFeedbackImage(widget.controller);
@@ -160,97 +192,167 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: _phase is! _Sending,
-    child: Dialog(
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      insetPadding: const EdgeInsets.all(24),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 520,
-          maxHeight: math.max(0, MediaQuery.sizeOf(context).height - 48),
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final narrow = MediaQuery.sizeOf(context).width < 480;
+    final padding = narrow ? 18.0 : 30.0;
+    return PopScope<void>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _phase is! _Sending) Navigator.pop(context);
+      },
+      child: Dialog(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: scheme.outlineVariant),
         ),
+        constraints: const BoxConstraints(maxWidth: 592),
+        insetPadding: EdgeInsets.all(narrow ? 12 : 24),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
           child: switch (_phase) {
-            _Sent(:final kind, :final receipt) => _sent(context, kind, receipt),
-            _ => _editor(context),
+            _Sent(:final kind, :final receipt) => Padding(
+              padding: EdgeInsets.all(padding),
+              child: _sent(context, kind, receipt),
+            ),
+            _ => _editor(scheme, padding),
           },
         ),
       ),
-    ),
-  );
+    );
+  }
 
-  Widget _editor(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final kind = _form.kind;
+  Widget _editor(ColorScheme scheme, double padding) {
+    final supporting = _supportingStyle(scheme);
+    final fieldBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(10),
+      borderSide: BorderSide(color: scheme.outline),
+    );
+    final hint = switch (_form.kind) {
+      FeedbackKind.bug => 'What happened? What did you expect instead?',
+      FeedbackKind.feature => 'What would you like Inbox+ to do?',
+      FeedbackKind.needsWork => 'What could work better?',
+      FeedbackKind.praise => 'What’s working well for you?',
+      null => 'Tell us what you’d like us to know.',
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(padding, padding, padding, 22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Semantics(
+                header: true,
+                child: const Text(
+                  'Send feedback',
+                  style: TextStyle(fontSize: 25, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text('Help us make Inbox+ better.', style: supporting),
+              const SizedBox(height: 6),
+              _postingNotice(supporting),
+              const SizedBox(height: 22),
+              const Text('Feedback type', style: _labelStyle),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [for (final kind in FeedbackKind.values) _kind(kind)],
+              ),
+              const SizedBox(height: 22),
+              const ExcludeSemantics(
+                child: Text('Details', style: _labelStyle),
+              ),
+              const SizedBox(height: 8),
+              Semantics(
+                label: 'Details',
+                child: TextField(
+                  key: const Key('feedback-text'),
+                  controller: _form.text,
+                  autofocus: true,
+                  enabled: _editable,
+                  minLines: 5,
+                  maxLines: 10,
+                  maxLength: 5000,
+                  style: const TextStyle(fontSize: 14, height: 1.4),
+                  keyboardType: TextInputType.multiline,
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    contentPadding: const EdgeInsets.all(14),
+                    enabledBorder: fieldBorder,
+                    focusedBorder: fieldBorder.copyWith(
+                      borderSide: BorderSide(color: scheme.primary, width: 2),
+                    ),
+                  ),
+                  buildCounter:
+                      (
+                        context, {
+                        required currentLength,
+                        required isFocused,
+                        maxLength,
+                      }) => currentLength > 4500
+                      ? Text('$currentLength/$maxLength')
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 22),
+              _screenshot(scheme),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Padding(
+          padding: EdgeInsets.fromLTRB(padding, 16, padding, 20),
+          child: _footer(scheme),
+        ),
+      ],
+    );
+  }
+
+  Widget _postingNotice(TextStyle supporting) {
+    final (visibility, warning) = switch (_form.kind) {
+      null => (
+        'Bugs, requests and suggestions are posted publicly on GitHub.',
+        ' Praise is sent privately.',
+      ),
+      FeedbackKind(isPublic: true) => (
+        'Posted publicly on GitHub.',
+        ' Don’t include private messages.',
+      ),
+      _ => ('Sent privately to the developer.', ''),
+    };
+    return Semantics(
+      liveRegion: true,
+      child: Text.rich(
+        TextSpan(
+          text: visibility,
+          style: _labelStyle.copyWith(fontSize: 12),
+          children: [TextSpan(text: warning, style: supporting)],
+        ),
+      ),
+    );
+  }
+
+  Widget _footer(ColorScheme scheme) {
+    final supporting = _supportingStyle(scheme);
     final failure = switch (_phase) {
       _Failed(:final message) => message,
       _ => null,
     };
     return Column(
-      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Semantics(
-          header: true,
-          child: const Text(
-            'Send feedback',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(switch (kind) {
-          null => 'Bugs, requests and suggestions are posted publicly on GitHub. Praise is sent privately.',
-          FeedbackKind(isPublic: true) =>
-            'Posted publicly on GitHub. Don’t include private messages.',
-          _ => 'Sent privately to the developer.',
-        }, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [for (final value in FeedbackKind.values) _kind(value)],
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          key: const Key('feedback-text'),
-          controller: _form.text,
-          autofocus: true,
-          enabled: _editable,
-          minLines: 5,
-          maxLines: 10,
-          maxLength: 5000,
-          keyboardType: TextInputType.multiline,
-          decoration: const InputDecoration(
-            hintText: 'Tell us what went wrong, or share general feedback.',
-          ),
-          buildCounter: (
-            context, {
-            required currentLength,
-            required isFocused,
-            maxLength,
-          }) => currentLength > 4500 ? Text('$currentLength/$maxLength') : null,
-        ),
-        const SizedBox(height: 12),
-        _screenshot(context),
-        const SizedBox(height: 8),
-        CheckboxListTile(
-          key: const Key('feedback-diagnostics'),
-          value: _form.includeDiagnostics,
-          onChanged: _editable
-              ? (value) => setState(() => _form.includeDiagnostics = value!)
-              : null,
-          controlAffinity: ListTileControlAffinity.leading,
-          contentPadding: EdgeInsets.zero,
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          title: const Text('Attach diagnostics'),
-          subtitle: const Text(
-            'Version, platform, connected networks, settings and counts. No messages or account names.',
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(CupertinoIcons.info, size: 15, color: supporting.color),
+            const SizedBox(width: 9),
+            Expanded(child: Text(feedbackDiagnosticsNotice, style: supporting)),
+          ],
         ),
         if (failure != null) ...[
           const SizedBox(height: 8),
@@ -260,40 +362,19 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
           ),
         ],
         const SizedBox(height: 16),
-        Row(
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            if (kind?.expectsScreenshot == true && _form.image == null)
-              Expanded(
-                child: Row(
-                  children: [
-                    Icon(
-                      CupertinoIcons.photo,
-                      size: 14,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        'No screenshot attached',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              const Spacer(),
             TextButton(
               key: const Key('feedback-close'),
+              style: _secondaryStyle(scheme, height: 40),
               onPressed: _phase is _Sending
                   ? null
-                  : () => Navigator.pop(context),
+                  : () => Navigator.maybePop(context),
               child: const Text('Close'),
             ),
-            const SizedBox(width: 8),
             FilledButton(
               key: const Key('feedback-send'),
               focusNode: _sendFocus,
@@ -325,161 +406,180 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
   Widget _kind(FeedbackKind kind) {
     final scheme = Theme.of(context).colorScheme;
     final selected = _form.kind == kind;
-    void choose() => setState(() => _form.kind = kind);
-    return Semantics(
-      label: kind.label,
-      button: true,
-      selected: selected,
-      inMutuallyExclusiveGroup: true,
-      enabled: _editable,
-      onTap: _editable ? choose : null,
-      excludeSemantics: true,
-      child: TextButton(
-        key: Key('feedback-kind-${kind.name}'),
-        onPressed: _editable ? choose : null,
-        style: TextButton.styleFrom(
-          backgroundColor: selected ? scheme.primary : Colors.transparent,
-          foregroundColor: selected ? scheme.onPrimary : scheme.onSurface,
-          disabledBackgroundColor: selected
-              ? scheme.primary.withValues(alpha: .5)
-              : Colors.transparent,
-          disabledForegroundColor: selected
-              ? scheme.onPrimary.withValues(alpha: .8)
+    return MergeSemantics(
+      child: Semantics(
+        selected: selected,
+        inMutuallyExclusiveGroup: true,
+        child: TextButton(
+          key: Key('feedback-kind-${kind.name}'),
+          onPressed: _editable
+              ? () {
+                  if (_editable) setState(() => _form.kind = kind);
+                }
               : null,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          minimumSize: const Size(0, 28),
-          shape: StadiumBorder(
-            side: BorderSide(
-              color: selected ? scheme.primary : scheme.outlineVariant,
+          style: TextButton.styleFrom(
+            backgroundColor: selected
+                ? scheme.primary.withValues(alpha: .12)
+                : Colors.transparent,
+            foregroundColor: scheme.onSurface,
+            disabledBackgroundColor: selected
+                ? scheme.primary.withValues(alpha: .08)
+                : Colors.transparent,
+            disabledForegroundColor: scheme.onSurfaceVariant,
+            visualDensity: VisualDensity.standard,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            minimumSize: const Size(0, 35),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: BorderSide(
+                color: selected ? scheme.primary : scheme.outlineVariant,
+              ),
             ),
           ),
-        ),
-        child: Text(
-          kind.label,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          child: Text(kind.label, style: _labelStyle),
         ),
       ),
     );
   }
 
-  Widget _screenshot(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+  Widget _screenshot(ColorScheme scheme) {
     final image = _form.image;
-    final notice = TextStyle(fontSize: 12, color: scheme.onSurfaceVariant);
-    final zone = BoxDecoration(
-      color: scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(10),
-      border: Border.all(color: scheme.outlineVariant),
-    );
-    if (image != null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            height: 200,
-            decoration: zone,
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Image.memory(
-                    image,
-                    key: const Key('feedback-image-preview'),
-                    fit: BoxFit.contain,
-                    gaplessPlayback: true,
-                    semanticLabel: 'Screenshot to send',
-                  ),
-                ),
-                Positioned(
-                  top: 6,
-                  right: 6,
-                  child: IconButton(
-                    key: const Key('feedback-remove-image'),
-                    tooltip: 'Remove screenshot',
-                    onPressed: _editable
-                        ? () => setState(() => _form.image = null)
-                        : null,
-                    style: IconButton.styleFrom(
-                      backgroundColor: scheme.surface,
-                      minimumSize: const Size(26, 26),
-                    ),
-                    icon: const Icon(CupertinoIcons.xmark, size: 13),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text('Only the developer can see this screenshot.', style: notice),
-        ],
-      );
-    }
     final busy = _attaching || !_editable;
-    return Container(
-      decoration: zone,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Icon(CupertinoIcons.photo, size: 24, color: scheme.onSurfaceVariant),
-          const SizedBox(height: 8),
-          Text(
-            _form.kind?.isPublic == false
-                ? 'Add a screenshot of what you like.'
-                : 'Add a screenshot. It helps us fix this faster.',
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
+    final supporting = _supportingStyle(scheme);
+    final buttonStyle = _secondaryStyle(scheme, height: 34).copyWith(
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+      ),
+      textStyle: const WidgetStatePropertyAll(
+        TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+    );
+    final description = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(CupertinoIcons.photo, size: 15, color: supporting.color),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextButton.icon(
-                key: const Key('feedback-capture'),
-                onPressed: busy ? null : () => _attach(_captureWindow),
-                style: TextButton.styleFrom(
-                  backgroundColor: scheme.surfaceContainer,
+              Text.rich(
+                TextSpan(
+                  text: 'Screenshot',
+                  style: _labelStyle,
+                  children: [TextSpan(text: ' · Optional', style: supporting)],
                 ),
-                icon: const Icon(CupertinoIcons.macwindow, size: 15),
-                label: const Text('Capture Inbox+ window'),
               ),
-              TextButton.icon(
-                key: const Key('feedback-choose-image'),
-                onPressed: busy ? null : () => _attach(_chooseImage),
-                style: TextButton.styleFrom(
-                  backgroundColor: scheme.surfaceContainer,
-                ),
-                icon: const Icon(CupertinoIcons.folder, size: 15),
-                label: const Text('Choose image…'),
+              const SizedBox(height: 4),
+              Text(
+                image == null
+                    ? 'Check for private content before sending.'
+                    : 'Only the developer can see this screenshot.',
+                style: supporting,
               ),
             ],
           ),
-          if (_attaching) ...[
-            const SizedBox(height: 12),
-            const SizedBox.square(
+        ),
+      ],
+    );
+    final actions = Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        if (image == null) ...[
+          TextButton(
+            key: const Key('feedback-capture'),
+            focusNode: _captureFocus,
+            onPressed: busy
+                ? null
+                : () => _attach(_captureWindow, _captureFocus),
+            style: buttonStyle,
+            child: const Text('Capture window'),
+          ),
+          TextButton(
+            key: const Key('feedback-choose-image'),
+            focusNode: _chooseImageFocus,
+            onPressed: busy
+                ? null
+                : () => _attach(_chooseImage, _chooseImageFocus),
+            style: buttonStyle,
+            child: const Text('Choose image…'),
+          ),
+        ] else
+          TextButton(
+            key: const Key('feedback-remove-image'),
+            focusNode: _removeImageFocus,
+            onPressed: busy ? null : _removeImage,
+            style: buttonStyle,
+            child: const Text('Remove screenshot'),
+          ),
+      ],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final narrow = constraints.maxWidth < 440;
+            return Flex(
+              direction: narrow ? Axis.vertical : Axis.horizontal,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: narrow
+                  ? CrossAxisAlignment.start
+                  : CrossAxisAlignment.center,
+              children: [
+                Flexible(flex: narrow ? 0 : 1, child: description),
+                const SizedBox(width: 12, height: 10),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: constraints.maxWidth * (narrow ? 1 : .55),
+                  ),
+                  child: actions,
+                ),
+              ],
+            );
+          },
+        ),
+        if (image != null) ...[
+          const SizedBox(height: 10),
+          Container(
+            height: 150,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: scheme.outlineVariant),
+            ),
+            child: Image.memory(
+              image,
+              key: const Key('feedback-image-preview'),
+              fit: BoxFit.contain,
+              gaplessPlayback: true,
+              semanticLabel: 'Screenshot to send',
+            ),
+          ),
+        ],
+        if (_attaching) ...[
+          const SizedBox(height: 10),
+          const Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: SizedBox.square(
               dimension: 14,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
                 semanticsLabel: 'Preparing screenshot',
               ),
             ),
-          ],
-          if (_imageError case final error?) ...[
-            const SizedBox(height: 12),
-            Semantics(
-              liveRegion: true,
-              child: Text(
-                error,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: scheme.error),
-              ),
-            ),
-          ],
+          ),
         ],
-      ),
+        if (_imageError case final error?) ...[
+          const SizedBox(height: 10),
+          Semantics(
+            liveRegion: true,
+            child: Text(error, style: supporting.copyWith(color: scheme.error)),
+          ),
+        ],
+      ],
     );
   }
 
@@ -516,18 +616,19 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
           style: TextStyle(color: scheme.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            if (issueUrl != null) ...[
+            if (issueUrl != null)
               TextButton(
                 key: const Key('feedback-view-issue'),
                 onPressed: () =>
                     launchUrl(issueUrl, mode: LaunchMode.externalApplication),
+                style: _secondaryStyle(scheme, height: 40),
                 child: const Text('View on GitHub'),
               ),
-              const SizedBox(width: 8),
-            ],
             FilledButton(
               key: const Key('feedback-done'),
               autofocus: true,
@@ -541,11 +642,40 @@ class _FeedbackDialogState extends State<FeedbackDialog> {
     );
   }
 
+  static const _labelStyle = TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
+  );
+
+  static TextStyle _supportingStyle(ColorScheme scheme) => TextStyle(
+    fontSize: 12,
+    height: 1.35,
+    fontWeight: FontWeight.w400,
+    color: Color.alphaBlend(
+      scheme.onSurface.withValues(alpha: .25),
+      scheme.onSurfaceVariant,
+    ),
+  );
+
+  static ButtonStyle _secondaryStyle(
+    ColorScheme scheme, {
+    required double height,
+  }) => _buttonStyle.merge(
+    TextButton.styleFrom(
+      minimumSize: Size(0, height),
+      backgroundColor: scheme.surfaceContainerLow,
+      disabledBackgroundColor: scheme.surfaceContainerLow,
+      foregroundColor: scheme.onSurface,
+      side: BorderSide(color: scheme.outlineVariant),
+    ),
+  );
+
   static final _buttonStyle = FilledButton.styleFrom(
-    minimumSize: const Size(0, 24),
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+    minimumSize: const Size(0, 40),
+    visualDensity: VisualDensity.standard,
+    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    textStyle: const TextStyle(fontSize: 13),
+    textStyle: _labelStyle,
   );
 }

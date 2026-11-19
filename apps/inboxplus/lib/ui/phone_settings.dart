@@ -1092,6 +1092,7 @@ class _FeedbackPageState extends State<FeedbackPage> {
     final kind = _form.kind;
     final image = _form.image;
     final editable = !_sending;
+    final supporting = TextStyle(fontSize: 13, color: scheme.onSurfaceVariant);
     return PopScope(
       canPop: !_sending,
       child: Scaffold(
@@ -1125,6 +1126,15 @@ class _FeedbackPageState extends State<FeedbackPage> {
               ],
             ),
             const SizedBox(height: 16),
+            Text(switch (kind) {
+              null => 'Bugs, requests and suggestions are posted publicly on GitHub. Praise is sent privately.',
+              FeedbackKind(isPublic: true) =>
+                'Posted publicly on GitHub. Don’t include private messages.',
+              _ => 'Sent privately to the developer.',
+            }, style: supporting),
+            const SizedBox(height: 8),
+            Text(feedbackDiagnosticsNotice, style: supporting),
+            const SizedBox(height: 12),
             TextField(
               key: const Key('feedback-text'),
               controller: _form.text,
@@ -1141,15 +1151,6 @@ class _FeedbackPageState extends State<FeedbackPage> {
             ),
             _PhoneGroup(
               children: [
-                _PhoneSwitchRow(
-                  title: 'Attach diagnostics',
-                  subtitle: 'Version, platform, connected networks, settings and counts. No messages or account names.',
-                  value: _form.includeDiagnostics,
-                  onChanged: editable
-                      ? (value) =>
-                            setState(() => _form.includeDiagnostics = value)
-                      : null,
-                ),
                 if (image != null)
                   _PhoneRow(
                     key: const Key('feedback-screenshot'),
@@ -1188,13 +1189,6 @@ class _FeedbackPageState extends State<FeedbackPage> {
               const SizedBox(height: 12),
               Text(error, style: TextStyle(color: scheme.error)),
             ],
-            const SizedBox(height: 14),
-            Text(switch (kind) {
-              null => 'Bugs, requests and suggestions are posted publicly on GitHub. Praise is sent privately.',
-              FeedbackKind(isPublic: true) =>
-                'Posted publicly on GitHub. Don’t include private messages.',
-              _ => 'Sent privately to the developer.',
-            }, style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant)),
             const SizedBox(height: 16),
             FilledButton(
               key: const Key('feedback-send'),

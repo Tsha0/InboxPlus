@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 
 const issueRepo = "Tsha0/InboxPlus";
-const maxBodyBytes = 4 * 1024 * 1024 + 64 * 1024;
 const maxTextLength = 5000;
 const maxAppFieldLength = 32;
 const maxDiagnosticsBytes = 16 * 1024;
+const maxBodyBytes = 4_500_000;
+const maxIssueBodyLength = 65_536;
 const maxImageBytes = 3 * 1024 * 1024;
 const titleLength = 70;
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const defaultEmailFrom = "Inbox+ Feedback <onboarding@resend.dev>";
 
@@ -51,8 +53,7 @@ export async function handleFeedback({ method, bodyText }, env, fetchImpl) {
   const route = routes[feedback.kind];
   if (route.destination.requiredEnv.some((name) => !env[name])) return unavailable;
 
-  const body = await route.destination.deliver(feedback, route, env, fetchImpl);
-  return body ? { status: 200, body } : unavailable;
+  return route.destination.deliver(feedback, route, env, fetchImpl);
 }
 
 function parseFeedback(bodyText) {
@@ -67,8 +68,9 @@ function parseFeedback(bodyText) {
   }
 
   const text = typeof request.text === "string" ? request.text.trim() : "";
-  const length = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)].length;
-  if (length === 0 || length > maxTextLength) return { rejection: invalidRequest };
+  if (!text || exceedsLength(graphemeSegmenter.segment(text), maxTextLength)) {
+    return { rejection: invalidRequest };
+  }
 
   const { app } = request;
   const appFields = ["version", "build", "platform"];
@@ -113,19 +115,19 @@ function parseFeedback(bodyText) {
 }
 
 async function fileIssue(feedback, route, env, fetchImpl) {
-  let screenshotUrl = null;
-  if (feedback.image) {
-    const now = new Date();
-    const month = String(now.getUTCMonth() + 1).padStart(2, "0");
-    const path = `${now.getUTCFullYear()}/${month}/${randomUUID()}.png`;
+  const path = feedback.image ? screenshotPath() : null;
+  const screenshotUrl = path && `https://github.com/${env.FEEDBACK_MEDIA_REPO}/blob/HEAD/${path}`;
+  const body = issueBody(feedback, screenshotUrl);
+  if (body.length > maxIssueBodyLength && exceedsLength(body, maxIssueBodyLength)) return tooLarge;
+
+  if (path) {
     const upload = await callUpstream(fetchImpl, feedback.kind, "screenshot upload", {
       url: `https://api.github.com/repos/${env.FEEDBACK_MEDIA_REPO}/contents/${path}`,
       method: "PUT",
       headers: githubHeaders(env.FEEDBACK_GITHUB_MEDIA_TOKEN),
       body: { message: "Add feedback screenshot", content: feedback.image.toString("base64") },
     });
-    if (!upload) return null;
-    screenshotUrl = upload.content.html_url;
+    if (!upload) return unavailable;
   }
 
   const issue = await callUpstream(fetchImpl, feedback.kind, "issue", {
@@ -134,11 +136,17 @@ async function fileIssue(feedback, route, env, fetchImpl) {
     headers: githubHeaders(env.FEEDBACK_GITHUB_ISSUES_TOKEN),
     body: {
       title: neutralizeMentions(title(route.prefix, feedback.text)),
-      body: issueBody(feedback, screenshotUrl),
+      body,
       labels: route.labels,
     },
   });
-  return issue && { issueUrl: issue.html_url };
+  return issue ? { status: 200, body: { issueUrl: issue.html_url } } : unavailable;
+}
+
+function screenshotPath() {
+  const now = new Date();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  return `${now.getUTCFullYear()}/${month}/${randomUUID()}.png`;
 }
 
 async function sendEmail(feedback, route, env, fetchImpl) {
@@ -165,7 +173,7 @@ async function sendEmail(feedback, route, env, fetchImpl) {
     },
     body: email,
   });
-  return sent && {};
+  return sent ? { status: 200, body: {} } : unavailable;
 }
 
 async function callUpstream(fetchImpl, kind, step, { url, method, headers, body }) {
@@ -241,6 +249,15 @@ function escapeMarkdown(text) {
 
 function isPlainObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function exceedsLength(iterable, limit) {
+  const iterator = iterable[Symbol.iterator]();
+  let length = 0;
+  while (!iterator.next().done) {
+    if (++length > limit) return true;
+  }
+  return false;
 }
 
 export default {

@@ -44,7 +44,6 @@ void main() {
       FeedbackDraft(
         kind: FeedbackKind.needsWork,
         text: 'Sidebar is cramped',
-        includeDiagnostics: true,
         image: image,
       ),
       {
@@ -73,15 +72,19 @@ void main() {
     });
   });
 
-  test('praise succeeds without an issue or optional fields', () async {
+  test('praise includes diagnostics but no issue or image', () async {
     reply(200, {});
     final receipt = await FeedbackRelay(endpoint: endpoint).submit(
       const FeedbackDraft(kind: FeedbackKind.praise, text: 'Love it'),
-      null,
+      {'version': inboxPlusVersion},
     );
     expect(receipt.issueUrl, isNull);
-    expect(requests.single.body.keys, unorderedEquals(['kind', 'text', 'app']));
+    expect(
+      requests.single.body.keys,
+      unorderedEquals(['kind', 'text', 'app', 'diagnostics']),
+    );
     expect(requests.single.body['kind'], 'praise');
+    expect(requests.single.body['diagnostics'], {'version': inboxPlusVersion});
   });
 
   for (final url in [
@@ -94,7 +97,7 @@ void main() {
       reply(200, {'issueUrl': url});
       final receipt = await FeedbackRelay(endpoint: endpoint).submit(
         const FeedbackDraft(kind: FeedbackKind.bug, text: 'Crash'),
-        null,
+        const {},
       );
       expect(receipt.issueUrl, isNull);
     });
@@ -113,7 +116,7 @@ void main() {
       await expectLater(
         FeedbackRelay(endpoint: endpoint).submit(
           const FeedbackDraft(kind: FeedbackKind.bug, text: 'Crash'),
-          null,
+          const {},
         ),
         throwsA(failure),
       );
@@ -128,7 +131,7 @@ void main() {
       FeedbackRelay(endpoint: Uri.parse('http://127.0.0.1:$port/api/feedback'))
           .submit(
             const FeedbackDraft(kind: FeedbackKind.bug, text: 'Crash'),
-            null,
+            const {},
           ),
       throwsA(FeedbackFailure.offline),
     );
@@ -142,7 +145,7 @@ void main() {
         timeout: const Duration(milliseconds: 200),
       ).submit(
         const FeedbackDraft(kind: FeedbackKind.bug, text: 'Crash'),
-        null,
+        const {},
       ),
       throwsA(FeedbackFailure.unavailable),
     );

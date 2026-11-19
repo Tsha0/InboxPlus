@@ -346,36 +346,24 @@ class PreferencesRecord {
 }
 
 enum FeedbackKind {
-  bug('bug', 'Bug', expectsScreenshot: true),
+  bug('bug', 'Bug'),
   feature('feature', 'Feature request'),
   needsWork('needsWork', 'Needs work'),
   praise('praise', 'Praise', isPublic: false);
 
-  const FeedbackKind(
-    this.wireName,
-    this.label, {
-    this.isPublic = true,
-    this.expectsScreenshot = false,
-  });
+  const FeedbackKind(this.wireName, this.label, {this.isPublic = true});
 
   final String wireName;
   final String label;
   final bool isPublic;
-  final bool expectsScreenshot;
 }
 
 @immutable
 class FeedbackDraft {
-  const FeedbackDraft({
-    required this.kind,
-    required this.text,
-    this.includeDiagnostics = false,
-    this.image,
-  });
+  const FeedbackDraft({required this.kind, required this.text, this.image});
 
   final FeedbackKind kind;
   final String text;
-  final bool includeDiagnostics;
   final Uint8List? image;
 }
 
@@ -401,7 +389,7 @@ enum FeedbackFailure implements Exception {
   ),
   unavailable('Feedback can’t be sent right now. Try again in a few minutes.'),
   tooLarge(
-    'This feedback is too large to send. Remove the screenshot and try again.',
+    'This feedback is too large to send. Shorten the details and try again.',
   ),
   rejected('The feedback service didn’t accept this report.');
 

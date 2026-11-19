@@ -55,6 +55,7 @@ void main() {
     DateTime Function()? now,
     FeedbackSubmitter? submitFeedback,
     bool waitForStartup = true,
+    bool reconnect = true,
   }) async {
     final value = AppController(
       store: store,
@@ -69,7 +70,7 @@ void main() {
       now: now ?? () => instant,
     );
     controller = value;
-    final startup = value.initialize();
+    final startup = value.initialize(reconnect: reconnect);
     if (waitForStartup) await startup;
     return value;
   }
@@ -1982,42 +1983,54 @@ void main() {
     }
   });
 
-  test(
-    'feedback attaches diagnostics only when asked and keeps the image',
-    () async {
-      await seed(firstRoute);
-      final submissions =
-          <({FeedbackDraft draft, Map<String, Object?>? diagnostics})>[];
-      final app = await start(
-        engine: _FakeEngine(),
-        submitFeedback: (draft, diagnostics) async {
-          submissions.add((draft: draft, diagnostics: diagnostics));
-          return FeedbackReceipt(
-            issueUrl: Uri.parse('https://github.com/Tsha0/InboxPlus/issues/9'),
-          );
-        },
-      );
-      final image = Uint8List.fromList([1, 2, 3]);
-      final receipt = await app.sendFeedback(
-        FeedbackDraft(kind: FeedbackKind.bug, text: 'Crash', image: image),
-      );
-      await app.sendFeedback(
-        const FeedbackDraft(
-          kind: FeedbackKind.praise,
-          text: 'Thanks',
-          includeDiagnostics: true,
+  test('feedback always attaches sanitized diagnostics and keeps the optional image', () async {
+    const accountCount = 400;
+    for (var index = 0; index < accountCount; index++) {
+      await store.saveAccount(
+        AccountRecord(
+          id: 'private-account-$index',
+          platform: 'whatsapp',
+          displayName: 'Private account display name',
         ),
       );
-      expect(
-        receipt.issueUrl,
-        Uri.parse('https://github.com/Tsha0/InboxPlus/issues/9'),
-      );
-      expect(submissions.first.diagnostics, isNull);
-      expect(submissions.first.draft.image, image);
-      expect(submissions.last.diagnostics, jsonDecode(app.diagnosticsJson()));
-      expect(submissions.last.draft.image, isNull);
-    },
-  );
+    }
+    final submissions =
+        <({FeedbackDraft draft, Map<String, Object?> diagnostics})>[];
+    final app = await start(
+      engine: _FakeEngine(),
+      reconnect: false,
+      submitFeedback: (draft, diagnostics) async {
+        submissions.add((draft: draft, diagnostics: diagnostics));
+        return FeedbackReceipt(
+          issueUrl: Uri.parse('https://github.com/Tsha0/InboxPlus/issues/9'),
+        );
+      },
+    );
+    final image = Uint8List.fromList([1, 2, 3]);
+    final receipt = await app.sendFeedback(
+      FeedbackDraft(kind: FeedbackKind.bug, text: 'Crash', image: image),
+    );
+    await app.sendFeedback(
+      const FeedbackDraft(kind: FeedbackKind.praise, text: 'Thanks'),
+    );
+    expect(
+      receipt.issueUrl,
+      Uri.parse('https://github.com/Tsha0/InboxPlus/issues/9'),
+    );
+    final exported = jsonDecode(app.diagnosticsJson()) as Map<String, dynamic>;
+    expect(exported['accounts'], hasLength(accountCount));
+    final diagnostics = {
+      ...exported,
+      'accounts': [
+        {'platform': 'whatsapp', 'connected': false, 'count': accountCount},
+      ],
+    };
+    expect(utf8.encode(jsonEncode(diagnostics)).length, lessThan(16 * 1024));
+    expect(submissions.first.diagnostics, diagnostics);
+    expect(submissions.first.draft.image, image);
+    expect(submissions.last.diagnostics, diagnostics);
+    expect(submissions.last.draft.image, isNull);
+  });
 
   test(
     'a feedback failure reaches the caller without an app-wide error',

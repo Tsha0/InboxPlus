@@ -14,7 +14,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'confirmation.dart';
 import 'feedback_dialog.dart'
-    show FeedbackForm, chooseFeedbackImage, feedbackImageError;
+    show
+        FeedbackForm,
+        chooseFeedbackImage,
+        feedbackDiagnosticsNotice,
+        feedbackImageError;
 import 'inbox_ui_controller.dart';
 import 'network_badge.dart';
 

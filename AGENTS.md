@@ -40,8 +40,8 @@ Treat a violation of any rule below as P1. That severity applies only to these r
 ordinary style preferences.
 
 - Flutter views use `InboxUiController`; the app controller owns state and persistence. Network clients
-  stay in `native/connectors` behind the account-scoped C ABI. Feedback form text, kind, diagnostics
-  choice, staged screenshot and send phase are an explicit exception to controller-owned state:
+  stay in `native/connectors` behind the account-scoped C ABI. Feedback form text, kind, staged
+  screenshot and send phase are an explicit exception to controller-owned state:
   they stay in widget memory for the current app session. The one network exception is the feedback relay
   client in `apps/inboxplus/lib/feedback_relay.dart`, which holds no account and posts only feedback
   the user sends; every messaging network client still follows this rule. The local macOS Messages
