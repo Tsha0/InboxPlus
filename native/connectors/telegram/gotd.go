@@ -15,6 +15,7 @@ import (
 
 	gotd "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/telegram/downloader"
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/telegram/message/styling"
@@ -41,6 +42,7 @@ type gotdBackend struct {
 	updates       *updates.Manager
 	emit          func(map[string]any)
 	authorized    chan int64
+	loginToken    chan struct{}
 	mu            sync.Mutex
 	selfID        int64
 	peers         map[string]tg.InputPeerClass
@@ -51,17 +53,30 @@ type gotdBackend struct {
 }
 
 func newGotdBackend(accountID string, apiID int, apiHash string, storage *sessionStorage, emit func(map[string]any)) *gotdBackend {
-	b := &gotdBackend{accountID: accountID, emit: emit, authorized: make(chan int64, 1),
+	b := &gotdBackend{accountID: accountID, emit: emit, authorized: make(chan int64, 1), loginToken: make(chan struct{}, 1),
 		peers: make(map[string]tg.InputPeerClass), names: make(map[string]string),
 		avatars: make(map[string]string), attachments: make(map[string]attachmentReference)}
 	b.updates = updates.New(updates.Config{Handler: gotd.UpdateHandlerFunc(b.handleUpdates), MaxChannelDifferenceConcurrency: 2})
 	b.client = gotd.NewClient(apiID, apiHash, gotd.Options{
 		SessionStorage: storage,
-		UpdateHandler:  b.updates,
+		UpdateHandler:  gotd.UpdateHandlerFunc(b.routeUpdates),
 		Middlewares:    []gotd.Middleware{hook.UpdateHook(b.updates.Handle)},
 		Device:         gotd.DeviceConfig{DeviceModel: "Inbox+", SystemVersion: "Inbox+", AppVersion: "1.0.0"},
 	})
 	return b
+}
+
+func (b *gotdBackend) routeUpdates(ctx context.Context, update tg.UpdatesClass) error {
+	if short, ok := update.(*tg.UpdateShort); ok {
+		if _, ok := short.Update.(*tg.UpdateLoginToken); ok {
+			select {
+			case b.loginToken <- struct{}{}:
+			default:
+			}
+			return nil
+		}
+	}
+	return b.updates.Handle(ctx, update)
 }
 
 func (b *gotdBackend) Run(ctx context.Context, ready func(bool, error)) error {
@@ -125,6 +140,45 @@ func (b *gotdBackend) Password(ctx context.Context, password string) error {
 		return err
 	}
 	return b.acceptAuthorization(result)
+}
+
+// QRLogin shows fresh tokens until one is scanned. Telegram reports an accepted scan with
+// updateLoginToken, or on the next export as success or a move to the account's data center.
+func (b *gotdBackend) QRLogin(ctx context.Context, show func(string)) error {
+	select {
+	case <-b.loginToken:
+	default:
+	}
+	qr := b.client.QR()
+	for {
+		token, err := qr.Export(ctx)
+		var migrate *qrlogin.MigrationNeededError
+		if err != nil && !errors.As(err, &migrate) {
+			return err
+		}
+		if err == nil && !token.Empty() {
+			show(token.URL())
+			// Expiry is server time, so bound the wait in case this device's clock is off.
+			timer := time.NewTimer(min(max(time.Until(token.Expires()), 5*time.Second), 30*time.Second))
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+				continue
+			case <-b.loginToken:
+				timer.Stop()
+			}
+		}
+		result, err := qr.Import(ctx)
+		if tgerr.Is(err, "SESSION_PASSWORD_NEEDED") {
+			return errPasswordNeeded
+		}
+		if err != nil {
+			return err
+		}
+		return b.acceptAuthorization(result)
+	}
 }
 
 func (b *gotdBackend) acceptAuthorization(result *tg.AuthAuthorization) error {

@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ type backend interface {
 	SendCode(context.Context, string) (string, error)
 	SignIn(context.Context, string, string, string) error
 	Password(context.Context, string) error
+	QRLogin(context.Context, func(string)) error
 	Sync(context.Context) error
 	History(context.Context, string, int) error
 	Resolve(context.Context, string) (any, error)
@@ -43,6 +45,8 @@ type Connector struct {
 	backend    backend
 	cancel     context.CancelFunc
 	done       chan struct{}
+	qrCancel   context.CancelFunc
+	qrDone     chan struct{}
 	state      string
 	phone      string
 	codeHash   string
@@ -205,7 +209,7 @@ func (c *Connector) Handle(ctx context.Context, request map[string]any) (any, er
 
 func Capabilities() map[string]any {
 	return map[string]any{
-		"platform": "telegram", "direct": true, "phone_login": true,
+		"platform": "telegram", "direct": true, "phone_login": true, "qr_login": true,
 		"password_login": true, "send_text": true, "send_attachment": true,
 		"download_attachment": true, "history": true, "secret_chats": false,
 		"start_conversation": true, "replies": true, "reactions": true,
@@ -218,8 +222,11 @@ func (c *Connector) connect(ctx context.Context, request map[string]any) (any, e
 	defer cancelRequest()
 	c.mu.Lock()
 	if c.cancel != nil {
-		state := c.state
+		state, b := c.state, c.backend
 		c.mu.Unlock()
+		if method := stringValue(request, "login_method"); method != "" && (state == "phone" || state == "qr" || state == "code") {
+			return c.chooseLoginMethod(b, state, method)
+		}
 		if state != "disconnected" {
 			return map[string]any{"state": state}, nil
 		}
@@ -274,6 +281,13 @@ func (c *Connector) connect(ctx context.Context, request map[string]any) (any, e
 		if result.authorized {
 			return c.finishLogin(ctx, b)
 		}
+		if stringValue(request, "login_method") == "qr" {
+			if !c.startQR(b) {
+				c.stop()
+				return nil, errNotConnected
+			}
+			return map[string]any{"state": "qr"}, nil
+		}
 		if !c.setState("phone") {
 			c.stop()
 			return nil, errNotConnected
@@ -284,6 +298,27 @@ func (c *Connector) connect(ctx context.Context, request map[string]any) (any, e
 		c.setState("disconnected")
 		return nil, errors.New("telegram_connection_cancelled")
 	}
+}
+
+func (c *Connector) chooseLoginMethod(b backend, state, method string) (any, error) {
+	if state != "phone" && state != "qr" && state != "code" {
+		return nil, errInvalidState
+	}
+	switch method {
+	case "qr":
+		if !c.startQR(b) {
+			return nil, errInvalidState
+		}
+		return map[string]any{"state": "qr"}, nil
+	case "phone":
+		c.stopQR()
+		if !c.setState("phone", "phone", "qr", "code") {
+			return nil, errInvalidState
+		}
+		c.phone, c.codeHash = "", ""
+		return map[string]any{"state": "phone"}, nil
+	}
+	return nil, errors.New("telegram_invalid_login_method")
 }
 
 func (c *Connector) finishLogin(ctx context.Context, b backend) (any, error) {
@@ -304,9 +339,55 @@ func (c *Connector) finishLogin(ctx context.Context, b backend) (any, error) {
 	return map[string]any{"state": "connected"}, nil
 }
 
-func (c *Connector) setState(state string) bool {
+// startQR waits for the scan outside the operation lock, because the wait lasts until the user scans
+// the code or chooses another method.
+func (c *Connector) startQR(b backend) bool {
+	c.stopQR()
+	if !c.setState("qr", "connecting", "phone", "qr", "code") {
+		return false
+	}
+	c.phone, c.codeHash = "", ""
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	c.mu.Lock()
-	if state != "disconnected" && (!c.running || c.closed) {
+	c.qrCancel, c.qrDone = cancel, done
+	c.mu.Unlock()
+	go func() {
+		defer close(done)
+		err := b.QRLogin(ctx, func(url string) {
+			c.emit(map[string]any{"type": "qr", "account_id": c.accountID, "code": url})
+		})
+		switch {
+		case err == nil:
+			c.setState("connected", "qr")
+		case ctx.Err() != nil:
+		case errors.Is(err, errPasswordNeeded):
+			c.setState("password", "qr")
+		default:
+			if c.setState("phone", "qr") {
+				c.emit(map[string]any{"type": "error", "account_id": c.accountID, "code": "telegram_qr_login_failed"})
+			}
+		}
+	}()
+	return true
+}
+
+func (c *Connector) stopQR() {
+	c.mu.Lock()
+	cancel, done := c.qrCancel, c.qrDone
+	c.qrCancel, c.qrDone = nil, nil
+	c.mu.Unlock()
+	if cancel != nil {
+		cancel()
+		<-done
+	}
+}
+
+// setState moves to state only while the connection runs and, when from is given, only out of one
+// of those states, so a finished scan and a method switch cannot overwrite each other.
+func (c *Connector) setState(state string, from ...string) bool {
+	c.mu.Lock()
+	if (state != "disconnected" && (!c.running || c.closed)) || (len(from) > 0 && !slices.Contains(from, c.state)) {
 		c.mu.Unlock()
 		return false
 	}
@@ -320,6 +401,7 @@ func (c *Connector) setState(state string) bool {
 }
 
 func (c *Connector) stop() {
+	c.stopQR()
 	c.mu.Lock()
 	cancel, done := c.cancel, c.done
 	c.cancel, c.done, c.running = nil, nil, false
