@@ -285,14 +285,6 @@ bool FlutterWindow::OnCreate() {
               {flutter::EncodableValue("has_legacy_profile"), flutter::EncodableValue(false)},
               {flutter::EncodableValue("profile_names"), flutter::EncodableValue(flutter::EncodableList{})},
           }));
-        } else if (method == "setHasUnfinishedWork") {
-          const auto* value = argument(call, "value");
-          const auto* unfinished = value == nullptr ? nullptr : std::get_if<bool>(value);
-          if (unfinished == nullptr) result->Error("invalid_arguments");
-          else {
-            has_unfinished_work_ = *unfinished;
-            result->Success();
-          }
         } else if (method == "protectPath") {
           const auto* path_value = argument(call, "path");
           const auto* mode_value = argument(call, "mode");
@@ -428,13 +420,6 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
   if (message == WM_CLOSE && !close_prepared_) {
     if (close_pending_) return 0;
-    if (quit_requested_ && has_unfinished_work_ &&
-        MessageBoxW(hwnd,
-            L"You have unfinished drafts or pending sends. Close Inbox+?",
-            L"Inbox+", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) {
-      quit_requested_ = false;
-      return 0;
-    }
     if (native_channel_ == nullptr) return 0;
     close_pending_ = true;
     EnableWindow(hwnd, FALSE);

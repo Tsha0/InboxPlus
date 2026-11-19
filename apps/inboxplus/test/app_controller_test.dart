@@ -1224,7 +1224,10 @@ void main() {
         },
       );
       final reopened = await start(engine: engine);
-      await _eventually(() => engine.sends.isNotEmpty && !reopened.isBusy);
+      expect(engine.sends, isEmpty);
+      final queued = (await store.loadPendingSends()).single;
+      expect(queued.status, PendingSendStatus.failed);
+      await reopened.retryMessage(firstRoute, queued.id);
       final command = engine.sends.single;
       expect(command['account_id'], firstRoute.accountId);
       expect(command['conversation_id'], firstRoute.conversationId);
@@ -2514,7 +2517,7 @@ void main() {
       expect(reopened.messagesFor(firstRoute).single.body, 'Queued once');
       expect(
         (await store.loadPendingSends()).single.status,
-        PendingSendStatus.queued,
+        PendingSendStatus.failed,
       );
     },
   );
@@ -2572,6 +2575,31 @@ void main() {
     expect(app.messagesFor(firstRoute).single.body, 'Interrupted delivery');
     expect(app.draftFor(firstRoute)?.body ?? '', isEmpty);
   });
+
+  test(
+    'a message still queued at quit reopens as failed and sends only on Retry',
+    () async {
+      await seed(firstRoute);
+      await store.saveDraft(firstRoute, 'Queued before quit');
+      await store.enqueueDraft(firstRoute, sendId: 'queued-send');
+      final engine = _FakeEngine();
+      final app = await start(engine: engine);
+
+      expect(engine.sends, isEmpty);
+      expect(
+        (await store.loadPendingSends()).single.status,
+        PendingSendStatus.failed,
+      );
+      final message = app.messagesFor(firstRoute).single;
+      expect(message.body, 'Queued before quit');
+      expect(message.deliveryState, DeliveryState.failed);
+      expect(app.isDeliveryUnconfirmed(firstRoute, 'queued-send'), isFalse);
+
+      await app.retryMessage(firstRoute, 'queued-send');
+      expect(engine.sends, hasLength(1));
+      expect(await store.loadPendingSends(), isEmpty);
+    },
+  );
 
   test('confirming an uncertain message was not sent retains its command and waits for explicit Retry', () async {
     await seed(firstRoute);

@@ -55,8 +55,10 @@ ordinary style preferences.
   **Open in app** follows only `https` links on a domain the named platform owns.
 - Installing an update or quitting never discards an unsent draft, staged attachment or pending send.
   Feedback is an explicit exception: its unsent text, staged screenshot and in-flight submission are
-  temporary and may be lost when quitting or installing an update; they are not persisted or counted
-  by the shutdown guard. Messaging drafts, attachments and sends retain the full guarantee.
+  temporary and may be lost when quitting or installing an update; they are not persisted.
+  Messaging drafts, attachments and sends retain the full guarantee. Quitting does not ask for
+  confirmation: a send still queued at quit reopens as failed and one in flight reopens as
+  unconfirmed, and neither is sent again until the user acts on it.
   Shutdown never force-kills a database writer or stops a process started outside the app.
 - `com.inboxplus.app`, profile paths and Keychain identifiers stay unchanged between releases. A change to
   a storage or connector-state contract needs a profile migration, and a failed migration never silently

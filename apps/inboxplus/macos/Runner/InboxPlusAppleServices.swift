@@ -21,7 +21,6 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
     static weak var shared: InboxPlusAppleServices?
     private let channel: FlutterMethodChannel
     private let webLogin = InboxPlusWebLogin()
-    private var hasUnfinishedWork = false
     #if os(macOS)
     private let updates = AppUpdateController()
     private var gateway: IMessageGateway?
@@ -101,9 +100,6 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
             result(true)
         case "cancelWebLogin":
             webLogin.cancel()
-            result(nil)
-        case "setHasUnfinishedWork":
-            hasUnfinishedWork = arguments["value"] as? Bool ?? false
             result(nil)
         case "requestNotificationPermission":
             UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
@@ -499,16 +495,6 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
         value.range(of: "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$", options: .regularExpression) != nil
     }
 
-    func confirmClose() -> Bool {
-        guard hasUnfinishedWork else { return true }
-        let alert = NSAlert()
-        alert.messageText = "Close Inbox+?"
-        alert.informativeText = "Your drafts and queued messages are saved on this device. Sending pauses while Inbox+ is closed."
-        alert.addButton(withTitle: "Keep Open")
-        alert.addButton(withTitle: "Close")
-        return alert.runModal() == .alertSecondButtonReturn
-    }
-
     func prepareToTerminate(completion: @escaping (Bool) -> Void) {
         let windows = NSApp.windows.map { ($0, $0.ignoresMouseEvents, $0.firstResponder) }
         prepareToClose { [weak self] allowed in
@@ -558,9 +544,8 @@ final class InboxPlusAppleServices: NSObject, UNUserNotificationCenterDelegate {
                 alert.runModal()
                 return completion(false)
             }
-            self.canClose = self.confirmClose()
-            if !self.canClose { restoreInput() }
-            completion(self.canClose)
+            self.canClose = true
+            completion(true)
         }
     }
 
