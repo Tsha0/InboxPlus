@@ -33,7 +33,6 @@ class FlutterWindow : public Win32Window {
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> native_channel_;
-  bool has_unfinished_work_ = false;
   bool notification_icon_added_ = false;
   bool notification_active_ = false;
   std::deque<flutter::EncodableMap> notifications_;

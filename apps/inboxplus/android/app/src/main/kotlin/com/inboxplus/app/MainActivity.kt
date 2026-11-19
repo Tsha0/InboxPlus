@@ -51,7 +51,6 @@ class MainActivity : FlutterActivity() {
                     "legacyProfileStatus" -> result.success(
                         mapOf("has_legacy_profile" to false, "profile_names" to emptyList<String>()),
                     )
-                    "setHasUnfinishedWork" -> result.success(null)
                     "openFile" -> {
                         val path = call.argument<String>("path")
                         if (path != null && openFile(path, call.argument<String>("mime_type"))) {

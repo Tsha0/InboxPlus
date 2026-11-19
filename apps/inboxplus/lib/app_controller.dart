@@ -172,10 +172,15 @@ class AppController extends InboxUiController {
     }
     _contacts = await store.loadContacts();
     _pending = await store.loadPendingSends();
-    for (final send in _pending.where(
-      (s) => s.status == PendingSendStatus.sending,
-    )) {
-      await store.savePendingSendStatus(send.id, PendingSendStatus.unknown);
+    for (final send in _pending) {
+      final restored = switch (send.status) {
+        PendingSendStatus.sending => PendingSendStatus.unknown,
+        PendingSendStatus.queued => PendingSendStatus.failed,
+        PendingSendStatus.failed || PendingSendStatus.unknown => null,
+      };
+      if (restored != null) {
+        await store.savePendingSendStatus(send.id, restored);
+      }
     }
     _pending = await store.loadPendingSends();
     final savedPreferences = await environment.secrets.read(
@@ -331,7 +336,6 @@ class AppController extends InboxUiController {
     _loading = false;
     await _reloadStatistics();
     _publish();
-    await _updateCloseGuard();
     if (reconnect) {
       await refresh();
     } else {
@@ -536,7 +540,6 @@ class AppController extends InboxUiController {
     } else {
       _drafts[route] = saved;
     }
-    await _updateCloseGuard();
   });
 
   @override
@@ -1379,7 +1382,7 @@ class AppController extends InboxUiController {
     });
     _draftWrites[route] = write;
     unawaited(
-      write.then((_) => _updateCloseGuard()).catchError((Object error) {
+      write.catchError((Object error) {
         _error = _safeError(error);
         _publish();
       }),
@@ -1520,7 +1523,6 @@ class AppController extends InboxUiController {
           _drafts[route] = cleared;
         }
       }
-      await _updateCloseGuard();
       _publish();
       if (_accounts[route.accountId]?.isConnected == true) {
         await _send(send);
@@ -1575,7 +1577,6 @@ class AppController extends InboxUiController {
           await store.savePendingSendStatus(send.id, PendingSendStatus.failed);
         }
         _pending = await store.loadPendingSends();
-        await _updateCloseGuard();
         throw AppStorageException(
           restored
               ? 'The reply target is unavailable. Your message is back in the composer without the reply.'
@@ -1677,7 +1678,6 @@ class AppController extends InboxUiController {
           _drafts[send.route] = current;
         }
       }
-      await _updateCloseGuard();
       _publish();
     } finally {
       _sending.remove(send.id);
@@ -3237,13 +3237,6 @@ class AppController extends InboxUiController {
     }
   }
 
-  Future<void> _updateCloseGuard() => _optionalNative('setHasUnfinishedWork', {
-    'value':
-        _pending.isNotEmpty ||
-        _drafts.values.any(
-          (d) => d.body.isNotEmpty || d.attachments.isNotEmpty,
-        ),
-  });
   Future<void> _waitForDrafts() async {
     await Future.wait(_draftWrites.values);
   }

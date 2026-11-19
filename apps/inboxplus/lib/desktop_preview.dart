@@ -191,7 +191,6 @@ Future<void> main() async {
       switch (method) {
         case 'setWindowTheme':
         case 'setUnreadBadge':
-        case 'setHasUnfinishedWork':
         case 'takeNotificationRoute':
           return AppEnvironment.native.invokeMethod<Object?>(method, arguments);
         case 'capabilities':

@@ -23,7 +23,6 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
-  gboolean has_unfinished_work;
   gboolean quit_requested;
   gboolean indicator_connected;
   AppIndicator* indicator;
@@ -233,17 +232,6 @@ static void native_method_call_cb(FlMethodChannel*, FlMethodCall* method_call,
                                       notification);
       response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
     }
-  } else if (g_strcmp0(method, "setHasUnfinishedWork") == 0) {
-    FlValue* value = fl_value_get_type(arguments) == FL_VALUE_TYPE_MAP
-                         ? fl_value_lookup_string(arguments, "value")
-                         : nullptr;
-    if (value != nullptr && fl_value_get_type(value) == FL_VALUE_TYPE_BOOL) {
-      self->has_unfinished_work = fl_value_get_bool(value);
-      response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
-    } else {
-      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
-          "invalid_arguments", nullptr, nullptr));
-    }
   } else if (g_strcmp0(method, "protectPath") == 0) {
     FlValue* path = fl_value_get_type(arguments) == FL_VALUE_TYPE_MAP
                         ? fl_value_lookup_string(arguments, "path")
@@ -273,20 +261,6 @@ static gboolean window_delete_cb(GtkWidget* window, GdkEvent*, gpointer user_dat
   MyApplication* self = MY_APPLICATION(user_data);
   if (g_object_get_data(G_OBJECT(window), "inboxplus-close-prepared") != nullptr) return FALSE;
   if (g_object_get_data(G_OBJECT(window), "inboxplus-close-pending") != nullptr) return TRUE;
-  if (self->has_unfinished_work && (self->quit_requested || !self->indicator_connected)) {
-    GtkWidget* dialog = gtk_message_dialog_new(
-        GTK_WINDOW(window), GTK_DIALOG_MODAL, GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE,
-        "Close Inbox+?");
-    gtk_message_dialog_format_secondary_text(
-        GTK_MESSAGE_DIALOG(dialog),
-        "You have unfinished drafts or pending sends. Keep Inbox+ open to finish them.");
-    gtk_dialog_add_buttons(GTK_DIALOG(dialog), "_Keep open", GTK_RESPONSE_CANCEL,
-                           "_Close", GTK_RESPONSE_ACCEPT, nullptr);
-    gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_CANCEL);
-    const gint response = gtk_dialog_run(GTK_DIALOG(dialog));
-    gtk_widget_destroy(dialog);
-    if (response != GTK_RESPONSE_ACCEPT) { self->quit_requested = FALSE; return TRUE; }
-  }
   auto* channel = static_cast<FlMethodChannel*>(
       g_object_get_data(G_OBJECT(window), "inboxplus-native-channel"));
   if (channel == nullptr) return TRUE;
