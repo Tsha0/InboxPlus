@@ -31,6 +31,8 @@ type fakeBackend struct {
 	start                                                chan struct{}
 	blockReady                                           bool
 	runError                                             error
+	qrResult                                             chan error
+	qrCancelled                                          int
 }
 
 func (f *fakeBackend) Run(ctx context.Context, ready func(bool, error)) error {
@@ -63,6 +65,16 @@ func (f *fakeBackend) SignIn(_ context.Context, phone, code, hash string) error 
 func (f *fakeBackend) Password(_ context.Context, password string) error {
 	f.password = password
 	return nil
+}
+func (f *fakeBackend) QRLogin(ctx context.Context, show func(string)) error {
+	show("tg://login?token=fixture")
+	select {
+	case err := <-f.qrResult:
+		return err
+	case <-ctx.Done():
+		f.qrCancelled++
+		return ctx.Err()
+	}
 }
 func (f *fakeBackend) Sync(context.Context) error                 { f.syncCount++; return nil }
 func (f *fakeBackend) History(context.Context, string, int) error { return nil }
@@ -332,5 +344,147 @@ func TestImmediateConnectionFailureCannotLeaveLoginAvailable(t *testing.T) {
 	}
 	if _, err := c.Handle(context.Background(), map[string]any{"op": "login_phone", "phone": "+12025550123"}); !errors.Is(err, errNotConnected) {
 		t.Fatalf("login remained available: %v", err)
+	}
+}
+
+func recordEvents(c *Connector) func(string) []map[string]any {
+	var mu sync.Mutex
+	var events []map[string]any
+	next := c.emit
+	c.emit = func(event map[string]any) {
+		mu.Lock()
+		events = append(events, event)
+		mu.Unlock()
+		next(event)
+	}
+	return func(kind string) []map[string]any {
+		mu.Lock()
+		defer mu.Unlock()
+		var matching []map[string]any
+		for _, event := range events {
+			if event["type"] == kind {
+				matching = append(matching, event)
+			}
+		}
+		return matching
+	}
+}
+
+func eventually(t *testing.T, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !condition() {
+		if time.Now().After(deadline) {
+			t.Fatal("condition was not reached")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func lastState(states func() []string) string {
+	got := states()
+	if len(got) == 0 {
+		return ""
+	}
+	return got[len(got)-1]
+}
+
+func connectWith(method string) map[string]any {
+	return map[string]any{"op": "connect", "api_id": 12345, "api_hash": strings.Repeat("a", 32), "login_method": method}
+}
+
+func fixtureConnectQR(t *testing.T, c *Connector) {
+	t.Helper()
+	result, err := c.Handle(context.Background(), connectWith("qr"))
+	if err != nil || result.(map[string]any)["state"] != "qr" {
+		t.Fatalf("QR connect returned %v, %v", result, err)
+	}
+}
+
+func TestQRLoginShowsCodeThenAsksForTwoStepPassword(t *testing.T) {
+	f := &fakeBackend{qrResult: make(chan error)}
+	c, states := fixtureConnector(t, f)
+	events := recordEvents(c)
+	fixtureConnectQR(t, c)
+	eventually(t, func() bool { return len(events("qr")) == 1 })
+	if qr := events("qr")[0]; qr["code"] != "tg://login?token=fixture" || qr["account_id"] != "fixture-account" {
+		t.Fatalf("unexpected QR event %v", qr)
+	}
+
+	f.qrResult <- errPasswordNeeded
+	eventually(t, func() bool { return lastState(states) == "password" })
+	result, err := c.Handle(context.Background(), map[string]any{"op": "login_password", "password": "fixture-password"})
+	if err != nil || result.(map[string]any)["state"] != "connected" || f.password != "fixture-password" {
+		t.Fatalf("password after QR scan returned %v, %v", result, err)
+	}
+	if got, want := states(), []string{"connecting", "qr", "password", "connected"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("states %v; want %v", got, want)
+	}
+}
+
+func TestLoginMethodSwitchEndsQRWaitAndScanCompletesLogin(t *testing.T) {
+	f := &fakeBackend{qrResult: make(chan error)}
+	c, states := fixtureConnector(t, f)
+	fixtureConnectQR(t, c)
+	for _, step := range []struct {
+		request map[string]any
+		state   string
+	}{
+		{connectWith("phone"), "phone"},
+		{map[string]any{"op": "login_phone", "phone": "+12025550123"}, "code"},
+		{connectWith("qr"), "qr"},
+	} {
+		result, err := c.Handle(context.Background(), step.request)
+		if err != nil || result.(map[string]any)["state"] != step.state {
+			t.Fatalf("%v returned %v, %v", step.request, result, err)
+		}
+	}
+	if f.qrCancelled != 1 {
+		t.Fatalf("switching to a phone number left %d QR waits cancelled", f.qrCancelled)
+	}
+	if c.phone != "" || c.codeHash != "" {
+		t.Fatal("switching to QR kept the abandoned phone code")
+	}
+
+	f.qrResult <- nil
+	eventually(t, func() bool { return lastState(states) == "connected" })
+	if result, err := c.Handle(context.Background(), connectWith("phone")); err != nil || result.(map[string]any)["state"] != "connected" {
+		t.Fatalf("choosing a method after sign-in returned %v, %v", result, err)
+	}
+	if got, want := states(), []string{"connecting", "qr", "phone", "code", "qr", "connected"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("states %v; want %v", got, want)
+	}
+}
+
+func TestReconnectChoosesQROnConnectionWaitingForPhone(t *testing.T) {
+	f := &fakeBackend{qrResult: make(chan error)}
+	c, states := fixtureConnector(t, f)
+	events := recordEvents(c)
+	if result := fixtureConnect(t, c); result["state"] != "phone" {
+		t.Fatalf("startup connect returned %v", result)
+	}
+	fixtureConnectQR(t, c)
+	eventually(t, func() bool { return len(events("qr")) == 1 })
+	if got, want := states(), []string{"connecting", "phone", "qr"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("states %v; want %v", got, want)
+	}
+}
+
+func TestFailedQRLoginFallsBackToPhoneWithoutUpstreamDetail(t *testing.T) {
+	f := &fakeBackend{qrResult: make(chan error)}
+	c, states := fixtureConnector(t, f)
+	events := recordEvents(c)
+	fixtureConnectQR(t, c)
+
+	f.qrResult <- errors.New("AUTH_TOKEN_INVALID private-detail")
+	eventually(t, func() bool { return len(events("error")) == 1 })
+	if got := events("error")[0]; got["code"] != "telegram_qr_login_failed" || len(got) != 3 {
+		t.Fatalf("unexpected failure event %v", got)
+	}
+	if got := lastState(states); got != "phone" {
+		t.Fatalf("failed QR sign-in left state %q", got)
+	}
+	if result, err := c.Handle(context.Background(), map[string]any{"op": "login_phone", "phone": "+12025550123"}); err != nil || result.(map[string]any)["state"] != "code" {
+		t.Fatalf("phone sign-in after QR failure returned %v, %v", result, err)
 	}
 }

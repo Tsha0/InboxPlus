@@ -23,7 +23,7 @@ Inbox+ is a local-first messaging inbox for macOS, Windows, Linux, iOS and Andro
 | Network | Client library | Sign-in | Limits |
 | --- | --- | --- | --- |
 | WhatsApp | whatsmeow | QR code or pairing code | |
-| Telegram | gotd | Your Telegram API ID and hash, phone, code and optional two-step password | No secret chats |
+| Telegram | gotd | Your Telegram API ID and hash, then a QR code or your phone and code, and an optional two-step password | No secret chats |
 | Instagram | mautrix-meta (instameow) | Instagram's own sign-in page | macOS, iOS and Linux only |
 | Facebook Messenger | mautrix-meta (messagix) | Facebook's own sign-in page | macOS, iOS and Linux only. No end-to-end encrypted chats yet |
 | WeChat | openwechat | QR code, for accounts with WeChat web access | Experimental. Text and incoming attachments only. No older history |

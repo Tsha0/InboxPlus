@@ -3794,6 +3794,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Telegram sign-in offers switching between QR and phone number', (
+    tester,
+  ) async {
+    final controller = _FakeController(accounts: [], conversations: []);
+    controller.login = const LoginState(
+      networkId: 'telegram',
+      step: LoginStep.qr,
+      title: 'Connect Telegram',
+      qrData: 'tg://login?token=fixture',
+    );
+    await _pumpApp(tester, controller, size: const Size(390, 844));
+    await tester.tap(find.text('Connect an account'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(QrImageView), findsOneWidget);
+    expect(find.byKey(const Key('whatsapp-pairing-phone')), findsNothing);
+    await tester.ensureVisible(find.text('Use a phone number instead'));
+    await tester.tap(find.text('Use a phone number instead'));
+    await tester.pump();
+
+    controller.login = const LoginState(
+      networkId: 'telegram',
+      step: LoginStep.fields,
+      title: 'Your phone number',
+      fields: [LoginField(id: 'phone', label: 'Phone number', phone: true)],
+    );
+    controller.notifyListeners();
+    await tester.pump();
+    await tester.ensureVisible(find.text('Sign in with a QR code instead'));
+    await tester.tap(find.text('Sign in with a QR code instead'));
+    await tester.pump();
+
+    expect(controller.qrLoginChoices, [false, true]);
+    expect(controller.beginLoginCalls, ['telegram', 'telegram']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'iPhone WhatsApp phone form supports correction and a QR alternative',
     (tester) async {

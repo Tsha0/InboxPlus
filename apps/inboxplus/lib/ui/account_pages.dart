@@ -595,14 +595,26 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog>
           const SizedBox(height: 16),
           _Notice(message: error, isError: true),
         ],
-        if (login.networkId == 'whatsapp' &&
-            login.step == LoginStep.fields) ...[
+        if (login.step == LoginStep.fields &&
+            (login.networkId == 'whatsapp' ||
+                (login.networkId == 'telegram' &&
+                    {
+                      'phone',
+                      'code',
+                    }.contains(login.fields.firstOrNull?.id)))) ...[
           const SizedBox(height: 16),
           TextButton(
             onPressed: login.busy
                 ? null
-                : () => widget.controller.beginLogin('whatsapp', useQr: true),
-            child: const Text('Use a QR code on another screen'),
+                : () => widget.controller.beginLogin(
+                    login.networkId,
+                    useQr: true,
+                  ),
+            child: Text(
+              login.networkId == 'telegram'
+                  ? 'Sign in with a QR code instead'
+                  : 'Use a QR code on another screen',
+            ),
           ),
         ],
       ],
@@ -610,6 +622,8 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog>
   }
 
   Widget _qrContent(LoginState login) {
+    final hasCode = login.qrImage != null || login.qrData?.isNotEmpty == true;
+    final waiting = hasCode || login.error == null;
     return Column(
       children: [
         if (login.qrImage != null)
@@ -624,16 +638,7 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog>
               excludeFromSemantics: true,
             ),
           )
-        else if (login.qrData == null || login.qrData!.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(24),
-            child: Center(
-              child: CircularProgressIndicator(
-                semanticsLabel: 'Loading sign-in code',
-              ),
-            ),
-          )
-        else
+        else if (hasCode)
           Semantics(
             label: 'Sign-in QR code. Save it or display it on another screen to scan.',
             image: true,
@@ -651,9 +656,18 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog>
                 ),
               ),
             ),
+          )
+        else if (waiting)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(
+              child: CircularProgressIndicator(
+                semanticsLabel: 'Loading sign-in code',
+              ),
+            ),
           ),
         const SizedBox(height: 20),
-        if (login.qrImage != null || login.qrData?.isNotEmpty == true) ...[
+        if (hasCode) ...[
           Wrap(
             spacing: 12,
             runSpacing: 8,
@@ -680,18 +694,19 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog>
           ),
           const SizedBox(height: 16),
         ],
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: 12),
-            Flexible(child: Text('Waiting for approval…')),
-          ],
-        ),
+        if (waiting)
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: 12),
+              Flexible(child: Text('Waiting for approval…')),
+            ],
+          ),
         TextButton(
           onPressed: login.busy
               ? null
@@ -699,6 +714,13 @@ class _ConnectAccountsDialogState extends State<ConnectAccountsDialog>
                     widget.controller.beginLogin(login.networkId, useQr: true),
           child: const Text('Get a new QR code'),
         ),
+        if (login.networkId == 'telegram')
+          TextButton(
+            onPressed: login.busy
+                ? null
+                : () => widget.controller.beginLogin('telegram', useQr: false),
+            child: const Text('Use a phone number instead'),
+          ),
         if (login.networkId == 'whatsapp') ...[
           if (defaultTargetPlatform == TargetPlatform.iOS ||
               defaultTargetPlatform == TargetPlatform.android)

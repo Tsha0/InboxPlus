@@ -3857,6 +3857,149 @@ void main() {
       expect(app.error, isNull);
     },
   );
+
+  test('Telegram desktop setup signs in by QR and switches methods without restarting', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final engine = _FakeEngine(
+      onConnect: (command) async => {'state': command['login_method']},
+    );
+    final app = await start(engine: engine);
+    await app.beginLogin('telegram');
+    await app.submitLogin({
+      'api_id': '12345',
+      'api_hash': '0123456789abcdef0123456789abcdef',
+    });
+    final id = app.accounts.single.id;
+    expect(
+      engine.commands
+          .where((command) => command['op'] == 'connect')
+          .single['login_method'],
+      'qr',
+    );
+    expect(app.login?.step, LoginStep.qr);
+    expect(app.login?.qrData, isNull);
+
+    engine.emit({
+      'type': 'qr',
+      'account_id': id,
+      'code': 'tg://login?token=first',
+    });
+    await _eventually(() => app.login?.qrData == 'tg://login?token=first');
+    expect(app.login?.title, 'Connect Telegram');
+
+    await app.beginLogin('telegram', useQr: false);
+    expect(app.login?.fields.single.id, 'phone');
+    await app.beginLogin('telegram', useQr: true);
+    expect(app.login?.step, LoginStep.qr);
+    expect(
+      app.login?.qrData,
+      isNull,
+      reason: 'the old code is no longer valid',
+    );
+
+    engine.emit({'type': 'login', 'account_id': id, 'state': 'phone'});
+    engine.emit({
+      'type': 'error',
+      'account_id': id,
+      'code': 'telegram_qr_login_failed',
+    });
+    await _eventually(() => app.error != null);
+    expect(app.login?.fields.single.id, 'phone');
+    expect(app.error, contains('QR sign-in'));
+
+    await app.beginLogin('telegram', useQr: true);
+    engine.emit({'type': 'login', 'account_id': id, 'state': 'connected'});
+    await _eventually(() => app.login?.step == LoginStep.complete);
+
+    final connects = engine.commands.where(
+      (command) => command['op'] == 'connect',
+    );
+    expect(connects.map((command) => command['login_method']), [
+      'qr',
+      'phone',
+      'qr',
+      'qr',
+    ]);
+    expect(connects.map((command) => command['api_id']).toSet(), {12345});
+    expect(
+      engine.commands.where((command) => command['op'] == 'close'),
+      isEmpty,
+    );
+    expect(app.accounts.single.id, id);
+    expect(app.accounts.single.isConnected, isTrue);
+    expect(app.error, isNull);
+  });
+
+  test('Telegram QR drops a dead code when the connection ends and reconnects for a new one', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final engine = _FakeEngine(
+      onConnect: (command) async => {'state': command['login_method']},
+    );
+    final app = await start(engine: engine);
+    await app.beginLogin('telegram');
+    await app.submitLogin({
+      'api_id': '12345',
+      'api_hash': '0123456789abcdef0123456789abcdef',
+    });
+    final id = app.accounts.single.id;
+    engine.emit({'type': 'qr', 'account_id': id, 'code': 'tg://login?token=a'});
+    await _eventually(() => app.login?.qrData != null);
+
+    engine.emit({'type': 'login', 'account_id': id, 'state': 'disconnected'});
+    engine.emit({
+      'type': 'error',
+      'account_id': id,
+      'code': 'telegram_connection_lost',
+    });
+    await _eventually(() => app.login?.error != null);
+    expect(app.login?.step, LoginStep.qr);
+    expect(app.login?.qrData, isNull);
+
+    await app.beginLogin('telegram', useQr: true);
+    final reconnect = engine.commands.last;
+    expect(reconnect['op'], 'connect');
+    expect(reconnect['api_id'], 12345);
+    expect(reconnect['login_method'], 'qr');
+    expect(app.login?.step, LoginStep.qr);
+    expect(app.login?.error, isNull);
+  });
+
+  test(
+    'a Telegram scan that finishes during a method switch stays connected',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      Future<void> Function()? scanFinishes;
+      final engine = _FakeEngine(
+        onConnect: (command) async {
+          if (scanFinishes case final finish?) {
+            await finish();
+            throw const ConnectorException('operation_failed');
+          }
+          return {'state': command['login_method']};
+        },
+      );
+      final app = await start(engine: engine);
+      await app.beginLogin('telegram');
+      await app.submitLogin({
+        'api_id': '12345',
+        'api_hash': '0123456789abcdef0123456789abcdef',
+      });
+      final id = app.accounts.single.id;
+      scanFinishes = () async {
+        engine.emit({'type': 'login', 'account_id': id, 'state': 'connected'});
+        await _eventually(() => app.login?.step == LoginStep.complete);
+      };
+
+      await app.beginLogin('telegram', useQr: false);
+
+      expect(app.login?.step, LoginStep.complete);
+      expect(app.login?.error, isNull);
+      expect(app.accounts.single.isConnected, isTrue);
+    },
+  );
 }
 
 Future<void> _eventually(bool Function() predicate) async {
