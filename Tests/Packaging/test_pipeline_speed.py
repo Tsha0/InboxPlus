@@ -37,9 +37,11 @@ class LinuxPackageMirrorTests(unittest.TestCase):
         self.assertIn("deb http://archive.ubuntu.com/ubuntu/ noble main", rewritten)
         self.assertNotIn("ec2.archive", rewritten)
 
-    def test_failed_probes_do_not_choose_a_mirror(self):
-        with self.assertRaises(RuntimeError):
-            deps.choose_mirror((("http://archive.ubuntu.com/ubuntu", None),))
+    def test_failed_probes_use_the_primary_archive(self):
+        self.assertEqual(
+            deps.choose_mirror((("http://archive.ubuntu.com/ubuntu", None),)),
+            deps.MIRRORS[0],
+        )
 
     def test_cached_debs_are_restored_once_and_new_debs_are_stored(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -25,7 +25,7 @@ ARCHIVE = re.compile(r"https?://[A-Za-z0-9.-]*archive\.ubuntu\.com/ubuntu/?")
 def choose_mirror(samples):
     viable = [(rate, mirror) for mirror, rate in samples if rate and rate > 0]
     if not viable:
-        raise RuntimeError("No Ubuntu archive mirror responded")
+        return MIRRORS[0]
     return max(viable)[1]
 
 

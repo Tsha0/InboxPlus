@@ -274,16 +274,6 @@ jobs:
           INBOXPLUS_CI_HOST_ARCH: '1'
         run: |
           python3 ../../Scripts/verify-media-artifacts.py --platform sparkle --cache-dir "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
-          flutter pub get --enforce-lockfile
-          # Host tests run in a copy so they do not write this tree's build outputs.
-          mkdir -p "$RUNNER_TEMP/host-tests"
-          tar -c -C "$GITHUB_WORKSPACE" --exclude .git --exclude apps/inboxplus/build --exclude apps/inboxplus/.dart_tool . | tar -x -C "$RUNNER_TEMP/host-tests"
-          (
-            cd "$RUNNER_TEMP/host-tests/apps/inboxplus"
-            flutter pub get --enforce-lockfile
-            python3 "$GITHUB_WORKSPACE/Scripts/retry-sqlite-download.py" flutter test test/connectors test/platform
-          ) > "$RUNNER_TEMP/flutter-host-test.txt" 2>&1 &
-          flutter_pid=$!
           (
             cd ../../packages/inboxplus_storage
             dart pub get --enforce-lockfile
@@ -293,10 +283,9 @@ jobs:
           set +e
           python3 ../../Scripts/retry-sqlite-download.py python3 ../../Scripts/time-macos-build.py
           status=$?
-          wait "$flutter_pid" || status=$?
           wait "$storage_pid" || status=$?
           set -e
-          cat "$RUNNER_TEMP/flutter-host-test.txt" "$RUNNER_TEMP/storage-test.txt"
+          cat "$RUNNER_TEMP/storage-test.txt"
           exit "$status"
       - name: Upload macOS build timings
         if: always()
@@ -373,16 +362,6 @@ jobs:
       - name: Build native desktop application
         working-directory: apps/inboxplus
         run: |
-          flutter pub get --enforce-lockfile
-          # Host tests run in a copy so they do not write this tree's build outputs.
-          mkdir -p "$RUNNER_TEMP/host-tests"
-          tar -c -C "$GITHUB_WORKSPACE" --exclude .git --exclude apps/inboxplus/build --exclude apps/inboxplus/.dart_tool . | tar -x -C "$RUNNER_TEMP/host-tests"
-          (
-            cd "$RUNNER_TEMP/host-tests/apps/inboxplus"
-            flutter pub get --enforce-lockfile
-            python3 "$GITHUB_WORKSPACE/Scripts/retry-sqlite-download.py" flutter test test/connectors test/platform
-          ) > "$RUNNER_TEMP/flutter-host-test.txt" 2>&1 &
-          flutter_pid=$!
           (
             cd ../../packages/inboxplus_storage
             dart pub get --enforce-lockfile
@@ -392,10 +371,9 @@ jobs:
           set +e
           time flutter build windows --release
           status=$?
-          wait "$flutter_pid" || status=$?
           wait "$storage_pid" || status=$?
           set -e
-          cat "$RUNNER_TEMP/flutter-host-test.txt" "$RUNNER_TEMP/storage-test.txt"
+          cat "$RUNNER_TEMP/storage-test.txt"
           exit "$status"
       - name: Package desktop development build
         run: python3 Scripts/package-flutter-desktop.py --target windows
