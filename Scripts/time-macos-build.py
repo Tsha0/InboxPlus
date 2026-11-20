@@ -20,7 +20,17 @@ def phase(line):
     return None
 
 
+def enable_host_architecture(root, environment):
+    if environment.get("INBOXPLUS_CI_HOST_ARCH") != "1":
+        return None
+    path = Path(root) / "apps/inboxplus/macos/Flutter/ephemeral/CI.xcconfig"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("ONLY_ACTIVE_ARCH = YES\n")
+    return path
+
+
 def main():
+    enable_host_architecture(Path(__file__).resolve().parents[1], os.environ)
     started = time.monotonic()
     events = []
     xcode_started = None

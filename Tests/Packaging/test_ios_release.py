@@ -50,6 +50,30 @@ class SimulatorSelectionTests(unittest.TestCase):
                 self.assertEqual(runtime, "com.apple.CoreSimulator.SimRuntime.iOS-27-2")
                 self.assertEqual(device, "device-" + names[-1])
 
+    def test_reuses_an_existing_simulator_and_creates_one_when_missing(self):
+        runtime = "com.apple.CoreSimulator.SimRuntime.iOS-27-2"
+        runtimes = {"runtimes": [self.runtime("27.2", ["iPhone 18 Pro"])]}
+
+        def boot(devices):
+            calls = []
+
+            def run(command):
+                calls.append(command)
+                return "created-udid\n"
+
+            udid = simulator.boot_simulator(run, runtimes, devices)
+            return udid, calls
+
+        reused, calls = boot({"devices": {runtime: [{
+            "deviceTypeIdentifier": "device-iPhone 18 Pro", "udid": "existing", "isAvailable": True,
+        }]}})
+        self.assertEqual(reused, "existing")
+        self.assertEqual([command[2] for command in calls], ["shutdown", "erase", "boot", "bootstatus"])
+
+        created, calls = boot({"devices": {}})
+        self.assertEqual(created, "created-udid")
+        self.assertEqual(calls[0][2], "create")
+
     def test_missing_runtime_or_iphone_has_a_controlled_error(self):
         for document, message in (
             ({"runtimes": []}, "No available iOS simulator runtime"),

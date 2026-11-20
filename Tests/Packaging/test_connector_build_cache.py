@@ -125,6 +125,12 @@ class MacOSBuildTimingTests(unittest.TestCase):
             self.assertIn("preparation_seconds", summary)
             self.assertFalse(list(root.glob("inboxplus-build-*")))
 
+    def test_ci_requests_a_host_architecture_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assertIsNone(timing.enable_host_architecture(directory, {}))
+            path = timing.enable_host_architecture(directory, {"INBOXPLUS_CI_HOST_ARCH": "1"})
+            self.assertEqual(path.read_text(), "ONLY_ACTIVE_ARCH = YES\n")
+
     def test_build_settings_queries_are_not_counted_as_compilation(self):
         self.assertIsNone(timing.phase("executing: xcodebuild -showBuildSettings -configuration Release"))
         self.assertEqual(timing.phase("executing: xcodebuild -workspace Runner.xcworkspace -configuration Release"), "xcode_build")

@@ -24,6 +24,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
+      - name: Start an iPhone simulator boot
+        run: python3 Scripts/select-ios-simulator.py --boot "$RUNNER_TEMP/simulator.udid"
       - name: Require the release commit on main
         run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       - name: Match the tag to the app version
@@ -48,15 +50,21 @@ jobs:
           python-version: '3.12'
       - name: Record the Xcode version
         run: xcodebuild -version
-      - name: Boot a fresh iPhone simulator
+      - name: Wait for the iPhone simulator
         id: simulator
         run: |
-          selection="$(python3 Scripts/select-ios-simulator.py)"
-          read -r runtime device <<< "$selection"
-          udid="$(xcrun simctl create 'Inbox+ launch test' "$device" "$runtime")"
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
-          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          for _ in $(seq 1 180); do
+            if [[ -f "$RUNNER_TEMP/simulator.udid" || -f "$RUNNER_TEMP/simulator.failed" ]]; then
+              break
+            fi
+            sleep 2
+          done
+          if [[ -f "$RUNNER_TEMP/simulator.failed" || ! -s "$RUNNER_TEMP/simulator.udid" ]]; then
+            cat "$RUNNER_TEMP/simulator.log" >&2 || true
+            cat "$RUNNER_TEMP/simulator.failed" >&2 || true
+            exit 1
+          fi
+          echo "udid=$(tr -d '[:space:]' < "$RUNNER_TEMP/simulator.udid")" >> "$GITHUB_OUTPUT"
       - name: Run the launch test
         working-directory: apps/inboxplus
         env:
@@ -67,7 +75,6 @@ jobs:
 
   testflight:
     name: iOS / TestFlight
-    needs: launch
     runs-on: xcode-27
     timeout-minutes: 60
     env:
@@ -131,6 +138,10 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
       - name: Verify the signed application
         run: python3 Scripts/verify-ios-app.py apps/inboxplus/build/ios/ipa/Inbox+.ipa --distribution
+      - name: Wait for the launch test before uploading
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 Scripts/wait-for-sibling-job.py "iOS / Launch test"
       - name: Upload to TestFlight
         working-directory: apps/inboxplus
         run: |
