@@ -528,6 +528,20 @@ jobs:
         run: python3 ../../Scripts/retry-sqlite-download.py flutter build ipa --release --no-codesign
       - name: Verify the archived application
         run: python3 Scripts/verify-ios-app.py apps/inboxplus/build/ios/archive/Runner.xcarchive
+      - name: Time a clean iPhone simulator boot
+        run: |
+          python3 - <<'PY'
+          import os, subprocess, time
+          from pathlib import Path
+          destination = Path(os.environ["RUNNER_TEMP"]) / "simulator.udid"
+          started = time.monotonic()
+          subprocess.run(
+              ["python3", "Scripts/select-ios-simulator.py", "--boot", "--foreground", str(destination)],
+              check=True,
+          )
+          print(f"simulator_boot_seconds={time.monotonic() - started:.1f}")
+          subprocess.run(["xcrun", "simctl", "shutdown", destination.read_text().strip()], check=False)
+          PY
 
   passed:
     name: CI passed
