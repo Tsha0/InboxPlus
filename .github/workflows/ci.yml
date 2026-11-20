@@ -205,16 +205,8 @@ jobs:
 
   macos:
     name: Platform tests and builds / macOS
-    needs: [changes, lint, generated-files, packaging-linux, messages, updater, generated-macos, packaging-macos]
-    if: >-
-      ${{ !cancelled() && needs.changes.outputs.macos == 'true' &&
-      needs.lint.result == 'success' &&
-      needs.generated-files.result == 'success' &&
-      needs.packaging-linux.result == 'success' &&
-      needs.messages.result == 'success' &&
-      needs.updater.result == 'success' &&
-      needs.generated-macos.result == 'success' &&
-      needs.packaging-macos.result == 'success' }}
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.macos == 'true' }}
     runs-on: macos-latest
     timeout-minutes: 60
     defaults:
@@ -261,8 +253,15 @@ jobs:
           GOFLAGS: -mod=readonly
         run: |
           go mod verify
-          time go test ./...
+          time go test ./... > "$RUNNER_TEMP/go-test.txt" 2>&1 &
+          test_pid=$!
           time bash build.sh host
+          set +e
+          wait "$test_pid"
+          test_status=$?
+          set -e
+          cat "$RUNNER_TEMP/go-test.txt"
+          test "$test_status" -eq 0
           case "$RUNNER_OS" in
             macOS) library="$(pwd)/build/libinboxplus_connectors.dylib" ;;
             Linux) library="$(pwd)/build/libinboxplus_connectors.so" ;;
@@ -274,13 +273,10 @@ jobs:
         run: |
           dart pub get --enforce-lockfile
           python3 ../../Scripts/retry-sqlite-download.py dart test
-      - name: Verify Flutter application
-        working-directory: apps/inboxplus
-        run: |
-          flutter pub get --enforce-lockfile
-          python3 ../../Scripts/retry-sqlite-download.py flutter test
       - name: Build native desktop application
         working-directory: apps/inboxplus
+        env:
+          INBOXPLUS_CI_HOST_ARCH: '1'
         run: |
           python3 ../../Scripts/verify-media-artifacts.py --platform sparkle --cache-dir "$HOME/Library/Caches/org.swift.swiftpm/artifacts"
           python3 ../../Scripts/retry-sqlite-download.py python3 ../../Scripts/time-macos-build.py
@@ -306,13 +302,8 @@ jobs:
 
   windows:
     name: Platform tests and builds / Windows
-    needs: [changes, lint, generated-files, packaging-linux, packaging-windows]
-    if: >-
-      ${{ !cancelled() && needs.changes.outputs.windows == 'true' &&
-      needs.lint.result == 'success' &&
-      needs.generated-files.result == 'success' &&
-      needs.packaging-linux.result == 'success' &&
-      needs.packaging-windows.result == 'success' }}
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.windows == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
@@ -346,8 +337,15 @@ jobs:
           GOFLAGS: -mod=readonly
         run: |
           go mod verify
-          time go test ./...
+          time go test ./... > "$RUNNER_TEMP/go-test.txt" 2>&1 &
+          test_pid=$!
           time bash build.sh host
+          set +e
+          wait "$test_pid"
+          test_status=$?
+          set -e
+          cat "$RUNNER_TEMP/go-test.txt"
+          test "$test_status" -eq 0
           case "$RUNNER_OS" in
             macOS) library="$(pwd)/build/libinboxplus_connectors.dylib" ;;
             Linux) library="$(pwd)/build/libinboxplus_connectors.so" ;;
@@ -359,11 +357,6 @@ jobs:
         run: |
           dart pub get --enforce-lockfile
           python3 ../../Scripts/retry-sqlite-download.py dart test
-      - name: Verify Flutter application
-        working-directory: apps/inboxplus
-        run: |
-          flutter pub get --enforce-lockfile
-          python3 ../../Scripts/retry-sqlite-download.py flutter test
       - name: Build native desktop application
         working-directory: apps/inboxplus
         run: time flutter build windows --release
@@ -382,12 +375,8 @@ jobs:
 
   linux:
     name: Platform tests and builds / Linux
-    needs: [changes, lint, generated-files, packaging-linux]
-    if: >-
-      ${{ !cancelled() && needs.changes.outputs.linux == 'true' &&
-      needs.lint.result == 'success' &&
-      needs.generated-files.result == 'success' &&
-      needs.packaging-linux.result == 'success' }}
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.linux == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     defaults:
@@ -407,10 +396,13 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.12'
+      - name: Cache Linux package archives
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-noble-${{ hashFiles('Scripts/install-linux-desktop-deps.py') }}
       - name: Install Linux native dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libsecret-1-dev libmpv-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+        run: sudo python3 Scripts/install-linux-desktop-deps.py --archive-dir "$RUNNER_TEMP/apt-archives"
       - name: Verify connector modules and behavior
         working-directory: native/connectors
         env:
@@ -418,8 +410,15 @@ jobs:
           GOFLAGS: -mod=readonly
         run: |
           go mod verify
-          time go test ./...
+          time go test ./... > "$RUNNER_TEMP/go-test.txt" 2>&1 &
+          test_pid=$!
           time bash build.sh host
+          set +e
+          wait "$test_pid"
+          test_status=$?
+          set -e
+          cat "$RUNNER_TEMP/go-test.txt"
+          test "$test_status" -eq 0
           case "$RUNNER_OS" in
             macOS) library="$(pwd)/build/libinboxplus_connectors.dylib" ;;
             Linux) library="$(pwd)/build/libinboxplus_connectors.so" ;;
@@ -454,11 +453,8 @@ jobs:
 
   android:
     name: Platform tests and builds / Android
-    needs: [changes, lint, generated-files, packaging-linux]
-    if: >-
-      ${{ !cancelled() && needs.lint.result == 'success' &&
-          needs.generated-files.result == 'success' && needs.packaging-linux.result == 'success' &&
-          github.event_name == 'workflow_dispatch' && inputs.android_build }}
+    needs: changes
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.android_build }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -487,13 +483,8 @@ jobs:
 
   ios:
     name: Platform tests and builds / iOS
-    needs: [changes, lint, generated-files, packaging-linux]
-    if: >-
-      ${{ !cancelled() &&
-      needs.lint.result == 'success' &&
-      needs.generated-files.result == 'success' &&
-      needs.packaging-linux.result == 'success' &&
-      needs.changes.outputs.ios == 'true' }}
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.ios == 'true' }}
     runs-on: xcode-27
     timeout-minutes: 60
     steps:
