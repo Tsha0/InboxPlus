@@ -55,6 +55,7 @@ jobs:
     environment: macos-release
     permissions:
       contents: write
+      actions: read
     env:
       GOTOOLCHAIN: local
       GH_TOKEN: ${{ github.token }}

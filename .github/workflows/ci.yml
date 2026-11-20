@@ -417,7 +417,7 @@ jobs:
           path: ${{ runner.temp }}/apt-archives
           key: apt-noble-${{ hashFiles('Scripts/install-linux-desktop-deps.py') }}
       - name: Install Linux native dependencies
-        run: python3 Scripts/install-linux-desktop-deps.py --archive-dir "$RUNNER_TEMP/apt-archives"
+        run: sudo python3 Scripts/install-linux-desktop-deps.py --archive-dir "$RUNNER_TEMP/apt-archives"
       - name: Verify connector modules and behavior
         working-directory: native/connectors
         env:

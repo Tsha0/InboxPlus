@@ -77,6 +77,9 @@ jobs:
     name: iOS / TestFlight
     runs-on: xcode-27
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read
     env:
       ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}

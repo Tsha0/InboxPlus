@@ -59,12 +59,14 @@ def restore_debs(cache_dir, archives):
 
 def store_debs(archives, cache_dir):
     cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir.chmod(0o755)
     stored = 0
     for deb in archives.glob("*.deb"):
         destination = cache_dir / deb.name
         if not destination.exists() or destination.stat().st_size != deb.stat().st_size:
             shutil.copy2(deb, destination)
             stored += 1
+        destination.chmod(0o644)
     return stored
 
 
@@ -111,7 +113,7 @@ def main():
     print(f"linux_packages mirror={mirror} probes={rates}")
 
     def run(command):
-        subprocess.run(["sudo", *command], check=True)
+        subprocess.run(command, check=True)
 
     install(arguments.source_root, arguments.archive_dir, arguments.apt_archives, mirror, run)
 
