@@ -104,3 +104,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Agents also follow [AGENTS.md](AGENTS.md
 
 [AGPL-3.0-or-later](LICENSE). The embedded Meta and LinkedIn clients are also AGPL-3.0-or-later.
 Check the [dependency inventory](docs/dependencies.md) before you distribute a build.
+
+<!-- Temporary PR review trigger test. -->
