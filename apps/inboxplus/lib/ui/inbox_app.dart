@@ -36,6 +36,9 @@ PopupMenuItem<T> _menuItem<T>(T value, String label) => PopupMenuItem<T>(
   child: Text(label),
 );
 
+RelativeRect _menuAnchor(Offset anchor) =>
+    RelativeRect.fromLTRB(anchor.dx, anchor.dy, anchor.dx, anchor.dy);
+
 const _menuDivider = PopupMenuDivider(height: 11);
 
 bool get isDesktopPlatform => switch (defaultTargetPlatform) {
@@ -2289,12 +2292,7 @@ class _MessageBubble extends StatelessWidget {
           }
           final action = await showMenu<String>(
             context: context,
-            position: RelativeRect.fromLTRB(
-              details.globalPosition.dx,
-              details.globalPosition.dy,
-              details.globalPosition.dx,
-              details.globalPosition.dy,
-            ),
+            position: _menuAnchor(details.globalPosition),
             items: [
               if (canReply) _menuItem('reply', 'Reply'),
               if (canReact) _menuItem('react', 'React'),
@@ -2522,12 +2520,7 @@ class _MessageBubble extends StatelessWidget {
           position ?? box.localToGlobal(box.size.center(Offset.zero));
       var selected = await showMenu<String>(
         context: context,
-        position: RelativeRect.fromLTRB(
-          anchor.dx,
-          anchor.dy,
-          anchor.dx,
-          anchor.dy,
-        ),
+        position: _menuAnchor(anchor),
         items: [
           for (final emoji in choices)
             PopupMenuItem(
@@ -3832,12 +3825,7 @@ Future<void> _showConversationActions(
   );
   final action = await showMenu<_ConversationAction>(
     context: context,
-    position: RelativeRect.fromLTRB(
-      position?.dx ?? 0,
-      position?.dy ?? 0,
-      position?.dx ?? 0,
-      position?.dy ?? 0,
-    ),
+    position: _menuAnchor(position ?? Offset.zero),
     items: [
       _menuItem(
         _ConversationAction.unread,
@@ -3859,12 +3847,7 @@ Future<void> _showConversationActions(
     if (!context.mounted) return;
     final hours = await showMenu<int>(
       context: context,
-      position: RelativeRect.fromLTRB(
-        position?.dx ?? 0,
-        position?.dy ?? 0,
-        position?.dx ?? 0,
-        position?.dy ?? 0,
-      ),
+      position: _menuAnchor(position ?? Offset.zero),
       items: [
         _menuItem(1, 'For 1 Hour'),
         _menuItem(8, 'For 8 Hours'),
