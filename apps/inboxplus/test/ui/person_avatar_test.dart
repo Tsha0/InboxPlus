@@ -36,9 +36,7 @@ void main() {
             reason: 'the initial is laid out shorter than its glyphs and clips',
           );
           final avatar = tester.getRect(find.byType(PersonAvatar));
-          final inscribed = avatar.deflate(
-            avatar.width * (1 - 1 / sqrt2) / 2,
-          );
+          final inscribed = avatar.deflate(avatar.width * (1 - 1 / sqrt2) / 2);
           final glyphs = tester.getRect(glyph);
           expect(
             inscribed.inflate(0.01).contains(glyphs.topLeft),
