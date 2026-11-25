@@ -33,9 +33,15 @@ class PersonAvatar extends StatelessWidget {
       child: Center(
         child: isGroup
             ? Icon(Icons.group_outlined, size: size * .5)
-            : Text(
-                name.characters.firstOrNull?.toUpperCase() ?? '?',
-                style: TextStyle(fontSize: size * .45),
+            : SizedBox.square(
+                dimension: size * .7,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    name.characters.firstOrNull?.toUpperCase() ?? '?',
+                    style: TextStyle(fontSize: size * .45),
+                  ),
+                ),
               ),
       ),
     );
